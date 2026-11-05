@@ -15,7 +15,7 @@ The limits that are written down in the guides, in one place. Where the table na
 | A `.tar.gz` / `.tar.bz2` / `.tar.xz` kept decoded in memory | `memory_limit_mb` (default 256) | not kept: each entry is decoded again from the nearest 4 MB checkpoint / block / start, and read through a temp file | [archives](features/archives.md#how-each-kind-is-read) |
 | Decoded size of one compressed stream (gz, bz2, xz, tar.*) | 64 GB | `FA_ERROR_TOO_LARGE` (a decompression bomb) | [archives](features/archives.md#how-each-kind-is-read) |
 | Entries in a tar | 262,144 | the archive is refused (`FA_ERROR_UNSUPPORTED_FORMAT`) | [archives](features/archives.md#how-each-kind-is-read) |
-| LZMA2 dictionary an xz block asks for | 1 GiB | `FA_ERROR_TOO_LARGE`, before anything is allocated | [archives](features/archives.md#how-each-kind-is-read) |
+| LZMA2 dictionary an xz block asks for | 1 GiB | the block is refused (`FA_ERROR_OUT_OF_MEMORY`), before anything is allocated | [archives](features/archives.md#how-each-kind-is-read) |
 | MIDI file size | 16 MB; events later than 6 hours are dropped (refused with `FA_ERROR_INVALID_ARG` in an event list) | See the guide | [MIDI](features/midi.md) |
 | Soundfont size | 1 GB | See the guide | [MIDI](features/midi.md) |
 | MIDI song length | Measured to where the sound dies away, at most 10 s after the last event | A never-ending note is cut | [MIDI](features/midi.md) |

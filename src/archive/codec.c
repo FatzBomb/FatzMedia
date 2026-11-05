@@ -18,7 +18,14 @@ void bz_internal_error(int errcode)
     abort();
 }
 
-static void* sz_alloc(ISzAllocPtr p, size_t n) { (void)p; return malloc(n ? n : 1); }
+/* The SDK allocates the LZMA2 dictionary a block header names, whatever block that is: nothing bigger than
+ * FA_CODEC_MAX_DICT (plus a little) is handed out, so a later block cannot ask for gigabytes. */
+static void* sz_alloc(ISzAllocPtr p, size_t n)
+{
+    (void)p;
+    if ((uint64_t)n > FA_CODEC_MAX_DICT + ((uint64_t)1 << 20)) return NULL;
+    return malloc(n ? n : 1);
+}
 static void sz_free(ISzAllocPtr p, void* a) { (void)p; free(a); }
 static const ISzAlloc g_alloc = { sz_alloc, sz_free };
 
@@ -885,6 +892,18 @@ static int worth_parallel(fa_cin in)
     return in.left >= FA_CODEC_PARALLEL_MIN && in.left <= FA_CODEC_PARALLEL_INPUT_MAX && fa_cpu_count() > 1;
 }
 
+/* Passes on what comes after the first `skip` bytes (a decode that starts over). */
+typedef struct skipper { outsink* o; uint64_t skip; } skipper;
+static int skipper_put(void* ctx, const uint8_t* d, size_t n)
+{
+    skipper* k = (skipper*)ctx;
+    if (k->skip >= n) { k->skip -= n; return 0; }
+    d += k->skip;
+    n -= (size_t)k->skip;
+    k->skip = 0;
+    return out_put(k->o, d, n);
+}
+
 static fa_result bz_sink(fa_cin in, outsink* o, const volatile int32_t* cancel)
 {
     fa_cin m;
@@ -900,10 +919,15 @@ static fa_result bz_sink(fa_cin in, outsink* o, const volatile int32_t* cancel)
         int stopped = 0;
         r = fa_bz_decode_blocks(m.mem, (size_t)m.left, blocks, 0, nb, fa_codec_threads(nb), osink_put, o, cancel, &stopped);
         free(blocks);
-        /* A magic number that only looked like a block start fails the parallel decode:
-         * nothing delivered yet, so the plain decoder can still do it. */
-        if (r == FA_ERROR_UNSUPPORTED_FORMAT && o->produced == 0 && !o->overflow) r = bz_sequential(m, o, cancel);
-        else if (o->overflow && r == FA_OK) r = FA_ERROR_UNSUPPORTED_FORMAT;
+        /* A magic number that only looked like a block start fails the parallel decode, maybe late: the plain
+         * decoder starts over and skips what was delivered. */
+        if (r == FA_ERROR_UNSUPPORTED_FORMAT && !o->overflow && !o->stopped) {
+            skipper k;
+            outsink o2;
+            k.o = o; k.skip = o->produced;
+            o2.fn = skipper_put; o2.ctx = &k; o2.produced = 0; o2.limit = UINT64_MAX; o2.stopped = 0; o2.overflow = 0;
+            r = bz_sequential(m, &o2, cancel);
+        } else if (o->overflow && r == FA_OK) r = FA_ERROR_UNSUPPORTED_FORMAT;
         free(held);
         return r;
     }

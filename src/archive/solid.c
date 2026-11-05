@@ -139,6 +139,7 @@ typedef struct trim {
     fa_sink_fn fn;
     void* ctx;
     uint64_t pos, from, to;
+    uint64_t done;            /* bytes below this were delivered already (a decode that starts over skips them) */
     int stopped, too_much;
 } trim;
 
@@ -148,7 +149,11 @@ static int trim_put(void* c, const uint8_t* d, size_t n)
     uint64_t end = t->pos + n;
     if (end > t->from && t->pos < t->to) {
         uint64_t lo = t->pos > t->from ? t->pos : t->from, hi = end < t->to ? end : t->to;
-        if (t->fn(t->ctx, d + (lo - t->pos), (size_t)(hi - lo))) t->stopped = 1;
+        if (lo < t->done) lo = t->done;
+        if (hi > lo) {
+            if (t->fn(t->ctx, d + (lo - t->pos), (size_t)(hi - lo))) t->stopped = 1;
+            t->done = hi;
+        }
     }
     t->pos = end;
     if (t->pos > FA_SOLID_MAX_OUT) { t->too_much = 1; return 1; }
@@ -245,7 +250,9 @@ static fa_result run_bzip2(fa_solid* s, fa_source* src, uint64_t from, uint64_t 
                 return FA_OK;
             }
             free(blocks);
-            if (r != FA_ERROR_UNSUPPORTED_FORMAT || t->pos != 0) { free(held); return r; }
+            /* A bit pattern that only looked like a block start fails the side-by-side decode, even late in the
+             * file: the plain decoder starts over and skips what was delivered. */
+            if (r != FA_ERROR_UNSUPPORTED_FORMAT || t->stopped) { free(held); return r; }
         } else {
             free(blocks);
         }

@@ -36,8 +36,8 @@ opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg`
   files from `pbzip2`/`lbzip2` (several streams in a row) are read whole.
 - **Safety.** A damaged stream, a wrong checksum (gzip CRC-32 and size, bzip2 block and stream CRCs, the xz check the
   file uses), or a stream cut short end in `FA_ERROR_UNSUPPORTED_FORMAT`. A stream that would
-  decode to more than 64 GB, an xz block asking for a dictionary over 1 GiB, or a tar with more than 262,144 entries is refused
-  (`FA_ERROR_TOO_LARGE` / `FA_ERROR_UNSUPPORTED_FORMAT`); nothing is allocated from a size before it is checked.
+  decode to more than 64 GB, an xz block (any, not only the first) asking for a dictionary over 1 GiB, or a tar with more than 262,144 entries is refused
+  (`FA_ERROR_TOO_LARGE` / `FA_ERROR_OUT_OF_MEMORY` / `FA_ERROR_UNSUPPORTED_FORMAT`); nothing is allocated from a size before it is checked.
 - Only regular files are listed; links, folders, devices and tar "global" records are skipped. Names are UTF-8 (a name that is not valid UTF-8 is read as CP437, as in ZIP), with `/`, and a leading `./`
   removed. Times are the tar header's (a pax `mtime` wins).
   Encrypted tar/gz/bz2/xz does not exist, so there is no `FA_ERROR_PROTECTED_CONTENT` for them.

@@ -140,14 +140,10 @@ was found (a PR, a review, or a thread).
   the official 25.01 and 1.0.8 releases when there is a chance.
 - Not run here: the macOS, iOS, Android and Windows builds of the new code (the codec layer uses only the portable
   thread and CPU-count helpers the other code already does).
-- (Found by /code-review, not fixed.) A bzip2 block magic that occurs by chance (or crafted) inside compressed data splits a
-  block in the parallel decode; the sequential fallback only runs while nothing has been delivered yet, so such a file is
-  refused once it has. Probability about 2^-48 per bit position for an honest file. A fix is to decode again sequentially and skip
-  the bytes already delivered.
-- (Found by /code-review, not fixed.) The xz dictionary limit is checked on the first block header of a sequential decode and on
-  every block of a block-table decode; a file whose later block (or second stream) asks for a larger dictionary is decoded by the
-  SDK, which allocates it. Memory-bound for hostile input would need a parse of each block header in the sequential path.
-- (Found by /code-review, not fixed.) A single-file `.gz` over 4 GB or with several members takes its size from the 32-bit
-  trailer, so it opens but fails when read; an empty `.gz`/`.xz` is refused rather than listed as an empty file; each partial read of a
+- (Found by /code-review, not fixed.) An empty `.gz`/`.xz` is refused rather than listed as an empty file; each partial read of a
   multi-block `.tar.xz` from a file source reloads the compressed file (up to 96 MB); a parallel xz decode reserves a slot per
   in-flight block sized from the index (64 MB at most each) before the block is checked.
+- The three edge cases the review found in PR 209 were fixed there (a bzip2 false block magic now falls back to the plain
+  decoder and skips what was delivered; the xz dictionary cap is in the SDK allocator, so every block is covered; a `.gz` of
+  4 MB or more of compressed data gets one pass to learn its true size). They have no test of their own: the first needs a
+  crafted `.bz2`, the second a 2 GiB dictionary, the third a 4 GB file.

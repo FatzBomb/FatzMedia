@@ -221,6 +221,10 @@ static int raw_put(void* ctx, const uint8_t* data, size_t n)
 }
 
 /* gzip, bzip2 or xz around a tar or one file. */
+/* Compressed bytes from which a DEFLATE stream may expand past 4 GB (at most about 1032 to 1). */
+#define GZ_SIZE_MAY_WRAP ((uint64_t)4162000)
+static int drop_put(void* ctx, const uint8_t* d, size_t n) { (void)ctx; (void)d; (void)n; return 0; }
+
 static fa_result make_filtered(fa_archive* a, fa_source* src, int owns, int32_t filter, const char* path)
 {
     peek pk;
@@ -250,6 +254,14 @@ static fa_result make_filtered(fa_archive* a, fa_source* src, int owns, int32_t 
             uint32_t crc, isize;
             fa_solid_gzip(a->sol, &off, &len, &crc, &isize);
             z.method = 8; z.data_offset = (int64_t)off; z.compressed_size = len; z.size = isize; z.crc32 = crc;
+            if (len >= GZ_SIZE_MAY_WRAP) {
+                /* The trailer holds the size modulo 4 GB and the data might be bigger than that: one pass tells
+                 * (and checks the CRC). */
+                r = fa_solid_run(a->sol, src, 0, UINT64_MAX, drop_put, NULL, a->cancel);
+                if (r != FA_OK) return r;
+                z.size = fa_solid_size(a->sol);
+                if (z.size == UINT64_MAX) return FA_ERROR_UNSUPPORTED_FORMAT;
+            }
         } else {
             if (hint == UINT64_MAX) return FA_ERROR_UNSUPPORTED_FORMAT;   /* several streams: no size */
             z.method = 95; z.data_offset = 0; z.compressed_size = (uint64_t)src->length; z.size = hint; z.flags = FA_ZE_NO_CRC;
