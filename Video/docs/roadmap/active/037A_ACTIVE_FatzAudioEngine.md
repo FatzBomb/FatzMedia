@@ -8,7 +8,10 @@ done on Linux (`updates/037A_0`); slice 1 merged, owner smoke passed (`updates/0
 and `--audio=fatz`, pinned to `FatzAudio` `1.0.0-rc.1`) merged 2026-11-03, owner smoke passed
 (`updates/037A_2`). K4 (clock at a present time), K6 (lyrics without a soundfont) and K8
 (shaping) merged in FatzAudio after rc.1 (main @ 5182a4e); slice 3 moves the pin to the build that
-carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`).
+carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`). Loudness (LUFS)
+normalization on the FatzAudio engine implemented 2026-11-04, pending owner smoke
+(`updates/037A_Normalization`; FatzAudio request 12 for the first-play start,
+`docs/fatzaudio/2026-11-04_MediaControl_Request_NormalizationStart.md`).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
@@ -94,7 +97,10 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    0.75-1.5, seeks, loop wraps and pause/resume. Also the explicit output device for FatzAudio (owner 2026-11-03:
    `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event
    source instead of two.
-Normalization (owner decision 2026-11-03): loudness (LUFS) is the only normalization on the
+Normalization (owner decision 2026-11-03; implemented 2026-11-04 as `MediaPlayerConfiguration.Normalization`,
+`updates/037A_Normalization`; the measured scan times and the owner's 2026-11-04 decision moved the
+first-play wait into FatzAudio, request 12, so our player does not wait; the text below is the
+original plan): loudness (LUFS) is the only normalization on the
 FatzAudio engine, replacing our peak rule there before slice 6: FatzAudio's normalization and
 limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain, with a
 cap on boosts. Target: a configuration setting whose default is the streaming-service standard,

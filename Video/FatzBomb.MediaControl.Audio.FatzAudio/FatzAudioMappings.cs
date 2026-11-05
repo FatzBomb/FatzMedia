@@ -74,4 +74,43 @@ internal static class FatzAudioMappings
     /// <summary>FatzAudio's <c>DeviceChanged</c> value as our device-change kind: 0 the default moved, 1 the device went away.</summary>
     public static AudioDeviceChangeKind ToDeviceChangeKind(long value) =>
         value == 0 ? AudioDeviceChangeKind.DefaultDeviceChanged : AudioDeviceChangeKind.DeviceRemoved;
+    /// <summary>
+    /// The folder FatzAudio keeps measured loudness (and its other analysis) in:
+    /// <see langword="null"/> uses the per-user default, an empty or blank string turns the cache off
+    /// (returns <see langword="null"/>), anything else is used, made absolute against the current folder.
+    /// </summary>
+    public static string? ResolveCacheDirectory(string? configured, bool isWindows, Func<string, string?> environment, string localApplicationData, string userProfile)
+    {
+        if (configured is not null)
+            return string.IsNullOrWhiteSpace(configured) ? null : Path.GetFullPath(configured);
+
+        if (isWindows)
+            return string.IsNullOrEmpty(localApplicationData) ? null : Path.Combine(localApplicationData, "FatzBomb.MediaControl", "AudioCache");
+
+        // XDG: only an absolute XDG_CACHE_HOME counts; otherwise ~/.cache.
+        var xdg = environment("XDG_CACHE_HOME");
+        var root = !string.IsNullOrEmpty(xdg) && Path.IsPathRooted(xdg)
+            ? xdg
+            : string.IsNullOrEmpty(userProfile) ? null : Path.Combine(userProfile, ".cache");
+        return root is null ? null : Path.Combine(root, "fatzbomb-mediacontrol", "audio");
+    }
+
+    /// <summary><see cref="ResolveCacheDirectory(string?, bool, Func{string, string?}, string, string)"/> for this machine and user.</summary>
+    public static string? ResolveCacheDirectory(string? configured) =>
+        ResolveCacheDirectory(
+            configured,
+            OperatingSystem.IsWindows(),
+            Environment.GetEnvironmentVariable,
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    /// <summary>
+    /// The track gain FatzAudio's normalization gives a song of <paramref name="integratedLufs"/>:
+    /// target minus loudness, limited to -30..+12 dB; 0 until the loudness is final or for silence.
+    /// </summary>
+    public static double TrackGainDecibels(double integratedLufs, bool isFinal, double targetLufs) =>
+        isFinal && double.IsFinite(integratedLufs) ? Math.Clamp(targetLufs - integratedLufs, -30, 12) : 0;
+
+    /// <summary>FatzAudio's normalization gain in dB as the linear multiplier <c>NormalizationGain</c> reports (1 when unknown).</summary>
+    public static double GainFromDecibels(double gainDb) => double.IsFinite(gainDb) ? Math.Pow(10, gainDb / 20) : 1;
 }

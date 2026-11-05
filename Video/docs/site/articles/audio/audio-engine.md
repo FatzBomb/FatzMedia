@@ -36,7 +36,7 @@ The player's API is the same with either engine. With FatzAudio:
 | Loop | Gapless; `MediaLooped` is raised once per wrap, as with BASS |
 | Equalizer | FatzAudio's built-in equalizer, one peaking band per band (one octave is Q 1.414) |
 | Fades and prepared-next transitions | FatzAudio volume ramps |
-| Normalization | The same peak rule, gains and cache as BASS (see [Normalization](normalization.md)); FatzAudio's own loudness normalization is not used |
+| Normalization | Loudness (LUFS) normalization with a true-peak limiter: every song at `MediaPlayerConfiguration.Normalization.TargetLufs` (default -14 LUFS, peaks at -1 dBTP). A song is scanned once and remembered in a per-user cache folder; a first play starts on an estimate and glides to the measured level within a fraction of a second. See [Normalization](normalization.md) |
 | Silence trimming | FatzAudio finds the silence when the file opens, so the trim applies from the first play, not only from the second; it measures RMS over 50 ms windows at your threshold, and sounds shorter than 200 ms at the edges (clicks, count-in ticks) count as silence |
 | Output device | Always the system default device, which FatzAudio follows; a device move raises `AudioDeviceChanged`. `AudioOutputDeviceIndex` (a BASS index) is not used and logs a warning |
 | MIDI | `MidiSoundfontPath` (SF2, SF3 or DLS) or the system bank (Windows `gm.dls`); lyrics and karaoke metadata as with BASS |

@@ -51,6 +51,30 @@ The gain is cached per file (its path, size and modified time) for the whole pro
 
 With `PlayOnLoad` on and normalization enabled, playback waits for the quick pass, up to two seconds, so the first moments are not played at the wrong level. A file with a cached gain starts immediately.
 
+## With the FatzAudio engine: loudness (LUFS)
+
+With the opt-in FatzAudio engine (`MediaPlayerConfiguration.AudioEngineFactory`), normalization is loudness based instead of peak based: FatzAudio measures each song's integrated loudness (ITU-R BS.1770 / EBU R128) and brings it to a target, with a true-peak limiter so a boost never clips. The rest of this article (the peak rule, the two passes, the 1024-entry cache) describes the BASS engine, which ignores these options.
+
+```csharp
+var configuration = new MediaPlayerConfiguration
+{
+    AudioEngineFactory = new FatzAudioEngineFactory(),
+    Normalization = new NormalizationOptions { TargetLufs = -16 },   // default -14
+};
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `TargetLufs` | -14 | The loudness every song is brought to (Spotify, YouTube). A karaoke host might use about -16 for microphone headroom. -60 to 0. |
+| `TruePeakCeilingDbtp` | -1 | The limiter's ceiling. -20 to 0. |
+| `CacheDirectory` | `null` | Where measured loudness is kept. `null` is a per-user folder (`%LOCALAPPDATA%\FatzBomb.MediaControl\AudioCache` on Windows, `$XDG_CACHE_HOME/fatzbomb-mediacontrol/audio` or `~/.cache/fatzbomb-mediacontrol/audio` elsewhere); an empty string turns the cache off. |
+
+- **Where the loudness comes from:** ReplayGain 2 or R128 tags, then the cache, then a scan of the whole file on all cores (a 4-minute song takes about 0.1-0.35 s, a 10-minute one about 0.5 s). The gain is target minus loudness, limited to -30 to +12 dB.
+- **The first play:** playback starts at once on FatzAudio's running estimate and glides to the measured level when the scan finishes (at most 12 dB/s down, 6 dB/s up). Tagged and cached songs are at the right level from the first sample. Play-on-load does not wait.
+- **The cache:** one tiny file per song, keyed by its content (size and three 64 KB blocks), so a renamed or moved file is still found and a replaced file is measured again. Entries are never deleted by the engine.
+- **Reading it:** `NormalizationGain` is FatzAudio's gain for the song as a multiplier (with `Normalize` off, the gain it would apply); `NormalizationGainChanged` fires once the loudness is final.
+- **`Normalize = false`:** FatzAudio applies no gain and its limiter is off; turning it back on glides to the gain.
+
 ## What it applies to
 
 | Source | Normalized |

@@ -78,4 +78,41 @@ public sealed class FatzAudioMappingsTests
     [InlineData(Fa.MidiTextFlags.NewParagraph | Fa.MidiTextFlags.NewLine, "\\word")]
     public void Lyrics_GetTheirSoftKaraokeMarksBack(Fa.MidiTextFlags flags, string expected) =>
         Assert.Equal(expected, FatzAudioMidiEventReader.WithLayoutMarks(new Fa.MidiText(0, Fa.MidiTextType.Lyric, "word", flags, TimeSpan.Zero, 0, 0)));
+
+    [Fact]
+    public void CacheDirectory_DefaultsPerUser_EmptyTurnsItOff_AnythingElseIsUsed()
+    {
+        static string? Env(string _) => null;
+
+        Assert.Equal(Path.Combine("C:/Users/u/AppData/Local", "FatzBomb.MediaControl", "AudioCache"),
+            FatzAudioMappings.ResolveCacheDirectory(null, isWindows: true, Env, "C:/Users/u/AppData/Local", "C:/Users/u"));
+        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzbomb-mediacontrol", "audio"),
+            FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, Env, "/home/u/.local/share", "/home/u"));
+        Assert.Equal(Path.Combine("/xdg", "fatzbomb-mediacontrol", "audio"),
+            FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, static _ => "/xdg", "", "/home/u"));
+        // A relative XDG_CACHE_HOME is ignored, as the XDG spec says.
+        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzbomb-mediacontrol", "audio"),
+            FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, static _ => "relative", "", "/home/u"));
+        Assert.Null(FatzAudioMappings.ResolveCacheDirectory("", isWindows: true, Env, "C:/x", "C:/u"));
+        Assert.Null(FatzAudioMappings.ResolveCacheDirectory("  ", isWindows: false, Env, "", "/home/u"));
+        Assert.Equal(Path.GetFullPath("/my/cache"), FatzAudioMappings.ResolveCacheDirectory("/my/cache", isWindows: false, Env, "", "/home/u"));
+        Assert.Equal(Path.GetFullPath("cache"), FatzAudioMappings.ResolveCacheDirectory("cache", isWindows: false, Env, "", "/home/u"));
+    }
+
+    [Theory]
+    [InlineData(-20, true, -14, 6)]
+    [InlineData(-8, true, -14, -6)]
+    [InlineData(-50, true, -14, 12)]
+    [InlineData(-20, false, -14, 0)]
+    [InlineData(double.NegativeInfinity, true, -14, 0)]
+    public void TrackGain_IsTargetMinusLoudness_WithinFatzAudiosLimits(double lufs, bool isFinal, double target, double gainDb) =>
+        Assert.Equal(gainDb, FatzAudioMappings.TrackGainDecibels(lufs, isFinal, target), 6);
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(6.0206, 2)]
+    [InlineData(-6.0206, 0.5)]
+    [InlineData(double.NaN, 1)]
+    public void NormalizationGain_IsTheDecibelGainAsAMultiplier(double gainDb, double gain) =>
+        Assert.Equal(gain, FatzAudioMappings.GainFromDecibels(gainDb), 4);
 }

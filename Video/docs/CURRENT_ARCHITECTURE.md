@@ -1085,11 +1085,13 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
   `IAudioTrimWindowProvider`, `IAudioFadeGainTarget`, `IAudioFilterHost`, `IAudioVolumeSlide`,
   `IMidiEventReaderSource`, `IAudioDeviceChangeSource`): one FatzAudio engine, default output device
   and mix bus per player. Position is the stream's presentation clock. The stream's volume is the
-  fade stage (volume ramps); the bus carries user volume times the normalization gain. Loop is
+  fade stage (volume ramps); the bus carries the user volume. Loop is
   FatzAudio's (`Looped` becomes one `PlaybackEnded` per wrap while `Playing`, as on BASS; `Ended` a
-  stop). Normalization keeps the BASS peak rule and `NormalizationGainCache` keys, measured by
-  `AudioNormalizer` on a decode-only FatzAudio stream (`FatzAudioLevelSource`); FatzAudio's loudness
-  normalization is off. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
+  stop). Normalization is FatzAudio's loudness (LUFS) normalization and limiter from
+  `MediaPlayerConfiguration.Normalization` (`NormalizationOptions`: target, ceiling, cache folder);
+  `NormalizationGain` reports FatzAudio's gain for the song, `NormalizationGainChanged` fires when
+  its loudness is final, and `IsNormalizationReady` is always true (FatzAudio starts on its estimate
+  and glides; nothing waits). BASS ignores the options and keeps its peak rule. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
   and minimum silence, 200 ms minimum sound), turns the first and last audible frames into edge
   regions for `SilenceTrimCalculator` (our padding and edge switches), and sets the window as
   CUE_IN/CUE_OUT, so play, stop, end and loop follow it natively from the first play; the
