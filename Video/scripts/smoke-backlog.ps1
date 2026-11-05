@@ -587,6 +587,7 @@ function Test-10 {
             'Change Players quickly several times: you end on the last count.',
             'Double-click a picture: only that player goes full screen; double-click restores. Click into player 2, F11, F11.',
             'Full screen with a flyout open (not WinForms): Escape closes the flyout, a second Escape leaves full screen.',
+            'The second-screen window has its own rule: Escape leaves its full screen, a second Escape closes it (by design).',
             'Finally, go full screen and close the window (Alt+F4).')
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $p.WaitForExit(600000) | Out-Null
