@@ -104,7 +104,7 @@ Set `fa_engine_config.cache_directory` (.NET `AudioEngineOptions.CacheDirectory`
 | Ogg Vorbis, Opus, FLAC | From the first audio page (the comment header is before it), at 16 points |
 | MP3, AAC and the rest | The file without ID3v2 at the start and ID3v1, APEv2 or Lyrics3 at the end, at 16 points |
 
-"16 points" means 4 KB read at 16 places spread evenly over the audio, plus its length: a coded stream changes throughout when it is encoded again, so this is enough and stays fast for multi-GB video files. A MIDI file's key also includes the soundfont and rate it plays with. Results cached by 1.0.0-rc.4 or earlier (one small `.loudness` file per song) are not read, so after upgrading each song is measured once more the first time it plays; `fa_engine_clear_cache` deletes the old files.
+"16 points" means 4 KB read at 16 places spread evenly over the audio, plus its length: a coded stream changes throughout when it is encoded again, so this is enough and stays fast for multi-GB video files. A MIDI file's key also includes the soundfont and rate it plays with. Results cached by 1.0.0-rc.3 or earlier (one small `.loudness` file per song) are not read, so after upgrading each song is measured once more the first time it plays; `fa_engine_clear_cache` deletes the old files.
 
 ## Gain
 

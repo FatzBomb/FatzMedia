@@ -35,7 +35,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   (`loudness.fac.lock`), so no app loses another's results; a damaged or half-written file is skipped and rewritten,
   never trusted ([the cache](docs/features/normalization.md#the-cache)).
 - **One rescan after upgrading:** the cache key is now a fingerprint of the audio alone (see Changed), so results
-  cached by 1.0.0-rc.4 or earlier are not used: every song is measured once more the first time it plays, then cached
+  cached by 1.0.0-rc.3 or earlier are not used: every song is measured once more the first time it plays, then cached
   again. This is expected, not a bug. The old per-song `.loudness` files stay until `fa_engine_clear_cache`.
 
 - CD+G with no audio (MediaControl request 10): a lone `.cdg`, or a ZIP whose only playable entry is a `.cdg`, opens
@@ -80,7 +80,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   WAV/AIFF chunks other than the samples) are left out, so a retagged file keeps its cached loudness and analysis; WAV
   and AIFF samples up to 64 MB are hashed whole (an edit in place with the same length is noticed; bigger ones at 64
   points plus the last-write time), other audio at 16 points.
-  Results cached by rc.4 and earlier are measured again once (see Added).
+  Results cached by rc.3 and earlier are measured again once (see Added).
 - Loudness scans are faster: the K-weighting filter runs two channels per pass and the true-peak oversampler runs
   eight samples per SIMD step, or sixteen with AVX on x86 CPUs that have it (chosen at run time). The loudness math of
   a 4-minute stereo song drops from about 0.37 s to 0.26 s of one core; a whole scan of a FLAC or MP3 file is about 20 %
