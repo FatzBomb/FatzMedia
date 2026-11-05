@@ -128,3 +128,13 @@ internal sealed unsafe class CallbackState
         }
     }
 }
+
+/// <summary>Where the cache is and whether it works, from <see cref="AudioEngine.GetCacheInfo"/>.</summary>
+/// <param name="Directory">The folder in use; null when there is no cache.</param>
+/// <param name="Status">
+/// <see cref="ErrorCode.Ok"/> when it works so far; <see cref="ErrorCode.Io"/> when the folder could not be made or the
+/// last write of the cache file failed (read-only, disk full, no permission); <see cref="ErrorCode.NotFound"/> when
+/// there is no cache (<see cref="AudioEngineOptions.NoCache"/>, or the OS has no cache folder).
+/// </param>
+/// <param name="IsDefault">True when FatzAudio chose the folder because <see cref="AudioEngineOptions.CacheDirectory"/> was null.</param>
+public sealed record CacheInfo(string? Directory, ErrorCode Status, bool IsDefault);

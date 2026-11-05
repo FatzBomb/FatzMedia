@@ -354,9 +354,24 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
         return FA_ERROR_INVALID_ARG;
     }
     /* Keep our own copies: the caller's strings (marshalled ones, in .NET) may not outlive this call. */
+    if (e->config.cache_directory && !e->config.cache_directory[0]) e->config.cache_directory = NULL;
     if (e->config.cache_directory) {
         e->config.cache_directory = fa_strdup(e->config.cache_directory);
         if (!e->config.cache_directory) { free(e); return FA_ERROR_OUT_OF_MEMORY; }
+    } else if (!(e->config.flags & FA_ENGINE_NO_CACHE)) {
+        /* Not set: the OS's per-user cache folder, so the cache works without any setup. */
+        char os_dir[1024], dir[1100];
+        if (fa_os_cache_dir(os_dir, sizeof(os_dir))) {
+            snprintf(dir, sizeof(dir), "%s/FatzAudio", os_dir);
+            e->config.cache_directory = fa_strdup(dir);
+            if (!e->config.cache_directory) { free(e); return FA_ERROR_OUT_OF_MEMORY; }
+            e->cache_default = 1;
+        }
+    }
+    if (e->config.cache_directory) {
+        /* The whole path, not one level. A folder that cannot be made is not an error of the engine
+         * (it is only a cache), but fa_engine_get_cache_info reports it. */
+        if (fa_mkdirs_utf8(e->config.cache_directory) != 0) e->cache_dir_failed = 1;
         e->lcache = fa_lcache_new(e->config.cache_directory);   /* read on first use */
     }
     if (e->config.temp_directory && e->config.temp_directory[0]) {

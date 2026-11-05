@@ -138,7 +138,16 @@ Streams that can't be read a second time (`fa_stream_open_io` and [web streams](
 
 ## The cache
 
-Set `fa_engine_config.cache_directory` (.NET `AudioEngineOptions.CacheDirectory`) and each song is measured once, ever. Songs with ReplayGain or R128 tags never use the cache: tags are read first.
+Each song is measured once, ever. Songs with ReplayGain or R128 tags never use the cache: tags are read first.
+
+- **Where.** You do not have to set anything: with `fa_engine_config.cache_directory` NULL (.NET `AudioEngineOptions.CacheDirectory` null) FatzAudio uses the OS's per-user cache folder plus `FatzAudio`: Windows `%LOCALAPPDATA%\FatzAudio`, Linux `$XDG_CACHE_HOME` or `~/.cache`, macOS and iOS `~/Library/Caches`, Android the app's cache folder. A folder you set always wins (for example your app's own `AudioCache`). It is created with all its parents. `FA_ENGINE_NO_CACHE` (.NET `NoCache = true`) turns the cache off: nothing is kept or written.
+- **When it cannot be used.** The cache is only an optimisation, so a folder that cannot be made, or a file that cannot be written (read-only, disk full, no permission), never fails the engine or a scan; songs are just measured again. `fa_engine_get_cache_info` (.NET `engine.GetCacheInfo()`) tells you: `status` is `FA_OK`, `FA_ERROR_IO` (folder or file unusable, also after a later failed write) or `FA_ERROR_NOT_FOUND` (no cache). Check it once after creating the engine and log it:
+
+```c
+fa_cache_info ci = { sizeof(ci) };
+fa_engine_get_cache_info(engine, &ci);
+if (ci.status != FA_OK) log("loudness cache off: %d (%s)", ci.status, ci.directory ? ci.directory : "none");
+```
 
 - **One file.** `loudness.fac` holds 48 bytes per song. It is read into memory once, on the first lookup, on a scan thread (never the audio thread): a full 5 MB file (109,000 songs) takes about 16 ms, and each lookup after that takes microseconds. New results are appended.
 - **Size limit.** 5 MB by default; change it with `fa_engine_set_cache_size(engine, bytes)` (.NET `SetCacheSize`, or `AudioEngineOptions.CacheMaxBytes`), at least 16 KB. When the file outgrows the limit it is rewritten, keeping the songs **used** most recently within 3/4 of it. Used means found by a lookup or measured by a scan, not when the entry was written, so a song played often is never the one dropped. A hit updates the time in memory at once, and in the file at most once a day per song (and in full at every rewrite).
