@@ -18,6 +18,8 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
+  in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
 - Archives, step A3: 7z (`.7z`, plain or LZMA-packed header; Copy, LZMA and LZMA2 folders, with file names, times and
   CRC-32; other methods listed as not readable, AES as encrypted) through the same `fa_archive_*` calls, stream opens, tags and
   fingerprints. A solid folder is decoded once however many songs you open from it (the decoder stays where the

@@ -166,10 +166,11 @@ A seek on a playing stream would cut one waveform and start another, which click
 fades the old audio out over 1.5 ms (the mixer plays it, so the seek waits up to a callback for it) and fades the
 new audio in over the same time. A loop that jumps back with a step in the signal (a loop point that is not on a
 zero crossing, or a loop that is not a whole number of periods) has the step removed over about 2 ms; a seamless
-loop is left exactly as the file has it. Seeking a paused or stopped stream needs no fade.
+loop is left exactly as the file has it. Pause fades the stream out over 1.5 ms and then pauses it (the call waits up
+to a callback for that), and play after a pause fades it in over 1.5 ms. Seeking a paused or stopped stream needs no fade.
 
 Set `FA_ENGINE_NO_DECLICK` (.NET `AudioEngineOptions.NoDeclick`) when you need seeks and wraps sample for sample, for
-example in a test that compares samples. Not covered: pause and resume, and the join of a deck loop set while playing.
+example in a test that compares samples. Not covered: the join of a deck loop set while playing.
 
 ## Pitfalls
 
