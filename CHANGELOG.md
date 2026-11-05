@@ -20,6 +20,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
+- Archives, step A4: `tools/archive-bench` (`fa_archive_bench`, `run.py`) times the first audio of a song in every archive kind through
+  the public API; the measured table and what to ship karaoke songs in are in [archives, "Speed"](docs/features/archives.md#speed).
+  The pairing rules (a `.cdg` that matches no song is no longer attached when an archive holds several songs; names compared
+  without case; one `fa_archive_pick` for open, tags and fingerprint) were announced under steps A1-A3 and are collected in
+  "Behaviour changes from earlier versions" of that page.
+
 - Archives, step A3: 7z (`.7z`, plain or LZMA-packed header; Copy, LZMA and LZMA2 folders, with file names, times and
   CRC-32; other methods listed as not readable, AES as encrypted) through the same `fa_archive_*` calls, stream opens, tags and
   fingerprints. A solid folder is decoded once however many songs you open from it (the decoder stays where the
@@ -138,6 +144,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   Filled from the analysis cache too; `fa_analysis_get_silence` and `fa_silence_detector_get` leave them unset. .NET:
   `SilenceInfo.HasDrawing`, `FirstDrawn`, `LastDrawn`, `FirstDrawnTime`, `LastDrawnTime`
   ([karaoke files](docs/features/analysis.md#karaoke-files-silence-and-drawing)).
+
+### Fixed
+
+- Opening a `.tar.bz2` (or a single `.bz2`) no longer decodes the file twice: the 512-byte look that tells a tar from other data
+  started the side-by-side block decoder, which decoded every block before the look stopped it. 10-song `.tar.bz2`: 2.7 s to
+  1.9 s; one song: 410 ms to 285 ms on 4 cores.
 
 ### Changed
 

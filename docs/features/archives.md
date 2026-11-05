@@ -134,6 +134,46 @@ Open from a path, memory (`fa_archive_open_memory`, or `_memory_ref` for no copy
 and `length`, because the directory is at the end). An `fa_archive` may be used from several threads; calls wait
 for each other.
 
+## Speed
+
+Time from `fa_stream_open_path` to the first decoded audio of one 4-minute song (a 192 kbps MP3, 5.8 MB, with its
+1.7 MB `.cdg`) on a 4-core 2.1 GHz cloud Xeon, medians of 5 opens, measured through FatzAudio itself with
+[`tools/archive-bench`](../../tools/archive-bench/README.md). A current desktop is about 1.7-2x faster; a 320 kbps
+song is 1.7x the bytes. "Again" is the same song opened again after it closed, within the 30 seconds of the
+recently-unpacked cache.
+
+| Archive | First audio | Again | Notes |
+|---|---|---|---|
+| loose file | 1.2 ms | | |
+| stored zip | 0.7 ms | 0.5 ms | plays in place |
+| tar | 0.4 ms | 0.4 ms | plays in place |
+| DEFLATE zip | 36 ms | 2.6 ms | |
+| `.tar.gz` | 45 ms | 0.3 ms | listing decodes the stream once; the entries are slices of it |
+| `.tar.bz2` | 285 ms | 0.3 ms | blocks decoded on several cores (`bzip2 -d`: 440 ms) |
+| `.tar.xz`, one block | 375 ms | 0.3 ms | `xz -d`: 354-380 ms |
+| `.7z` (LZMA2, one song) | 330 ms | 0.4 ms | 7-Zip: 273-336 ms |
+| 10 songs in one `.tar.gz`, 10th | 405 ms | 0.3 ms | 56 MB archive, all of it decoded once |
+| 10 songs in one `.tar.bz2`, 10th | 1.9 s | 0.3 ms | `bzip2 -d`: 3.3 s |
+| 10 songs in one `.tar.xz` made with `xz -T`, 10th | 1.0 s | 0.3 ms | blocks on several cores; one block: 3.4 s |
+| 10 songs in one solid `.7z`, 1st | 316 ms | 0.5 ms | |
+| 10 songs in one solid `.7z`, 10th, opened first | 3.2 s | 0.5 ms | the nine before it must be decoded: the format's cost |
+| 10 songs in one solid `.7z`, played in order | 320-380 ms each | | the decoder stays where it stopped (cache); the 10th costs 342 ms, not 3.2 s |
+
+What the table says:
+
+- **Stored zip and tar are the fastest by 20-500 times.** MP3 is already compressed, so 7z, xz and bzip2 save only about 1% on it
+  (4.9 against 5.7 MB) and decode it at 17-30 MB/s. For a library of karaoke songs, use zip (stored or DEFLATE, which
+  costs 36 ms) or a non-solid 7z. A solid 7z, `.tar.xz` or `.tar.bz2` of many songs is for storage, and the further in a
+  song sits, the longer it takes to open it cold (about 0.1-0.2 s per earlier 4-minute song on a desktop).
+- **Opening in archive order is cheap.** A solid 7z opened song by song costs one pass in total, and an archive opened
+  a second time within 30 seconds is not listed or unpacked again.
+- **Memory** added over a process that has already opened a song: nothing for stored zip, tar and DEFLATE (the
+  unpacked song reuses freed memory), 7 MB for `.tar.bz2`, 15 MB for a one-song 7z. A solid archive that fits
+  `memory_limit_mb` is held whole while it is open: 72 MB for the 56 MB `.tar.gz` and the solid 7z, 120-150 MB
+  for the bzip2 and xz tars of ten songs (the listing buffer, the dictionary and the unpacked copy).
+- Not measured here: the 7z assembly decoder (not built yet), a `.tar.gz` bigger than the memory limit (restart every
+  4 MB), and Windows, macOS and ARM numbers. They are added to this table when someone runs `tools/archive-bench/run.py` there.
+
 ## Memory, temp files and cancelling
 
 A stored entry (a ZIP or plain-tar entry, or any entry of a `.tar.gz`/`.bz2`/`.xz` that was kept decoded in memory)

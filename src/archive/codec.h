@@ -18,7 +18,10 @@ typedef struct fa_cin {
     uint64_t left;
 } fa_cin;
 
-enum { FA_CODEC_BZIP2 = 1, FA_CODEC_LZMA_ZIP = 2, FA_CODEC_XZ = 3 };
+enum { FA_CODEC_BZIP2 = 1, FA_CODEC_LZMA_ZIP = 2, FA_CODEC_XZ = 3,
+       /* bzip2 on one core, in order, stopping as soon as the sink does: for a look at the first bytes, where the
+        * side-by-side decoder would start every block of the file. */
+       FA_CODEC_BZIP2_PLAIN = 4 };
 
 /* The most memory one decoder is allowed to ask for its dictionary; a header that wants
  * more is refused with FA_ERROR_TOO_LARGE. */

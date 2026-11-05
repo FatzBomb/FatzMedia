@@ -267,7 +267,7 @@ static fa_result run_bzip2(fa_solid* s, fa_source* src, uint64_t from, uint64_t 
         else if (fa_source_seek(src, 0) != FA_OK) { free(held); return FA_ERROR_IO; }
         else in.src = src;
         t->pos = 0;
-        r = fa_codec_to_sink(FA_CODEC_BZIP2, in, UINT64_MAX, trim_put, t, cancel, &made, &stopped);
+        r = fa_codec_to_sink(full ? FA_CODEC_BZIP2 : FA_CODEC_BZIP2_PLAIN, in, UINT64_MAX, trim_put, t, cancel, &made, &stopped);
         free(held);
         if (r == FA_OK && full && !stopped && !t->stopped) { s->total = t->pos; s->complete = 1; }
     }
