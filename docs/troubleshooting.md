@@ -23,11 +23,12 @@ Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` 
 | `FA_ERROR_NO_DISC` (-14) | `NoDisc` | The drive is empty or its tray is open | Ask the user to insert a disc ([discs](features/disc.md)) |
 | `FA_ERROR_NO_SOUNDFONT` (-15) | `NoSoundFont` | A MIDI file and no soundfont, and the system has no GM bank | Set `engine.DefaultSoundFont` or call `fa_engine_set_soundfont` ([MIDI](features/midi.md)) |
 | `FA_ERROR_PROTECTED_CONTENT` (-16) | `ProtectedContent` | DRM-protected or encrypted media (WMA DRM, FairPlay, Common Encryption, `SAMPLE-AES`) | Tell the user the file is copy-protected. FatzAudio never decrypts |
-| `FA_ERROR_TOO_LARGE` (-17) | `TooLarge` | A compressed ZIP entry bigger than the memory limit with no temp directory, or a sample over 1 GB of PCM | Set `zip_memory_limit_mb` or `temp_directory` ([CD+G](features/cdg.md#zip-archives)) |
+| `FA_ERROR_TOO_LARGE` (-17) | `TooLarge` | A compressed ZIP entry that unpacks to over 4 GB, or bigger than the memory limit with `FA_ENGINE_NO_TEMP_FILES` set, or a sample over 1 GB of PCM | Extract the archive, or drop `FA_ENGINE_NO_TEMP_FILES` ([CD+G](features/cdg.md#zip-archives)) |
 | `FA_ERROR_SIZE_MISMATCH` (-18) | `SizeMismatch` | The buffer given to `fa_surface_update_into` is not the surface's size | Allocate `width * height * 4` bytes |
 | `FA_ERROR_NOT_ENOUGH_CHANNELS` (-19) | `NotEnoughChannels` | The headphone cue needs output channels the device does not have | Use a device with 4 or more channels, or a second device ([DJ mixer](features/dj-mixer.md)) |
 | `FA_ERROR_PERMISSION_DENIED` (-20) | `PermissionDenied` | The operating system refused the microphone | Ask for permission first (macOS, iOS, Android, Windows privacy settings) |
 | `FA_ERROR_OUT_OF_RANGE` (-21) | `OutOfRange` | A value valid on its own that this deck, stream or tempo cannot do (for example a sync tempo outside the deck's range) | Pick a value inside the range the page names |
+| `FA_ERROR_DISK_FULL` (-23) | `DiskFull` | A ZIP song needs a temp file and the temp drive has less than the song plus 64 MB free | Free space, or set `temp_directory` to another drive |
 | `FA_ERROR_CANCELLED` (-22) | `Cancelled` | Your cancel flag stopped an open (`fa_open_options.cancel`; .NET `StreamOptions.CancellationToken`) | Not a failure: you asked for it |
 
 A problem *inside* a playing stream (a bad packet, an unreadable disc sector) does not fail a call. It raises a `DecodeError` event and playback goes on ([events](features/events.md)).

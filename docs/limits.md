@@ -11,7 +11,7 @@ The limits that are written down in the guides, in one place. Where the table na
 | Armed frame markers per stream | 64 | `FA_ERROR_BUSY` | [events](features/events.md) |
 | Packets queued by an FFmpeg hand-off | 256 MB | `FA_ERROR_BUSY` (the push does not block) | [FFmpeg](features/ffmpeg.md) |
 | Sound (sample) loaded into memory | 1 GB of PCM | `FA_ERROR_TOO_LARGE` | [sounds](features/sounds.md) |
-| A compressed ZIP entry unpacked in memory | 256 MB, or `fa_engine_config.zip_memory_limit_mb` | `FA_ERROR_TOO_LARGE`, or unpacked to `temp_directory` if you set one | [CD+G](features/cdg.md#zip-archives) |
+| A compressed ZIP entry unpacked in memory | 256 MB, or `fa_engine_config.zip_memory_limit_mb` | unpacked to a temp file (`temp_directory`, else the OS temp directory; 4 GB max, else `FA_ERROR_TOO_LARGE`; `FA_ERROR_DISK_FULL` when the disk is short) | [CD+G](features/cdg.md#zip-archives) |
 | MIDI file size | 16 MB; events later than 6 hours are dropped (refused with `FA_ERROR_INVALID_ARG` in an event list) | See the guide | [MIDI](features/midi.md) |
 | Soundfont size | 1 GB | See the guide | [MIDI](features/midi.md) |
 | MIDI song length | Measured to where the sound dies away, at most 10 s after the last event | A never-ending note is cut | [MIDI](features/midi.md) |

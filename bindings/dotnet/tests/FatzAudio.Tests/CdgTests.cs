@@ -209,7 +209,7 @@ public class CdgTests
                 using (var e = z.CreateEntry("Big.wav", CompressionLevel.Optimal).Open()) e.Write(wav);
             }
 
-            using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, ZipMemoryLimitMb = 1 }))
+            using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, ZipMemoryLimitMb = 1, NoTempFiles = true }))
                 Assert.Equal(ErrorCode.TooLarge, Assert.Throws<FatzAudioException>(() => inMemory.OpenFile(zip, DecodeOnly)).ErrorCode);
 
             string temp = Path.Combine(dir, "temp");
