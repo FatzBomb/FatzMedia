@@ -99,6 +99,14 @@ are not kept, as with any renderer change. A deeper Vulkan clean-up was not trie
 left the device and `vkCreateInstance` itself fails, so the driver's state in the process is gone. Still
 open: the 13 s stall before the failure is known. Check: `smoke-audit.ps1 -Steps 3` (3d).
 
+Owner check (2026-11-05, Avalonia, Vulkan, RTX 5090): the error was raised (`RendererDeviceLost` in the
+Log, sound continued) but the window did not switch: the slots forward their view model's event, so the
+sender was the view model and the controller's "is this one of my slots" check dropped it (the unit test
+raised it with the slot as sender). Fixed: the controller no longer checks the sender; the test now raises
+it as the real slots do. Also seen: after the reset, Vulkan stays unusable for the rest of the process
+(`vkCreateInstance ... ErrorIncompatibleDriver` even after picking Vulkan again by hand); a new process
+works. Direct3D11, picked by hand, showed the picture at once.
+
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 
 Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`

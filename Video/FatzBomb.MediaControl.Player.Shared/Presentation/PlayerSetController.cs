@@ -298,9 +298,11 @@ public sealed class PlayerSetController<TSlot>
     }
 
     // Every player of a window shares its renderer: the first loss asks the window once per build.
+    // The sender is not checked: the slots forward their view model's event, so it is the view model
+    // (ENG-050 smoke), and a removed slot is unsubscribed before it is disposed.
     private void OnRendererDeviceLost(object? sender, EventArgs e)
     {
-        if (IsShuttingDown || _rendererFallbackRequested || sender is not TSlot slot || !_slots.Contains(slot))
+        if (IsShuttingDown || _rendererFallbackRequested || _slots.Count == 0)
             return;
 
         _rendererFallbackRequested = true;

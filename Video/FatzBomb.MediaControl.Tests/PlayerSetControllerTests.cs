@@ -518,7 +518,8 @@ public sealed class PlayerSetControllerTests
 
         public event EventHandler? RendererDeviceLost;
 
-        public void RaiseRendererDeviceLost() => RendererDeviceLost?.Invoke(this, EventArgs.Empty);
+        // As the real slots do: they forward their view model's event, so the sender is not the slot.
+        public void RaiseRendererDeviceLost() => RendererDeviceLost?.Invoke(new object(), EventArgs.Empty);
 
         public string Name { get; } = $"P{index}";
 
