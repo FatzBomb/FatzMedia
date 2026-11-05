@@ -12,7 +12,12 @@
  * through their audio track alone once their demuxers are in the registry.
  *
  * Jobs run in the order they were queued; all chunks of a file are in flight at
- * once before the next file starts, so the file asked for first is done first. */
+ * once before the next file starts, so the file asked for first is done first.
+ *
+ * Chunks are taken in a spread order (0, n/2, n/4, 3n/4, ...), and each chunk that
+ * finishes while others still run hands the stream the loudness of all chunks
+ * finished so far (FA_LOUDNESS_PARTIAL): a first guess from all over the file, not
+ * from its intro. The merge is in file order, so the final result is the same. */
 #include "fa_internal.h"
 #include "ac3.h"
 #include <math.h>
@@ -24,14 +29,14 @@
 #define FA_SCAN_MIN_CHUNK_S 20     /* shorter chunks would spend too much on warm-up */
 #define FA_SCAN_WARMUP_S 1
 #define FA_SCAN_MAX_THREADS 16
-#define FA_KEY_BLOCK 65536
-#define FA_CACHE_MAGIC "FatzAudio-loudness 2"   /* bumped whenever the measurement changes */
 
 typedef struct scan_chunk {
     double* subs;
     int64_t nsubs;
     float peak;
     fa_result r;
+    int done;                      /* finished with r == FA_OK (under scan_lock) */
+    int spread;                    /* the chunk taken when this one's index is next_chunk */
 } scan_chunk;
 
 struct fa_scan_job {
@@ -61,6 +66,8 @@ struct fa_scan_job {
     /* Written by the prepare task before plan_ready, read-only afterwards. */
     uint32_t rate, channels;
     fa_frames chunk_frames;
+    fa_frames length;              /* the audio's frames; 0 = unknown (no progress then) */
+    fa_atomic64 scanned;           /* frames measured so far, all chunks (warm-up not counted) */
     scan_chunk* chunks;
     int have_key;
     uint64_t key;
@@ -79,36 +86,6 @@ uint64_t fa_fnv1a(uint64_t h, const uint8_t* p, size_t n)
     size_t i;
     for (i = 0; i < n; i++) { h ^= p[i]; h *= 0x100000001b3ULL; }
     return h;
-}
-
-/* A fingerprint of the content: its size plus the first, middle and last 64 KB.
- * Cheap even for multi-GB video files, and independent of the file's name. */
-static int content_key(fa_source* src, uint64_t* out)
-{
-    uint8_t* buf;
-    uint8_t lenb[8];
-    int64_t len = src->length, offs[3];
-    uint64_t h = 0xcbf29ce484222325ULL;
-    int i;
-    if (len <= 0) return 0;
-    buf = (uint8_t*)malloc(FA_KEY_BLOCK);
-    if (!buf) return 0;
-    for (i = 0; i < 8; i++) lenb[i] = (uint8_t)((uint64_t)len >> (i * 8));
-    h = fa_fnv1a(h, lenb, 8);
-    offs[0] = 0;
-    offs[1] = len / 2 - FA_KEY_BLOCK / 2;
-    offs[2] = len - FA_KEY_BLOCK;
-    for (i = 0; i < 3; i++) {
-        int64_t got;
-        if (offs[i] < 0) offs[i] = 0;
-        if (fa_source_seek(src, offs[i]) != FA_OK) { free(buf); return 0; }
-        got = fa_source_read(src, buf, FA_KEY_BLOCK);
-        if (got < 0) { free(buf); return 0; }
-        h = fa_fnv1a(h, buf, (size_t)got);
-    }
-    free(buf);
-    *out = h;
-    return 1;
 }
 
 /* A MIDI file sounds as its soundfont and rate make it: both go into the key, so
@@ -136,82 +113,21 @@ void fa_scan_cache_path(const char* dir, uint64_t key, int64_t size, int32_t tra
     snprintf(out, cap, "%s%s%016llx-%lld-%d.%s", dir, sep, (unsigned long long)key, (long long)size, (int)track, ext);
 }
 
-int fa_scan_cache_key(fa_source* src, const fa_decoder_env* env, uint64_t* out_key)
+int fa_scan_cache_key(fa_source* src, const fa_decoder_env* env, uint64_t* out_key, int64_t* out_size)
 {
-    if (!content_key(src, out_key)) return 0;
+    if (!fa_content_key(src, out_key, out_size)) return 0;
     *out_key = midi_key(src, env, *out_key);
-    return 1;
-}
-
-static void cache_path(const fa_scan_job* j, char* out, size_t cap)
-{
-    fa_scan_cache_path(j->engine->config.cache_directory, j->key, j->key_size, j->audio_track, "loudness", out, cap);
-}
-
-/* Values are stored as integers in thousandths so the file never depends on
- * the C locale's decimal separator. */
-static void write_value(FILE* f, double v)
-{
-    if (v != v) fputs(" nan", f);
-    else if (v < -1e6) fputs(" -inf", f);
-    else fprintf(f, " %lld", (long long)floor(v * 1000.0 + 0.5));
-}
-
-static int read_value(const char** p, double* out)
-{
-    const char* s = *p;
-    long long v = 0;
-    int neg = 0, digits = 0;
-    while (*s == ' ') s++;
-    if (strncmp(s, "nan", 3) == 0) { *out = NAN; *p = s + 3; return 1; }
-    if (strncmp(s, "-inf", 4) == 0) { *out = -HUGE_VAL; *p = s + 4; return 1; }
-    if (*s == '-') { neg = 1; s++; }
-    for (; *s >= '0' && *s <= '9'; s++, digits++) v = v * 10 + (*s - '0');
-    if (!digits) return 0;
-    *out = (double)(neg ? -v : v) / 1000.0;
-    *p = s;
     return 1;
 }
 
 static int cache_read(const fa_scan_job* j, fa_loudness* out)
 {
-    char path[1024], line[256];
-    const char* p;
-    FILE* f;
-    int ok;
-    cache_path(j, path, sizeof(path));
-    f = fa_fopen_utf8(path, "rb");
-    if (!f) return 0;
-    ok = fgets(line, sizeof(line), f) && strncmp(line, FA_CACHE_MAGIC, strlen(FA_CACHE_MAGIC)) == 0 &&
-         fgets(line, sizeof(line), f);
-    fclose(f);
-    if (!ok) return 0;
-    p = line;
-    if (!read_value(&p, &out->integrated_lufs) || !read_value(&p, &out->range_lu) || !read_value(&p, &out->true_peak_dbtp))
-        return 0;
-    return 1;
-}
-
-void fa_scan_cache_write_loudness(const char* dir, uint64_t key, int64_t size, int32_t track, const fa_loudness* l)
-{
-    char path[1024], tmp[1100];
-    FILE* f;
-    fa_mkdir_utf8(dir);
-    fa_scan_cache_path(dir, key, size, track, "loudness", path, sizeof(path));
-    snprintf(tmp, sizeof(tmp), "%s.%llx.tmp", path, (unsigned long long)fa_thread_current_id());
-    f = fa_fopen_utf8(tmp, "wb");
-    if (!f) return;
-    fprintf(f, "%s\n", FA_CACHE_MAGIC);
-    write_value(f, l->integrated_lufs);
-    write_value(f, l->range_lu);
-    write_value(f, l->true_peak_dbtp);
-    fputc('\n', f);
-    if (fclose(f) != 0 || fa_replace_file(tmp, path) != 0) remove(tmp);
+    return fa_lcache_get(j->engine->lcache, j->key, j->key_size, j->audio_track, out);
 }
 
 static void cache_write(const fa_scan_job* j, const fa_loudness* l)
 {
-    fa_scan_cache_write_loudness(j->engine->config.cache_directory, j->key, j->key_size, j->audio_track, l);
+    fa_lcache_put(j->engine->lcache, j->key, j->key_size, j->audio_track, l);
 }
 
 /* ---- Tasks -------------------------------------------------------------------- */
@@ -249,6 +165,8 @@ static int dialnorm_loudness(fa_scan_job* j, fa_decoder* dec)
     return 1;
 }
 
+static void spread_order(int n, int* order);
+
 /* Returns 1 when the job is decided (tags, cache, dialnorm or error), 0 when chunks are planned. */
 static int run_prepare(fa_scan_job* j)
 {
@@ -272,10 +190,8 @@ static int run_prepare(fa_scan_job* j)
             return 1;
         }
     }
-    if (j->engine->config.cache_directory && j->engine->config.cache_directory[0] &&
-        fa_scan_cache_key(&src, &j->env, &j->key)) {
+    if (j->engine->lcache && fa_scan_cache_key(&src, &j->env, &j->key, &j->key_size)) {
         j->have_key = 1;
-        j->key_size = src.length;
         if (cache_read(j, &j->result)) {
             set_result(j, j->result.integrated_lufs, j->result.range_lu, j->result.true_peak_dbtp, FA_LOUDNESS_CACHE);
             fa_source_close(&src);
@@ -297,6 +213,7 @@ static int run_prepare(fa_scan_job* j)
     fast = dec.vt->fast_seek && dec.seekable && length > 0;
     fa_decoder_close(&dec);
     fa_source_close(&src);
+    j->length = length > 0 ? length : 0;
 
     if (fast) {
         fa_frames sublen = (j->rate + 5) / 10;
@@ -313,7 +230,25 @@ static int run_prepare(fa_scan_job* j)
     }
     j->chunks = (scan_chunk*)calloc((size_t)j->nchunks, sizeof(scan_chunk));
     if (!j->chunks) { j->status = FA_ERROR_OUT_OF_MEMORY; return 1; }
+    {
+        int* order = (int*)malloc((size_t)j->nchunks * sizeof(int));
+        int k;
+        if (!order) { j->status = FA_ERROR_OUT_OF_MEMORY; return 1; }
+        spread_order(j->nchunks, order);
+        for (k = 0; k < j->nchunks; k++) j->chunks[k].spread = order[k];
+        free(order);
+    }
     return 0;
+}
+
+/* Counts `frames` measured and tells the stream how far its scan has got. */
+static void note_progress(fa_scan_job* j, fa_frames frames)
+{
+    int64_t done = fa_fetch_add64(&j->scanned, frames) + frames;
+    if (j->stream && j->length > 0 && !fa_load32(&j->cancel)) {
+        int64_t permille = done * 1000 / j->length;
+        fa_store32(&j->stream->norm_progress, (int32_t)(permille > 1000 ? 1000 : permille));
+    }
 }
 
 static void run_chunk(fa_scan_job* j, int k)
@@ -323,7 +258,7 @@ static void run_chunk(fa_scan_job* j, int k)
     fa_decoder dec;
     fa_meter m;
     float* buf = NULL;
-    fa_frames start = (fa_frames)k * j->chunk_frames, warm = 0, remaining;
+    fa_frames start = (fa_frames)k * j->chunk_frames, warm = 0, remaining, skip;
     fa_result r;
 
     c->r = FA_OK;
@@ -341,6 +276,7 @@ static void run_chunk(fa_scan_job* j, int k)
     if (r == FA_OK) r = fa_meter_init(&m, j->rate, j->channels, 1, 0);
     if (r != FA_OK) { c->r = r; fa_decoder_close(&dec); fa_source_close(&src); return; }
     m.skip = warm;
+    skip = warm;
     buf = (float*)malloc((size_t)FA_SCAN_READ * j->channels * sizeof(float));
     if (!buf) r = FA_ERROR_OUT_OF_MEMORY;
 
@@ -351,6 +287,7 @@ static void run_chunk(fa_scan_job* j, int k)
         if (got <= 0) { if (rr != FA_ERROR_END_OF_STREAM && rr != FA_OK) r = rr; break; }
         r = fa_meter_process(&m, buf, got);
         remaining -= got;
+        if (got > skip) { note_progress(j, got - skip); skip = 0; } else skip -= got;
     }
     free(buf);
     /* The file's last chunk measures the peaks between its final samples too. */
@@ -367,9 +304,25 @@ static void run_chunk(fa_scan_job* j, int k)
     fa_source_close(&src);
 }
 
+/* The chunks' 100 ms loudness values in file order (only the finished ones when
+ * done_only), `total` of them; NULL when out of memory. */
+static double* gather_subs(fa_scan_job* j, int done_only, int64_t total)
+{
+    int64_t at = 0;
+    int k;
+    double* all = (double*)malloc((size_t)(total > 0 ? total : 1) * sizeof(double));
+    if (!all) return NULL;
+    for (k = 0; k < j->nchunks; k++) {
+        if ((done_only && !j->chunks[k].done) || !j->chunks[k].nsubs) continue;
+        memcpy(all + at, j->chunks[k].subs, (size_t)j->chunks[k].nsubs * sizeof(double));
+        at += j->chunks[k].nsubs;
+    }
+    return all;
+}
+
 static void run_merge(fa_scan_job* j)
 {
-    int64_t total = 0, at = 0;
+    int64_t total = 0;
     double* all;
     float peak = 0.0f;
     int k;
@@ -378,16 +331,63 @@ static void run_merge(fa_scan_job* j)
         total += j->chunks[k].nsubs;
         if (j->chunks[k].peak > peak) peak = j->chunks[k].peak;
     }
-    all = (double*)malloc((size_t)(total > 0 ? total : 1) * sizeof(double));
+    all = gather_subs(j, 0, total);
     if (!all) { j->status = FA_ERROR_OUT_OF_MEMORY; return; }
-    for (k = 0; k < j->nchunks; k++) {
-        if (j->chunks[k].nsubs) memcpy(all + at, j->chunks[k].subs, (size_t)j->chunks[k].nsubs * sizeof(double));
-        at += j->chunks[k].nsubs;
-    }
     set_result(j, fa_loudness_integrated(all, total), fa_loudness_range(all, total),
                fa_lin_to_db(peak), FA_LOUDNESS_SCAN);
     free(all);
     if (j->have_key) cache_write(j, &j->result);
+}
+
+/* The 100 ms values of the chunks finished so far, for a stream whose scan goes on;
+ * NULL when there is nothing to tell. Caller holds scan_lock (the done flags). */
+static double* partial_subs_locked(fa_scan_job* j, int64_t* out_total)
+{
+    int64_t total = 0;
+    int k;
+    if (!j->stream || fa_load32(&j->cancel)) return NULL;
+    for (k = 0; k < j->nchunks; k++)
+        if (j->chunks[k].done) total += j->chunks[k].nsubs;
+    if (total <= 0) return NULL;
+    *out_total = total;
+    return gather_subs(j, 1, total);
+}
+
+/* Hands the stream the loudness of those values, outside scan_lock. The caller's
+ * chunk is not counted done yet, so fa_scan_release still waits for it and the
+ * stream stays put; the final value can only follow. */
+static void publish_partial(fa_scan_job* j, double* subs, int64_t total)
+{
+    double lufs = fa_loudness_integrated(subs, total);
+    free(subs);
+    if (lufs > -70.0 && !fa_load32(&j->cancel)) fa_stream_loudness_partial(j->stream, lufs);  /* silence so far says nothing */
+}
+
+/* The chunks in the order they are taken: bit-reversed over the next power of two,
+ * skipping the indexes past the end, so the first chunks taken lie all over the file.
+ * Fills order[0..n-1]. */
+static void spread_order(int n, int* order)
+{
+    unsigned bits = 0, v, r, b;
+    int seen = 0;
+    while ((1u << bits) < (unsigned)n) bits++;
+    for (v = 0; v < (1u << bits) && seen < n; v++) {
+        for (r = 0, b = 0; b < bits; b++) r |= ((v >> b) & 1u) << (bits - 1 - b);
+        if ((int)r < n) order[seen++] = (int)r;
+    }
+}
+
+int fa_scan_spread_chunk(int i, int n)
+{
+    int* order;
+    int k;
+    if (i < 0 || i >= n) return i;
+    order = (int*)malloc((size_t)n * sizeof(int));
+    if (!order) return i;
+    spread_order(n, order);
+    k = order[i];
+    free(order);
+    return k;
 }
 
 /* ---- Scheduling ----------------------------------------------------------------- */
@@ -408,7 +408,9 @@ static void deliver(fa_scan_job* j)
 {
     if (j->stream && !fa_load32(&j->cancel)) {
         if (j->status == FA_OK) fa_stream_loudness_ready(j->stream, &j->result, j->album_lufs);
-        else if (j->album_lufs == j->album_lufs) {
+        else {
+            /* No measurement: the album value if tags had one, and the scan is over
+             * either way (a held first play starts now). */
             fa_loudness none;
             memset(&none, 0, sizeof(none));
             none.integrated_lufs = NAN;
@@ -426,7 +428,7 @@ static int run_one_locked(fa_engine* e, fa_scan_job* only)
     for (j = e->scan_queue; j; j = j->next) {
         if (only && j != only) continue;
         if (!j->prepare_taken) { j->prepare_taken = 1; task = -1; break; }
-        if (j->plan_ready && j->next_chunk < j->nchunks) { task = j->next_chunk++; break; }
+        if (j->plan_ready && j->next_chunk < j->nchunks) { task = j->chunks[j->next_chunk++].spread; break; }
     }
     if (task == -2) return 0;
     fa_mutex_unlock(&e->scan_lock);
@@ -442,6 +444,18 @@ static int run_one_locked(fa_engine* e, fa_scan_job* only)
 
     run_chunk(j, task);
     fa_mutex_lock(&e->scan_lock);
+    if (j->chunks[task].r == FA_OK && !fa_load32(&j->cancel)) {
+        double* subs = NULL;
+        int64_t total = 0;
+        j->chunks[task].done = 1;
+        if (j->chunks_done + 1 < j->nchunks) subs = partial_subs_locked(j, &total);
+        if (subs) {
+            /* The other scan threads go on meanwhile. */
+            fa_mutex_unlock(&e->scan_lock);
+            publish_partial(j, subs, total);
+            fa_mutex_lock(&e->scan_lock);
+        }
+    }
     if (++j->chunks_done == j->nchunks) {
         j->merging = 1;            /* fa_scan_release must wait for us now */
         fa_mutex_unlock(&e->scan_lock);

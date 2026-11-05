@@ -25,6 +25,25 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   start. `FA_ENGINE_NO_TEMP_FILES` (.NET `AudioEngineOptions.NoTempFiles`) turns the OS-directory fallback off (the old
   behaviour, `FA_ERROR_TOO_LARGE`); a `temp_directory` the app sets still works. On Linux/macOS/Android the folder is
   `fatzaudio-tmp-<uid>`, so users sharing `/tmp` do not collide. Before, such songs failed with `FA_ERROR_TOO_LARGE` unless the app set a folder.
+- Settled loudness on first play (MediaControl request 12): `fa_engine_set_normalization_start_wait(engine, wait_ms,
+  max_provisional_boost_db)` (.NET `AudioEngine.SetNormalizationStartWait`). A first `fa_stream_play` of a normalized
+  stream now waits up to `wait_ms` (default 200 ms; 0 = start at once, as before) for its final loudness, and up to
+  that long again when more than 75% is scanned by then; the position and clock stay at the start meanwhile.
+  Otherwise it starts on the new `FA_LOUDNESS_PARTIAL` value (the scan chunks finished so far,
+  now taken in a spread order so they cover the whole file), else the estimate, and glides as before. The boost while
+  the value is not final can be capped (default 12 dB = no cap). New event `FA_EVENT_LOUDNESS_PROVISIONAL` (.NET
+  `LoudnessProvisional`) when a stream is first heard on such a value. Scheduled starts and DJ decks never wait
+  ([normalization](docs/features/normalization.md#when-playback-starts)).
+- The loudness cache is one file, `loudness.fac` (48 bytes per song), read into memory once on the first lookup
+  (about 16 ms for a full 5 MB file) and appended to. New `fa_engine_set_cache_size` (default 5 MB; .NET
+  `SetCacheSize`, `AudioEngineOptions.CacheMaxBytes`) drops the songs used least recently when it grows past the limit,
+  and `fa_engine_clear_cache` (.NET `ClearCache`) deletes the cached loudness and analysis. Engines in one process on
+  the same folder share one cache; between apps every read and write of the file is under a file lock
+  (`loudness.fac.lock`), so no app loses another's results; a damaged or half-written file is skipped and rewritten,
+  never trusted ([the cache](docs/features/normalization.md#the-cache)).
+- **One rescan after upgrading:** the cache key is now a fingerprint of the audio alone (see Changed), so results
+  cached by 1.0.0-rc.3 or earlier are not used: every song is measured once more the first time it plays, then cached
+  again. This is expected, not a bug. The old per-song `.loudness` files stay until `fa_engine_clear_cache`.
 
 - CD+G with no audio (MediaControl request 10): a lone `.cdg`, or a ZIP whose only playable entry is a `.cdg`, opens
   with `fa_stream_open_path` / `_memory` / `_io` as a silent stream exactly as long as the graphics (pack count / 300 s,
@@ -64,6 +83,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Changed
 
+- Cache keys fingerprint the audio only: tag blocks (ID3, APE, Lyrics3, FLAC metadata, MP4 `moov`, Ogg comment pages,
+  WAV/AIFF chunks other than the samples) are left out, so a retagged file keeps its cached loudness and analysis; WAV
+  and AIFF samples up to 64 MB are hashed whole (an edit in place with the same length is noticed; bigger ones at 64
+  points plus the last-write time), other audio at 16 points.
+  Results cached by rc.3 and earlier are measured again once (see Added).
 - Loudness scans are faster: the K-weighting filter runs two channels per pass and the true-peak oversampler runs
   eight samples per SIMD step, or sixteen with AVX on x86 CPUs that have it (chosen at run time). The loudness math of
   a 4-minute stereo song drops from about 0.37 s to 0.26 s of one core; a whole scan of a FLAC or MP3 file is about 20 %

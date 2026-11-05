@@ -998,13 +998,24 @@ fa_scan_job* fa_scan_start_stream(struct fa_stream* s, int use_tags);
 /* Cancels if still running, waits until no scan thread uses it, frees it. */
 void fa_scan_release(fa_scan_job* job);
 void fa_scan_shutdown(fa_engine* engine);
-/* The scan cache (fa_engine_config.cache_directory): a content key of the source
- * (MIDI files: with their soundfont and rate), 0 if none could be made; a file's
- * path "<dir>/<key>-<size>-<track>.<ext>"; a loudness result stored as a scan would. */
-int fa_scan_cache_key(fa_source* src, const fa_decoder_env* env, uint64_t* out_key);
+/* The chunk a scan takes i-th of n: a spread order, so early chunks cover the whole file. */
+int fa_scan_spread_chunk(int i, int n);
+/* The caches (fa_engine_config.cache_directory): a content key of the source's audio
+ * and the audio's byte length (fingerprint.c; MIDI files: with their soundfont and
+ * rate), 0 if none could be made; a file's path "<dir>/<key>-<size>-<track>.<ext>". */
+int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size);
+int fa_scan_cache_key(fa_source* src, const fa_decoder_env* env, uint64_t* out_key, int64_t* out_size);
 void fa_scan_cache_path(const char* dir, uint64_t key, int64_t size, int32_t track, const char* ext, char* out,
                         size_t cap);
-void fa_scan_cache_write_loudness(const char* dir, uint64_t key, int64_t size, int32_t track, const fa_loudness* l);
+/* The loudness cache (lcache.c): one file in the cache directory, read once into memory. */
+typedef struct fa_lcache fa_lcache;
+fa_lcache* fa_lcache_new(const char* dir);      /* NULL for no directory */
+void fa_lcache_free(fa_lcache* c);
+int fa_lcache_get(fa_lcache* c, uint64_t key, int64_t size, int32_t track, fa_loudness* out);   /* 1 = found */
+void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, const fa_loudness* l);
+void fa_lcache_set_limit(fa_lcache* c, uint64_t bytes);   /* 0 = default */
+void fa_lcache_clear(fa_lcache* c);
+double fa_lcache_load_ms(fa_lcache* c);         /* how long reading the file took; -1 before */
 /* Gain normalization gives a stream of loudness `lufs` with the engine's current settings. */
 float fa_engine_norm_gain_db(fa_engine* engine, double lufs);
 
@@ -1158,6 +1169,8 @@ struct fa_engine {
     /* Normalization and limiter settings, read by the audio thread. */
     fa_atomic32 norm_mode;       /* fa_normalize_mode */
     fa_atomic32 norm_target;     /* float LUFS */
+    fa_atomic32 norm_start_wait_ms; /* fa_engine_set_normalization_start_wait; 0 = never hold */
+    fa_atomic32 norm_prov_boost; /* float dB: most boost while the loudness is not final */
     fa_atomic32 use_dialnorm;    /* fa_engine_set_dialnorm */
     fa_atomic32 limiter_mode;    /* fa_limiter_mode */
     fa_atomic32 limiter_ceiling; /* float dBTP */
@@ -1166,6 +1179,7 @@ struct fa_engine {
     fa_mutex scan_lock;
     fa_cond scan_cond;           /* work queued or a job finished */
     fa_scan_job* scan_queue;
+    fa_lcache* lcache;           /* NULL without a cache directory */
     fa_thread* scan_threads;
     uint32_t scan_thread_count;
     int scan_started;
@@ -1606,6 +1620,12 @@ struct fa_stream {
     fa_atomic32 norm_track;      /* float LUFS used for gain, NAN = unknown */
     fa_atomic32 norm_album;      /* float LUFS from album tags, NAN = unknown */
     fa_atomic32 norm_est;        /* float LUFS running estimate, NAN = none yet */
+    fa_atomic32 norm_partial;    /* float LUFS over the scan chunks finished so far, NAN = none */
+    fa_atomic32 norm_pending;    /* 1 while a scan for the stream runs (a first play may wait) */
+    fa_atomic32 norm_progress;   /* that scan's progress, in thousandths of the audio */
+    int norm_heard;              /* audio thread: first heard (or ruled out from waiting) */
+    int64_t norm_hold_end;       /* audio thread: fa_monotonic_ns a held first play starts by;
+                                    INT64_MIN = not held yet */
     fa_atomic32 est_wanted;      /* 1 once normalization or the app wants loudness: run run_meter */
     fa_meter run_meter;          /* running estimate; worker-owned under decode_lock */
     int run_meter_ready;
@@ -1846,6 +1866,13 @@ void fa_stream_free_memory(struct fa_stream* s);               /* event thread, 
 fa_result fa_stream_get_clock_nowait(struct fa_stream* s, fa_time* out_pts);
 
 float fa_stream_norm_target_db(struct fa_stream* s);          /* any thread */
+/* Normalization is on and the stream is not opted out (nor decode-only). Any thread. */
+int fa_stream_norm_applies(struct fa_stream* s);
+/* -1 when the gain comes from a final loudness, else the fa_loudness_source of the
+ * provisional value (PARTIAL, ESTIMATE or NONE). Any thread. */
+int fa_stream_norm_provisional(struct fa_stream* s);
+/* From a scan thread: the loudness of the chunks finished so far. */
+void fa_stream_loudness_partial(struct fa_stream* s, double lufs);
 void fa_stream_start_analysis(struct fa_stream* s);           /* idempotent */
 /* From a scan thread: the final loudness of `s` (album_lufs NAN if unknown). */
 void fa_stream_loudness_ready(struct fa_stream* s, const fa_loudness* l, double album_lufs);

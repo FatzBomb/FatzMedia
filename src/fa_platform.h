@@ -195,6 +195,17 @@ void fa_temp_folder_sweep(const char* folder);
 int fa_os_temp_dir(char* out, size_t cap);
 /* Bytes free to this process on the volume holding `path` (an existing directory); 1 when known. */
 int fa_free_space(const char* path, uint64_t* bytes);
+/* Appends `n` bytes to an existing file in one write that other processes
+ * appending to it cannot split. 0 on success, -1 also when the file is missing. */
+int fa_append_utf8(const char* path, const void* data, size_t n);
+int fa_remove_utf8(const char* path);                     /* 0 if removed */
+/* An exclusive lock that other processes see, on the file `path` (created if
+ * missing; it only carries the lock). Waits up to timeout_ms; NULL when it could not
+ * be had. The lock goes with fa_file_unlock or the process. */
+void* fa_file_lock(const char* path, uint32_t timeout_ms);
+void fa_file_unlock(void* lock);
+/* Calls fn for each regular file in `folder` with its name (no path). */
+void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user);
 uint32_t fa_cpu_count(void);
 int64_t fa_monotonic_ns(void);
 
