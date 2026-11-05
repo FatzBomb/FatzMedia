@@ -46,6 +46,7 @@ internal unsafe struct FaEngineConfig
     public uint Flags;
     public byte* TempDirectory;
     public uint ZipMemoryLimitMb;
+    public uint ArchiveCacheSeconds;
 }
 
 [StructLayout(LayoutKind.Sequential)]

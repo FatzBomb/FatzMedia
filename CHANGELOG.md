@@ -18,6 +18,15 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Archives, step A3: 7z (`.7z`, plain or LZMA-packed header; Copy, LZMA and LZMA2 folders, with file names, times and
+  CRC-32; other methods listed as not readable, AES as encrypted) through the same `fa_archive_*` calls, stream opens, tags and
+  fingerprints. A solid folder is decoded once however many songs you open from it (the decoder stays where the
+  last read ended, in memory or through a window of the dictionary), jumps to LZMA2 dictionary resets to reach an
+  entry behind it, and unpacks a single-file folder straight into the buffer. New engine cache of the last archive
+  and the last compressed song for 30 s (`fa_engine_config.archive_cache_seconds`, `FA_ENGINE_NO_ARCHIVE_CACHE`; .NET
+  `ArchiveCacheSeconds`, `NoArchiveCache`), and a song and its `.cdg` that both need unpacking unpack on two threads.
+  `fa_engine_config` has a new last field. ([archives](docs/features/archives.md))
+
 - Archives, step A2: tar (ustar, GNU, pax, long names), tar inside gzip, bzip2 or xz (`.tar.gz`, `.tar.bz2`, `.tar.xz`), and
   one file in a `.gz`, `.bz2` or `.xz`, through the same `fa_archive_*` calls, `fa_open_options.archive_entry`, tags and
   fingerprints as ZIP; ZIP methods 12 (bzip2), 14 (LZMA) and 95 (xz) read too. New `fa_archive_get_filter` (.NET

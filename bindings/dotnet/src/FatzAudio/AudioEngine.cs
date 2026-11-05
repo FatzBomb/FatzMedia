@@ -83,7 +83,7 @@ public sealed partial class AudioEngine : IDisposable
                 if (options.NoSystemSoundFont) config.Flags |= 2; // FA_ENGINE_NO_SYSTEM_SOUNDFONT
                 if (options.NoTempFiles) config.Flags |= 4; // FA_ENGINE_NO_TEMP_FILES
                 if (options.NoCache) config.Flags |= 8; // FA_ENGINE_NO_CACHE
-                if (options.NoDeclick) config.Flags |= 16; // FA_ENGINE_NO_DECLICK
+                if (options.NoDeclick) config.Flags |= 32; // FA_ENGINE_NO_DECLICK
                 if (options.CacheDirectory is { } dir)
                 {
                     cachePtr = Marshal.StringToCoTaskMemUTF8(dir);
@@ -95,6 +95,8 @@ public sealed partial class AudioEngine : IDisposable
                     config.TempDirectory = (byte*)tempPtr;
                 }
                 config.ZipMemoryLimitMb = (uint)Math.Max(0, options.ZipMemoryLimitMb);
+                if (options.NoArchiveCache) config.Flags |= 16; // FA_ENGINE_NO_ARCHIVE_CACHE
+                config.ArchiveCacheSeconds = (uint)Math.Max(0, options.ArchiveCacheSeconds);
             }
 
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_create(&config, out var native));

@@ -1208,6 +1208,7 @@ struct fa_engine {
     fa_cond scan_cond;           /* work queued or a job finished */
     fa_scan_job* scan_queue;
     fa_lcache* lcache;           /* NULL without a cache directory */
+    struct fa_acache* acache;    /* recently unpacked archive songs (acache.c); NULL when turned off */
     int cache_default;           /* config.cache_directory is the OS one FatzAudio chose */
     int cache_dir_failed;        /* the cache folder could not be made when the engine was created */
     struct fa_idslot* id_slots;  /* streams with a source identity (scan_feed.c), under scan_lock */
