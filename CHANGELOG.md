@@ -18,6 +18,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Archives, step A2: tar (ustar, GNU, pax, long names), tar inside gzip, bzip2 or xz (`.tar.gz`, `.tar.bz2`, `.tar.xz`), and
+  one file in a `.gz`, `.bz2` or `.xz`, through the same `fa_archive_*` calls, `fa_open_options.archive_entry`, tags and
+  fingerprints as ZIP; ZIP methods 12 (bzip2), 14 (LZMA) and 95 (xz) read too. New `fa_archive_get_filter` (.NET
+  `Archive.Filter`, `ArchiveFilter`) and `FA_ARCHIVE_FILTER_*`. A compressed tar is kept decoded when it fits
+  `memory_limit_mb`, else each entry is decoded again from the nearest 4 MB gzip checkpoint, bzip2 block or xz block
+  (`solid_offset` says how far); bzip2 and xz blocks decode on several cores. Vendored: LZMA SDK 25.01 (public domain) and
+  the bzip2 1.0.8 decompressor, no new library to ship ([archives](docs/features/archives.md)). New fuzz target `archive`.
+
 - Archives: public `fa_archive_*` API (list, find, pick, read, seekable reader) and .NET `Archive`; ZIP reads Deflate64, flags,
   times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
   `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when

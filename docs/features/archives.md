@@ -1,13 +1,46 @@
 # Archives
 
-FatzAudio reads ZIP archives (ZIP64, stored, DEFLATE and Deflate64 entries) without an engine and without
-unpacking what you do not ask for. The same code plays karaoke downloads (`song.mp3` + `song.cdg` in one `.zip`)
-when you open them with `fa_stream_open_path`, so there is one set of rules for which entry plays.
+FatzAudio reads these archives without an engine and without unpacking what you do not ask for:
 
-Other archive types (7z, tar, gzip, bzip2, xz) are recognised by `fa_archive_detect` / `Archive.Detect` but not
-read yet; opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`. RAR is out of scope. For any format FatzAudio does not
-read, unpack the audio and the `.cdg` yourself, open the audio with `fa_stream_open_memory` and attach the
-graphics (see [CD+G](cdg.md)).
+| File | Format (`fa_archive_get_format`) | Filter (`fa_archive_get_filter`) |
+|---|---|---|
+| `.zip` (ZIP64; stored, DEFLATE, Deflate64, bzip2, LZMA and xz entries) | `FA_ARCHIVE_ZIP` | `FA_ARCHIVE_FILTER_NONE` |
+| `.tar` (ustar, GNU and pax headers, long names) | `FA_ARCHIVE_TAR` | `NONE` |
+| `.tar.gz` / `.tgz`, `.tar.bz2` / `.tbz2`, `.tar.xz` / `.txz` | `FA_ARCHIVE_TAR` | `GZIP`, `BZIP2`, `XZ` |
+| one file in a `.gz`, `.bz2` or `.xz` (`song.mp3.gz`, a `.cdg.xz`) | `FA_ARCHIVE_GZIP`, `BZIP2`, `XZ` | the same value |
+
+The same code plays karaoke downloads (`song.mp3` + `song.cdg` in one archive) when you open them with
+`fa_stream_open_path`, so there is one set of rules for which entry plays. The file's kind comes from its first
+bytes, never from its name. 7z and RAR are recognised by `fa_archive_detect` / `Archive.Detect` but not read:
+opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg` yourself, open the audio with
+`fa_stream_open_memory` and attach the graphics (see [CD+G](cdg.md)).
+
+## How each kind is read
+
+- **ZIP and plain tar** list from the directory or by hopping from header to header; a stored entry plays straight
+  from the file. A compressed ZIP entry is unpacked on its own.
+- **`.tar.gz`, `.tar.bz2`, `.tar.xz`** are one compressed stream, so the listing decodes it once from the start
+  (about the speed of `gzip -d`, `bzip2 -d` or `xz -d` to nowhere), keeping the first 64 KB of each entry for the
+  song/graphics pairing. If the decoded stream fits `memory_limit_mb` (default 256) it is kept, every entry is a
+  slice of it, and entries play in place with nothing decoded twice. Past that limit the stream is **not** held:
+  each entry you read is decoded again, starting at the nearest point that can be entered. That point is every 4 MB
+  of a `.gz` (a saved DEFLATE state), the start of the nearest block of a `.bz2` (900 KB of input per block at most)
+  and of an `.xz` made with several blocks (`xz -T0`, pixz), or the start for a one-block `.xz`.
+  `fa_archive_entry.solid_offset` says how many bytes must be decoded before the entry starts (0 at one of those points).
+  Reading entries from last to first costs no more than first to last.
+- **A single file in a `.gz`, `.bz2`, `.xz`** is one entry. Its name is the name stored in the gzip header, else the
+  archive's file name without `.gz`/`.bz2`/`.xz`, else `data`. A `.gz` and an `.xz` give the size from the trailer or
+  the index, so the open reads only the end of the file; a `.bz2` has no size, so it is decoded once (like a tar).
+- **Faster where the file allows it.** A `.bz2` with several blocks and an `.xz` with several blocks are decoded on
+  several cores (up to the number of cores), in order. A `.gz` cannot be, by its design. bzip2
+  files from `pbzip2`/`lbzip2` (several streams in a row) are read whole.
+- **Safety.** A damaged stream, a wrong checksum (gzip CRC-32 and size, bzip2 block and stream CRCs, the xz check the
+  file uses), or a stream cut short end in `FA_ERROR_UNSUPPORTED_FORMAT`. A stream that would
+  decode to more than 64 GB, an xz block asking for a dictionary over 1 GiB, or a tar with more than 262,144 entries is refused
+  (`FA_ERROR_TOO_LARGE` / `FA_ERROR_UNSUPPORTED_FORMAT`); nothing is allocated from a size before it is checked.
+- Only regular files are listed; links, folders, devices and tar "global" records are skipped. Names are UTF-8 (a name that is not valid UTF-8 is read as CP437, as in ZIP), with `/`, and a leading `./`
+  removed. Times are the tar header's (a pax `mtime` wins).
+  Encrypted tar/gz/bz2/xz does not exist, so there is no `FA_ERROR_PROTECTED_CONTENT` for them.
 
 ## Which entry plays
 
@@ -69,11 +102,20 @@ for each other.
 
 ## Memory, temp files and cancelling
 
-A stored entry is read straight from the archive. A compressed one is unpacked once, into memory up to
+A stored entry (a ZIP or plain-tar entry, or any entry of a `.tar.gz`/`.bz2`/`.xz` that was kept decoded in memory)
+is read straight from where it sits. A compressed one is unpacked once, into memory up to
 `memory_limit_mb` (default 256) and past that into a file in `fatzaudio-tmp` inside `temp_directory` if you gave
-one, else `FA_ERROR_TOO_LARGE`. The CRC-32 is checked as it unpacks. `cancel` stops an unpack with
+one, else `FA_ERROR_TOO_LARGE`. The CRC-32 is
+checked as it unpacks (tar has none of its own: the stream's checksums cover it, checked when the whole stream has
+been decoded once, which the listing does). `cancel` stops an unpack with
 `FA_ERROR_CANCELLED`. Encrypted entries are listed with `FA_ENTRY_ENCRYPTED` and give `FA_ERROR_PROTECTED_CONTENT`
 when read (no passwords). Multi-part archives are refused.
+
+## One song, one key
+
+The same song gives the same fingerprint, and so the same loudness-cache entry, whether it is loose, in a ZIP, in a tar,
+alone in a `.gz`/`.bz2`/`.xz` or in a `.tar.*`: the key is made from the decoded audio, never from the container
+(`fa_fingerprint_archive_entry` with a `NULL` entry name uses the pick). Tags are read from the entry the same way.
 
 ## Tags and fingerprints
 
@@ -87,3 +129,6 @@ from any seekable source. `fa_fingerprint_archive_entry` with a `NULL` entry nam
 - Named lookups ignore case and slash direction.
 - An archive whose only audio is encrypted gives `FA_ERROR_PROTECTED_CONTENT`.
 - Pairing probes the first 64 KB of each candidate.
+- `fa_archive_get_format` returns `FA_ARCHIVE_TAR`/`GZIP`/`BZIP2`/`XZ` for files that gave `FA_ERROR_UNSUPPORTED_FORMAT`
+  before; `fa_archive_get_filter` is new. ZIP entries made with bzip2 (method 12), LZMA (14) or xz (95) now open
+  (`FA_METHOD_BZIP2`, `FA_METHOD_LZMA`, `FA_METHOD_LZMA2`).

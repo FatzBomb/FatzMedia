@@ -122,3 +122,32 @@ was found (a PR, a review, or a thread).
   do not pair or lose their extension.
 - Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a are not built yet.
 - The ARMv8 CRC-32 path is only compiled in CI, not run.
+
+## Archives (A2) leftovers
+
+- The parallel `.cdg` unpack and the 30-second recently-unpacked cache from A1 are still not built: there is no real
+  workload yet (a karaoke library opened through a player), and a kept-in-memory tar already plays its `.cdg` in place.
+  In stream mode (a compressed tar over `memory_limit_mb`) every entry is decoded again from its nearest restart point;
+  a cache of the last entry's bytes would make a song and its `.cdg` cost one decode instead of two there.
+- A `.gz` restarts only at checkpoints every 4 MB (thinned past 512 of them), so reading the last entry of a huge `.tar.gz`
+  decodes up to 4 MB too much; a `.tar.bz2` or `.tar.xz` with one block decodes from its start every time.
+- Several-stream xz files (`xz` output concatenated) have no block table: they are decoded from the start and in one
+  thread; the stream's size is unknown, so a single-file `.xz` of that kind is not opened without decoding.
+- A hostile `.bz2` can decode to the 64 GB limit before it stops (minutes of CPU): the
+  limit is a bomb guard, not a speed guard. `fa_archive_options.cancel` ends it at once.
+- `third_party/lzma` and `third_party/bzip2` were fetched from the PyPI and crates mirrors (the project hosts
+  refuse the build machine); `sources.txt` and `PATCHES.md` list the exact files and the one change. Compare them with
+  the official 25.01 and 1.0.8 releases when there is a chance.
+- Not run here: the macOS, iOS, Android and Windows builds of the new code (the codec layer uses only the portable
+  thread and CPU-count helpers the other code already does).
+- (Found by /code-review, not fixed.) A bzip2 block magic that occurs by chance (or crafted) inside compressed data splits a
+  block in the parallel decode; the sequential fallback only runs while nothing has been delivered yet, so such a file is
+  refused once it has. Probability about 2^-48 per bit position for an honest file. A fix is to decode again sequentially and skip
+  the bytes already delivered.
+- (Found by /code-review, not fixed.) The xz dictionary limit is checked on the first block header of a sequential decode and on
+  every block of a block-table decode; a file whose later block (or second stream) asks for a larger dictionary is decoded by the
+  SDK, which allocates it. Memory-bound for hostile input would need a parse of each block header in the sequential path.
+- (Found by /code-review, not fixed.) A single-file `.gz` over 4 GB or with several members takes its size from the 32-bit
+  trailer, so it opens but fails when read; an empty `.gz`/`.xz` is refused rather than listed as an empty file; each partial read of a
+  multi-block `.tar.xz` from a file source reloads the compressed file (up to 96 MB); a parallel xz decode reserves a slot per
+  in-flight block sized from the index (64 MB at most each) before the block is checked.

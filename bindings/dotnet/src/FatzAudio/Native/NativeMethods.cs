@@ -488,6 +488,9 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_archive_get_format(ArchiveHandle archive, out int format);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_get_filter(ArchiveHandle archive, out int filter);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial uint fa_archive_get_entry_count(ArchiveHandle archive);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

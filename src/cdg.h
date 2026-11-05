@@ -8,7 +8,7 @@
 
 typedef struct fa_zip_entry {
     char name[260];          /* path inside the archive, '/'-separated, UTF-8 or CP437 */
-    uint32_t method;         /* 0 stored, 8 deflate, 9 deflate64; anything else cannot be read */
+    uint32_t method;         /* 0 stored, 8 deflate, 9 deflate64, 12 bzip2, 14 LZMA, 95 xz; anything else cannot be read */
     uint32_t crc32;
     uint64_t compressed_size;
     uint64_t size;
@@ -17,7 +17,10 @@ typedef struct fa_zip_entry {
     uint16_t dos_time, dos_date;
     int64_t mtime_ns;        /* UTC ns since 1970 from the extended timestamp field, INT64_MIN if none */
     int64_t atime_ns, ctime_ns;   /* INT64_MIN: unknown */
+    int64_t data_offset;     /* >= 0: where the data starts in the source (tar, gzip, bzip2, xz); -1: read the local header */
 } fa_zip_entry;
+/* In fa_zip_entry.flags beside the ZIP bits (bit 14 is reserved in ZIP): the entry has no checksum to check. */
+#define FA_ZE_NO_CRC 0x4000
 
 /* Compressed entries are unpacked into memory up to this size unless the engine
  * says otherwise (fa_engine_config.zip_memory_limit_mb). */

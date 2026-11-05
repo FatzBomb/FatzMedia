@@ -4,6 +4,7 @@
  * and the entries asked for are read, never the whole file. */
 #include "cdg.h"
 #include "archive/archive.h"
+#include "archive/codec.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -72,16 +73,26 @@ typedef struct inf_state {
     int bitcnt;
     uint8_t* out;
     size_t out_cap, out_pos;
-    uint64_t flushed;                   /* bytes written to `sink` before out[0] */
+    uint64_t flushed;                   /* bytes handed to the sink before out[0] */
     uint64_t total;                     /* the size the output must have */
-    FILE* sink;
-    uint32_t crc;                       /* of the flushed bytes */
+    fa_sink_fn sink;                    /* where full buffers go (NULL: out holds all of it) */
+    void* sink_ctx;
+    size_t pending_from;                /* out[0, pending_from) is history, not yet to be delivered (a resumed run) */
+    int stopped;                        /* the sink asked to stop */
+    int unbounded;                      /* the output size is not known: the stream's last block ends it */
+    uint32_t crc;                       /* of the delivered bytes */
+    uint64_t in_total;                  /* the input's size, for positions */
+    fa_infcps* rec;                     /* checkpoints to record (NULL: none) */
+    uint64_t in_base_bits;              /* bits of the stream before this run's first input byte (a resumed run) */
     int error;                          /* ran past the input */
     int io_error;                       /* the source or the file failed */
     const volatile int32_t* cancel;              /* the app's flag: non-zero stops at the next chunk (NULL: never) */
     int cancelled;                      /* ... and it did */
     int d64;                            /* Deflate64 (ZIP method 9): 64 KB window, longer matches */
 } inf_state;
+
+/* A file as a sink. */
+static int inf_file_sink(void* ctx, const uint8_t* data, size_t n) { return fwrite(data, 1, n, (FILE*)ctx) != n; }
 
 static int inf_cancelled(inf_state* s)
 {
@@ -112,8 +123,11 @@ static int inf_room(inf_state* s)
     if (!s->sink || inf_cancelled(s)) return -1;
     keep = INF_WINDOW;
     n = s->out_pos - keep;
-    if (fwrite(s->out, 1, n, s->sink) != n) { s->io_error = 1; return -1; }
-    s->crc = fa_crc32_update(s->crc, s->out, n);
+    if (n > s->pending_from) {
+        if (s->sink(s->sink_ctx, s->out + s->pending_from, n - s->pending_from)) { s->stopped = 1; return -1; }
+        s->crc = fa_crc32_update(s->crc, s->out + s->pending_from, n - s->pending_from);
+    }
+    s->pending_from = 0;
     memmove(s->out, s->out + n, keep);
     s->flushed += n;
     s->out_pos = keep;
@@ -425,12 +439,60 @@ static int inf_dynamic(inf_state* s)
     return inf_codes(s, &c);
 }
 
+/* Where the next input bit is, counted from the start of the stream the run began with. */
+static uint64_t inf_in_bits(const inf_state* s)
+{
+    uint64_t loaded = s->src ? s->in_total - s->src_left - (s->in_size - s->in_pos) : s->in_pos;
+    return loaded * 8 - (uint64_t)s->bitcnt;
+}
+
+/* At a block start: a restart point when the last one is far enough back. */
+static void inf_record(inf_state* s)
+{
+    fa_infcps* r = s->rec;
+    uint64_t off = s->flushed + s->out_pos;
+    size_t w = s->out_pos < FA_INF_CP_WINDOW ? s->out_pos : FA_INF_CP_WINDOW;
+    fa_infcp* c;
+    uint8_t* win;
+    if (off < r->next_at) return;
+    if (r->n >= FA_INF_CP_MAX) {
+        /* Keep every second one and space the rest twice as far apart. */
+        uint32_t i, j = 0;
+        for (i = 0; i < r->n; i++) {
+            if (i & 1) free(r->v[i].window);
+            else r->v[j++] = r->v[i];
+        }
+        r->n = j;
+        r->every *= 2;
+        r->next_at = r->v[r->n - 1].out_offset + r->every;
+        if (off < r->next_at) return;
+    }
+    if (r->n == r->cap) {
+        fa_infcp* nv;
+        uint32_t cap = r->cap ? r->cap * 2 : 16;
+        nv = (fa_infcp*)realloc(r->v, (size_t)cap * sizeof(*nv));
+        if (!nv) { r->next_at = UINT64_MAX; return; }
+        r->v = nv;
+        r->cap = cap;
+    }
+    win = (uint8_t*)malloc(w ? w : 1);
+    if (!win) { r->next_at = UINT64_MAX; return; }
+    memcpy(win, s->out + s->out_pos - w, w);
+    c = &r->v[r->n++];
+    c->out_offset = off;
+    c->in_bit = s->in_base_bits + inf_in_bits(s);
+    c->window = win;
+    c->window_len = (uint32_t)w;
+    r->next_at = off + r->every;
+}
+
 static fa_result inf_run(inf_state* s)
 {
     int last;
     do {
         int type, r;
         if (inf_cancelled(s)) break;   /* every block, also when all the data is in memory */
+        if (s->rec) inf_record(s);
         last = (int)inf_bits(s, 1);
         type = (int)inf_bits(s, 2);
         if (s->error) break;
@@ -442,7 +504,75 @@ static fa_result inf_run(inf_state* s)
     } while (!last);
     if (s->cancelled) return FA_ERROR_CANCELLED;
     if (s->io_error) return FA_ERROR_IO;
-    return !s->error && inf_left(s) == 0 ? FA_OK : FA_ERROR_UNSUPPORTED_FORMAT;
+    return !s->error && (s->unbounded || inf_left(s) == 0) ? FA_OK : FA_ERROR_UNSUPPORTED_FORMAT;
+}
+
+void fa_infcps_free(fa_infcps* r)
+{
+    uint32_t i;
+    if (!r) return;
+    for (i = 0; i < r->n; i++) free(r->v[i].window);
+    free(r->v);
+    memset(r, 0, sizeof(*r));
+}
+
+fa_result fa_inflate_stream(fa_cin in, int d64, uint64_t usize, fa_sink_fn sink, void* ctx, const volatile int32_t* cancel,
+                            const fa_infcp* resume, fa_infcps* record, fa_inflate_result* res)
+{
+    inf_state s;
+    uint8_t* out;
+    uint64_t start_off = resume ? resume->out_offset : 0, in_skip_bits = resume ? resume->in_bit : 0;
+    fa_result r;
+    memset(res, 0, sizeof(*res));
+    out = (uint8_t*)malloc(INF_OUT_CHUNK);
+    if (!out) return FA_ERROR_OUT_OF_MEMORY;
+    memset(&s, 0, sizeof(s));
+    s.out = out;
+    s.out_cap = INF_OUT_CHUNK;
+    s.unbounded = usize == UINT64_MAX;
+    s.total = s.unbounded ? UINT64_MAX >> 1 : usize;
+    s.sink = sink;
+    s.sink_ctx = ctx;
+    s.cancel = cancel;
+    s.d64 = d64;
+    s.rec = record;
+    s.in_total = in.left;
+    if (resume) {
+        /* Start at a block boundary with the 32 KB before it as the window. */
+        uint64_t skip_bytes = in_skip_bits >> 3;
+        if (skip_bytes > in.left || resume->window_len > FA_INF_CP_WINDOW) { free(out); return FA_ERROR_INVALID_ARG; }
+        memcpy(out, resume->window, resume->window_len);
+        s.out_pos = s.pending_from = resume->window_len;
+        s.flushed = start_off - resume->window_len;
+        s.in_base_bits = skip_bytes * 8;
+        s.in_total = in.left - skip_bytes;
+        if (in.mem) in.mem += skip_bytes;
+        else if (fa_source_seek(in.src, fa_source_tell(in.src) + (int64_t)skip_bytes) != FA_OK) { free(out); return FA_ERROR_IO; }
+        in.left -= skip_bytes;
+    }
+    if (in.mem) {
+        s.in = in.mem;
+        s.in_size = (size_t)in.left;
+    } else {
+        s.src = in.src;
+        s.src_left = in.left;
+        s.in_buf = (uint8_t*)malloc(INF_IN_CHUNK);
+        if (!s.in_buf) { free(out); return FA_ERROR_OUT_OF_MEMORY; }
+    }
+    if (resume && (in_skip_bits & 7)) (void)inf_bits(&s, (int)(in_skip_bits & 7));
+    r = inf_run(&s);
+    if (s.stopped) { res->stopped = 1; r = FA_OK; }
+    else if (r == FA_OK) {
+        size_t n = s.out_pos - s.pending_from;
+        s.crc = fa_crc32_update(s.crc, s.out + s.pending_from, n);
+        if (n && s.sink && s.sink(s.sink_ctx, s.out + s.pending_from, n)) res->stopped = 1;
+    }
+    res->produced = s.flushed + s.out_pos - start_off;
+    res->crc = s.crc;
+    res->consumed = s.in_base_bits / 8 + (inf_in_bits(&s) + 7) / 8;
+    free(s.in_buf);
+    free(out);
+    return r;
 }
 
 fa_result fa_inflate(const uint8_t* in, size_t in_size, uint8_t* out, size_t out_size)
@@ -652,8 +782,9 @@ fa_result fa_zip_list(fa_source* src, fa_zip_entry** out_entries, uint32_t* out_
         }
         e = &entries[n];
         memset(e, 0, sizeof(*e));
+        e->data_offset = -1;
         e->method = fa_le16(h + 10);
-        e->flags = (uint16_t)flags;
+        e->flags = (uint16_t)(flags & ~FA_ZE_NO_CRC);   /* bit 14 is ours (no CRC to check): never taken from the file */
         e->dos_time = fa_le16(h + 12);
         e->dos_date = fa_le16(h + 14);
         e->mtime_ns = e->atime_ns = e->ctime_ns = INT64_MIN;
@@ -692,14 +823,21 @@ fa_result fa_zip_entry_offset(fa_source* src, const fa_zip_entry* e, int64_t* ou
     uint64_t data_pos, len = (uint64_t)src->length;
     fa_result r;
     *out_offset = 0;
-    if (src->length < 0 || e->header_offset > len || len - e->header_offset < ZIP_LOCAL_SIZE) return FA_ERROR_UNSUPPORTED_FORMAT;
-    r = read_at(src, (int64_t)e->header_offset, h, sizeof(h));
-    if (r != FA_OK) return r;
-    if (fa_le32(h) != ZIP_LOCAL_SIG) return FA_ERROR_UNSUPPORTED_FORMAT;
-    data_pos = e->header_offset + ZIP_LOCAL_SIZE + fa_le16(h + 26) + fa_le16(h + 28);
-    if (data_pos > len || len - data_pos < e->compressed_size) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (e->data_offset >= 0) {
+        /* A format with no local header (tar, gzip, bzip2, xz): the directory said where it is. */
+        data_pos = (uint64_t)e->data_offset;
+        if (src->length < 0 || data_pos > len || len - data_pos < e->compressed_size) return FA_ERROR_UNSUPPORTED_FORMAT;
+    } else {
+        if (src->length < 0 || e->header_offset > len || len - e->header_offset < ZIP_LOCAL_SIZE) return FA_ERROR_UNSUPPORTED_FORMAT;
+        r = read_at(src, (int64_t)e->header_offset, h, sizeof(h));
+        if (r != FA_OK) return r;
+        if (fa_le32(h) != ZIP_LOCAL_SIG) return FA_ERROR_UNSUPPORTED_FORMAT;
+        data_pos = e->header_offset + ZIP_LOCAL_SIZE + fa_le16(h + 26) + fa_le16(h + 28);
+        if (data_pos > len || len - data_pos < e->compressed_size) return FA_ERROR_UNSUPPORTED_FORMAT;
+    }
     if (e->flags & 1) return FA_ERROR_PROTECTED_CONTENT;   /* encrypted: no password support */
-    if (e->method != 0 && e->method != 8 && e->method != 9) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (e->method != 0 && e->method != 8 && e->method != 9 && e->method != 12 && e->method != 14 && e->method != 95)
+        return FA_ERROR_UNSUPPORTED_FORMAT;
     if (e->method == 0 && e->compressed_size != e->size) return FA_ERROR_UNSUPPORTED_FORMAT;
     /* DEFLATE expands at most 1032:1 (258-byte matches in about two bits each), so a
      * larger declared size is a lie: refuse it before allocating. */
@@ -708,6 +846,72 @@ fa_result fa_zip_entry_offset(fa_source* src, const fa_zip_entry* e, int64_t* ou
     if (e->method == 9 && e->size / 32768 > e->compressed_size + 1024) return FA_ERROR_UNSUPPORTED_FORMAT;
     *out_offset = (int64_t)data_pos;
     return FA_OK;
+}
+
+/* The other methods go through the decoders of codec.c. Sinks: the output buffer, a file
+ * (CRC kept), or the first bytes only. */
+typedef struct codec_sink {
+    uint8_t* out;
+    size_t cap, pos;
+    FILE* file;
+    uint32_t crc;
+    int prefix, io_error;
+} codec_sink;
+
+static int codec_sink_put(void* ctx, const uint8_t* data, size_t n)
+{
+    codec_sink* c = (codec_sink*)ctx;
+    if (c->file) {
+        if (fwrite(data, 1, n, c->file) != n) { c->io_error = 1; return 1; }
+        c->crc = fa_crc32_update(c->crc, data, n);
+        return 0;
+    }
+    if (c->prefix) {
+        size_t take = n < c->cap - c->pos ? n : c->cap - c->pos;
+        memcpy(c->out + c->pos, data, take);
+        c->pos += take;
+        return c->pos >= c->cap;
+    }
+    if (n > c->cap - c->pos) return 1;
+    memcpy(c->out + c->pos, data, n);
+    c->pos += n;
+    return 0;
+}
+
+static fa_result unpack_codec(fa_source* src, const fa_zip_entry* e, int64_t data_pos, uint8_t* out, size_t out_cap, FILE* sink,
+                              const volatile int32_t* cancel, size_t* prefix)
+{
+    int codec = e->method == 12 ? FA_CODEC_BZIP2 : e->method == 14 ? FA_CODEC_LZMA_ZIP : FA_CODEC_XZ;
+    fa_cin in;
+    codec_sink c;
+    uint64_t made = 0;
+    int stopped = 0;
+    fa_result r;
+    memset(&in, 0, sizeof(in));
+    in.left = e->compressed_size;
+    if (src->kind == FA_SOURCE_MEMORY) in.mem = src->mem + data_pos;
+    else {
+        in.src = src;
+        if (fa_source_seek(src, data_pos) != FA_OK) return FA_ERROR_IO;
+    }
+    if (!prefix && !sink) {
+        r = fa_codec_to_buffer(codec, in, out, out_cap, cancel);
+        if (r == FA_OK && !(e->flags & FA_ZE_NO_CRC) && fa_crc32(out, out_cap) != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
+        return r;
+    }
+    memset(&c, 0, sizeof(c));
+    c.out = out; c.cap = out_cap; c.file = sink; c.prefix = prefix != NULL;
+    r = fa_codec_to_sink(codec, in, e->size, codec_sink_put, &c, cancel, &made, &stopped);
+    if (c.io_error) return FA_ERROR_IO;
+    if (prefix) {
+        *prefix = r == FA_OK ? c.pos : 0;
+        return r;
+    }
+    if (r == FA_OK && sink) {
+        if (fflush(sink) != 0) r = FA_ERROR_IO;
+        else if (!(e->flags & FA_ZE_NO_CRC) && c.crc != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
+    }
+    return r;
 }
 
 /* Unpacks entry `e` into `out` (out_cap bytes; the whole entry, or INF_OUT_CHUNK
@@ -723,11 +927,12 @@ static fa_result unpack(fa_source* src, const fa_zip_entry* e, uint8_t* out, siz
     if (r != FA_OK) return r;
     if (fa_source_seek(src, data_pos) != FA_OK) return FA_ERROR_IO;
     if (prefix && want > out_cap) want = out_cap;
+    if (e->method == 12 || e->method == 14 || e->method == 95) return unpack_codec(src, e, data_pos, out, out_cap, sink, cancel, prefix);
     memset(&s, 0, sizeof(s));
     s.out = out;
     s.out_cap = out_cap;
     s.total = want;
-    s.sink = sink;
+    if (sink) { s.sink = inf_file_sink; s.sink_ctx = sink; }
     s.cancel = cancel;
     if (inf_cancelled(&s)) return FA_ERROR_CANCELLED;
     if (src->kind == FA_SOURCE_MEMORY) {
@@ -756,7 +961,7 @@ static fa_result unpack(fa_source* src, const fa_zip_entry* e, uint8_t* out, siz
     if (r == FA_OK && sink) {
         if (fwrite(s.out, 1, s.out_pos, sink) != s.out_pos || fflush(sink) != 0) r = FA_ERROR_IO;
     }
-    if (r == FA_OK && fa_crc32_update(s.crc, s.out, s.out_pos) != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
+    if (r == FA_OK && !(e->flags & FA_ZE_NO_CRC) && fa_crc32_update(s.crc, s.out, s.out_pos) != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
     return r;
 }
 

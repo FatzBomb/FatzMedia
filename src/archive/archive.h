@@ -8,6 +8,8 @@
 #define FA_ARCHIVE_H
 
 #include "cdg.h"
+#include "archive/solid.h"
+#include "archive/tar.h"
 
 /* ---- Names (names.c) ------------------------------------------------------- */
 
@@ -38,11 +40,18 @@ struct fa_archive {
     fa_source* srcp;            /* &own, or a source the caller keeps (fa_archive_borrow) */
     int owns_source;
     int32_t format;
+    int32_t filter;             /* FA_FILTER_*: gzip, bzip2 or xz around the tar (format TAR) or file (GZIP, BZIP2, XZ) */
     uint32_t count;
-    fa_zip_entry* z;            /* ZIP backend: count entries */
+    fa_zip_entry* z;            /* the entries as the backends read them: count entries */
+    fa_solid* sol;              /* entries are read out of a compressed stream (method FA_AM_SOLID), not stored */
+    uint8_t** prefixes;         /* solid: the first bytes of each entry seen while listing (or NULL) */
+    uint32_t* prefix_lens;
+    int detached;               /* the source it was made from is no longer read: the archive holds a decoded copy */
     fa_archive_entry* pub;      /* the public view of each */
     char** names;               /* UTF-8, owned; pub[i].name points here */
     uint8_t* audio;             /* per entry: 0 not probed, 1 audio, 2 not audio */
+    uint32_t prefix_cap;
+    int64_t length;             /* of the file or memory the archive was made from */
     uint32_t probes;
     char* path;                 /* UTF-8 path of the archive when it is a file, else NULL */
     uint64_t memory_limit;
@@ -50,6 +59,14 @@ struct fa_archive {
     const volatile int32_t* cancel;
     int encrypted_candidates;   /* entries that could be songs but are encrypted */
 };
+
+/* Entries read out of a compressed stream (tar.gz and friends too large to hold decoded) use this
+ * as fa_zip_entry.method; the data_offset is in the decoded stream. */
+#define FA_AM_SOLID 1000
+/* 1 when `data` starts like an archive this build reads (ZIP, tar, gzip, bzip2, xz). */
+int fa_archive_openable(const uint8_t* data, size_t size);
+/* 1 when entry `i` is stored plain in the archive's source (it plays in place). */
+int fa_archive_is_stored(const fa_archive* a, uint32_t i);
 
 /* Borrows `*src` (the caller keeps it, open and seekable, until fa_archive_release), lists it. */
 fa_result fa_archive_borrow(fa_source* src, const fa_archive_options* options, fa_archive** out);

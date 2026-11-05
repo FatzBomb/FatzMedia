@@ -7,6 +7,7 @@
  * archives. Every archive is built here byte by byte. */
 #include "cdg.h"
 #include "archive/archive.h"
+#include "archive_fixtures.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -756,6 +757,261 @@ static void test_unplayable_entries(void)
     free(song.p);
 }
 
+/* ---- tar, gzip, bzip2 and xz ---------------------------------------------------------- */
+
+static uint64_t fnv64(const uint8_t* p, size_t n)
+{
+    uint64_t h = 0xcbf29ce484222325ull;
+    size_t i;
+    for (i = 0; i < n; i++) h = (h ^ p[i]) * 0x100000001b3ull;
+    return h;
+}
+
+typedef struct fixture { const char* what; const unsigned char* p; size_t n; int32_t format, filter; int32_t method; } fixture;
+
+static const char* const k_small_names[4] = { "songs/a/song.wav", "songs/a/song.cdg", "songs/other.wav", "notes.txt" };
+static const uint32_t k_small_sizes[4] = { FX_SMALL_SIZE_0, FX_SMALL_SIZE_1, FX_SMALL_SIZE_2, FX_SMALL_SIZE_3 };
+static const uint64_t k_small_fnv[4] = { FX_SMALL_FNV_0, FX_SMALL_FNV_1, FX_SMALL_FNV_2, FX_SMALL_FNV_3 };
+
+static void check_small_archive(fa_archive* a, int32_t format, int32_t filter, int32_t method, int reverse)
+{
+    int32_t f = -1, fl = -1;
+    uint32_t k, audio = 99;
+    int32_t cdg = -9;
+    CHECK_EQ(fa_archive_get_format(a, &f), FA_OK);
+    CHECK_EQ(fa_archive_get_filter(a, &fl), FA_OK);
+    CHECK_EQ(f, format);
+    CHECK_EQ(fl, filter);
+    CHECK_EQ(fa_archive_get_entry_count(a), 4);
+    for (k = 0; k < 4; k++) {
+        uint32_t i = reverse ? 3 - k : k;
+        fa_archive_entry e = { .struct_size = sizeof(e) };
+        void* d = NULL;
+        size_t n = 0;
+        CHECK_EQ(fa_archive_get_entry(a, i, &e), FA_OK);
+        CHECK_STR(e.name, k_small_names[i]);
+        CHECK_EQ(e.size, k_small_sizes[i]);
+        CHECK_EQ(e.method, method);
+        CHECK(e.flags & FA_ENTRY_READABLE);
+        CHECK_EQ(fa_archive_read(a, i, &d, &n), FA_OK);
+        CHECK_EQ(n, k_small_sizes[i]);
+        CHECK(fnv64((const uint8_t*)d, n) == k_small_fnv[i]);
+        fa_free(d);
+    }
+    CHECK_EQ(fa_archive_pick(a, &audio, &cdg), FA_OK);
+    CHECK_EQ(audio, 0);
+    CHECK_EQ(cdg, 1);
+}
+
+static void test_tar_and_compressed_tar(void)
+{
+    static const fixture fx[4] = {
+        { "tar", fx_small_tar, sizeof(fx_small_tar), FA_ARCHIVE_TAR, FA_ARCHIVE_FILTER_NONE, FA_METHOD_STORED },
+        { "tar.gz", fx_small_tar_gz, sizeof(fx_small_tar_gz), FA_ARCHIVE_TAR, FA_ARCHIVE_FILTER_GZIP, FA_METHOD_DEFLATE },
+        { "tar.bz2", fx_small_tar_bz2, sizeof(fx_small_tar_bz2), FA_ARCHIVE_TAR, FA_ARCHIVE_FILTER_BZIP2, FA_METHOD_BZIP2 },
+        { "tar.xz", fx_small_tar_xz, sizeof(fx_small_tar_xz), FA_ARCHIVE_TAR, FA_ARCHIVE_FILTER_XZ, FA_METHOD_LZMA2 },
+    };
+    fa_fingerprint loose = { .struct_size = sizeof(loose) };
+    uint32_t i;
+    CHECK_EQ(fa_fingerprint_memory(fx_small_tar + 512, FX_SMALL_SIZE_0, &loose), FA_OK);   /* the first entry's data */
+    for (i = 0; i < 4; i++) {
+        fa_archive* a = NULL;
+        fa_tags* t = NULL;
+        fa_stream_info info = { .struct_size = sizeof(info) };
+        fa_fingerprint fp = { .struct_size = sizeof(fp) };
+        buf file;
+        int pass;
+        printf("  %s\n", fx[i].what);
+        CHECK_EQ(fa_archive_detect(fx[i].p, fx[i].n), fx[i].filter == FA_ARCHIVE_FILTER_NONE ? FA_ARCHIVE_TAR
+                                                      : fx[i].filter == FA_ARCHIVE_FILTER_GZIP ? FA_ARCHIVE_GZIP
+                                                      : fx[i].filter == FA_ARCHIVE_FILTER_BZIP2 ? FA_ARCHIVE_BZIP2 : FA_ARCHIVE_XZ);
+        file.p = (uint8_t*)fx[i].p; file.n = fx[i].n; file.cap = fx[i].n;
+        write_file("archive_test.bin", &file);
+        for (pass = 0; pass < 4; pass++) {
+            fa_archive_options o;
+            fa_archive_options_init(&o);
+            if (pass == 3) o.memory_limit_mb = 1;   /* still holds the little archive */
+            if (pass & 1) CHECK_EQ(fa_archive_open_path("archive_test.bin", &o, &a), FA_OK);
+            else CHECK_EQ(fa_archive_open_memory(fx[i].p, fx[i].n, &o, &a), FA_OK);
+            check_small_archive(a, FA_ARCHIVE_TAR, fx[i].filter, fx[i].method, pass >= 2);
+            fa_archive_close(a);
+        }
+        /* One song, one key: the same in every container, named or picked, by path or by memory. */
+        CHECK_EQ(fa_fingerprint_archive_entry("archive_test.bin", "songs/a/song.wav", &fp), FA_OK);
+        CHECK(fp.key == loose.key && fp.audio_bytes == loose.audio_bytes);
+        memset(&fp, 0, sizeof(fp)); fp.struct_size = sizeof(fp);
+        CHECK_EQ(fa_fingerprint_archive_entry("archive_test.bin", NULL, &fp), FA_OK);
+        CHECK(fp.key == loose.key);
+        memset(&fp, 0, sizeof(fp)); fp.struct_size = sizeof(fp);
+        CHECK_EQ(fa_fingerprint_memory(fx[i].p, fx[i].n, &fp), FA_OK);
+        CHECK(fp.key == loose.key);
+        CHECK_EQ(fa_tags_read_archive_entry("archive_test.bin", NULL, 0, &t), FA_OK);
+        CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+        CHECK_EQ(info.has_cdg, 1);
+        CHECK(fabs(((double)info.duration / 1e9) - 0.25) < 0.01);
+        fa_tags_close(t);
+        remove("archive_test.bin");
+    }
+}
+
+static void test_single_file_compressed(void)
+{
+    static const fixture fx[3] = {
+        { "gz", fx_one_gz, sizeof(fx_one_gz), FA_ARCHIVE_GZIP, FA_ARCHIVE_FILTER_GZIP, FA_METHOD_DEFLATE },
+        { "bz2", fx_one_bz2, sizeof(fx_one_bz2), FA_ARCHIVE_BZIP2, FA_ARCHIVE_FILTER_BZIP2, FA_METHOD_BZIP2 },
+        { "xz", fx_one_xz, sizeof(fx_one_xz), FA_ARCHIVE_XZ, FA_ARCHIVE_FILTER_XZ, FA_METHOD_LZMA2 },
+    };
+    fa_fingerprint loose = { .struct_size = sizeof(loose) };
+    uint32_t i;
+    CHECK_EQ(fa_fingerprint_memory(fx_small_tar + 512, FX_ONE_SIZE, &loose), FA_OK);
+    for (i = 0; i < 3; i++) {
+        fa_archive* a = NULL;
+        fa_archive_entry e = { .struct_size = sizeof(e) };
+        fa_fingerprint fp = { .struct_size = sizeof(fp) };
+        fa_stream* s = NULL;
+        fa_open_options oo;
+        void* d = NULL;
+        size_t n = 0;
+        int32_t f = -1, fl = -1;
+        buf file;
+        printf("  %s\n", fx[i].what);
+        file.p = (uint8_t*)fx[i].p; file.n = fx[i].n; file.cap = fx[i].n;
+        write_file("song.wav.tmp", &file);
+        CHECK_EQ(fa_archive_open_path("song.wav.tmp", NULL, &a), FA_OK);
+        CHECK_EQ(fa_archive_get_format(a, &f), FA_OK);
+        CHECK_EQ(fa_archive_get_filter(a, &fl), FA_OK);
+        CHECK_EQ(f, fx[i].format);
+        CHECK_EQ(fl, fx[i].filter);
+        CHECK_EQ(fa_archive_get_entry_count(a), 1);
+        CHECK_EQ(fa_archive_get_entry(a, 0, &e), FA_OK);
+        CHECK_EQ(e.size, FX_ONE_SIZE);
+        CHECK_EQ(e.method, fx[i].method);
+        CHECK_EQ(fa_archive_read(a, 0, &d, &n), FA_OK);
+        CHECK_EQ(n, FX_ONE_SIZE);
+        CHECK(fnv64((const uint8_t*)d, n) == FX_ONE_FNV);
+        fa_free(d);
+        fa_archive_close(a);
+        /* It plays and fingerprints like the loose file. */
+        fa_open_options_init(&oo);
+        oo.flags = FA_OPEN_DECODE_ONLY;
+        CHECK_EQ(fa_stream_open_memory(g_engine, fx[i].p, fx[i].n, &oo, &s), FA_OK);
+        CHECK_EQ(decode_all(s), 2000);
+        fa_stream_close(s);
+        CHECK_EQ(fa_fingerprint_archive_entry("song.wav.tmp", NULL, &fp), FA_OK);
+        CHECK(fp.key == loose.key);
+        remove("song.wav.tmp");
+    }
+}
+
+/* A stream larger than the memory limit is not held decoded: each entry is decoded again from the
+ * block, checkpoint or stream start nearest to it. */
+static void test_stream_mode(void)
+{
+    static const fixture fx[3] = {
+        { "big tar.gz", fx_big_tar_gz, sizeof(fx_big_tar_gz), 0, FA_ARCHIVE_FILTER_GZIP, FA_METHOD_DEFLATE },
+        { "big tar.bz2", fx_big_tar_bz2, sizeof(fx_big_tar_bz2), 0, FA_ARCHIVE_FILTER_BZIP2, FA_METHOD_BZIP2 },
+        { "big tar.xz", fx_big_tar_xz, sizeof(fx_big_tar_xz), 0, FA_ARCHIVE_FILTER_XZ, FA_METHOD_LZMA2 },
+    };
+    static const uint32_t sizes[3] = { FX_BIG_SIZE_0, FX_BIG_SIZE_1, FX_BIG_SIZE_2 };
+    static const uint64_t hashes[3] = { FX_BIG_FNV_0, FX_BIG_FNV_1, FX_BIG_FNV_2 };
+    uint32_t i;
+    int pass;
+    for (i = 0; i < 3; i++) {
+        buf file;
+        printf("  %s\n", fx[i].what);
+        file.p = (uint8_t*)fx[i].p; file.n = fx[i].n; file.cap = fx[i].n;
+        write_file("archive_big.bin", &file);
+        for (pass = 0; pass < 4; pass++) {
+            fa_archive_options o;
+            fa_archive* a = NULL;
+            uint32_t k;
+            fa_archive_options_init(&o);
+            o.memory_limit_mb = 1;
+            o.temp_directory = "archive-test-tmp";   /* an entry past the limit is unpacked to a file there */
+            if (pass & 1) CHECK_EQ(fa_archive_open_path("archive_big.bin", &o, &a), FA_OK);
+            else CHECK_EQ(fa_archive_open_memory(fx[i].p, fx[i].n, &o, &a), FA_OK);
+            CHECK_EQ(fa_archive_get_entry_count(a), 3);
+            for (k = 0; k < 3; k++) {
+                uint32_t idx = pass >= 2 ? 2 - k : k;   /* forward, then backward: each is a fresh decode */
+                fa_archive_entry e = { .struct_size = sizeof(e) };
+                fa_archive_reader* r = NULL;
+                uint8_t* all;
+                int64_t got, total = 0;
+                CHECK_EQ(fa_archive_get_entry(a, idx, &e), FA_OK);
+                CHECK_EQ(e.size, sizes[idx]);
+                CHECK(e.flags & FA_ENTRY_SOLID);
+                if (idx == 0) {
+                    void* d = NULL;
+                    size_t n = 0;
+                    CHECK_EQ(fa_archive_read(a, idx, &d, &n), FA_ERROR_TOO_LARGE);   /* more than the 1 MB limit: a reader will do */
+                    CHECK(d == NULL);
+                }
+                CHECK_EQ(fa_archive_open_reader(a, idx, &r), FA_OK);
+                CHECK_EQ(fa_archive_reader_get_size(r), sizes[idx]);
+                all = (uint8_t*)malloc(sizes[idx]);
+                CHECK(all != NULL);
+                while (total < (int64_t)sizes[idx] && (got = fa_archive_reader_read(r, all + total, 65536)) > 0) total += got;
+                CHECK_EQ(total, sizes[idx]);
+                CHECK(fnv64(all, (size_t)total) == hashes[idx]);
+                if (idx == 0) {   /* a seek back and into the middle: the data there is the same */
+                    uint8_t again[1000];
+                    CHECK_EQ(fa_archive_reader_seek(r, 5000000), FA_OK);
+                    CHECK_EQ(fa_archive_reader_read(r, again, sizeof(again)), 1000);
+                    CHECK(memcmp(again, all + 5000000, 1000) == 0);
+                    CHECK_EQ(fa_archive_reader_seek(r, 100), FA_OK);
+                    CHECK_EQ(fa_archive_reader_read(r, again, sizeof(again)), 1000);
+                    CHECK(memcmp(again, all + 100, 1000) == 0);
+                }
+                free(all);
+                fa_archive_reader_close(r);
+            }
+            fa_archive_close(a);
+        }
+        remove("archive_big.bin");
+    }
+}
+
+/* Damaged streams end in an error, never in wrong bytes passed as right. */
+static void test_damaged_streams(void)
+{
+    static const fixture fx[3] = {
+        { "tar.gz", fx_small_tar_gz, sizeof(fx_small_tar_gz), 0, 0, 0 },
+        { "tar.bz2", fx_small_tar_bz2, sizeof(fx_small_tar_bz2), 0, 0, 0 },
+        { "tar.xz", fx_small_tar_xz, sizeof(fx_small_tar_xz), 0, 0, 0 },
+    };
+    uint32_t i;
+    for (i = 0; i < 3; i++) {
+        int cut;
+        for (cut = 0; cut < 2; cut++) {
+            uint8_t* copy = (uint8_t*)malloc(fx[i].n);
+            fa_archive* a = NULL;
+            fa_result r;
+            uint32_t k;
+            int bad = 0;
+            CHECK(copy != NULL);
+            memcpy(copy, fx[i].p, fx[i].n);
+            if (!cut) copy[fx[i].n / 2] ^= 0x55;   /* a flipped byte, or (cut) the last third missing */
+            r = fa_archive_open_memory(copy, cut ? fx[i].n - fx[i].n / 3 : fx[i].n, NULL, &a);
+            if (r != FA_OK) bad = 1;
+            else {
+                for (k = 0; k < fa_archive_get_entry_count(a); k++) {
+                    void* d = NULL;
+                    size_t n = 0;
+                    if (fa_archive_read(a, k, &d, &n) != FA_OK) bad = 1;
+                    else {
+                        const uint8_t* x = (const uint8_t*)d;
+                        CHECK(fnv64(x, n) == k_small_fnv[k] && n == k_small_sizes[k]);   /* right, or an error */
+                        fa_free(d);
+                    }
+                }
+                fa_archive_close(a);
+            }
+            CHECK(bad);
+            free(copy);
+        }
+    }
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -772,6 +1028,10 @@ int main(void)
     RUN(test_open_archive_streams);
     RUN(test_tags_and_fingerprint_of_entries);
     RUN(test_unplayable_entries);
+    RUN(test_tar_and_compressed_tar);
+    RUN(test_single_file_compressed);
+    RUN(test_stream_mode);
+    RUN(test_damaged_streams);
     fa_engine_destroy(g_engine);
     remove("archive-test-tmp/fatzaudio-tmp");
     remove("archive-test-tmp");

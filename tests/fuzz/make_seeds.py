@@ -511,3 +511,46 @@ sdseed("wav_voices.bin", [play(16, 0), play(8, 31), 5 | 3 << 3, play(16, 16), pl
 sdseed("midi_steal.bin", [2 | 1 << 3, play(16, 0), play(16, 0), play(16, 0), 2 | 2 << 3, 5 | 2 << 3, 2 | 4 << 3, play(10, 0), 3, 4, 4, 1],
        seeds["fmt0.mid"])
 sdseed("pcm_raw.bin", [play(16, 0), 5 | 5 << 3, play(16, 0), 6, play(16, 0), 1, 7], bytes(range(256)) * 8)
+
+# ---- Archives (fuzz_archive): tar, gzip, bzip2 and xz around a tar or one file; ZIP methods 12, 14 and 95 ----
+import bz2, gzip, io, lzma, tarfile, zlib
+os.makedirs(os.path.join(here, "seeds", "archive"), exist_ok=True)
+def asave(name, data):
+    open(os.path.join(here, "seeds", "archive", name), "wb").write(data)
+def tiny_wav(n):
+    body = b"".join(struct.pack("<h", (i * 97) % 2000 - 1000) for i in range(n))
+    return (b"RIFF" + struct.pack("<I", 36 + len(body)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 8000, 16000, 2, 16)
+            + b"data" + struct.pack("<I", len(body)) + body)
+a_files = [("songs/song.wav", tiny_wav(300)), ("songs/song.cdg", bytes(24 * 6)), ("notes.txt", b"hello\n" * 8)]
+def a_tar(fmt):
+    b = io.BytesIO()
+    with tarfile.open(fileobj=b, mode="w", format=fmt) as t:
+        for n, d in a_files:
+            ti = tarfile.TarInfo(n); ti.size = len(d); ti.mtime = 1700000000
+            t.addfile(ti, io.BytesIO(d))
+    return b.getvalue()
+for fmt, nm in ((tarfile.GNU_FORMAT, "gnu"), (tarfile.PAX_FORMAT, "pax"), (tarfile.USTAR_FORMAT, "ustar")):
+    asave(nm + ".tar", a_tar(fmt))
+t = a_tar(tarfile.GNU_FORMAT)
+asave("gnu.tar.gz", gzip.compress(t, 9, mtime=0))
+asave("gnu.tar.bz2", bz2.compress(t))
+asave("gnu.tar.xz", lzma.compress(t, preset=1))
+asave("two_streams.tar.bz2", bz2.compress(t[:6144]) + bz2.compress(t[6144:]))
+w = a_files[0][1]
+asave("song.wav.gz", gzip.compress(w, 9, mtime=0))
+asave("song.wav.bz2", bz2.compress(w))
+asave("song.wav.xz", lzma.compress(w, preset=1))
+def a_zip(method, packer):
+    out, cd = bytearray(), bytearray()
+    for n, d in a_files:
+        comp, nb, crc, off = packer(d), n.encode(), zlib.crc32(d) & 0xffffffff, len(out)
+        out += struct.pack("<IHHHHHIIIHH", 0x04034b50, 63, 0, method, 0, 0x21, crc, len(comp), len(d), len(nb), 0) + nb + comp
+        cd += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014b50, 63, 63, 0, method, 0, 0x21, crc, len(comp), len(d), len(nb), 0, 0, 0, 0, 0, off) + nb
+    return bytes(out) + bytes(cd) + struct.pack("<IHHHHIIH", 0x06054b50, 0, 0, len(a_files), len(a_files), len(cd), len(out), 0)
+asave("method12.zip", a_zip(12, lambda d: bz2.compress(d)))
+asave("method95.zip", a_zip(95, lambda d: lzma.compress(d, preset=1)))
+def lzma_zip(d):   # method 14: version, props size, then the raw LZMA stream
+    c = lzma.LZMACompressor(lzma.FORMAT_RAW, filters=[{"id": lzma.FILTER_LZMA1, "dict_size": 1 << 16, "lc": 3, "lp": 0, "pb": 2}])
+    props = bytes([(2 * 5 + 0) * 9 + 3]) + struct.pack("<I", 1 << 16)
+    return bytes([9, 20, 5, 0]) + props + c.compress(d) + c.flush()
+asave("method14.zip", a_zip(14, lzma_zip))
