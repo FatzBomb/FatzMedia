@@ -11,8 +11,11 @@
  *   - Ogg (Vorbis, Opus, FLAC): from the first page with audio (the comment header
  *     sits in the pages before it);
  *   - anything else: the whole file less the tag blocks at either end.
- * Uncompressed audio (WAV, AIFF) up to 1 GB is hashed whole: an edit that keeps its
- * length changes some sample somewhere. Other audio is hashed at 16 points spread
+ * Uncompressed audio (WAV, AIFF) up to 64 MB (about 6 minutes of CD audio) is hashed
+ * whole: an edit that keeps its length changes some sample somewhere. A bigger one is
+ * hashed at 64 points plus the file's last-write time, so a cached hour-long WAV costs
+ * 256 KB of reads instead of 600 MB; an edit in place then shows by its time (a new
+ * LIST tag too, which costs one scan). Other audio is hashed at 16 points spread
  * evenly over it, 4 KB each, plus its length: a coded stream changes throughout when
  * it is encoded again. */
 #include "fa_internal.h"
@@ -20,8 +23,9 @@
 #include <string.h>
 
 #define FP_POINTS 16
+#define FP_PCM_POINTS 64
 #define FP_POINT_BYTES 4096
-#define FP_WHOLE_MAX ((int64_t)1 << 30)
+#define FP_WHOLE_MAX ((int64_t)64 << 20)
 #define FP_WHOLE_READ (1 << 20)
 #define FP_OGG_MAX_PAGES 4096
 
@@ -189,12 +193,13 @@ int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size)
     uint8_t* buf;
     uint64_t h = 0xcbf29ce484222325ULL;
     int64_t fmt_at = 0, fmt_len = 0;
-    int whole = 0, i;
+    int whole = 0, pcm = 0, points = FP_POINTS, i;
     if (len <= 0) return 0;
     end = len;
     memset(head, 0, sizeof(head));
     read_at(src, 0, head, len < 16 ? (size_t)len : 16);
     if (find_pcm(src, len, head, &start, &end, &fmt_at, &fmt_len)) {
+        pcm = 1;
         whole = end - start <= FP_WHOLE_MAX;
     } else if (memcmp(head + 4, "ftyp", 4) == 0 && find_mdat(src, len, &start, &end)) {
         /* MP4 family: the samples alone */
@@ -215,7 +220,17 @@ int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size)
         h = hash_bytes(h, nb, 8);
     }
     if (fmt_len > 0 && read_at(src, fmt_at, buf, (size_t)fmt_len)) h = hash_bytes(h, buf, (size_t)fmt_len);
-    if (whole || n <= FP_POINTS * FP_POINT_BYTES) {
+    if (pcm && !whole) {
+        /* Too big to read on every lookup: more points, and the last-write time. */
+        uint64_t id[4];
+        points = FP_PCM_POINTS;
+        if (src->file && fa_file_identity(src->file, id)) {
+            uint8_t tb[16];
+            for (i = 0; i < 8; i++) { tb[i] = (uint8_t)(id[2] >> (i * 8)); tb[8 + i] = (uint8_t)(id[3] >> (i * 8)); }
+            h = hash_bytes(h, tb, sizeof(tb));
+        }
+    }
+    if (whole || n <= (int64_t)points * FP_POINT_BYTES) {
         int64_t at = 0;
         if (fa_source_seek(src, start) != FA_OK) { free(buf); return 0; }
         while (at < n) {
@@ -226,8 +241,8 @@ int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size)
             at += got;
         }
     } else {
-        for (i = 0; i < FP_POINTS; i++) {
-            int64_t at = start + (n - FP_POINT_BYTES) * i / (FP_POINTS - 1);
+        for (i = 0; i < points; i++) {
+            int64_t at = start + (n - FP_POINT_BYTES) * i / (points - 1);
             if (!read_at(src, at, buf, FP_POINT_BYTES)) { free(buf); return 0; }
             h = hash_bytes(h, buf, FP_POINT_BYTES);
         }

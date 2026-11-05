@@ -97,7 +97,7 @@ Set `fa_engine_config.cache_directory` (.NET `AudioEngineOptions.CacheDirectory`
 
 | Format | What is fingerprinted |
 |---|---|
-| WAV, RF64, AIFF | The whole `data` / `SSND` chunk (up to 1 GB) and the format chunk, so an edit in place that keeps the length is noticed |
+| WAV, RF64, AIFF | The format chunk and the whole `data` / `SSND` chunk, so an edit in place that keeps the length is noticed. Over 64 MB (about 6 minutes of CD audio): 64 points plus the file's last-write time instead, so a cached hour-long WAV isn't read whole (600 MB) on every play; a new LIST tag then costs one scan |
 | MP4, M4A, MOV | The `mdat` box (the tags are in `moov`), at 16 points |
 | FLAC | The frames after the metadata blocks (comments, pictures, padding), at 16 points |
 | Ogg Vorbis, Opus, FLAC | From the first audio page (the comment header is before it), at 16 points |

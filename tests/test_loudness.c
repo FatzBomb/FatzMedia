@@ -948,6 +948,33 @@ static void test_key_hashes_all_of_a_wav(void)
     free(tagged);
 }
 
+static void test_key_of_a_big_wav(void)
+{
+    /* Over 64 MB the samples are not read whole: 64 points (and, for a file, its time).
+     * The key is still stable and still ignores a LIST chunk. */
+    const size_t data = (size_t)65 << 20;
+    uint8_t* w = (uint8_t*)calloc(1, 44 + data + 22);
+    static const uint8_t list[] = { 'L', 'I', 'S', 'T', 12, 0, 0, 0, 'I', 'N', 'F', 'O', 'I', 'N', 'A', 'M', 2, 0, 0, 0, 'x', 0 };
+    uint64_t ka, kb;
+    int64_t sa, sb, t0;
+    double ms;
+    CHECK(w != NULL);
+    memcpy(w, "RIFF\0\0\0\0WAVEfmt \x10\0\0\0\1\0\2\0\x44\xac\0\0\x10\xb1\2\0\4\0\x10\0data", 40);
+    put32le(w + 40, (uint32_t)data);
+    fill_audio(w + 44, data, 5);
+    put32le(w + 4, (uint32_t)(36 + data));
+    t0 = fa_monotonic_ns();
+    CHECK(key_of(w, 44 + data, &ka, &sa));
+    ms = (double)(fa_monotonic_ns() - t0) / 1e6;
+    printf("  key of a 65 MB WAV: %.2f ms\n", ms);
+    CHECK_EQ(sa, (int64_t)data);
+    memcpy(w + 44 + data, list, sizeof(list));
+    put32le(w + 4, (uint32_t)(36 + data + sizeof(list)));
+    CHECK(key_of(w, 44 + data + sizeof(list), &kb, &sb));
+    CHECK(ka == kb);
+    free(w);
+}
+
 static void test_cache_api(void)
 {
     CHECK_EQ(fa_engine_set_cache_size(g_engine, 0), FA_OK);            /* no cache directory: nothing to do */
@@ -1431,6 +1458,7 @@ int main(void)
     RUN(test_cache_api);
     RUN(test_key_ignores_tags);
     RUN(test_key_hashes_all_of_a_wav);
+    RUN(test_key_of_a_big_wav);
     RUN(test_spread_order);
     RUN(test_partial_from_finished_chunks);
     RUN(test_start_wait_holds_until_final);

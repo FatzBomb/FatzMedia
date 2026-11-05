@@ -73,7 +73,8 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 - Cache keys fingerprint the audio only: tag blocks (ID3, APE, Lyrics3, FLAC metadata, MP4 `moov`, Ogg comment pages,
   WAV/AIFF chunks other than the samples) are left out, so a retagged file keeps its cached loudness and analysis; WAV
-  and AIFF samples are hashed whole (an edit in place with the same length is noticed), other audio at 16 points.
+  and AIFF samples up to 64 MB are hashed whole (an edit in place with the same length is noticed; bigger ones at 64
+  points plus the last-write time), other audio at 16 points.
   Results cached by rc.3 and earlier are measured again once.
 - Loudness scans are faster: the K-weighting filter runs two channels per pass and the true-peak oversampler runs
   eight samples per SIMD step, or sixteen with AVX on x86 CPUs that have it (chosen at run time). The loudness math of
