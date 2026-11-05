@@ -167,8 +167,11 @@ The app keeps the playlist, singer rotation, controller mapping and song databas
   tails; no SFZ; no real-time MIDI input.
 - Trackers: no live tempo/speed or channel/instrument volume attributes; MO3 with compressed
   samples unsupported.
-- Not supported at all: ALAC in `.caf`, DTS, TrueHD, WMA off Windows, xHE-AAC without an OS
-  decoder. Our FFmpeg fallback (033A) covers these by pushing decoded audio.
+- Not decoded by FatzAudio (its answer of 2026-11-05, checked on its current build): DTS, TrueHD,
+  WMA/ASF off Windows, xHE-AAC without an OS decoder, the rare AAC profiles (SSR, LD/ELD), MPEG
+  Layer I/II, WavPack, TTA, Monkey's Audio, Musepack, DSD, Speex, Sun `.au`, µ-law/A-law in CAF, and
+  the MPEG-TS, MPEG-PS (`.mpg`, `.vob`), AVI and FLV containers. ALAC in `.caf` does decode. Our
+  FFmpeg fallback (033A) converts these when the open fails with `UnsupportedFormat`.
 - Reverse playback and BPM detection are not built.
 - Decode-only streams are not equalized and report no levels, so normalization keeps measuring
   decoded samples itself; silence detection is requested from FatzAudio for files and for pushed

@@ -1091,7 +1091,9 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
   `MediaPlayerConfiguration.Normalization` (`NormalizationOptions`: target, ceiling, cache folder);
   `NormalizationGain` reports FatzAudio's gain for the song, `NormalizationGainChanged` fires when
   its loudness is final, and `IsNormalizationReady` is always true (FatzAudio starts on its estimate
-  and glides; nothing waits). BASS ignores the options and keeps its peak rule. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
+  and glides; nothing waits). `AnalyzePeakQuickAsync`/`AnalyzePeakAsync` return FatzAudio's true peak
+  once the loudness is final (no measuring of our own, no second stream). BASS ignores the options
+  and keeps its peak rule. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
   and minimum silence, 200 ms minimum sound), turns the first and last audible frames into edge
   regions for `SilenceTrimCalculator` (our padding and edge switches), and sets the window as
   CUE_IN/CUE_OUT, so play, stop, end and loop follow it natively from the first play; the

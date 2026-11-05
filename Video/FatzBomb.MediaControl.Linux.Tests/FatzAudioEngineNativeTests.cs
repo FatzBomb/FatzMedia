@@ -204,7 +204,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     }
 
     [Fact]
-    public void Normalization_IsFatzAudiosLoudness_AtTheConfiguredTarget_AndCached()
+    public async Task Normalization_IsFatzAudiosLoudness_AtTheConfiguredTarget_AndCached()
     {
         if (!OperatingSystem.IsLinux())
             return;
@@ -215,6 +215,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         var configuration = new MediaPlayerConfiguration { Normalization = new NormalizationOptions { CacheDirectory = cache } };
         using (FatzAudioEngine engine = CreateEngine(configuration))
         {
+            Assert.Equal(0, await engine.AnalyzePeakAsync(CancellationToken.None));
             var gains = new BlockingCollection<double>();
             engine.NormalizationGainChanged += (_, gain) => gains.Add(gain);
             engine.SetVolume(0.5);
@@ -227,6 +228,10 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             Fa.Loudness loudness = engine.CurrentStream!.GetLoudness();
             Assert.Equal(Fa.LoudnessSource.Scan, loudness.Source);
             Assert.InRange(loudness.IntegratedLufs, -20.5, -19.5);
+
+            // The peak queries answer from FatzAudio's true peak: a 0.1 sine peaks at about 0.1.
+            Assert.InRange(await engine.AnalyzePeakAsync(CancellationToken.None), 0.095, 0.105);
+            Assert.InRange(await engine.AnalyzePeakQuickAsync(CancellationToken.None), 0.095, 0.105);
 
             // The gain is FatzAudio's, on the stream: the bus carries only the user volume.
             Assert.Equal(0.5f, engine.OutputVolume, 3);
