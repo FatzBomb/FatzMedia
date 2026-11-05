@@ -69,6 +69,30 @@ if [ -n "$enc" ]; then
   fi
 fi
 
+# BASS for Linux (026B, LinuxBassNativeTests): libbass, libbass_fx and libbassflac from un4seen.com,
+# when the host is reachable (BASS is free for non-commercial use; nothing goes into the repo).
+bass="$root/bass"
+if [ ! -e "$bass/libbass.so" ]; then
+  mkdir -p "$bass"
+  tmpb="$(mktemp -d)"
+  ok=1
+  for z in bass24-linux.zip z/0/bass_fx24-linux.zip bassflac24-linux.zip; do
+    curl -fsSL -o "$tmpb/$(basename "$z")" "https://www.un4seen.com/files/$z" || ok=0
+  done
+  if [ "$ok" = 1 ]; then
+    for f in "$tmpb"/*.zip; do unzip -q -o "$f" -d "${f%.zip}"; done
+    find "$tmpb" -path '*x86_64*' -name 'lib*.so' -exec cp {} "$bass/" \;
+  else
+    echo "BASS download failed (is www.un4seen.com allowed?); the BASS tests will skip" >&2
+  fi
+  rm -rf "$tmpb"
+fi
+if [ -n "$enc" ]; then
+  gen "$media/tone.mp3" -f lavfi -i "sine=frequency=440:duration=12:sample_rate=44100" -ac 2 -c:a libmp3lame -b:a 192k
+  gen "$media/tone.flac" -f lavfi -i "sine=frequency=440:duration=12:sample_rate=44100" -ac 2 -c:a flac
+fi
+
 echo "export FATZBOMB_LINUX_FFMPEG_DIR=$ff/lib"
+[ -e "$bass/libbass.so" ] && echo "export FATZBOMB_LINUX_BASS_DIR=$bass   # needs a sound server: see LinuxBassNativeTests"
 echo "export LD_LIBRARY_PATH=$ff/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}   # optional; the engine preloads by path"
 echo "# media: $media (HLS: cd $media/hls && python3 -m http.server 8000)"

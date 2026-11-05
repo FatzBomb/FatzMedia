@@ -6,8 +6,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 `complete/` once its slices have passed; its deferred follow-ups become future ideas.
 
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
-  (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
-  pending; macOS deferred.
+  (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; Linux smoke with BASS
+  passed 2026-11-05 in the sandbox (no `AudioDeviceChanged` on Linux: the sound server reroutes;
+  ENG-040); Windows sidecar check (step 6) pending; macOS deferred.
 - `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slices 1-2 implemented,
   pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
   validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.

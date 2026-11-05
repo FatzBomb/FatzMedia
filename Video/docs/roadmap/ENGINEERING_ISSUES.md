@@ -134,6 +134,11 @@ tempo and normalization change events but not the members, so interface-only hos
 `KaraokeSurface.Session`) cannot set them; value-changed events fire on the setter's thread while
 the rest come from engine threads.
 
+**Found in the 026B Linux smoke (2026-11-05):** on Linux no `AudioDeviceChanged` is raised when the
+output device changes: PulseAudio and PipeWire move the stream themselves (playback continues correctly)
+and BASS keeps seeing the same ALSA default device. A Linux event would need the sound server's own
+notifications (PulseAudio/PipeWire), outside BASS and FatzAudio.
+
 **Not a feature yet:** audio CD and CD+G disc playback (only `basscd` registering `.cda`; idea
 `032A`); DASH (only `.m3u8` is detected).
 
