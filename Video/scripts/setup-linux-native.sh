@@ -67,6 +67,15 @@ if [ -n "$enc" ]; then
     "$enc" -v error -y -i "$media/h264_1080p.mp4" -i "$srt" -map 0 -map 1 -c copy -c:s srt "$media/subtitles.mkv"
     rm -f "$srt"
   fi
+  # Two embedded text tracks (ENG-045: the chosen track must stay chosen).
+  if [ ! -s "$media/subtitles2.mkv" ]; then
+    s1="$(mktemp --suffix=.srt)"; s2="$(mktemp --suffix=.srt)"
+    printf '%s\n' 1 '00:00:00,500 --> 00:00:09,000' 'English line' '' > "$s1"
+    printf '%s\n' 1 '00:00:00,500 --> 00:00:09,000' 'German line' '' > "$s2"
+    "$enc" -v error -y -i "$media/h264_1080p.mp4" -i "$s1" -i "$s2" -map 0 -map 1 -map 2 -c copy -c:s srt \
+      -metadata:s:s:0 language=eng -metadata:s:s:1 language=ger -disposition:s:0 default "$media/subtitles2.mkv"
+    rm -f "$s1" "$s2"
+  fi
 fi
 
 # BASS for Linux (026B, LinuxBassNativeTests): libbass, libbass_fx and libbassflac from un4seen.com,

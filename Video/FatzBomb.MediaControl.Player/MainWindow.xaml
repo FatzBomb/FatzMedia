@@ -11,6 +11,7 @@
     FontFamily="Segoe UI"
     Foreground="#F2F5F8"
     KeyDown="Window_KeyDown"
+    PreviewKeyDown="Window_PreviewKeyDown"
     WindowStartupLocation="CenterScreen">
 
     <Grid>

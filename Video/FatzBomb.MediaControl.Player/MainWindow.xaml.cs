@@ -124,9 +124,17 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
         InfoText.Text = $"{what}: {exception.Message}";
     }
 
+    // F11 before any control sees it (a focused control could handle it and the window would never see
+    // it: ENG-044); Escape after, so an open drop-down or text box handles its own Escape first.
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F11 && _players.HandleFullScreenKey())
+            e.Handled = true;
+    }
+
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if ((e.Key == Key.F11 && _players.HandleFullScreenKey()) || (e.Key == Key.Escape && _players.HandleEscapeKey()))
+        if (e.Key == Key.Escape && _players.HandleEscapeKey())
             e.Handled = true;
     }
 

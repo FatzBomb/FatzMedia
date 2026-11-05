@@ -53,6 +53,10 @@ public partial class PlayerView : UserControl, IPlayerSlot
         _index = index;
         _atStartup = atStartup;
         InitializeComponent();
+        // A click on the picture makes this the focused player, so F11 shows this one (ENG-044): the
+        // viewport itself cannot take focus, and the native video window passes clicks through.
+        Focusable = true;
+        FocusVisualStyle = null;
 
         _standardMediaMargin = MediaViewportBorder.Margin;
         _standardMediaBorderThickness = MediaViewportBorder.BorderThickness;
@@ -155,6 +159,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     private void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _ = Focus();
         if (e.ClickCount == 1)
             ViewModel.CloseFlyout();
 

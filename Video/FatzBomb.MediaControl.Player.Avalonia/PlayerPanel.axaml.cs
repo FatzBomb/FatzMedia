@@ -48,6 +48,8 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         _index = index;
         _atStartup = atStartup;
         InitializeComponent();
+        // A click on the picture makes this the focused player, so F11 shows this one (ENG-044).
+        Focusable = true;
 
         var shell = new AvaloniaPlayerShell(this);
         ViewModel = new PlayerViewModel(
@@ -217,7 +219,11 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // A click on the picture closes the open flyout, as in the WPF player.
-    private void OnSurfaceTapped(object? sender, TappedEventArgs e) => ViewModel.CloseFlyout();
+    private void OnSurfaceTapped(object? sender, TappedEventArgs e)
+    {
+        _ = Focus();
+        ViewModel.CloseFlyout();
+    }
 
     private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
     {
