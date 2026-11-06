@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Audio.FatzAudio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Linux.Runtime;
 using FatzBomb.MediaControl.Rendering.Software;
@@ -38,6 +39,44 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         Assert.True(SpinWait.SpinUntil(() => sink.Frames > 0, Timeout), "no frame reached the surface attached after the load");
         Assert.True(SpinWait.SpinUntil(() => tracker.FirstFrameLoad != 0, Timeout), "the tracker saw no first frame");
         output.WriteLine($"frames {sink.Frames}, first-frame load {tracker.FirstFrameLoad}, state {player.State}");
+        Assert.True(player.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId));
+    }
+
+    [Theory]
+    [InlineData("bass")]
+    [InlineData("fatz")]
+    public void FullMode_ALoadBeforeTheSurfaceAttaches_StillReachesIt(string engine)
+    {
+        // The test players' startup media: Full mode, video with sound, BASS or FatzAudio. Needs
+        // FATZBOMB_LINUX_BASS_DIR and a sound server as well (LinuxNativeTestPlayer).
+        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !TryGetSample(out _, out var sample))
+            return;
+
+        var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
+        {
+            AudioEngineFactory = engine == "fatz" ? new FatzAudioEngineFactory(nullOutput: true) : null,
+        };
+        using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], configuration, attachSurface: false);
+        MediaControlPlayer player = session.Player;
+        player.PlayOnLoad = false;
+        using var tracker = new MediaSurfaceContentTracker { Session = player };
+        Assert.True(player.Load(sample), string.Join(" | ", session.Errors));
+        Thread.Sleep(500);
+        Assert.Equal(0, tracker.FirstFrameLoad);
+
+        var sink = new FrameCounter();
+        using var handle = new MediaPresentationFrameSinkHandle(sink);
+        Assert.True(player.AttachPresentationSurface(Descriptor(handle)));
+        Assert.True(SpinWait.SpinUntil(() => sink.Frames > 0, Timeout), "no frame reached the surface attached after the load");
+        Assert.True(SpinWait.SpinUntil(() => tracker.FirstFrameLoad != 0, Timeout), "the tracker saw no first frame");
+
+        // And it plays from there, with sound, on the surface that attached late.
+        var framesAtAttach = sink.Frames;
+        Assert.True(session.PlayUntil(1, Timeout), $"position {player.Position}");
+        Assert.True(sink.Frames > framesAtAttach);
+        Assert.True(player.NativeDependencies.IsAudioAvailable);
+        Assert.Empty(session.Errors);
+        output.WriteLine($"{engine}: frames {sink.Frames}, first-frame load {tracker.FirstFrameLoad}");
         Assert.True(player.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId));
     }
 

@@ -46,7 +46,20 @@ Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, a
   still reaches the surface and arms the first frame (why the startup delay could go); an A/B swap of
   two players reports each load's first frame after a frame reached its surface (76-256 ms per swap).
 - New Windows-only tests (CI runs them): `WpfFirstFrameReadyTests` (composited surface in a shown window:
-  once per load, the bitmap written first, the counter) and a WinForms frame-sink test.
+  once per load, the bitmap written first, the counter) and a WinForms frame-sink test. **CI green on
+  PR #72** (Windows and Linux jobs), merged 2026-11-06.
+- **Sandbox run after the merge (2026-11-06, `main` at 2a572e8 plus one new test):** FatzAudio rc.1 built
+  from source with its native `libfatzaudio.so` (cmake/ninja), BASS for Linux, FFmpeg 9 LGPL, PulseAudio
+  with a null sink, Mesa lavapipe:
+  - Linux.Tests **212 passed, 0 failed** (format matrix on both engines, player modes, FatzAudio engine,
+    first frame).
+  - `LinuxFirstFrameNativeTests`, 4 tests: Background mode and **Full mode with sound on BASS and on
+    FatzAudio**: a load before the surface attaches (no autoplay, nothing attached during the load) still
+    reaches the surface on attach, arms the first frame, and then plays on that surface (31-32 frames
+    in 1 s). The A/B swap reported every load's first frame after its frame reached the surface
+    (38-113 ms on this run).
+  - Vulkan tests 103 passed; Portable 1786, Avalonia 52.
+  - Cannot run here: anything on a Windows screen (WPF/D3D11, the demo window, the UI-thread numbers).
 - Not verified: anything on screen (same-frame swap, native timing, the counter's numbers).
 
 ## Manual smoke (Windows, PowerShell)

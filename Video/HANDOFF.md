@@ -1,7 +1,8 @@
 # Handoff
 
-Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6` (051A slice 1; PR open).
-`main` holds everything through PR #56.
+Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6`, restarted from `main` after PR #72 merged; it holds
+one unmerged commit (a Full-mode first-frame native test and these notes): open a PR with the next batch.
+`main` holds everything through PR #72.
 
 ## State
 
@@ -11,8 +12,10 @@ Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6` (051A slice 1; PR open).
   the bitmap-writing operation, after the host is visible); Core's tracker numbers loads
   (`FirstFrameLoad`). WPF `CompositedUiThreadTime`/`CompositedFramesPublished`, shown in the WPF test
   player's stats line (047A's before numbers come from the smoke). The 500 ms `StartupMediaDelay` is
-  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. The test players and
-  Linux.Tests were not built in that session (FatzAudio package not available): Windows CI is the check.
+  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. WPF player
+  `--ab-demo=` (A/B swap demo) and `scripts/smoke-051A.ps1` (6 tests). **PR #72 merged 2026-11-06, CI green.**
+  Sandbox after the merge: Linux 212/212 with real FFmpeg, BASS and FatzAudio (Full mode with sound,
+  load before attach, both engines). Waiting only for the owner's Windows run of the script.
 
 - **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
   `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
@@ -124,13 +127,18 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
 
-- Last results (2026-11-06): Portable 1786, Avalonia 52, Linux 203 + 9 FatzAudio native failures (no native
-  library in a managed-only pack); Vulkan 102 (2026-11-05); whole solution 0 warnings.
+- Last results (2026-11-06, after PR #72): Portable 1786, Avalonia 52, Linux 212 (all native suites, with
+  `FATZBOMB_LINUX_BASS_DIR=/opt/fatzbomb-native/bass` and PulseAudio: `pulseaudio --start --exit-idle-time=-1`,
+  `pactl load-module module-null-sink sink_name=null`), Vulkan 103 (`apt-get install mesa-vulkan-drivers`);
+  whole solution 0 warnings.
 - FatzAudio for a sandbox build without the token (2026-11-06): `add_repo` FatzBomb75/FatzAudio (public: the
   git proxy serves it), `git fetch --depth=1000 origin`, check out 59741a5 (rc.1),
   `dotnet pack bindings/dotnet/src/FatzAudio -c Release -p:VersionSuffix=rc.1 -o <feed>`, restore with a
-  `nuget.config` outside the repo mapping `FatzAudio` to that feed. Native FatzAudio tests also need
-  `libfatzaudio.so` built with cmake (see `updates/037A_2`).
+  `nuget.config` outside the repo mapping `FatzAudio` to that feed. For the native FatzAudio tests, first
+  `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build fatzaudio` (about 5 min), copy
+  `build/bin/libfatzaudio.so.1` to `bindings/dotnet/src/FatzAudio/runtimes/linux-x64/native/libfatzaudio.so`
+  before packing, delete `~/.nuget/packages/fatzaudio`, and `dotnet restore <project> --force` (a plain
+  restore keeps the old package contents).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
 Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three
@@ -161,7 +169,7 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next-session prompt
 
-> Read HANDOFF.md. 051A slice 1 is in review: check the PR's Windows CI and the owner's smoke results
-> (`docs/roadmap/updates/051A_1/StageUpdate.md`); fix what they find. When the smoke passes, move 051A to
-> `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), using the smoke's
-> composited UI-thread numbers as the before baseline.
+> Read HANDOFF.md. 051A slice 1 is merged (PR #72) and waits only for the owner's Windows run of
+> `scripts/smoke-051A.ps1` (desktop all tests, laptop `-Steps 3`). Read the results the owner pastes, fix
+> what they find, and when the smoke passes move 051A to `complete/`. Then start queue item 2, stage 047A
+> slice 1 (WPF shared GPU surface), with the smoke's composited UI-thread numbers as the before baseline.
