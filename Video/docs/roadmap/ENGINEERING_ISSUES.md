@@ -198,6 +198,14 @@ yet narrowed down: compare BASS and `--audio=fatz` on the same file, and with fa
 FatzAudio (2026-11-05): its seeks were hard cuts; a short fade fix is built and ships with its next
 release. Owner decision: checked on FatzAudio only; BASS is going away, so BASS-only audio issues are
 not fixed.
+
+Second case (owner 2026-11-06, WinForms player, 1080p video with sound on two screens, BASS): clicks and
+pops while just playing, no seeking, intermittently for at least 30 s, then shorter and mostly gone; with
+and without `scripts/measure-process.ps1` running. Video soundtracks still go through `VideoAudioEngine`
+into a BASS push stream (also with `--audio=fatz`), so FatzAudio's seek fade does not cover this. Suspected:
+the push stream running dry early (our feeding), not BASS. Owner decision: no fix on the BASS path; check it
+in 037A slice 5 (soundtracks on FatzAudio packet or push streams) with this same run, and add a dry-feed
+counter there if it is still heard.
 ### ENG-046 - WPF frame-sink (composited) resize lags behind the drag
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 4b: WPF with `--surface=framesink`): the video
