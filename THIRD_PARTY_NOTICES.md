@@ -27,4 +27,4 @@ FatzAudio's own code is proprietary (see [LICENSE](LICENSE)). This file covers t
 
 ## What this means for an app that ships FatzAudio
 
-The licenses above are permissive and static linking is allowed. Their notices must travel with your app: include this file, or the license text of each component you ship, in your app's about box or third-party notices.
+The licenses above are permissive and static linking is allowed. Their notices must travel with your app. [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) holds the full license text of every component above, with its copyright lines. It is in the root of the NuGet package. Ship it with your app, or show its text in your about box or third-party notices. `tools/gen/gen_third_party_licenses.py` writes it from the license files in `third_party/`; run it again after adding or updating a component.
