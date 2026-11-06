@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
+using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkPipeline = Silk.NET.Vulkan.Pipeline;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
@@ -87,12 +88,15 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     /// <see cref="ImageLayout.ColorAttachmentOptimal"/> and stays there; the CDG and subtitle
     /// images (when drawn) must be in <see cref="ImageLayout.ShaderReadOnlyOptimal"/>.
     /// </summary>
-    public void Record(CommandBuffer commandBuffer, Framebuffer framebuffer, in VulkanFramePlan plan, ImageView cdgView, ImageView subtitleView)
+    public void Record(CommandBuffer commandBuffer, Framebuffer framebuffer, in VulkanFramePlan plan, ImageView cdgView, VkBuffer cdgMap, ImageView subtitleView)
     {
         // Rewritten every frame: the previous submission has completed (fence wait), and handle
         // values may be reused after an image is re-created.
         if (plan.Cdg is not null)
+        {
             UpdateImageDescriptor(_cdgDescriptorSet, cdgView);
+            UpdateMapDescriptor(_cdgDescriptorSet, cdgMap);
+        }
         if (plan.Subtitle is not null)
             UpdateImageDescriptor(_subtitleDescriptorSet, subtitleView);
 
@@ -121,7 +125,13 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         }
 
         if (plan.Cdg is { Quad: var quad })
-            DrawTexturedQuad(commandBuffer, _cdgPipeline, _cdgDescriptorSet, quad, push);
+        {
+            // The CDG shader maps each pixel through cdgMap (ENG-049): it needs the clipped
+            // destination's origin and its column count, not texture coordinates.
+            PixelRect destination = quad.Destination;
+            (push[0], push[1], push[2], push[3]) = (destination.Left, destination.Top, destination.Right - destination.Left, 0f);
+            DrawQuad(commandBuffer, _cdgPipeline, _cdgDescriptorSet, destination, push);
+        }
 
         if (plan.Subtitle is { Quad: var subtitleQuad })
             DrawTexturedQuad(commandBuffer, _subtitlePipeline, _subtitleDescriptorSet, subtitleQuad, push);
@@ -147,11 +157,31 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     private void DrawTexturedQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, in VulkanOverlayQuad quad, float* push)
     {
         (push[0], push[1], push[2], push[3]) = quad.TexCoords;
+        DrawQuad(commandBuffer, pipeline, set, quad.Destination, push);
+    }
+
+    private void DrawQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, PixelRect destination, float* push)
+    {
         _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, pipeline);
         _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _layout, 0, 1, &set, 0, null);
-        SetRegion(commandBuffer, quad.Destination);
+        SetRegion(commandBuffer, destination);
         _vk.CmdPushConstants(commandBuffer, _layout, ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit, 0, PushConstantSize, push);
         _vk.CmdDraw(commandBuffer, 4, 1, 0, 0);
+    }
+
+    private void UpdateMapDescriptor(DescriptorSet set, VkBuffer buffer)
+    {
+        var bufferInfo = new DescriptorBufferInfo(buffer, 0, Vk.WholeSize);
+        var write = new WriteDescriptorSet
+        {
+            SType = StructureType.WriteDescriptorSet,
+            DstSet = set,
+            DstBinding = 1,
+            DescriptorCount = 1,
+            DescriptorType = DescriptorType.StorageBuffer,
+            PBufferInfo = &bufferInfo,
+        };
+        _vk.UpdateDescriptorSets(_device, 1, &write, 0, null);
     }
 
     public void Dispose()
@@ -205,14 +235,14 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         VulkanResult.Check(_vk.CreateSampler(_device, &samplerInfo, null, &sampler), "vkCreateSampler");
         _sampler = sampler;
 
-        var binding = new DescriptorSetLayoutBinding
+        // Binding 1, the CDG source map (ENG-049), is used only by the CDG shader; the subtitle set
+        // leaves it unwritten, which is allowed for a binding its shader does not use.
+        var bindings = stackalloc DescriptorSetLayoutBinding[]
         {
-            Binding = 0,
-            DescriptorType = DescriptorType.CombinedImageSampler,
-            DescriptorCount = 1,
-            StageFlags = ShaderStageFlags.FragmentBit,
+            new() { Binding = 0, DescriptorType = DescriptorType.CombinedImageSampler, DescriptorCount = 1, StageFlags = ShaderStageFlags.FragmentBit },
+            new() { Binding = 1, DescriptorType = DescriptorType.StorageBuffer, DescriptorCount = 1, StageFlags = ShaderStageFlags.FragmentBit },
         };
-        var setLayoutInfo = new DescriptorSetLayoutCreateInfo { SType = StructureType.DescriptorSetLayoutCreateInfo, BindingCount = 1, PBindings = &binding };
+        var setLayoutInfo = new DescriptorSetLayoutCreateInfo { SType = StructureType.DescriptorSetLayoutCreateInfo, BindingCount = 2, PBindings = bindings };
         DescriptorSetLayout setLayout;
         VulkanResult.Check(_vk.CreateDescriptorSetLayout(_device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout");
         _setLayout = setLayout;
@@ -231,8 +261,12 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _layout = layout;
 
         // One set for the CDG texture and one for the subtitle texture.
-        var poolSize = new DescriptorPoolSize(DescriptorType.CombinedImageSampler, 2);
-        var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 2, PoolSizeCount = 1, PPoolSizes = &poolSize };
+        var poolSizes = stackalloc DescriptorPoolSize[]
+        {
+            new(DescriptorType.CombinedImageSampler, 2),
+            new(DescriptorType.StorageBuffer, 2),
+        };
+        var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 2, PoolSizeCount = 2, PPoolSizes = poolSizes };
         DescriptorPool pool;
         VulkanResult.Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool");
         _descriptorPool = pool;

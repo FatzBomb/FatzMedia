@@ -191,6 +191,14 @@ delta 255). lavapipe matches exactly, so the GPU's nearest-texel rounding at tex
 from the Software renderer's integer mapping. Not visible in practice. Fix: compute the source texel in
 the shader with the Software renderer's integer formula (`texelFetch`) instead of a nearest sampler.
 
+Fix (2026-11-06, pending the owner's Vulkan test run on the RTX 5090): computing the texel in the shader in
+float cannot match the software renderer's double-precision mapping (a simulation over 29 million
+destination columns at every output size from 50 to 4000 found 2,400 to 7,800 mismatches whichever float
+formula was used). So the CPU writes the software renderer's own source column and row for every drawn pixel
+(`VulkanCompositionPlanner.WriteCdgSourceMap`, from `NearestSampledPlacement`) into a small storage buffer,
+and `cdg.frag` reads the texel through it with `texelFetch`. The GPU does no rounding of its own. On
+lavapipe: all CD+G tests exact, and they fail when the map is deliberately broken.
+
 ### ENG-048 - FatzAudio loudness cache never written on a fresh machine (fixed)
 
 Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a
