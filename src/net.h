@@ -37,7 +37,6 @@ int fa_playlist_first_entry(const char* text, const char* base, char* out, size_
 /* Base64 of `n` bytes into `out` (cap >= 4 * ((n + 2) / 3) + 1). */
 void fa_base64(const uint8_t* in, size_t n, char* out);
 /* Case-insensitive ASCII compare of at most n characters. */
-int fa_strncasecmp_ascii(const char* a, const char* b, size_t n);
 
 /* Value of header `name` in `headers` ("Name: value\r\n" lines), trimmed, into `out`.
  * Returns out, or NULL if absent. */

@@ -393,7 +393,7 @@ static void write_residual(bitw* w, const int32_t* r, int n, int pred_order, con
                         uint32_t v;
                         nbits -= 32;
                         v = (uint32_t)(acc >> nbits);
-                        o[0] = (uint8_t)(v >> 24); o[1] = (uint8_t)(v >> 16); o[2] = (uint8_t)(v >> 8); o[3] = (uint8_t)v;
+                        fa_put_be32(o, v);
                         o += 4;
                     }
                 } else {

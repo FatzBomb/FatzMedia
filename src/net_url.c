@@ -4,19 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
-
-int fa_strncasecmp_ascii(const char* a, const char* b, size_t n)
-{
-    size_t i;
-    for (i = 0; i < n; i++) {
-        char x = lower(a[i]), y = lower(b[i]);
-        if (x != y) return (unsigned char)x - (unsigned char)y;
-        if (!x) return 0;
-    }
-    return 0;
-}
-
 static int copy_n(char* out, size_t cap, const char* s, size_t n)
 {
     if (n >= cap) return -1;

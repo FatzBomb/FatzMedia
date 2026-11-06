@@ -1685,17 +1685,6 @@ static void cat_part(char* d, size_t cap, const char* sep, const char* label, co
     *any = 1;
 }
 
-static int same_ci(const char* a, const char* b)
-{
-    for (; *a && *b; a++, b++) {
-        int x = (unsigned char)*a, y = (unsigned char)*b;
-        if (x >= 'A' && x <= 'Z') x += 32;
-        if (y >= 'A' && y <= 'Z') y += 32;
-        if (x != y) return 0;
-    }
-    return *a == *b;
-}
-
 /* "Length  3:25" (or 1:02:03), "" when the length is unknown. */
 static void length_text(const fa_lyric* l, char* d, size_t cap)
 {
@@ -1737,7 +1726,7 @@ static void info_text(const fa_lyric* l, int ending, char* d, size_t cap)
     d[0] = 0;
     if (!ending && l->named) {
         tmp[0] = 0;
-        if (c->writer[0] && c->lyricist[0] && same_ci(c->writer, c->lyricist)) {
+        if (c->writer[0] && c->lyricist[0] && fa_streq_ci(c->writer, c->lyricist)) {
             cat(tmp, sizeof(tmp), l->label[4]);
             cat(tmp, sizeof(tmp), " / ");
             cat(tmp, sizeof(tmp), l->label[5]);

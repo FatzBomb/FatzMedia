@@ -107,7 +107,7 @@ static fa_result mmc_read_cd_once(mmc_drive* m, int64_t lba, uint32_t count, uin
     fa_result r;
     uint32_t stride = FA_CD_SECTOR_BYTES + ((areas & FA_CD_AREA_C2) ? FA_CD_C2_BYTES : 0) +
                       ((areas & FA_CD_AREA_SUB) ? FA_CD_SUB_BYTES : 0);
-    cdb[2] = (uint8_t)(lba >> 24); cdb[3] = (uint8_t)(lba >> 16); cdb[4] = (uint8_t)(lba >> 8); cdb[5] = (uint8_t)lba;
+    fa_put_be32(cdb + 2, (uint32_t)lba);
     cdb[6] = (uint8_t)(count >> 16); cdb[7] = (uint8_t)(count >> 8); cdb[8] = (uint8_t)count;
     cdb[9] = (uint8_t)(0x10 | ((areas & FA_CD_AREA_C2) ? 0x02 : 0));   /* user data (+ C2 error bits) */
     cdb[10] = (uint8_t)((areas & FA_CD_AREA_SUB) ? 0x01 : 0);           /* raw P-W subcode */

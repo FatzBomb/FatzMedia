@@ -294,8 +294,7 @@ typedef struct fetch_ctx {
 
 static int has_suffix_ci(const char* url, const char* suffix)
 {
-    size_t ul = strcspn(url, "?#"), sl = strlen(suffix);
-    return ul >= sl && fa_strncasecmp_ascii(url + ul - sl, suffix, sl) == 0;
+    return fa_ends_with_ci_n(url, strcspn(url, "?#"), suffix);
 }
 
 static int playlist_type(const char* ct)

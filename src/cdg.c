@@ -279,11 +279,7 @@ fa_result fa_cdg_data_from_path(const char* path, fa_cdg_data** out)
     return fa_cdg_data_adopt(bytes, size, out);
 }
 
-static int ends_with_cdg(const char* name, size_t len)
-{
-    return len >= 4 && name[len - 4] == '.' &&
-           (name[len - 3] | 0x20) == 'c' && (name[len - 2] | 0x20) == 'd' && (name[len - 1] | 0x20) == 'g';
-}
+static int ends_with_cdg(const char* name, size_t len) { return fa_ends_with_ci_n(name, len, ".cdg"); }
 
 int fa_cdg_is_cdg_name(const char* name) { return ends_with_cdg(name, strlen(name)); }
 

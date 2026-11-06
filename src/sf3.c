@@ -23,8 +23,6 @@
 #define SF3_VORBIS 0x10
 #define SF3_MAX_SMPL_BYTES ((size_t)1 << 30)  /* decoded samples, like the largest SF2 accepted */
 
-static void wr16(uint8_t* p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
-static void wr32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
 
 typedef struct obuf { uint8_t* d; size_t n, cap; int oom; } obuf;
 
@@ -68,7 +66,7 @@ static size_t ob_begin(obuf* o, const char* id, const char* list_type)
 static void ob_end(obuf* o, size_t at)
 {
     if (o->oom) return;
-    wr32(o->d + at + 4, (uint32_t)(o->n - at - 8));
+    fa_put_le32(o->d + at + 4, (uint32_t)(o->n - at - 8));
     if ((o->n - at) & 1) ob_put(o, NULL, 1);
 }
 
@@ -157,7 +155,7 @@ static uint32_t decode_vorbis(const uint8_t* p, size_t n, obuf* out)
             for (i = 0; i < got; i++) {
                 float v = buf[i * ch] * 32767.0f;
                 long s = lrintf(v < -32768.0f ? -32768.0f : v > 32767.0f ? 32767.0f : v);
-                wr16(at + i * 2, (uint32_t)(uint16_t)(int16_t)s);
+                fa_put_le16(at + i * 2, (uint32_t)(uint16_t)(int16_t)s);
             }
             frames += (uint32_t)got;
         }
@@ -220,11 +218,11 @@ fa_result fa_sf3_to_sf2(const uint8_t* d, size_t n, uint8_t** out, size_t* out_n
          * nothing) would make a small file a huge bank. */
         if ((size_t)at + frames + SF2_PAD > 0x7FFFFFFFu || smpl.n >= SF3_MAX_SMPL_BYTES) { free(smpl.d); free(shdr.d); return FA_ERROR_UNSUPPORTED_FORMAT; }
         ob_put(&smpl, NULL, SF2_PAD * 2);
-        wr32(rec + 20, at);
-        wr32(rec + 24, at + frames);
-        wr32(rec + 28, at + sl);
-        wr32(rec + 32, at + el);
-        wr16(rec + 44, type);
+        fa_put_le32(rec + 20, at);
+        fa_put_le32(rec + 24, at + frames);
+        fa_put_le32(rec + 28, at + sl);
+        fa_put_le32(rec + 32, at + el);
+        fa_put_le16(rec + 44, type);
         ob_put(&shdr, rec, SHDR_SIZE);
     }
     if (smpl.oom || shdr.oom) { free(smpl.d); free(shdr.d); return FA_ERROR_OUT_OF_MEMORY; }

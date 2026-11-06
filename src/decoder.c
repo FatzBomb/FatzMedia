@@ -39,14 +39,7 @@ static int list_contains(const char* list, const char* item, size_t item_len)
         const char* end = strchr(list, ';');
         size_t len = end ? (size_t)(end - list) : strlen(list);
         if (len == item_len) {
-            size_t i;
-            for (i = 0; i < len; i++) {
-                char a = list[i], b = item[i];
-                if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
-                if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
-                if (a != b) break;
-            }
-            if (i == len) return 1;
+            if (fa_strncasecmp_ascii(list, item, len) == 0) return 1;
         }
         list = end ? end + 1 : NULL;
     }

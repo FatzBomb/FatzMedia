@@ -21,8 +21,52 @@ static inline uint32_t fa_le32(const uint8_t* p)
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 static inline uint64_t fa_le64(const uint8_t* p) { return (uint64_t)fa_le32(p) | ((uint64_t)fa_le32(p + 4) << 32); }
+/* Byte-order writers (the counterparts of the readers above). */
+static inline void fa_put_le16(uint8_t* p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static inline void fa_put_le32(uint8_t* p, uint32_t v)
+{
+    p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
+}
+static inline void fa_put_le64(uint8_t* p, uint64_t v)
+{
+    fa_put_le32(p, (uint32_t)v);
+    fa_put_le32(p + 4, (uint32_t)(v >> 32));
+}
+static inline void fa_put_be16(uint8_t* p, uint32_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
+static inline void fa_put_be32(uint8_t* p, uint32_t v)
+{
+    p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
+}
 #define FA_PI 3.14159265358979323846
 #define FA_FOURCC(a, b, c, d) (((uint32_t)(a) << 24) | ((uint32_t)(b) << 16) | ((uint32_t)(c) << 8) | (uint32_t)(d))
+
+/* ASCII case-insensitive comparison (C locale rules whatever the process locale): like strncmp, then the
+ * difference of the first unequal lower-cased bytes. */
+static inline int fa_strncasecmp_ascii(const char* a, const char* b, size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        unsigned char x = (unsigned char)a[i], y = (unsigned char)b[i];
+        if (x >= 'A' && x <= 'Z') x = (unsigned char)(x - 'A' + 'a');
+        if (y >= 'A' && y <= 'Z') y = (unsigned char)(y - 'A' + 'a');
+        if (x != y) return (int)x - (int)y;
+        if (!x) return 0;
+    }
+    return 0;
+}
+/* 1 if the two strings are equal ignoring ASCII case. */
+static inline int fa_streq_ci(const char* a, const char* b)
+{
+    size_t n = strlen(a);
+    return n == strlen(b) && fa_strncasecmp_ascii(a, b, n) == 0;
+}
+/* 1 if the first `len` bytes of `s` end with `suffix` (ASCII case-insensitive). */
+static inline int fa_ends_with_ci_n(const char* s, size_t len, const char* suffix)
+{
+    size_t m = strlen(suffix);
+    return len >= m && fa_strncasecmp_ascii(s + len - m, suffix, m) == 0;
+}
+static inline int fa_ends_with_ci(const char* s, const char* suffix) { return fa_ends_with_ci_n(s, strlen(s), suffix); }
 
 /* malloc'd copy of the first `n` bytes of `s`, plus a terminator. */
 static inline char* fa_strndup(const char* s, size_t n)
