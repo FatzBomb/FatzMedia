@@ -26,6 +26,10 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
     (every other audio codec FatzAudio can license: TrueHD, DTS-HD lossless, APE, WavPack, Musepack, TTA,
     DSD, RealAudio, more containers; FFmpeg push stays only where licensing blocks FatzAudio):
     `docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`; the 037A slice 5 plan uses them.
+  - FatzAudio is adding native builds for win-arm64, linux-arm64, osx (one universal arm64+x64 dylib),
+    android and iOS (xcframework) to its CI and package, after rc.4 (rc.4 does not wait); layout agreed
+    (`runtimes/<rid>/native/`, `runtimes/osx/native/` for the universal library). Our side: 059A (ARM),
+    058A (FFmpeg for the same targets), macOS platform package and renderer still to do (026A/026B).
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**

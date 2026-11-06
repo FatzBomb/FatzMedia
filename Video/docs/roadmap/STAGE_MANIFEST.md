@@ -135,6 +135,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   position, events and surfaces.
 - `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
   SharpCompress and rar dropped; after FatzAudio's archive API.
+- `future/059A_IDEA_Arm64Targets.md` - **planned** (owner 2026-11-06): win-arm64 and linux-arm64 builds,
+  natives (FatzAudio is adding them; FFmpeg via 058A) and an ARM smoke.
 - `future/058A_IDEA_ShipFfmpegWithTheControl.md` - **planned** (owner 2026-11-06): the LGPL FFmpeg
   libraries ship in runtime packages (win-x64, linux-x64) with the licence, notices and source; no GPL
   or nonfree build; replaces the host-owned FFmpeg policy (023A).

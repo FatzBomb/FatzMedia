@@ -9,12 +9,15 @@ the 023A policy; `docs/NATIVE_DEPENDENCIES.md` is rewritten with it.
 
 ## Scope
 
-1. **Runtime packages** `FatzBomb.MediaControl.Native.FFmpeg` for `win-x64` and `linux-x64`: the seven
+1. **Runtime packages** `FatzBomb.MediaControl.Native.FFmpeg`, first for `win-x64` and `linux-x64`: the seven
    FFmpeg 9.0.x shared libraries under `runtimes/<rid>/native/`, copied to the output by the build
    (FatzAudio's model). The Windows and Linux platform packages reference them. First a pinned,
    repacked LGPL shared build with its archive URL, SHA-256 and configure line recorded (Linux: the
    BtbN LGPL build the sandbox uses; Windows: the 9.0.2 LGPL v3 build the owner's players use now);
-   our own CI build later (reproducible, and can drop unused parts for size).
+   our own CI build later (reproducible, and can drop unused parts for size). Planned for every target
+   FatzAudio ships (2026-11-06: win-arm64, linux-arm64, `osx` universal arm64+x64, android, iOS as an
+   xcframework), each added as that platform becomes real (ARM: 059A; macOS: 026A/026B), so audio and
+   video arrive together per platform.
 2. **Licence compliance in the package:** the LGPL text matching the build, a third-party notices file
    copied into the app's output (FFmpeg credit, and the libraries the build links), and the exact
    source tarball plus build configuration for each pinned version published or linked from the
