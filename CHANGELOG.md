@@ -18,6 +18,9 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- WavPack: `.wv` files play built in (libwavpack 5.9.0, BSD-3-Clause, decoder only): lossless and hybrid (without the `.wvc`
+  correction file), 8 to 32-bit integer, 32-bit float, up to 32 channels, and DSD64/DSD128 as PCM at 1/8 of its rate. Codec and
+  container `wavpack`; exact seeks; tags from the APEv2 tag at the end.
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.

@@ -9,6 +9,7 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_mp3,
     &fa_decoder_mp2,
     &fa_decoder_au,
+    &fa_decoder_wavpack,
     &fa_decoder_mp4,
     &fa_decoder_mkv,
     &fa_decoder_ogg,
@@ -25,6 +26,10 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_cdg,
 };
 const uint32_t fa_decoder_registry_count = (uint32_t)(sizeof(fa_decoder_registry) / sizeof(fa_decoder_registry[0]));
+/* fa_decoder_open scores every format in arrays of this size: a registry that outgrows
+ * it fails to compile instead of losing formats. */
+#define FA_DECODER_MAX 32
+typedef char fa_decoder_registry_fits[(sizeof(fa_decoder_registry) / sizeof(fa_decoder_registry[0]) <= FA_DECODER_MAX) ? 1 : -1];
 
 /* Is `item` one of the ';'-separated entries of `list` (ASCII case-insensitive)? */
 static int list_contains(const char* list, const char* item, size_t item_len)
@@ -70,7 +75,7 @@ static void whole_file_size(fa_decoder* dec)
     uint32_t bits;
     if (dec->audio_bytes >= 0 || !src->seekable || src->remote || src->length <= 0) return;
     if (strcmp(c, "mp3") != 0 && strcmp(c, "adts") != 0 && strcmp(c, "ac3") != 0 && strcmp(c, "ec3") != 0 &&
-        strcmp(c, "flac") != 0)
+        strcmp(c, "flac") != 0 && strcmp(c, "wavpack") != 0)
         return;
     at = fa_source_tell(src);
     fa_tags_audio_span(src, &start, &end, &bits);
@@ -106,7 +111,6 @@ int fa_decoder_recognizes(const uint8_t* data, size_t size)
 {
     uint32_t i, count = fa_decoder_registry_count;
     size_t n = size < FA_PROBE_BYTES ? size : FA_PROBE_BYTES, id3;
-    if (count > 24) count = 24;
     if (n == 0) return 1;
     id3 = fa_probe_id3v2_size(data, n);
     if (id3 > 0 && id3 + 16 > n) {
@@ -127,13 +131,12 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
     uint8_t after[FA_PROBE_BYTES];
     const uint8_t* head;
     size_t n, id3;
-    int scores[24];
-    int tried[24];
+    int scores[FA_DECODER_MAX];
+    int tried[FA_DECODER_MAX];
     uint32_t i, count = fa_decoder_registry_count;
     const char* ext = extension_of(name_hint);
     fa_result last = FA_ERROR_UNSUPPORTED_FORMAT;
 
-    if (count > 24) count = 24;
     memset(dec, 0, sizeof(*dec));
     n = fa_source_peek(src, &head);
     if (n == 0) return src->length == 0 ? FA_ERROR_UNSUPPORTED_FORMAT : !src->prefix_filled ? FA_ERROR_OUT_OF_MEMORY : FA_ERROR_IO;
