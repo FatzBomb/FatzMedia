@@ -79,7 +79,8 @@ Reported: 2026-11-05 (audit). `MediaControlPlayer.ResolveNativeLibraryPaths` thr
 `DirectoryNotFoundException` for a folder that does not exist, so each player filters its list first
 (`Player/Configuration/PlayerNativeLibraries.cs`, `Player.Avalonia/NativePaths.cs`,
 `Player.Shared/Hosting/PlayerNativePaths.cs`), while the Windows bootstrap and `LinuxNativeLibraryLocator`
-already skip missing folders. Proposed: skip it with a Warning (public behaviour change: owner's call).
+already skip missing folders. Proposed: skip it with a Warning (public behaviour change: owner's call). Owner 2026-11-06: folded into 058A (FFmpeg
+ships with the control, so native paths become a rarely used override).
 
 ### ENG-054 - Second-screen open/close copied in all three test players
 

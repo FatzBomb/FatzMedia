@@ -135,6 +135,9 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   position, events and surfaces.
 - `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
   SharpCompress and rar dropped; after FatzAudio's archive API.
+- `future/058A_IDEA_ShipFfmpegWithTheControl.md` - **planned** (owner 2026-11-06): the LGPL FFmpeg
+  libraries ship in runtime packages (win-x64, linux-x64) with the licence, notices and source; no GPL
+  or nonfree build; replaces the host-owned FFmpeg policy (023A).
 - `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
   `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
