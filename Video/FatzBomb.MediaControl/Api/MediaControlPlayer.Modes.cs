@@ -239,6 +239,7 @@ public partial class MediaControlPlayer
         _presentationCoordinator.VideoDisplayMode = state.VideoDisplayMode;
         _presentationCoordinator.BaseVisualTransform = state.BaseVisualTransform;
         CdgVisuals.BackgroundOpacity = state.CdgBackgroundOpacity;
+        _ = ApplyBackgroundPause();
     }
 
     /// <summary>

@@ -66,6 +66,7 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--net-ca-file=<path>` | An extra certificate authority file for `https` (`NetworkTlsPolicy.CertificateAuthorityFile`). |
 | `--net-allow-invalid-certs` | Accept invalid `https` certificates (`NetworkTlsPolicy.AllowInvalidCertificates`). |
 | `--trim-silence` | Trim leading and trailing silence (`SilenceTrimOptions.Enabled`). |
+| `--background-follows-media` | A background video follows the song: waits for Play, pauses with it, rewinds on Stop and at the end, restarts when it loops (`BackgroundFollowsMedia`). By default it loops on its own; the **BG** / **BG pause** button pauses it explicitly. |
 | `--reset-pitch-on-load`, `--reset-tempo-on-load` | `ResetPitchOnMediaLoad` and `ResetTempoOnMediaLoad`. |
 | `--eq=g1,...,g10` | Ten equalizer band gains in dB. Giving it turns the equalizer on. |
 | `--prepare-next=<file>` | Prepare an item to play next. |

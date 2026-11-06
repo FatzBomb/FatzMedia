@@ -52,6 +52,21 @@ Both pass the licence rule. Points for the stage:
   Cisco's own binaries), so it should be left out; H.264 decoding uses FFmpeg's own decoder or the GPU.
 - Our own CI build (step 1's "later") is the way to get both.
 
+## Owner decisions (2026-11-06)
+
+- **The control is sold under a proprietary licence** (closed source). The LGPL FFmpeg build loaded as
+  separate DLLs allows that; the obligations are scope item 2. BASS needs a commercial licence for as long
+  as it is in the control (until 037A removes it). The managed packages (FFmpeg.AutoGen, ManagedBass,
+  Silk.NET, SkiaSharp, Vortice, Avalonia, SharpCompress) are MIT: notices only.
+- **A trimmed, decode-only LGPL build:** keep every decoder, demuxer, parser, protocol, TLS, libxml2 (DASH),
+  dav1d, the hardware decoders (D3D11VA, D3D12VA, Vulkan, VAAPI) and libraries that only add reading
+  (tracker and game music, teletext and ARIB subtitles, JPEG XL, SVG). Drop encoders, muxers, encode-only
+  libraries (incl. OpenH264), NVENC/AMF/QSV encode and VMAF, ZeroMQ, chromaprint. The control never
+  encodes or muxes with FFmpeg (checked 2026-11-06; the fallback's WAV is written by our code) and uses
+  no FFmpeg filters. Acceptance: the Linux format matrix, network, subtitle and HDR tests and the owner's
+  backlog format test pass on the trimmed build; anything that stops playing goes back in.
+- **One pinned FFmpeg version for every platform.**
+
 ## Open for the owner before a paid release (not a blocker for this stage)
 
 Codec patents (H.264, HEVC, AAC and others) are separate from FFmpeg's copyright licence and depend on

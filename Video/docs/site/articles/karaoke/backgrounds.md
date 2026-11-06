@@ -96,11 +96,14 @@ Things to know:
 
 A video background is silent and its audio is never decoded. It behaves like this:
 
-- It **loops** for as long as the song plays, and restarts from its first frame at the end of
-  each pass.
-- It starts when you press **play**, pauses on **pause**, and goes back to its beginning on
-  **stop**. Loading a song shows the first frame of the video until play is called.
-- It is not synchronised with the song position. It is decoration, with its own timeline.
+- It **loops on its own** while it is shown, restarting from its first frame at the end of each
+  pass: from the moment the song loads, through the song's play, pause, stop, end and loop. It is
+  not synchronised with the song position. It is decoration, with its own timeline.
+- `PauseBackgroundAsync()` pauses it on its current frame until `ResumeBackgroundAsync()`, whatever
+  the song does (`IsBackgroundPaused` reads it). The pause holds across loads.
+- To have it follow the song instead, set `MediaPlayerConfiguration.BackgroundFollowsMedia = true`:
+  it then shows its first frame until play, pauses on pause, goes back to its beginning on stop
+  and at the end, and restarts when the song loops.
 - It is decoded for as long as it plays, so prefer modest resolutions for loops.
 
 An image background is just a still picture and costs nothing while the song plays.

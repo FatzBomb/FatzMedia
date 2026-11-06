@@ -9,7 +9,7 @@ using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
     private double _position;
     private int _cancelPendingNetworkOpenCount;
@@ -87,6 +87,20 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public Action? BeforeOpen { get; set; }
     public Action? BeforeStop { get; set; }
     public int PlayCount { get; private set; }
+
+    public bool IsBackgroundPaused { get; private set; }
+
+    public bool PauseBackground()
+    {
+        IsBackgroundPaused = true;
+        return true;
+    }
+
+    public bool ResumeBackground()
+    {
+        IsBackgroundPaused = false;
+        return true;
+    }
     public int StopCount { get; private set; }
     public int DisposeCount { get; private set; }
 
