@@ -14,17 +14,6 @@
 #define FA_TAGS_MAX_TEXT (16u << 20)     /* lyrics and comments longer than this are skipped */
 #define FA_LOUDNESS_TEXT_MAX 512
 
-static int ieq(const char* a, const char* b)
-{
-    for (; *a && *b; a++, b++) {
-        char x = *a, y = *b;
-        if (x >= 'a' && x <= 'z') x = (char)(x - 'a' + 'A');
-        if (y >= 'a' && y <= 'z') y = (char)(y - 'a' + 'A');
-        if (x != y) return 0;
-    }
-    return *a == *b;
-}
-
 /* "-6.54 dB" -> -6.54, independent of the C locale. NAN if no number. */
 static double parse_number(const char* s)
 {
@@ -40,18 +29,18 @@ static double parse_number(const char* s)
     return neg ? -v : v;
 }
 
-int fa_tags_key_is(const char* key, const char* name) { return ieq(key, name); }
+int fa_tags_key_is(const char* key, const char* name) { return fa_streq_ci(key, name); }
 
 void fa_tags_handle(const char* key, const char* value, fa_tag_loudness* out)
 {
     double v = parse_number(value);
     if (v != v) return;
-    if (ieq(key, "REPLAYGAIN_TRACK_GAIN")) out->track_lufs = -18.0 - v;
-    else if (ieq(key, "REPLAYGAIN_ALBUM_GAIN")) out->album_lufs = -18.0 - v;
-    else if (ieq(key, "R128_TRACK_GAIN")) out->track_lufs = -23.0 - v / 256.0;
-    else if (ieq(key, "R128_ALBUM_GAIN")) out->album_lufs = -23.0 - v / 256.0;
-    else if (ieq(key, "REPLAYGAIN_TRACK_PEAK") && v > 0.0) out->track_peak_db = 20.0 * log10(v);
-    else if (ieq(key, "REPLAYGAIN_ALBUM_PEAK") && v > 0.0) out->album_peak_db = 20.0 * log10(v);
+    if (fa_streq_ci(key, "REPLAYGAIN_TRACK_GAIN")) out->track_lufs = -18.0 - v;
+    else if (fa_streq_ci(key, "REPLAYGAIN_ALBUM_GAIN")) out->album_lufs = -18.0 - v;
+    else if (fa_streq_ci(key, "R128_TRACK_GAIN")) out->track_lufs = -23.0 - v / 256.0;
+    else if (fa_streq_ci(key, "R128_ALBUM_GAIN")) out->album_lufs = -23.0 - v / 256.0;
+    else if (fa_streq_ci(key, "REPLAYGAIN_TRACK_PEAK") && v > 0.0) out->track_peak_db = 20.0 * log10(v);
+    else if (fa_streq_ci(key, "REPLAYGAIN_ALBUM_PEAK") && v > 0.0) out->album_peak_db = 20.0 * log10(v);
 }
 
 const char* fa_tags_image_mime(const uint8_t* d, size_t n)
@@ -410,7 +399,7 @@ static void set_field(fa_tags* t, int field, int format, const char* key, const 
         t->field_key[field] = fa_strdup(key);
         t->field_format[field] = format;
         t->field_len[field] = t->field_cap[field] = t->fields[field] ? strlen(value) : 0;
-    } else if (t->field_format[field] == format && t->field_key[field] && ieq(t->field_key[field], key) &&
+    } else if (t->field_format[field] == format && t->field_key[field] && fa_streq_ci(t->field_key[field], key) &&
                strcmp(t->fields[field], value) != 0) {
         size_t a = t->field_len[field], b = strlen(value);
         if (b > MAX_JOINED || a + 2 + b > MAX_JOINED) return;
@@ -437,7 +426,7 @@ static void map_item(fa_tags* t, int format, const char* key, const char* value)
         const field_map* m = &field_maps[i];
         int field;
         if (m->format != format) continue;
-        if ((m->field & MAP_EXACT) ? strcmp(m->key, key) != 0 : !ieq(m->key, key)) continue;
+        if ((m->field & MAP_EXACT) ? strcmp(m->key, key) != 0 : !fa_streq_ci(m->key, key)) continue;
         field = m->field & 0xFF;
         if (m->field & MAP_SPLIT) {
             /* "3/12": number and total. */

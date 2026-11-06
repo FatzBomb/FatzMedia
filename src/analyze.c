@@ -234,24 +234,21 @@ static void put(bytes* b, const void* p, size_t n)
 static void put_u64(bytes* b, uint64_t v)
 {
     uint8_t x[8];
-    int i;
-    for (i = 0; i < 8; i++) x[i] = (uint8_t)(v >> (8 * i));
+    fa_put_le64(x, v);
     put(b, x, 8);
 }
 
 static void put_u32(bytes* b, uint32_t v)
 {
     uint8_t x[4];
-    int i;
-    for (i = 0; i < 4; i++) x[i] = (uint8_t)(v >> (8 * i));
+    fa_put_le32(x, v);
     put(b, x, 4);
 }
 
 static void put_u16(bytes* b, uint32_t v)
 {
     uint8_t x[2];
-    x[0] = (uint8_t)v;
-    x[1] = (uint8_t)(v >> 8);
+    fa_put_le16(x, v);
     put(b, x, 2);
 }
 

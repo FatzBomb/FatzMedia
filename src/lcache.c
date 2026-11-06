@@ -81,30 +81,28 @@ static uint32_t now_minutes(void)
     return t > 0 ? (uint32_t)((uint64_t)t / 60u) : 0;
 }
 
-static void put_u32(uint8_t* p, uint32_t v) { int i; for (i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (i * 8)); }
-static void put_u64(uint8_t* p, uint64_t v) { int i; for (i = 0; i < 8; i++) p[i] = (uint8_t)(v >> (i * 8)); }
-static void put_f32(uint8_t* p, float f) { uint32_t v; memcpy(&v, &f, 4); put_u32(p, v); }
+static void put_f32(uint8_t* p, float f) { uint32_t v; memcpy(&v, &f, 4); fa_put_le32(p, v); }
 static float get_f32(const uint8_t* p) { uint32_t v = fa_le32(p); float f; memcpy(&f, &v, 4); return f; }
 
 static void header(uint8_t* h)
 {
     memset(h, 0, LC_HDR);
     memcpy(h, LC_MAGIC, 12);
-    put_u32(h + 12, LC_VERSION);
+    fa_put_le32(h + 12, LC_VERSION);
 }
 
 static void encode(const lc_entry* x, uint32_t used, uint8_t* r)
 {
     memcpy(r, "FALR", 4);
-    put_u32(r + 4, used);
-    put_u64(r + 8, x->key);
-    put_u64(r + 16, (uint64_t)x->size);
-    put_u32(r + 24, (uint32_t)x->track);
+    fa_put_le32(r + 4, used);
+    fa_put_le64(r + 8, x->key);
+    fa_put_le64(r + 16, (uint64_t)x->size);
+    fa_put_le32(r + 24, (uint32_t)x->track);
     put_f32(r + 28, x->lufs);
     put_f32(r + 32, x->range);
     put_f32(r + 36, x->peak);
-    put_u32(r + 40, 0);
-    put_u32(r + 44, (uint32_t)fa_fnv1a(0xcbf29ce484222325ULL, r, 44));
+    fa_put_le32(r + 40, 0);
+    fa_put_le32(r + 44, (uint32_t)fa_fnv1a(0xcbf29ce484222325ULL, r, 44));
 }
 
 static int decode(const uint8_t* r, lc_entry* x)
@@ -350,11 +348,7 @@ static int same_path(const char* a, const char* b)
 {
 #if defined(_WIN32) || defined(__APPLE__)
     /* Folders whose names differ only in case are one folder there (by default). */
-    for (; *a && *b; a++, b++) {
-        int x = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a, y = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
-        if (x != y) return 0;
-    }
-    return *a == *b;
+    return fa_streq_ci(a, b);
 #else
     return strcmp(a, b) == 0;
 #endif

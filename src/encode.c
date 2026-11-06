@@ -138,13 +138,15 @@ fa_result fa_sink_write_u8(fa_enc_sink* s, uint32_t v)
 
 fa_result fa_sink_write_le16(fa_enc_sink* s, uint32_t v)
 {
-    uint8_t b[2] = { (uint8_t)v, (uint8_t)(v >> 8) };
+    uint8_t b[2];
+    fa_put_le16(b, v);
     return fa_sink_write(s, b, 2);
 }
 
 fa_result fa_sink_write_le32(fa_enc_sink* s, uint32_t v)
 {
-    uint8_t b[4] = { (uint8_t)v, (uint8_t)(v >> 8), (uint8_t)(v >> 16), (uint8_t)(v >> 24) };
+    uint8_t b[4];
+    fa_put_le32(b, v);
     return fa_sink_write(s, b, 4);
 }
 

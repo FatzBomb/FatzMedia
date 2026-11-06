@@ -191,8 +191,7 @@ static void id3_frame(uint8_t* tag, size_t* len, size_t cap, const char id[4], c
     need = 10 + n;
     if (*len + need > cap) return;
     memcpy(tag + *len, id, 4);
-    tag[*len + 4] = (uint8_t)(n >> 24); tag[*len + 5] = (uint8_t)(n >> 16);
-    tag[*len + 6] = (uint8_t)(n >> 8); tag[*len + 7] = (uint8_t)n;
+    fa_put_be32(tag + *len + 4, (uint32_t)n);
     tag[*len + 8] = 0; tag[*len + 9] = 0;
     memcpy(tag + *len + 10, body, n);
     *len += need;

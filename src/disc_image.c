@@ -529,11 +529,6 @@ static fa_result img_test_ready(void* h, int* out_state, int* out_changed)
     return FA_OK;
 }
 
-static void put_be32(uint8_t* p, int64_t v)
-{
-    p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
-}
-
 static fa_result img_read_toc(void* h, int format, int track, uint8_t* buf, uint32_t cap, uint32_t* out_len)
 {
     image* m = (image*)h;
@@ -553,11 +548,11 @@ static fa_result img_read_toc(void* h, int format, int track, uint8_t* buf, uint
                 const img_track* t = &m->tracks[i];
                 e[1] = (uint8_t)(0x10 | (t->audio ? 0 : 0x04) | (t->pre ? 0x01 : 0) | (t->dcp ? 0x02 : 0) | (t->four ? 0x08 : 0));
                 e[2] = (uint8_t)t->number;
-                put_be32(e + 4, t->lba);
+                fa_put_be32(e + 4, (uint32_t)t->lba);
             } else {
                 e[1] = 0x10;
                 e[2] = 0xAA;
-                put_be32(e + 4, m->leadout);
+                fa_put_be32(e + 4, (uint32_t)m->leadout);
             }
             len += 8;
         }
@@ -569,7 +564,7 @@ static fa_result img_read_toc(void* h, int format, int track, uint8_t* buf, uint
         resp[3] = (uint8_t)m->sessions;
         resp[5] = (uint8_t)(0x10 | (first_last->audio ? 0 : 0x04));
         resp[6] = (uint8_t)first_last->number;
-        put_be32(resp + 8, first_last->lba);
+        fa_put_be32(resp + 8, (uint32_t)first_last->lba);
         len = 12;
     } else if (format == 5) {
         if (!m->cdtext) return FA_ERROR_IO;   /* a drive answers ILLEGAL REQUEST: no CD-Text */

@@ -51,12 +51,6 @@ void fa_disc_copy_trimmed(char* out, size_t cap, const uint8_t* in, size_t n)
     out[len] = 0;
 }
 
-static int ends_with_ci(const char* s, const char* suffix)
-{
-    size_t n = strlen(s), m = strlen(suffix);
-    return n >= m && fa_strncasecmp_ascii(s + n - m, suffix, m) == 0;
-}
-
 static void disc_release(fa_disc* d)
 {
     int t, f;
@@ -961,7 +955,7 @@ FA_API fa_result FA_CALL fa_disc_open(const char* drive_id, const fa_disc_option
         if (fa_disc_platform_list(first, 1) == 0) return FA_ERROR_NOT_FOUND;
         drive_id = first[0];
     }
-    if (ends_with_ci(drive_id, ".cue")) r = fa_disc_image_open(drive_id, &ops, &h);
+    if (fa_ends_with_ci(drive_id, ".cue")) r = fa_disc_image_open(drive_id, &ops, &h);
     else r = fa_disc_platform_open(drive_id, &ops, &h);
     if (r != FA_OK) return r;
     return fa_disc_open_ops(ops, h, options, out_disc);
