@@ -15,7 +15,7 @@ Versioned output structs start with a `struct_size` that you set to `sizeof` bef
 
 FatzAudio's own code is original and proprietary: copyright (c) 2026 Keith (FatzBomb75), all rights reserved, no redistribution without written permission. See [LICENSE](../LICENSE). The third-party components below keep their own licenses.
 
-The third-party libraries that are built into the library (miniaudio, libopus, libvorbis, libogg, TinySoundFont, Signalsmith Stretch, libopenmpt, the LZMA SDK, bzip2, the Monkey's Audio SDK) are all permissively licensed and linked statically, so nothing else has to ship for them. Their names, versions, licenses and the notices your app should carry are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md); their full license texts are in [THIRD_PARTY_LICENSES.txt](../THIRD_PARTY_LICENSES.txt), which is in the NuGet package. Ship that file with your app.
+The third-party libraries that are built into the library (miniaudio, libopus, libvorbis, libogg, TinySoundFont, Signalsmith Stretch, libopenmpt, libwavpack, the LZMA SDK, bzip2, the Monkey's Audio SDK) are all permissively licensed and linked statically, so nothing else has to ship for them. Their names, versions, licenses and the notices your app should carry are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md); their full license texts are in [THIRD_PARTY_LICENSES.txt](../THIRD_PARTY_LICENSES.txt), which is in the NuGet package. Ship that file with your app.
 
 Loaded at run time and never bundled: LAME (LGPL, MP3 encoding only) and FFmpeg (never used by FatzAudio itself).
 

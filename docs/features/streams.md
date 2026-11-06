@@ -11,6 +11,7 @@ A stream is anything that produces audio. You open it from a file, a memory bloc
 | MP3 | MPEG-1, 2 and 2.5 Layer III, with or without ID3v2 tags | `mp3` |
 | MP2, MP1 | MPEG-1 and 2 Layers II and I (`.mp2`, `.mpa`, `.mp1`), with or without ID3v2 tags ([MP3, MP2 and MP1](#mp3-mp2-and-mp1)) | `mp2`, `mp1` |
 | AU, SND | Sun/NeXT `.au`/`.snd`: 8, 16, 24 and 32-bit PCM, 32 and 64-bit float, µ-law, A-law ([AU, G.711 and IMA4](#au-g711-and-ima4)) | `pcm`, `pcm_float`, `pcm_mulaw`, `pcm_alaw` (container `au`) |
+| WavPack | `.wv` files: lossless and hybrid (lossy) WavPack 4 and 5, 8 to 32-bit integer, 32-bit float, mono to 32 channels, and DSD, which plays as PCM at an eighth of its rate ([WavPack](#wavpack)) | `wavpack` (container `wavpack`) |
 | AAC (ADTS) | `.aac` files, AAC internet radio and AAC in HLS segments: AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP in ADTS frames, with or without ID3v2 tags ([AAC](#aac)) | `aac` (container `adts`) |
 | Ogg Opus, Ogg Vorbis, Ogg FLAC | `.opus`, `.ogg`, `.oga`, including chained files (one song after another) and Ogg files with several streams ([Ogg](#ogg-opus-and-ogg-vorbis)) | `opus`, `vorbis` or `flac` (container `ogg`) |
 | MP4, M4A, MOV | ISO MP4 and QuickTime, including fragmented MP4. Audio tracks only: video is never read | the track's codec: `aac`, `mp3`, `ac3`, `eac3`, `opus`, `flac`, `alac`, `pcm_*`, ... (container `mp4` or `mov`) |
@@ -248,6 +249,27 @@ MP3 files decode built in (minimp3, inside miniaudio), in 32-bit float: nothing 
 - **µ-law and A-law (G.711)** also play in CAF (`ulaw`, `alaw`) and in MP4/MOV (`ulaw`, `alaw`) files. The codec is `pcm_mulaw` or `pcm_alaw`, 8 bits per sample.
 - **IMA 4:1 ADPCM** (`ima4`, what QuickTime and Core Audio use for small old audio) plays in CAF and in QuickTime `.mov`/MP4, mono to any channel count. It matches FFmpeg's decode sample for sample. Like Apple's decoder, it keeps its own running predictor when a block's header agrees with it, so right after a seek (which starts from the header's 9-bit predictor) the first block can differ from a straight decode by up to 127 of 32768. The first moments of a file are quiet and rise slowly: that is the format, as ADPCM starts with a small step size.
 - The codecs also work inside `fa_stream_open_packets` (`pcm_mulaw`, `pcm_alaw`, `ima4`).
+
+## WavPack
+
+WavPack `.wv` files play with the ordinary open calls (path, memory, your own reader, URL, inside archives), decoded by David Bryant's libwavpack 5.9.0 (BSD-3-Clause), which is built into the library: no plugin, no system codec, no FFmpeg.
+
+- **What plays:** WavPack 4 and 5 files (everything written since 2004), lossless and hybrid, integer samples of 8 to 32 bits, 32-bit float, 1 to 32 channels in the file's channel order (the WAVE order: front left, front right, centre, LFE, ...), any sample rate up to 768 kHz. The length and `bits_per_sample` come from the file; seeks are exact (the library finds the block and decodes into it).
+- **Hybrid files** are read without their `.wvc` correction file, so they play their lossy part and report `bits_per_sample` 0. Lossless playback of a hybrid file through its correction file is not supported.
+- **DSD** (WavPack's DSD mode, from DSF or DSDIFF sources) plays as 24-bit PCM at one eighth of the DSD rate: DSD64 (2.8224 MHz) as 352.8 kHz, DSD128 as 705.6 kHz. DSD256 and faster would be over 768 kHz (`FA_MAX_SAMPLE_RATE`) and return `FA_ERROR_UNSUPPORTED_FORMAT`. The engine resamples to the device as for any other rate. `bits_per_sample` is 1. The decimation filter is libwavpack's own.
+- **Tags** are the APEv2 (or ID3v1) tag at the end of the file, read by `fa_tags_read_*` and `fa_stream_get_tags` like any other file's; its ReplayGain items feed [normalization](normalization.md) as other files' do.
+- **Not read:** WavPack 3 and older files (before 2004) and WavPack tracks inside Matroska return `FA_ERROR_UNSUPPORTED_FORMAT`. A damaged block decodes as silence and playback goes on.
+- `fa_stream_info`: codec and container `wavpack`; `audio_bytes` is the file without its tags.
+
+```c
+fa_stream* s = NULL;
+fa_stream_open_path(engine, "album/01.wv", NULL, &s);
+```
+
+```csharp
+using var s = engine.OpenFile("album/01.wv");
+Console.WriteLine($"{s.Info.Codec} {s.Info.BitsPerSample}-bit {s.Info.Format.SampleRate} Hz");
+```
 
 ## AAC
 

@@ -22,6 +22,7 @@ COMPONENTS = [
     ("libopenmpt", "libopenmpt/LICENSE", None),
     ("libopenmpt (src/mpt, Boost Software License 1.0)", "libopenmpt/src/mpt/LICENSE.BSL-1.0.txt", None),
     ("Monkey's Audio SDK", "monkeysaudio/License.txt", None),
+    ("libwavpack", "wavpack/COPYING", None),
     ("bzip2 (libbzip2)", "bzip2/LICENSE", None),
 ]
 

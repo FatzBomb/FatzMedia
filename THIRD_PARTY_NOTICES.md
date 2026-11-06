@@ -16,6 +16,7 @@ FatzAudio's own code is proprietary (see [LICENSE](LICENSE)). This file covers t
 | [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) | 0.6.4 | MIT | `third_party/signalsmith/signalsmith-linear` | FFT used by the stretcher |
 | [libopenmpt](https://lib.openmpt.org) | 0.8.9 | BSD-3-Clause (some files Boost Software License 1.0) | `third_party/libopenmpt` | Tracker modules (MOD, XM, S3M, IT and more) |
 | [Monkey's Audio SDK](https://monkeysaudio.com/developers.html) (decoder only) | 13.45 | BSD-3-Clause | `third_party/monkeysaudio` | Monkey's Audio (`.ape`) decoding. Marked FatzAudio changes, listed in its `README.md` |
+| [libwavpack](https://www.wavpack.com) (decoder only) | 5.9.0 | BSD-3-Clause | `third_party/wavpack` | WavPack `.wv` decoding, DSD to PCM included |
 | [LZMA SDK](https://www.7-zip.org/sdkinfo/) (xz, LZMA, LZMA2, CRC, SHA-256 and branch filters; decoder only) | 25.01 | Public domain | `third_party/lzma` | Reading `.xz`, `.tar.xz` and ZIP entries of method 14 and 95 |
 | [bzip2](https://sourceware.org/bzip2/) (libbzip2, decompressor only) | 1.0.8 | BSD-style (bzip2 license) | `third_party/bzip2` | Reading `.bz2`, `.tar.bz2` and ZIP entries of method 12. `bzlib.c` carries a marked patch (`PATCHES.md`) |
 

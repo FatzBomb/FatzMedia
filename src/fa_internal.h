@@ -261,6 +261,7 @@ extern const fa_decoder_vtable fa_decoder_mp3;
 extern const fa_decoder_vtable fa_decoder_mp2;
 extern const fa_decoder_vtable fa_decoder_au;
 extern const fa_decoder_vtable fa_decoder_ape;
+extern const fa_decoder_vtable fa_decoder_wavpack;
 /* Containers with packet codecs (demux_mp4.c, demux_mkv.c). */
 extern const fa_decoder_vtable fa_decoder_mp4;
 extern const fa_decoder_vtable fa_decoder_mkv;

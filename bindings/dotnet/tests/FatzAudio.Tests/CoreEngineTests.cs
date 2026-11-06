@@ -16,6 +16,7 @@ public class CoreEngineTests
         var formats = AudioEngine.SupportedFormats;
         Assert.Contains(formats, f => f.Name == "wav" && f.Extensions.Contains("wav"));
         Assert.Contains(formats, f => f.Name == "flac");
+        Assert.Contains(formats, f => f.Name == "wavpack" && f.Extensions.Contains("wv"));
         Assert.Contains(formats, f => f.Name == "mp3" && f.MimeTypes.Contains("audio/mpeg"));
         Assert.All(formats, f => Assert.False(string.IsNullOrEmpty(f.Description)));
     }
