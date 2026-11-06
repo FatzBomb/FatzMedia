@@ -38,6 +38,15 @@ internal sealed class DeviceHandle : SafeHandle
         return h;
     }
 
+    /// <summary>Frees a pinned state early (a callback registration that failed).</summary>
+    public void Unpin(GCHandle h)
+    {
+        lock (_pins)
+        {
+            if (_pins.Remove(h)) h.Free();
+        }
+    }
+
     protected override bool ReleaseHandle()
     {
         NativeMethods.fa_device_close(handle);

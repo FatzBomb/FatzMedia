@@ -16,6 +16,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ## Unreleased
 
+### Fixed
+
+- Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
+- .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
+- Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.
+
 ### Added
 
 - WavPack: `.wv` files play built in (libwavpack 5.9.0, BSD-3-Clause, decoder only): lossless and hybrid (without the `.wvc`
