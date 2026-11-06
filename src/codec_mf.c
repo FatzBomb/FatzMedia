@@ -8,6 +8,10 @@
  *    HEAACWAVEINFO's fields as MF_MT_USER_DATA (only configurations aac.c does not
  *    decode come here; ADTS frames never do). SBR doubles the rate: the output type
  *    says the rate.
+ *  - DTS: frames cut by dts.c, to a DTS-HD decoder (MFAudioFormat_DTS_HD, whole
+ *    frames with their extension substreams) or else a core one (MFAudioFormat_DTS
+ *    or _DTS_RAW, core frames), found by MFTEnumEx. Windows has none of its own:
+ *    only a machine whose maker installed one decodes DTS here.
  *  - ALAC is not taken: Windows' ALAC decoder accepts the stream's configuration
  *    (bare or in its 'alac' box) and then decodes nothing; codec_alac.c decodes it.
  * Their output is in WAVE channel order, which is the library's.
@@ -50,6 +54,11 @@ static const GUID fa_mf_aac = { 0x00001610, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 
 static const GUID fa_mt_aac_payload_type = { 0xbfbabe79, 0x7434, 0x4d1c, { 0x94, 0xf0, 0x72, 0xa3, 0xb9, 0xe1, 0x71, 0x88 } };
 static const GUID fa_mt_aac_profile_level = { 0x7632f0e6, 0x9538, 0x4d61, { 0xac, 0xda, 0xea, 0x29, 0xc8, 0xc1, 0x44, 0x56 } };
 static const GUID fa_mt_user_data = { 0xb6bc765f, 0x4c3b, 0x40a4, { 0xbd, 0x51, 0x25, 0x35, 0xb6, 0x6f, 0xe0, 0x9d } };
+/* DTS (mfapi.h): MFAudioFormat_DTS (WAVE_FORMAT_DTS), _DTS_RAW and _DTS_HD. Windows
+ * itself ships no DTS decoder; some PCs come with one from their maker. */
+static const GUID fa_mf_dts = { 0x00000008, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+static const GUID fa_mf_dts_raw = { 0xe06d8033, 0xdb46, 0x11cf, { 0xb4, 0xd1, 0x00, 0x80, 0x5f, 0x6c, 0xbb, 0xea } };
+static const GUID fa_mf_dts_hd = { 0xa2e58eb7, 0x0fa9, 0x48bb, { 0xa4, 0x0c, 0xfa, 0x0e, 0x15, 0x6d, 0x06, 0x45 } };
 
 /* ---- mfplat.dll at run time -------------------------------------------------------- */
 
@@ -395,7 +404,7 @@ static fa_result open_wma(fa_codec* c, const fa_codec_params* p, uint16_t tag, c
     return mf_finish(c, st, hr);
 }
 
-/* One input type for the AAC decoder. */
+/* One input type for a compressed-audio decoder (AAC: its payload type and profile too). */
 static HRESULT make_type(const GUID* subtype, uint32_t rate, uint32_t channels, uint32_t bits,
                          const uint8_t* user, size_t user_n, int aac, IMFMediaType** out)
 {
@@ -408,7 +417,7 @@ static HRESULT make_type(const GUID* subtype, uint32_t rate, uint32_t channels, 
     if (SUCCEEDED(hr)) hr = IMFMediaType_SetUINT32(t, &MF_MT_AUDIO_BITS_PER_SAMPLE, bits);
     if (SUCCEEDED(hr) && aac) hr = IMFMediaType_SetUINT32(t, &fa_mt_aac_payload_type, 0);   /* raw access units */
     if (SUCCEEDED(hr) && aac) hr = IMFMediaType_SetUINT32(t, &fa_mt_aac_profile_level, 0xFE);   /* not specified */
-    if (SUCCEEDED(hr)) hr = IMFMediaType_SetBlob(t, &fa_mt_user_data, user, (UINT32)user_n);
+    if (SUCCEEDED(hr) && user_n > 0) hr = IMFMediaType_SetBlob(t, &fa_mt_user_data, user, (UINT32)user_n);
     if (FAILED(hr) && t) { IMFMediaType_Release(t); t = NULL; }
     *out = t;
     return hr;
@@ -504,6 +513,24 @@ static fa_result open_aac(fa_codec* c, const fa_codec_params* p)
     return open_enum(c, &fa_mf_aac, rates, chans, tries, 16, users, user_n, 1, 1);
 }
 
+/* DTS frames as dts.c cuts them: "dtshd" (with the extension substreams) for a
+ * DTS-HD decoder, "dts" (core frames) for a core decoder. The container's rate and
+ * channels describe the core. */
+static fa_result open_dts(fa_codec* c, const fa_codec_params* p, int hd)
+{
+    const uint8_t* users[1] = { NULL };
+    size_t user_n[1] = { 0 };
+    uint32_t rates[1], chans[1];
+    fa_result r;
+    if (p->sample_rate == 0 || p->channels == 0 || p->channels > 8) return FA_ERROR_UNSUPPORTED_FORMAT;
+    rates[0] = p->sample_rate;
+    chans[0] = p->channels;
+    if (hd) return open_enum(c, &fa_mf_dts_hd, rates, chans, 1, 16, users, user_n, 1, 0);
+    r = open_enum(c, &fa_mf_dts, rates, chans, 1, 16, users, user_n, 1, 0);
+    if (r == FA_ERROR_UNSUPPORTED_FORMAT) r = open_enum(c, &fa_mf_dts_raw, rates, chans, 1, 16, users, user_n, 1, 0);
+    return r;
+}
+
 fa_result fa_mf_codec_open(fa_codec* c, const fa_codec_params* p)
 {
     const GUID* clsid = &fa_clsid_wma_dec;
@@ -516,11 +543,14 @@ fa_result fa_mf_codec_open(fa_codec* c, const fa_codec_params* p)
     else if (strcmp(p->codec, "wmalossless") == 0) tag = 0x0163;
     else if (strcmp(p->codec, "wmavoice") == 0) { tag = 0x000A; clsid = &fa_clsid_wmsp_dec; }
     else if (strcmp(p->codec, "aac") == 0) { tag = 0; kind = 1; }
+    else if (strcmp(p->codec, "dtshd") == 0) { tag = 0; kind = 2; }
+    else if (strcmp(p->codec, "dts") == 0) { tag = 0; kind = 3; }
     else return FA_ERROR_UNSUPPORTED_FORMAT;
     if (p->extradata_size > 0 && !p->extradata) return FA_ERROR_UNSUPPORTED_FORMAT;
     InitOnceExecuteOnce(&mf_once, mf_load, NULL, NULL);
-    if (!mf.ok) return kind == 1 ? FA_ERROR_UNSUPPORTED_FORMAT : FA_ERROR_PROVIDER_MISSING;
+    if (!mf.ok) return kind != 0 ? FA_ERROR_UNSUPPORTED_FORMAT : FA_ERROR_PROVIDER_MISSING;
     if (kind == 1) return open_aac(c, p);
+    if (kind >= 2) return open_dts(c, p, kind == 2);
     return open_wma(c, p, tag, clsid);
 }
 

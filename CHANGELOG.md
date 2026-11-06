@@ -25,6 +25,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- DTS and TrueHD through the system's decoder, where the machine has one (codecs step 4). FatzAudio has no DTS decoder of
+  its own (the DTS specification, ETSI TS 102 114, leaves out two tables every stream needs). It now reads DTS core and
+  DTS-HD frames in raw `.dts`/`.cpt` files (new reader: exact length and seeks, either byte order, ID3v2 and junk slid
+  over), Matroska, MP4, AVI and MPEG program and transport streams (DVD, Blu-ray), and hands them to Media Foundation
+  (Windows) or MediaCodec (Android; also TrueHD in Matroska and MP4). Pushed `dts` packets may be cut anywhere. Without a
+  system decoder (macOS, iOS, Linux, most PCs and phones) these still return `FA_ERROR_UNSUPPORTED_FORMAT` and
+  `fa_tags_read_*` still gives their details, so keep the FFmpeg hand-off for DTS and TrueHD. Raw `.dts` details now come
+  from that reader (exact length also for DTS-HD frames of varying size); DTS in MPEG streams is a track like any other.
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
