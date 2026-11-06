@@ -127,9 +127,9 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         if (plan.Cdg is { Quad: var quad })
         {
             // The CDG shader maps each pixel through cdgMap (ENG-049): it needs the clipped
-            // destination's origin and its column count, not texture coordinates.
+            // destination's origin and its column and row counts, not texture coordinates.
             PixelRect destination = quad.Destination;
-            (push[0], push[1], push[2], push[3]) = (destination.Left, destination.Top, destination.Right - destination.Left, 0f);
+            (push[0], push[1], push[2], push[3]) = (destination.Left, destination.Top, destination.Right - destination.Left, destination.Bottom - destination.Top);
             DrawQuad(commandBuffer, _cdgPipeline, _cdgDescriptorSet, destination, push);
         }
 

@@ -182,6 +182,9 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         {
             _grid.ResumeLayout(performLayout: false);
             ResumeLayout(performLayout: true);
+            // Once more at the final size, in case the form's layout left the grid's bounds as they were
+            // (setting the panels' bounds to the same values does nothing).
+            _grid.PerformLayout();
         }
     }
 

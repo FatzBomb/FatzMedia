@@ -264,8 +264,7 @@ internal static class VulkanCompositionPlanner
     public static void WriteCdgSourceMap(NearestSampledPlacement placement, Span<uint> map)
     {
         var columns = placement.ClippedRight - placement.ClippedLeft;
-        for (var index = 0; index < columns; index++)
-            map[index] = (uint)placement.GetSourceX(placement.ClippedLeft + index);
+        placement.MapColumns(System.Runtime.InteropServices.MemoryMarshal.Cast<uint, int>(map[..columns]));
         for (var row = placement.ClippedTop; row < placement.ClippedBottom; row++)
             map[columns + row - placement.ClippedTop] = (uint)placement.GetSourceY(row);
     }

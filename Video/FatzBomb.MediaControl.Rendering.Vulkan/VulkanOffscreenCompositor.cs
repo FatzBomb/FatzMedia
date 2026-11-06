@@ -237,15 +237,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
             if (plan.Cdg is { } cdgMapPlan)
             {
-                // Rewritten every frame (a few thousand values): the previous submission completed.
+                // Rewritten every frame (a few thousand values): the previous submission completed. The
+                // planner never plans an empty CDG quad, so the map always has at least one column and row.
                 NearestSampledPlacement placement = cdgMapPlan.Quad.Placement;
-                var columns = placement.ClippedRight - placement.ClippedLeft;
-                var rows = placement.ClippedBottom - placement.ClippedTop;
-                if (columns > 0 && rows > 0)
-                {
-                    BufferResource map = EnsureBuffer(ref _cdgMapBuffer, (ulong)(columns + rows) * sizeof(uint), BufferUsageFlags.StorageBufferBit, UploadMemoryPreferences);
-                    VulkanCompositionPlanner.WriteCdgSourceMap(placement, new Span<uint>((void*)map.Mapped, columns + rows));
-                }
+                var length = (placement.ClippedRight - placement.ClippedLeft) + (placement.ClippedBottom - placement.ClippedTop);
+                BufferResource map = EnsureBuffer(ref _cdgMapBuffer, (ulong)length * sizeof(uint), BufferUsageFlags.StorageBufferBit, UploadMemoryPreferences);
+                VulkanCompositionPlanner.WriteCdgSourceMap(placement, new Span<uint>((void*)map.Mapped, length));
             }
 
             var uploadSubtitle = false;
