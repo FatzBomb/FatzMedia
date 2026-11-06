@@ -42,6 +42,9 @@
     <None Include="..\..\..\..\LICENSE" Pack="true" PackagePath="\" />
     <!-- Native libraries staged under runtimes/<rid>/native in this project folder -->
     <None Include="runtimes\**\native\*" Pack="true" PackagePath="runtimes\" />
+    <!-- iOS: the xcframework (folders), and the MSBuild file that links it into iOS apps -->
+    <None Include="runtimes\ios\native\**" Pack="true" PackagePath="runtimes\ios\native\" />
+    <None Include="msbuild\FatzAudio.targets" Pack="true" PackagePath="build" />
     <!-- win-x64 library from the CMake build -->
     <None Include="$(FatzAudioNativeDir)\fatzaudio.dll"
           Condition="Exists('$(FatzAudioNativeDir)\fatzaudio.dll')"

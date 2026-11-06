@@ -1,0 +1,9 @@
+<Project>
+  <!-- .NET for iOS apps: link the xcframework the package carries. -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios' And Exists('$(MSBuildThisFileDirectory)../runtimes/ios/native/fatzaudio.xcframework')">
+    <NativeReference Include="$(MSBuildThisFileDirectory)../runtimes/ios/native/fatzaudio.xcframework">
+      <Kind>Framework</Kind>
+      <SmartLink>False</SmartLink>
+    </NativeReference>
+  </ItemGroup>
+</Project>

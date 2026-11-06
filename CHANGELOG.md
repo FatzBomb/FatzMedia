@@ -18,6 +18,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
 - Archives, step A5: details for files nobody decodes. `fa_tags_read_*` now fills `fa_stream_info` (codec, container, rate, channels, duration, size, bitrate) from the container for DTS, TrueHD, WMA off Windows and any other codec FatzAudio cannot decode, in Matroska, MP4, ASF, AVI and FLV, and for raw `.dts` core streams. New field `fa_stream_info.can_decode` at the end of the struct (.NET `StreamInfo.CanDecode`, `Tags.CanDecode`): 0 for those files, 1 otherwise. CAF `info` chunk tags (`FA_TAG_FORMAT_CAF`, .NET `TagFormat.Caf`). MediaControl can drop measuring these files with FFmpeg.
