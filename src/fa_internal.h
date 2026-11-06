@@ -1996,6 +1996,14 @@ extern fa_result (*fa_test_system_codec)(fa_codec* c, const fa_codec_params* p);
 void fa_codec_close(fa_codec* c);
 /* Makes room for `frames` more frames in c->out (keeping what is there). */
 fa_result fa_codec_reserve(fa_codec* c, fa_frames frames, uint32_t channels);
+/* Starts appending `frames` frames in this format to c->out: reserves room, sets c->channels and c->rate and
+ * returns where the frames go (the caller writes them, then adds them to c->out_frames); NULL if out of memory. */
+float* fa_codec_out_begin(fa_codec* c, fa_frames frames, uint32_t channels, uint32_t rate);
+/* Appends `size` bytes to a growing FIFO (buf, len, cap), doubling from `first_cap`. Nothing to do for size 0. */
+fa_result fa_bytes_append(uint8_t** buf, size_t* len, size_t* cap, size_t first_cap, const uint8_t* data, size_t size);
+/* Appends interleaved float frames (all of the call's output is in one format; the caller checks changes first).
+ * Nothing to do for frames <= 0. */
+fa_result fa_codec_append(fa_codec* c, const float* pcm, fa_frames frames, uint32_t channels, uint32_t rate);
 
 /* Device-rate conversion: the windowed-sinc resampler (resample.c) as a custom
  * backend for miniaudio's data converter (resample_device.c). */

@@ -227,14 +227,14 @@ static fa_result pull(fa_codec* c, mf_state* st)
         if (SUCCEEDED(hr)) hr = IMFMediaBuffer_Lock(buf, &data, NULL, &len);
         if (SUCCEEDED(hr)) {
             fa_frames have = (fa_frames)(len / (st->bytes * st->channels));
+            float* dst;
             frames = have;
             if (frames > 0 && c->out_frames > 0 && (c->channels != st->channels || c->rate != st->rate)) frames = 0;
-            if (frames > 0 && fa_codec_reserve(c, frames, st->channels) == FA_OK) {
+            dst = frames > 0 ? fa_codec_out_begin(c, frames, st->channels, st->rate) : NULL;
+            if (dst) {
                 const void* plane[1];
                 plane[0] = data;
-                c->channels = st->channels;
-                c->rate = st->rate;
-                fa_convert_to_f32(plane, st->kind, 0, 0, c->channels, frames, c->out + (size_t)c->out_frames * c->channels);
+                fa_convert_to_f32(plane, st->kind, 0, 0, c->channels, frames, dst);
                 c->out_frames += frames;
                 st->frames_out += frames;
             }

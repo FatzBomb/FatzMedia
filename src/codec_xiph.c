@@ -274,10 +274,9 @@ static fa_result vorbis_pkt_decode(fa_codec* c, const uint8_t* data, size_t size
     if (vorbis_synthesis(&st->vb, &op) != 0) return FA_ERROR_UNSUPPORTED_FORMAT;
     if (vorbis_synthesis_blockin(&st->vd, &st->vb) != 0) return FA_ERROR_UNSUPPORTED_FORMAT;
     while ((n = vorbis_synthesis_pcmout(&st->vd, &pcm)) > 0) {
-        fa_result r = fa_codec_reserve(c, n, c->channels);
-        if (r != FA_OK) return r;
-        xiph_reorder((const float* const*)pcm, NULL, (uint32_t)st->vi.channels, n,
-                     c->out + (size_t)c->out_frames * c->channels);
+        float* dst = fa_codec_out_begin(c, n, c->channels, c->rate);
+        if (!dst) return FA_ERROR_OUT_OF_MEMORY;
+        xiph_reorder((const float* const*)pcm, NULL, (uint32_t)st->vi.channels, n, dst);
         c->out_frames += n;
         vorbis_synthesis_read(&st->vd, n);
     }

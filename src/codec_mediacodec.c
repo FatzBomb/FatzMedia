@@ -136,15 +136,13 @@ static fa_result pull(fa_codec* c, mc_state* st, int64_t wait_us)
                 fa_frames frames = (fa_frames)((size_t)info.size / ((size_t)bytes * st->channels));
                 if (frames > 0) {
                     const void* plane[1];
-                    if (fa_codec_reserve(c, frames, st->channels) != FA_OK) {
+                    float* dst = fa_codec_out_begin(c, frames, st->channels, st->rate);
+                    if (!dst) {
                         mc.release_output(st->codec, (size_t)idx, 0);
                         return FA_ERROR_OUT_OF_MEMORY;
                     }
-                    c->rate = st->rate;
-                    c->channels = st->channels;
                     plane[0] = buf + info.offset;
-                    fa_convert_to_f32(plane, bytes == 4 ? FA_SAMPLE_F32 : FA_SAMPLE_S16, 0, 0, c->channels, frames,
-                                      c->out + (size_t)c->out_frames * c->channels);
+                    fa_convert_to_f32(plane, bytes == 4 ? FA_SAMPLE_F32 : FA_SAMPLE_S16, 0, 0, c->channels, frames, dst);
                     c->out_frames += frames;
                 }
             }
