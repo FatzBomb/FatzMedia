@@ -86,6 +86,17 @@ Laptop (only the UI-thread numbers, test 3):
 powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3
 ```
 
+No laptop yet (owner, 2026-11-06: not until software uses it). Test 3 on the desktop can add a rough
+stand-in, the player limited to 4 logical cores (fewer cores only; a laptop's slower memory, power limits
+and heat cannot be simulated):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3 -SimulateLaptop
+```
+
+The owner's comparison with the old trivia app on laptops with many videos (ours clearly better) stands
+as the laptop answer until TriviaBomb runs on one.
+
 | Test | Kind | What it checks |
 | --- | --- | --- |
 | 1 | automatic | WPF native and composited: the startup video gives exactly one `first frame ready` line naming its path; prints the seconds from window to first frame. |

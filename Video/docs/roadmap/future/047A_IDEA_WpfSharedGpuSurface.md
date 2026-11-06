@@ -25,7 +25,11 @@ desktop. The cost that matters is UI-thread time: each composited frame is writt
 
 **Before and after numbers:** 051A adds a UI-thread time counter to `WpfCompositedSurfaceHost`; measure
 2-3 composited 1080p60 surfaces under an animated WPF screen, on the desktop and on a laptop, before
-and after.
+and after. Laptop (owner, 2026-11-06): no laptop run until software uses it (TriviaBomb); the owner's
+comparison with the old trivia app on laptops with many videos showed ours clearly better, and is
+accepted as the laptop answer for now. The desktop numbers (`smoke-051A.ps1` test 3, optionally with
+`-SimulateLaptop`: the player limited to 4 logical cores, which cannot reproduce a laptop's memory
+bandwidth or power limits) are the before baseline; a real laptop measurement follows once TriviaBomb runs.
 
 **Slice 2 (owner 2026-11-05): composited video on its own thread.** Each composited surface hosts its
 video element on a dedicated dispatcher thread (`HostVisual` in the main tree, `VisualTarget` on the

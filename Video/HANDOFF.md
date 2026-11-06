@@ -151,8 +151,10 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
    question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
    resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
-2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`), including the A/B swap in TriviaBomb and the composited
-   UI-thread numbers on the desktop and the laptop; then start 047A slice 1 with those as the baseline.
+2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`) on the desktop (test 5 is the A/B demo;
+   test 3 with `-SimulateLaptop` adds a 4-core stand-in). **No laptop run** (owner 2026-11-06: not until
+   software uses it); the owner's comparison with the old trivia app on laptops (ours clearly better) is the
+   laptop answer for now. Then start 047A slice 1 with the desktop numbers as the baseline.
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
    Cache (FatzAudio's 2026-11-05 answer, on its main after rc.3): unset `CacheDirectory` then means

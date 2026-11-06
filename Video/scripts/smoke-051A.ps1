@@ -26,6 +26,9 @@
         -SkipGit    do not fetch, switch or pull
         -SkipBuild  do not rebuild first
         -Seconds    how long each measurement runs (default 30)
+        -SimulateLaptop  test 3 also measures one player limited to -LaptopCores logical cores
+                         (default 4), a rough stand-in for a laptop: fewer cores only; a laptop's
+                         slower memory, power limits and heat cannot be simulated
 #>
 [CmdletBinding()]
 param(
@@ -35,7 +38,9 @@ param(
     [string]$Steps = '',
     [switch]$SkipGit,
     [switch]$SkipBuild,
-    [int]$Seconds = 30
+    [int]$Seconds = 30,
+    [switch]$SimulateLaptop,
+    [int]$LaptopCores = 4
 )
 
 $ErrorActionPreference = 'Stop'
@@ -171,15 +176,16 @@ function Test-2 {
 }
 
 # 3. The composited UI-thread counter: 047A's before numbers.
-function Test-3 {
-    if (-not (Start-Step 3 'Composited UI-thread time (047A before numbers)' 'Reads the UI-thread ms/s and ms/frame of composited surfaces: one player at window size and maximized (automatic), then three players (you drop two files).' '5')) { return }
-    if (-not (Need-Media @('video'))) { return }
-    $power = [System.Windows.Forms.SystemInformation]::PowerStatus
-    Add-Info ("machine {0}; power: {1}, battery {2:P0}" -f $env:COMPUTERNAME, $power.PowerLineStatus, $power.BatteryLifePercent)
-    Add-Info "clip: $($Media.video)"
-
+# One composited player: readings at window size, then maximized. With $Cores > 0 the player may use
+# only that many logical cores (processor affinity; Windows resets it when the player closes).
+function Measure-OnePlayer([string]$Label, [string]$Tag, [int]$Cores) {
     $p = Start-Fresh 'Wpf' @('--surface=framesink', $Media.video)
-    if (-not $p) { Add-Check 'WPF player starts' $false; return }
+    if (-not $p) { Add-Check "${Label}: WPF player starts" $false; return }
+    if ($Cores -gt 0) {
+        $n = [Math]::Min([Math]::Min($Cores, [Environment]::ProcessorCount), 32)
+        $p.ProcessorAffinity = [IntPtr](([int64]1 -shl $n) - 1)
+        Add-Info "${Label}: the player is limited to logical cores 0-$($n - 1) of $([Environment]::ProcessorCount)"
+    }
     [void](Wait-LogText 'Wpf' 'first frame ready' 30)
     Start-Sleep -Seconds 3
     $window = @(Measure-UiThread (Collect-Stats 'Wpf' $Seconds))
@@ -187,9 +193,20 @@ function Test-3 {
     Start-Sleep -Seconds 3
     $maximized = @(Measure-UiThread (Collect-Stats 'Wpf' $Seconds))
     Stop-Player $p
-    [void](Save-RunLog 'Wpf' 'test3-one-player')
-    Add-Check 'one player: readings at window size' ($window.Count -gt 0) ($window -join '; ')
-    Add-Check 'one player: readings maximized' ($maximized.Count -gt 0) ($maximized -join '; ')
+    [void](Save-RunLog 'Wpf' $Tag)
+    Add-Check "${Label}: readings at window size" ($window.Count -gt 0) ($window -join '; ')
+    Add-Check "${Label}: readings maximized" ($maximized.Count -gt 0) ($maximized -join '; ')
+}
+
+function Test-3 {
+    if (-not (Start-Step 3 'Composited UI-thread time (047A before numbers)' 'Reads the UI-thread ms/s and ms/frame of composited surfaces: one player at window size and maximized (automatic), then three players (you drop two files).' '5')) { return }
+    if (-not (Need-Media @('video'))) { return }
+    $power = [System.Windows.Forms.SystemInformation]::PowerStatus
+    Add-Info ("machine {0}; power: {1}, battery {2:P0}" -f $env:COMPUTERNAME, $power.PowerLineStatus, $power.BatteryLifePercent)
+    Add-Info "clip: $($Media.video)"
+
+    Measure-OnePlayer 'one player' 'test3-one-player' 0
+    if ($SimulateLaptop) { Measure-OnePlayer "simulated laptop ($LaptopCores cores)" 'test3-simulated-laptop' $LaptopCores }
 
     $p = Start-Fresh 'Wpf' @('--surface=framesink', '--players=3', $Media.video)
     if (-not $p) { Add-Check 'WPF player (3 players) starts' $false; return }
@@ -353,7 +370,7 @@ if (-not $Steps) {
     Write-Host '   5  AG  A/B swap demo, 20 swaps (you watch)                   ~6 min'
     Write-Host '   6  A   Avalonia and WinForms startup                         ~2 min'
     Write-Host ''
-    Write-Host 'On the laptop, test 3 alone is enough: type 3.' -ForegroundColor DarkGray
+    Write-Host 'On the laptop, test 3 alone is enough: type 3. No laptop: add -SimulateLaptop for a rough stand-in.' -ForegroundColor DarkGray
     $Steps = Read-Host 'Which tests? Enter = all, or a list like 1,3'
 }
 if (-not $Steps -or $Steps.Trim().ToLowerInvariant() -eq 'all') { $selected = $all }
