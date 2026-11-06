@@ -22,29 +22,6 @@ public class SilenceTests
         return x;
     }
 
-    private static byte[] FloatWav(float[] samples)
-    {
-        int dataBytes = samples.Length * 4;
-        using var ms = new MemoryStream(44 + dataBytes);
-        using var w = new BinaryWriter(ms);
-        w.Write("RIFF"u8);
-        w.Write(36 + dataBytes);
-        w.Write("WAVE"u8);
-        w.Write("fmt "u8);
-        w.Write(16);
-        w.Write((short)3);
-        w.Write((short)1);
-        w.Write(Rate);
-        w.Write(Rate * 4);
-        w.Write((short)4);
-        w.Write((short)32);
-        w.Write("data"u8);
-        w.Write(dataBytes);
-        foreach (float s in samples) w.Write(s);
-        w.Flush();
-        return ms.ToArray();
-    }
-
     private static AudioEngine CreateHeadless(string? cache = null) =>
         AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
@@ -78,7 +55,7 @@ public class SilenceTests
         Pack(301, 1, 0, 1);
         Pack(302, 2, 0, 2);
         using var engine = CreateHeadless();
-        using var song = engine.OpenMemory(FloatWav(Tones(4, (2.0, 3.0))), DecodeOnly);
+        using var song = engine.OpenMemory(TestAudio.FloatWav(Tones(4, (2.0, 3.0)), Rate), DecodeOnly);
         var plain = song.DetectSilence();
         Assert.False(plain.HasDrawing);
         Assert.Null(plain.FirstDrawn);
@@ -96,7 +73,7 @@ public class SilenceTests
     public void DetectSilence_ShortFile_FindsEveryRegionAndSetsTheMarkers()
     {
         using var engine = CreateHeadless();
-        using var song = engine.OpenMemory(FloatWav(Tones(11, (1.5, 3.5), (4.0, 5.0), (8.0, 9.0))), DecodeOnly);
+        using var song = engine.OpenMemory(TestAudio.FloatWav(Tones(11, (1.5, 3.5), (4.0, 5.0), (8.0, 9.0)), Rate), DecodeOnly);
         var s = song.DetectSilence();
         Assert.True(s.IsComplete);
         Assert.False(s.FromCache);
@@ -162,7 +139,7 @@ public class SilenceTests
         try
         {
             using var engine = CreateHeadless(cache);
-            using var song = engine.OpenMemory(FloatWav(Tones(110, (2, 50), (60, 95))), DecodeOnly);
+            using var song = engine.OpenMemory(TestAudio.FloatWav(Tones(110, (2, 50), (60, 95)), Rate), DecodeOnly);
             var edge = song.DetectSilence();
             Assert.False(edge.IsComplete);
             Assert.Equal(2, edge.Regions.Count);
@@ -197,7 +174,7 @@ public class SilenceTests
     {
         var x = Tones(11, (1.5, 3.5), (4.0, 5.0), (8.0, 9.0));
         using var engine = CreateHeadless();
-        using var song = engine.OpenMemory(FloatWav(x), DecodeOnly);
+        using var song = engine.OpenMemory(TestAudio.FloatWav(x, Rate), DecodeOnly);
         var want = song.DetectSilence();
 
         using var detector = new SilenceDetector(AudioFormat.Float32(Rate, 1));

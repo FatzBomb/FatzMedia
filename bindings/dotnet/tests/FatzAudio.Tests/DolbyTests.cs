@@ -18,15 +18,6 @@ public class DolbyTests
         throw new FileNotFoundException(relative);
     }
 
-    private static float[] ReadAll(AudioStream s)
-    {
-        var all = new List<float>();
-        var buf = new float[4096 * s.Info.Format.Channels];
-        int frames;
-        while ((frames = s.Read(buf)) > 0) all.AddRange(buf.AsSpan(0, frames * s.Info.Format.Channels).ToArray());
-        return all.ToArray();
-    }
-
     [Fact]
     public void Ac3AndEac3_DecodeNatively()
     {
@@ -37,7 +28,7 @@ public class DolbyTests
             Assert.Equal(codec, s.Info.Codec);
             Assert.Equal(48000, s.Info.Format.SampleRate);
             Assert.Equal(2, s.Info.Format.Channels);
-            Assert.Equal(24576, ReadAll(s).Length / 2);
+            Assert.Equal(24576, TestAudio.ReadAllSamples(s).Length / 2);
         }
     }
 
@@ -50,7 +41,7 @@ public class DolbyTests
         Assert.Equal(DynamicRange.Full, full.DynamicRange);
         using var night = engine.OpenFile(path, new StreamOptions { DecodeOnly = true, DynamicRange = DynamicRange.Night });
         Assert.Equal(DynamicRange.Night, night.DynamicRange);
-        float[] a = ReadAll(full), b = ReadAll(night);
+        float[] a = TestAudio.ReadAllSamples(full), b = TestAudio.ReadAllSamples(night);
         Assert.Equal(a.Length, b.Length);
         Assert.Contains(a.Zip(b), p => Math.Abs(p.First - p.Second) > 1e-3f);
 

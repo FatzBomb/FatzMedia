@@ -5,6 +5,50 @@ namespace FatzAudio.Tests;
 
 public static class TestAudio
 {
+    /// <summary>Polls a condition until it holds (10 ms steps, 10 s deadline) and then asserts it. Wait on real conditions,
+    /// never on a transient state: a loaded runner can stall the engine threads for a while.</summary>
+    public static async Task WaitFor(Func<bool> condition, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+        while (!condition() && DateTime.UtcNow < deadline) await Task.Delay(10);
+        Assert.True(condition());
+    }
+
+    /// <summary>A 32-bit float mono WAV file.</summary>
+    public static byte[] FloatWav(float[] samples, int rate)
+    {
+        int dataBytes = samples.Length * 4;
+        using var ms = new MemoryStream(44 + dataBytes);
+        using var w = new BinaryWriter(ms);
+        w.Write("RIFF"u8);
+        w.Write(36 + dataBytes);
+        w.Write("WAVE"u8);
+        w.Write("fmt "u8);
+        w.Write(16);
+        w.Write((short)3);          // IEEE float
+        w.Write((short)1);          // mono
+        w.Write(rate);
+        w.Write(rate * 4);          // byte rate
+        w.Write((short)4);          // block align
+        w.Write((short)32);
+        w.Write("data"u8);
+        w.Write(dataBytes);
+        foreach (float s in samples) w.Write(s);
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>Reads a stream to its end into one interleaved array (defaults to the stream's channel count).</summary>
+    public static float[] ReadAllSamples(AudioStream s, int? channels = null, int piece = 4096)
+    {
+        int ch = channels ?? s.Info.Format.Channels;
+        var all = new List<float>();
+        var buf = new float[piece * ch];
+        int frames;
+        while ((frames = s.Read(buf)) > 0) all.AddRange(buf.AsSpan(0, frames * ch).ToArray());
+        return [.. all];
+    }
+
     /// <summary>Generates a 16-bit mono PCM WAV file with a sine tone.</summary>
     public static byte[] SineWav(double seconds = 1.0, int sampleRate = 44100, double frequency = 440.0)
     {
