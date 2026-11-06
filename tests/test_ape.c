@@ -268,6 +268,8 @@ static void test_damaged(void)
             int64_t n;
             float* p = read_all(s, 2, 80000, &n);
             CHECK(n <= 80000);
+            /* A damaged stretch costs that frame (silence), not the rest of the file. */
+            if (len == size) CHECK_EQ(n, 80000);
             (void)fa_stream_seek(s, 50000);
             free(p);
             fa_stream_close(s);

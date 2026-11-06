@@ -130,17 +130,24 @@ extern "C" fa_ape* fa_ape_open(const fa_ape_io* io, fa_ape_info* out_info, int* 
         const int64 nBits = pInfo->GetInfo(IAPEDecompress::APE_INFO_BITS_PER_SAMPLE);
         const int64 nRate = pInfo->GetInfo(IAPEDecompress::APE_INFO_SAMPLE_RATE);
         const int64 nAlign = pInfo->GetInfo(IAPEDecompress::APE_INFO_BLOCK_ALIGN);
+        /* The float flag is only valid on 32-bit samples: GetData's float transform
+         * writes 4 bytes a sample, past the end of a buffer sized for fewer. */
+        const bool bFloat = (pInfo->GetInfo(IAPEDecompress::APE_INFO_FORMAT_FLAGS) & APE_FORMAT_FLAG_FLOATING_POINT) != 0;
         if (nChannels < 1 || nChannels > 32 || nRate < 1 || nRate > 768000 ||
-            (nBits != 8 && nBits != 16 && nBits != 24 && nBits != 32) || nAlign != nChannels * (nBits / 8))
+            (nBits != 8 && nBits != 16 && nBits != 24 && nBits != 32) || nAlign != nChannels * (nBits / 8) ||
+            (bFloat && nBits != 32) || !SeekTableSane(pInfo, io->size, nAlign))
         {
             delete pInfo;
             fa_ape_close(a);
             return APE_NULL;
         }
-        if (!SeekTableSane(pInfo, io->size, nAlign))
+        /* Versions the SDK has no decompressor for: CreateIAPEDecompressEx2 would
+         * neither use nor delete pInfo (see MACLibDecode.cpp). */
+        if (nVersion > APE_FILE_VERSION_NUMBER && nVersion != 4110)
         {
             delete pInfo;
             fa_ape_close(a);
+            *error = 2;
             return APE_NULL;
         }
         a->dec = CreateIAPEDecompressEx2(pInfo, -1, -1, &nError);   /* deletes pInfo on failure */
@@ -155,7 +162,7 @@ extern "C" fa_ape* fa_ape_open(const fa_ape_io* io, fa_ape_info* out_info, int* 
         out_info->sample_rate = static_cast<uint32_t>(nRate);
         out_info->channels = static_cast<uint32_t>(nChannels);
         out_info->bits = static_cast<uint32_t>(nBits);
-        out_info->is_float = (d->GetInfo(IAPEDecompress::APE_INFO_FORMAT_FLAGS) & APE_FORMAT_FLAG_FLOATING_POINT) != 0;
+        out_info->is_float = bFloat;
         out_info->block_align = static_cast<uint32_t>(nAlign);
         out_info->total_blocks = d->GetInfo(IAPEDecompress::APE_INFO_TOTAL_BLOCKS);
         out_info->file_version = static_cast<int32_t>(nVersion);
@@ -194,7 +201,11 @@ extern "C" int fa_ape_read(fa_ape* a, void* out, int64_t frames, int64_t* got)
     if (a->broken) return APE_ERROR_UNDEFINED;
     try
     {
-        /* Float samples back to IEEE floats; 8-bit stays unsigned, byte order little-endian. */
+        /* Float samples back to IEEE floats. The SDK keeps every file's audio as
+         * little-endian with unsigned 8-bit (the encoder converts AIFF, CAF and SND
+         * input that way); the other two steps would turn it back into the original
+         * file's byte order and 8-bit sign, which only writing that file wants. These
+         * are the SDK's own playback defaults. */
         IAPEDecompress::APE_GET_DATA_PROCESSING processing = { true, false, false };
         int64 nGot = 0;
         const int nResult = a->dec->GetData(static_cast<unsigned char *>(out), frames, &nGot, &processing);

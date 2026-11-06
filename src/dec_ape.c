@@ -89,13 +89,20 @@ static fa_result ape_read(fa_decoder* dec, float* out, fa_frames frames, fa_fram
     ape_state* st = (ape_state*)dec->impl;
     uint32_t align = st->info.block_align;
     fa_frames done = 0;
+    int failed = 0;
     while (done < frames && st->pos < st->info.total_blocks) {
         int64_t want = (int64_t)(frames - done), n = 0;
         const void* plane[1];
+        int rc;
         if (want > (int64_t)(APE_CHUNK_BYTES / align)) want = APE_CHUNK_BYTES / align;
-        /* A damaged frame comes back as silence with an error: play on. */
-        fa_ape_read(st->ape, st->buf, want, &n);
-        if (n <= 0) break;
+        /* A damaged frame comes back as silence with an error: play on. An error
+         * with nothing decoded (a broken decoder, a damaged frame of a pre-3.93
+         * file) is not the end of the stream. */
+        rc = fa_ape_read(st->ape, st->buf, want, &n);
+        if (n <= 0) {
+            failed = rc != 0;
+            break;
+        }
         plane[0] = st->buf;
         fa_convert_to_f32(plane, st->kind, 0, 0, st->info.channels, (fa_frames)n, out + (size_t)done * st->info.channels);
         done += (fa_frames)n;
@@ -103,7 +110,8 @@ static fa_result ape_read(fa_decoder* dec, float* out, fa_frames frames, fa_fram
     }
     *got = done;
     if (done > 0) return FA_OK;
-    return dec->src->error != FA_OK ? FA_ERROR_IO : FA_ERROR_END_OF_STREAM;
+    if (dec->src->error != FA_OK) return FA_ERROR_IO;
+    return failed ? FA_ERROR_GENERIC : FA_ERROR_END_OF_STREAM;
 }
 
 static fa_result ape_seek(fa_decoder* dec, fa_frames frame)
@@ -114,7 +122,12 @@ static fa_result ape_seek(fa_decoder* dec, fa_frames frame)
         st->pos = st->info.total_blocks;   /* the SDK would stop one frame short of the end */
         return FA_OK;
     }
-    if (fa_ape_seek(st->ape, frame) != 0) return dec->src->error != FA_OK ? FA_ERROR_IO : FA_ERROR_GENERIC;
+    if (fa_ape_seek(st->ape, frame) != 0) {
+        fa_result r = dec->src->error != FA_OK ? FA_ERROR_IO : FA_ERROR_GENERIC;
+        /* The SDK may have moved part of the way: put it back where pos says it is. */
+        if (st->pos < st->info.total_blocks) (void)fa_ape_seek(st->ape, st->pos);
+        return r;
+    }
     st->pos = frame;
     return FA_OK;
 }
