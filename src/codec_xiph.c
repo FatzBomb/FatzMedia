@@ -218,7 +218,7 @@ int fa_xiph_split_headers(const uint8_t* p, size_t n, const uint8_t* out[3], siz
         for (pos = 0, i = 0; i < 3; i++) {
             size_t len;
             if (pos + 2 > n) return 0;
-            len = ((size_t)p[pos] << 8) | p[pos + 1];
+            len = fa_be16(p + pos);
             pos += 2;
             if (len > n - pos) return 0;
             out[i] = p + pos;

@@ -983,8 +983,8 @@ static fa_result flac_begin(void** impl, const fa_enc_format* f, const fa_enc_ta
     /* Tukey window, half of it tapered */
     for (i = 0; i < bs; i++) {
         double x = (double)i / (double)(bs - 1), a = 0.5, v = 1.0;
-        if (x < a / 2) v = 0.5 * (1 - cos(2 * 3.14159265358979323846 * x / a));
-        else if (x > 1 - a / 2) v = 0.5 * (1 - cos(2 * 3.14159265358979323846 * (1 - x) / a));
+        if (x < a / 2) v = 0.5 * (1 - cos(2 * FA_PI * x / a));
+        else if (x > 1 - a / 2) v = 0.5 * (1 - cos(2 * FA_PI * (1 - x) / a));
         st->win[i] = v;
     }
 

@@ -7,6 +7,7 @@
 #  define _POSIX_C_SOURCE 200809L
 #endif
 #include "disc.h"
+#include "fa_util.h"
 #include "net.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -135,7 +136,7 @@ static fa_result open_wave(img_file* f)
     for (;;) {
         uint32_t len;
         if (file_seek(f->f, pos) != 0 || fread(ck, 1, 8, f->f) != 8) return FA_ERROR_UNSUPPORTED_FORMAT;
-        len = (uint32_t)ck[4] | ((uint32_t)ck[5] << 8) | ((uint32_t)ck[6] << 16) | ((uint32_t)ck[7] << 24);
+        len = fa_le32(ck + 4);
         if (memcmp(ck, "fmt ", 4) == 0 && len >= 16) {
             if (fread(fmt, 1, 16, f->f) != 16) return FA_ERROR_UNSUPPORTED_FORMAT;
             fmt_ok = fmt[0] == 1 && fmt[1] == 0 && fmt[2] == 2 && fmt[3] == 0 &&

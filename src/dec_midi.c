@@ -2033,7 +2033,7 @@ static fa_result build(struct fa_midi* m, tml_message* first, const uint8_t* smf
 
     m->info.format = smf[9];
     m->smpte = (smf[12] & 0x80) != 0;
-    m->info.tracks = ((uint32_t)smf[10] << 8) | smf[11];
+    m->info.tracks = fa_be16(smf + 10);
     text_per_track = (uint32_t*)calloc(m->info.tracks ? m->info.tracks : 1, 2 * sizeof(uint32_t));
     if (!text_per_track) return FA_ERROR_OUT_OF_MEMORY;
     syl_per_track = text_per_track + (m->info.tracks ? m->info.tracks : 1);
