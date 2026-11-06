@@ -78,6 +78,7 @@ public partial class PlayerViewModel
         RunOnUiThread(() =>
         {
             _lastStreamTitle = string.Empty;
+            LoadingMediaText = uri.ToString();
             StreamInfoText = "Connecting...";
         });
         try

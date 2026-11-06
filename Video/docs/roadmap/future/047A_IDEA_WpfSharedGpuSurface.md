@@ -25,7 +25,16 @@ desktop. The cost that matters is UI-thread time: each composited frame is writt
 
 **Before and after numbers:** 051A adds a UI-thread time counter to `WpfCompositedSurfaceHost`; measure
 2-3 composited 1080p60 surfaces under an animated WPF screen, on the desktop and on a laptop, before
-and after.
+and after. Laptop (owner, 2026-11-06): no laptop run until software uses it (TriviaBomb); the owner's
+comparison with the old trivia app on laptops with many videos showed ours clearly better, and is
+accepted as the laptop answer for now. The desktop numbers (`smoke-051A.ps1` test 3, optionally with
+`-SimulateLaptop`: the player limited to 4 logical cores, which cannot reproduce a laptop's memory
+bandwidth or power limits) are the before baseline; a real laptop measurement follows once TriviaBomb runs.
+Before numbers (owner, 2026-11-06, RTX 5090 desktop, a 24 fps clip, `updates/051A_1`): one composited
+surface 1062x476: 6.2 ms/s (0.26 ms/frame); maximized 3398x1164: 33.6 ms/s (1.40 ms/frame); three at
+750x297: 2.5-2.8 ms/s (0.10-0.12 ms/frame) each. Per frame the cost grows with the pixels (about 0.35 ms
+per megapixel here), so a 4K surface at 60 fps would be near 3 ms/frame and 180 ms/s (18% of the UI
+thread) on this machine, more on a laptop.
 
 **Slice 2 (owner 2026-11-05): composited video on its own thread.** Each composited surface hosts its
 video element on a dedicated dispatcher thread (`HostVisual` in the main tree, `VisualTarget` on the

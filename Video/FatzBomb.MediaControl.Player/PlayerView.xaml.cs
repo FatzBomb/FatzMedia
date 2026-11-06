@@ -80,7 +80,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         MediaSurface.FirstFrameReady += (_, _) => ViewModel.AddLogEntry(
             MediaDiagnosticLevel.Info,
             "Surface",
-            $"{ViewModel.Label} first frame ready: {ViewModel.LoadedMediaText} via {MediaSurfacePresentationPathText.Describe(MediaSurface.PresentationPath)}");
+            $"{ViewModel.Label} first frame ready: {ViewModel.LoadingMediaText} ({ViewModel.Player?.Content}) via {MediaSurfacePresentationPathText.Describe(MediaSurface.PresentationPath)}");
         // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
         _chrome = new FullScreenChromeController(
             new WpfPlayerDispatcher(),

@@ -1,7 +1,8 @@
 # Handoff
 
-Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6` (051A slice 1; PR open).
-`main` holds everything through PR #56.
+Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6`, restarted from `main` after PR #72 merged; it holds
+one unmerged commit (a Full-mode first-frame native test and these notes): open a PR with the next batch.
+`main` holds everything through PR #72.
 
 ## State
 
@@ -11,8 +12,14 @@ Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6` (051A slice 1; PR open).
   the bitmap-writing operation, after the host is visible); Core's tracker numbers loads
   (`FirstFrameLoad`). WPF `CompositedUiThreadTime`/`CompositedFramesPublished`, shown in the WPF test
   player's stats line (047A's before numbers come from the smoke). The 500 ms `StartupMediaDelay` is
-  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. The test players and
-  Linux.Tests were not built in that session (FatzAudio package not available): Windows CI is the check.
+  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. WPF player
+  `--ab-demo=` (A/B swap demo) and `scripts/smoke-051A.ps1` (6 tests). **PR #72 merged 2026-11-06, CI green.**
+  Sandbox after the merge: Linux 212/212 with real FFmpeg, BASS and FatzAudio (Full mode with sound,
+  load before attach, both engines). **Owner smoke 2026-11-06 (desktop): 26 pass, 2 fail** (test 2: a
+  logging bug and a wrong expectation, both fixed in PR #73; `updates/051A_1`). Test 3 gave 047A's before
+  numbers (in the 047A idea). New ENG-060 (native: first A/B swaps a frame or two late). Left: rerun
+  tests 1, 2 and 5 with PR #73 (`-Steps 1,2,5`); check test 1's native time on the second start (8.1 s
+  on the first start after the build, 0.6 s frame sink).
 
 - **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
   `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
@@ -124,13 +131,18 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
 
-- Last results (2026-11-06): Portable 1786, Avalonia 52, Linux 203 + 9 FatzAudio native failures (no native
-  library in a managed-only pack); Vulkan 102 (2026-11-05); whole solution 0 warnings.
+- Last results (2026-11-06, after PR #72): Portable 1786, Avalonia 52, Linux 212 (all native suites, with
+  `FATZBOMB_LINUX_BASS_DIR=/opt/fatzbomb-native/bass` and PulseAudio: `pulseaudio --start --exit-idle-time=-1`,
+  `pactl load-module module-null-sink sink_name=null`), Vulkan 103 (`apt-get install mesa-vulkan-drivers`);
+  whole solution 0 warnings.
 - FatzAudio for a sandbox build without the token (2026-11-06): `add_repo` FatzBomb75/FatzAudio (public: the
   git proxy serves it), `git fetch --depth=1000 origin`, check out 59741a5 (rc.1),
   `dotnet pack bindings/dotnet/src/FatzAudio -c Release -p:VersionSuffix=rc.1 -o <feed>`, restore with a
-  `nuget.config` outside the repo mapping `FatzAudio` to that feed. Native FatzAudio tests also need
-  `libfatzaudio.so` built with cmake (see `updates/037A_2`).
+  `nuget.config` outside the repo mapping `FatzAudio` to that feed. For the native FatzAudio tests, first
+  `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build fatzaudio` (about 5 min), copy
+  `build/bin/libfatzaudio.so.1` to `bindings/dotnet/src/FatzAudio/runtimes/linux-x64/native/libfatzaudio.so`
+  before packing, delete `~/.nuget/packages/fatzaudio`, and `dotnet restore <project> --force` (a plain
+  restore keeps the old package contents).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
 Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three
@@ -143,8 +155,10 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
    question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
    resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
-2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`), including the A/B swap in TriviaBomb and the composited
-   UI-thread numbers on the desktop and the laptop; then start 047A slice 1 with those as the baseline.
+2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`) on the desktop (test 5 is the A/B demo;
+   test 3 with `-SimulateLaptop` adds a 4-core stand-in). **No laptop run** (owner 2026-11-06: not until
+   software uses it); the owner's comparison with the old trivia app on laptops (ours clearly better) is the
+   laptop answer for now. Then start 047A slice 1 with the desktop numbers as the baseline.
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
    Cache (FatzAudio's 2026-11-05 answer, on its main after rc.3): unset `CacheDirectory` then means
@@ -161,7 +175,8 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next-session prompt
 
-> Read HANDOFF.md. 051A slice 1 is in review: check the PR's Windows CI and the owner's smoke results
-> (`docs/roadmap/updates/051A_1/StageUpdate.md`); fix what they find. When the smoke passes, move 051A to
-> `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), using the smoke's
-> composited UI-thread numbers as the before baseline.
+> Read HANDOFF.md. 051A slice 1 is merged (PR #72); its first owner smoke passed except two test-2
+> checks, fixed in PR #73 with a script update. Check PR #73's CI, then read the owner's rerun of
+> `scripts/smoke-051A.ps1 -Steps 1,2,5` (on `main` after #73 merges) and fix what it finds. When it passes,
+> move 051A to `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), with the
+> before numbers recorded in the 047A idea.
