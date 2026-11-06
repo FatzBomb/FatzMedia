@@ -116,6 +116,15 @@ audit could not reproduce it). The background restarts from frame 1 at the wrap 
 itself is visible. Look at pre-seeking the background to its start ahead of the wrap, as the primary video
 loop does (011A).
 
+Owner clarification (2026-11-06): not a stutter; the background started over from its first frame when the
+song looped, which the code did on purpose. Owner decision: a background video loops on its own while it is
+visible, independent of the song (as it once did). Fixed: `PipelineMediaEngine.OnPlaybackEnded` no longer
+restarts the background when the song loops; a real end (no loop) and Stop still rewind it to its first
+frame. Test: `LinuxBackgroundLoopNativeTests` (a 3 s song looping over an 8 s background that brightens
+with every frame: after the wrap the background reads blue 138, still playing; with the old code 32, started
+over). A standby-decoder design (instant restart) was built and dropped: it only sped up the restart.
+`smoke-audit.ps1` test 6's question now expects the video to keep playing. Pending the owner's check.
+
 ### ENG-050 - Vulkan does not recover from a GPU reset on Windows
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 3d, Avalonia, Vulkan, RTX 5090): after

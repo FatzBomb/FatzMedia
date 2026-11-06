@@ -231,7 +231,7 @@ function Test-6 {
             'Do that 3 times.')
         Wait-Enter 'Press Enter here when done'
         $glitch = Ask-YesNo "Did player 2's sound drop out, stutter or click when player 1 looped?"
-        $hitch = Ask-YesNo "Did player 1's video freeze or jump at the loop?"
+        $hitch = Ask-YesNo "Did player 1's video freeze, or start over, when the song looped? (Expected: it keeps playing and loops at its own end, ENG-051.)"
         Stop-Player $p
         $log = Save-RunLog 'Wpf' ('6-' + $(if ($trim) { 'trim' } else { 'notrim' }))
         Add-Result ("{0}: player 2 glitch = {1}, player 1 video hitch = {2}" -f $label, $glitch, $hitch)

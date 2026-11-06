@@ -109,6 +109,11 @@ internal sealed class NativeTestFrameSink : IMediaPresentationFrameSink
 
     public bool LastFrameHasContent => _lastFrameHasContent;
 
+    /// <summary>The blue value of the last presented frame's centre pixel.</summary>
+    public int LastCentreBlue => Volatile.Read(ref _lastCentreBlue);
+
+    private int _lastCentreBlue;
+
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
     {
         ReadOnlySpan<byte> row = bgraPixels.Slice(height / 2 * stride, width * 4);
@@ -120,6 +125,7 @@ internal sealed class NativeTestFrameSink : IMediaPresentationFrameSink
         }
 
         _lastFrameHasContent = distinct.Count > 8;
+        Volatile.Write(ref _lastCentreBlue, row[width / 2 * 4]);
         _ = Interlocked.Increment(ref _frames);
     }
 }
