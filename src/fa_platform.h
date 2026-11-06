@@ -161,8 +161,9 @@ void fa_thread_detach(fa_thread* t);
 /* Opaque id of the calling thread, comparable with fa_thread_id_of. */
 uintptr_t fa_thread_current_id(void);
 /* Lowers the calling thread below normal priority for work that may wait, so other
- * work (decoding) wins on a busy CPU: Windows BELOW_NORMAL, Apple QoS utility, Linux
- * and Android nice + FA_THREAD_LOW_NICE. Returns what fa_thread_restore_priority
+ * work (decoding) wins on a busy CPU: Windows BELOW_NORMAL, Apple the same QoS class
+ * at a relative priority FA_THREAD_LOW_NICE lower, Linux and Android nice +
+ * FA_THREAD_LOW_NICE. Returns what fa_thread_restore_priority
  * needs to put it back. Where it could not be put back (Linux without the
  * RLIMIT_NICE room to lower nice again) it leaves the thread as it is. */
 int fa_thread_lower_priority(void);
