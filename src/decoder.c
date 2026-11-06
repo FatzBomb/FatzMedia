@@ -9,6 +9,7 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_mp3,
     &fa_decoder_mp2,
     &fa_decoder_au,
+    &fa_decoder_ape,
     &fa_decoder_wavpack,
     &fa_decoder_mp4,
     &fa_decoder_mkv,

@@ -440,6 +440,20 @@ ALAC is a built-in format: ALAC tracks in `.m4a`/`.mp4`/`.mov` and Matroska file
 | ALAC packets from your own demuxer | `fa_stream_open_packets` with codec `alac` and the 24-byte ALACSpecificConfig (or the `alac` box holding it) as extradata ([FFmpeg hand-off](../features/ffmpeg.md)) | `engine.OpenPackets`, `PushPacket` | ✅ |
 | BASS_PluginLoad("bassalac.dll") | Not needed: built in | — | ➖ (by design) |
 
+### bass_ape (Monkey's Audio)
+
+Monkey's Audio is a built-in format: `.ape` files open with the ordinary calls, decoded to the bit by the official Monkey's Audio SDK compiled into the library, every file version from 3.80, every compression level, 8 to 32-bit and float ([Monkey's Audio](../features/streams.md#monkeys-audio)).
+
+| bass_ape | FatzAudio (C) | FatzAudio (.NET) | Status |
+|---|---|---|---|
+| BASS_APE_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
+| BASS_APE_StreamCreateURL | `fa_stream_open_url` (the server must give the length and byte ranges: the seek table is at the start, the tags at the end) | `engine.OpenUrl` | ✅ |
+| BASS_APE_StreamCreateFileUser | `fa_stream_open_io` with a `seek` and a `length` callback (a forward-only reader gets `FA_ERROR_NOT_SEEKABLE`) | `engine.OpenStream` | ✅ |
+| BASS_ChannelSetPosition on APE | `fa_stream_seek`: sample exact | `stream.Position` | ✅ |
+| BASS_CTYPE_STREAM_APE (from BASS_ChannelGetInfo) | `fa_stream_get_info`: codec and container `ape`, `bits_per_sample` the original depth | `stream.Info` | ✅ |
+| BASS_ChannelGetTags `BASS_TAG_APE` on `.ape` | `fa_tags_read_*`, `fa_stream_get_tags` (APEv2, ID3v1, ID3v2) | `Tags.Read`, `stream.GetTags()` | ✅ |
+| BASS_PluginLoad("bass_ape.dll") | Not needed: built in | — | ➖ (by design) |
+
 ### basswv (WavPack)
 
 WavPack is a built-in format: `.wv` files open with the ordinary calls, decoded by libwavpack compiled into the library ([WavPack](../features/streams.md#wavpack)).
@@ -659,6 +673,7 @@ MIDI files are a built-in format: the ordinary open calls play them with a Sound
 | bassopus.dll | Built-in: `.opus` files, Opus web radio, Opus in WebM/MKV/MP4, and raw packets through `fa_stream_open_packets` ([Ogg](../features/streams.md#ogg-opus-and-ogg-vorbis)) | ✅ |
 | basswebm.dll | Built-in Matroska/WebM demuxer, any audio track (`audio_track`); PCM, MP3, AAC, AC-3, E-AC-3, Opus, Vorbis, FLAC and ALAC tracks built in, others unsupported; also over HTTP/HTTPS (`BASS_WEBM_StreamCreateURL`: `fa_stream_open_url`, Cues at the end read in one extra request) ([streams](../features/streams.md#video-files-and-audio-tracks)) | ✅ |
 | OGG Vorbis in bass.dll | Built-in: `.ogg` files, chained files, Ogg radio with song titles ([Ogg](../features/streams.md#ogg-opus-and-ogg-vorbis)) | ✅ |
+| bass_ape.dll (if used) | Built-in: `.ape` files of every version and level, decoded to the bit by the Monkey's Audio SDK compiled in ([bass_ape](#bass_ape-monkeys-audio)) | ✅ |
 | basswma.dll | Built-in ASF demuxer (`.wma`, `.asf`, `.wmv` audio; files, memory, your own reader, HTTP), decoded by Media Foundation on Windows (unsupported elsewhere); ReplayGain attributes for normalization, tags and covers ([WMA](../features/streams.md#wma)) | ✅ playback; ➖ encoding (record to MP3, FLAC or WAV with `fa_encoder_*` instead), MMS, broadcasting and DRM |
 | bassenc.dll, bassenc_mp3.dll, bassenc_flac.dll (if added later) | Built in: `fa_encoder_*` writes WAV and FLAC itself and MP3 through the app's LAME ([recording and encoding](../features/recording-encoding.md)) | ✅ WAV/FLAC/MP3, 🗓️ Opus/AAC/casting |
 | bassmidi.dll | Built-in SoundFont 2 synthesizer for `.mid`, `.kar` and `.rmi`: SF2 or DLS banks, engine-wide or per-stream, stacks of several banks, the OS's `gm.dls` when the app sets none, SF3 banks, reverb and chorus, lyrics and text events, transpose and channel mute, a real-time synthesizer and events sent by the app ([MIDI](../features/midi.md)) | ✅ (SFZ and MIDI input 🗓️) |
@@ -1188,8 +1203,9 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 | `BASS_CTYPE_SAMPLE` | `fa_sound` is not a stream: `fa_sound_get_info` | |
 | `STREAM_TEMPO`, `_REVERSE` (bass_fx), `_MIXER`, `_SPLIT` (bassmix), `_DUMMY`, `_DEVICE`, `_SAMPLE` | no counterpart: there are no wrapper or mixer streams | |
 | `BASS_CTYPE_MUSIC_*` flags (`BASS_MUSIC_*`) | see [Tracker music](#tracker-music) | |
+| `STREAM_APE` | `ape` | `ape` |
 | `STREAM_WV` (basswv) | `wavpack` | `wavpack` |
-| `STREAM_APE`, `_MPC`, `_SPX`, `_TTA`, `_DSD` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
+| `STREAM_MPC`, `_SPX`, `_TTA`, `_DSD` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
 
 ### Appendix D: configuration (`BASS_SetConfig`)
 

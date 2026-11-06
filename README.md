@@ -15,6 +15,8 @@ MIDI is synthesized with [TinySoundFont](https://github.com/schellingb/TinySound
 `third_party/tinysoundfont`). No SoundFont is bundled: the application loads its own.
 Tracker modules (MOD, XM, S3M, IT, MPTM and more) play through [libopenmpt](https://lib.openmpt.org) 0.8.9
 (BSD-3-Clause, vendored in `third_party/libopenmpt`, see `third_party/libopenmpt.cmake`), statically linked.
+Monkey's Audio (`.ape`) decodes with the official [Monkey's Audio SDK](https://monkeysaudio.com/developers.html) 13.45
+(BSD-3-Clause, decoder part vendored in `third_party/monkeysaudio`, see `third_party/monkeysaudio.cmake`), statically linked.
 
 ## Status
 

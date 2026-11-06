@@ -195,6 +195,11 @@ if(UNIX)
 endif()
 add_test(NAME demux COMMAND fa_test_demux)
 
+add_executable(fa_test_ape test_ape.c)
+target_compile_definitions(fa_test_ape PRIVATE FA_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+target_compile_options(fa_test_ape PRIVATE ${FA_WARNINGS})
+add_test(NAME ape COMMAND fa_test_ape)
+
 add_executable(fa_test_dts test_dts.c)
 target_include_directories(fa_test_dts PRIVATE
     ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party/miniaudio
@@ -501,7 +506,7 @@ target_include_directories(fa_whitebox PUBLIC
     ${PROJECT_SOURCE_DIR}/third_party/tinysoundfont)
 target_compile_definitions(fa_whitebox PUBLIC FA_STATIC)
 target_compile_options(fa_whitebox PRIVATE ${FA_WARNINGS})
-target_link_libraries(fa_whitebox PUBLIC fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2 fa_wavpack Threads::Threads ${CMAKE_DL_LIBS} ${FA_NET_LIBS})
+target_link_libraries(fa_whitebox PUBLIC fa_opus fa_vorbis fa_openmpt fa_mac fa_lzma fa_bzip2 fa_wavpack Threads::Threads ${CMAKE_DL_LIBS} ${FA_NET_LIBS})
 if(UNIX)
     target_link_libraries(fa_whitebox PUBLIC m)
 endif()
@@ -514,6 +519,7 @@ endif()
 option(FA_FUZZ "Build the fuzz targets (tests/fuzz)" OFF)
 if(FA_FUZZ)
     target_compile_options(fa_whitebox PRIVATE -fsanitize-coverage=trace-pc)
+    target_compile_options(fa_mac PRIVATE -fsanitize-coverage=trace-pc)   # the Monkey's Audio SDK too
     target_compile_definitions(fa_whitebox PRIVATE FA_MIDI_TAIL_MAX_S=2.0)   # a measured MIDI tail is rendered on every open
 endif()
 add_executable(fa_test_midi_font_change test_midi_font_change.c)
@@ -530,7 +536,7 @@ foreach(t fa_test_internal fa_test_loudness fa_test_crossfade fa_test_clicks fa_
           fa_test_dolby fa_test_aac fa_test_net fa_test_cdg fa_test_archive fa_test_disc fa_test_tempo fa_test_ogg
           fa_test_encode fa_test_midi fa_test_tracker fa_test_flac fa_test_asf fa_test_tags fa_test_tags_write fa_test_font
           fa_test_lyric fa_test_shape fa_test_mixer fa_test_sync fa_test_mic fa_test_device fa_test_midi_fx
-          fa_test_midi_efx fa_test_midi_live fa_test_dts)
+          fa_test_midi_efx fa_test_midi_live fa_test_dts fa_test_ape)
     target_link_libraries(${t} PRIVATE fa_whitebox)
     # The same static C runtime as those libraries: libopenmpt is C++, and MSVC
     # refuses to link C++ objects built for different runtimes.

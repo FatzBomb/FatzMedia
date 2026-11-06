@@ -23,6 +23,7 @@ A stream is anything that produces audio. You open it from a file, a memory bloc
 | Dolby Digital, Dolby Digital Plus | Raw `.ac3` and `.ec3` streams, up to 7.1 ([Dolby Digital](dolby.md)) | `ac3` or `eac3` (container `ac3` or `ec3`) |
 | DTS | Raw `.dts` and `.cpt` streams (DTS core, with or without DTS-HD extensions), **only through the system's DTS decoder where the machine has one** ([DTS and TrueHD](#dts-and-truehd)) | `dts` (container `dts`) |
 | WMA, ASF | `.wma`, `.asf`, `.wmv` and `.dvr-ms` files (Advanced Systems Format), local or over HTTP: Windows Media Audio 1, 2, 9 Professional, 9 Lossless and Voice, plus PCM, MP3 and AC-3 in ASF. Audio streams only ([WMA](#wma)) | `wmav1`, `wmav2`, `wmapro`, `wmalossless`, `wmavoice`, `pcm_*`, `mp3`, ... (container `asf`) |
+| Monkey's Audio | `.ape` files of every version from 3.80 on (Monkey's Audio 3.80, 2000, to today), all five compression levels, 8, 16, 24 and 32-bit integer and 32-bit float, 1 to 32 channels, with or without ID3v2 and APEv2 tags; lossless, to the bit ([Monkey's Audio](#monkeys-audio)) | `ape` (container `ape`) |
 | MIDI | Standard MIDI Files (format 0, 1, 2), karaoke `.kar`, RIFF `.rmi`; played with a SoundFont 2 you load ([MIDI](midi.md)) | `midi` (container `smf` or `rmid`) |
 
 Inside MP4, Matroska and ASF, PCM, MP3 and MP2, AC-3, E-AC-3, Opus, Vorbis, FLAC and ALAC tracks decode built in (and µ-law, A-law and IMA4 in MP4/QuickTime) (ALAC to the bit, all channel layouts up to 7.1 and every bit depth). AAC (AAC-LC, HE-AAC, HE-AAC v2, Main and LTP, up to 7.1) decodes built in as well, on every platform ([AAC](#aac)). WMA decodes on Windows (Media Foundation). DTS and TrueHD decode only where the system has a decoder for them ([DTS and TrueHD](#dts-and-truehd)). Every other codec (WMA outside Windows, ...) is not supported and returns `FA_ERROR_UNSUPPORTED_FORMAT`; FatzAudio never uses FFmpeg. If your app needs one of those, we recommend you decode it with your own FFmpeg and hand FatzAudio the decoded frames ([FFmpeg hand-off](ffmpeg.md#decoded-frames-instead-c)).
@@ -366,6 +367,22 @@ Old video files open like any other video: FatzAudio reads only the audio chunks
 - **FLV.** The audio tags are listed at open by hopping over the video tags (a hour of 25 frames per second is a fraction of a second) and played from the list; times are milliseconds in the file and are snapped to the codec's frame grid, so seeks are exact. AAC needs its configuration tag (every muxer writes it first). A forward-only source plays as the tags come, without seeking.
 - **What is not read:** ADPCM (MS and IMA in AVI), Nellymoser, Speex and ADPCM (FLV), and encrypted FLV tags (`FA_ERROR_PROTECTED_CONTENT`). Apps that need them decode with their own FFmpeg and push the frames ([FFmpeg hand-off](ffmpeg.md)). A WMA or DTS track in an AVI decodes only where the system does ([WMA](#wma), [DTS and TrueHD](#dts-and-truehd)).
 - **Detection** reads the content: `RIFF ... AVI ` and `FLV` with the audio flag.
+
+## Monkey's Audio
+
+`.ape` files decode with the official Monkey's Audio SDK (13.45, BSD-3-Clause, built into the library; see [third-party notices](../../THIRD_PARTY_NOTICES.md)). The output is the original PCM to the bit, as F32.
+
+- **What plays:** every file version the SDK reads (3.80 and later, so files from 2000 on), at all five levels (fast, normal, high, extra high, insane), 8-bit (unsigned), 16, 24 and 32-bit integer, 32-bit float (Monkey's Audio 10 and later), 1 to 32 channels, files made from WAV, AIFF, W64, CAF or SND. A leading ID3v2 tag and APEv2 or ID3v1 tags at the end are skipped for the audio and read by `fa_tags_read_*` like any file's ([tags](tags.md)). `bits_per_sample` is the original bit depth.
+- **Seeking** is exact. The SDK decodes in frames of 73728 blocks (294912 at extra high and insane levels), so a seek decodes from the start of the frame that holds the target: up to about 7 s of audio at 44.1 kHz, which takes a few milliseconds.
+- **The source must seek and know its length:** the seek table is at the start and the tags at the end. Files, memory, ZIP entries and web streams with a length work; a forward-only source returns `FA_ERROR_NOT_SEEKABLE`.
+- **Damaged files:** a frame that does not decode plays as silence and decoding goes on (the SDK's own rule); a file whose header or seek table does not add up is refused with `FA_ERROR_UNSUPPORTED_FORMAT`.
+- **Not read:** `.apl` image link files (open the `.ape` they point to) and MD5 verification (use the Monkey's Audio tool).
+- **Detection** reads the content: `MAC ` or `MACF` and a version, at the start or after an ID3v2 tag.
+
+```csharp
+using var s = engine.OpenFile("album.ape");
+Console.WriteLine($"{s.Info.Codec}, {s.Info.BitsPerSample}-bit, {s.Info.Duration}");
+```
 
 ## MPEG program and transport streams
 
