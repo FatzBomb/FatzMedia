@@ -946,6 +946,53 @@ static void read_aiff(fa_source* src, fa_tag_sink* sink)
     for (i = 0; i < nt; i++) text_chunk(src, FA_TAG_FORMAT_AIFF, ids[i], at[i], sz[i], sink);
 }
 
+/* ---- DSD ---------------------------------------------------------------------------- */
+
+/* DSF: the "DSD " chunk says where an ID3v2 tag is (0 = none), usually at the end. */
+static void read_dsf(fa_source* src, fa_tag_sink* sink)
+{
+    uint8_t h[28];
+    uint64_t at;
+    if (fa_source_seek(src, 0) != FA_OK || !read_exact(src, h, 28)) return;
+    at = fa_le64(h + 20);
+    if (at >= 28 && at < (uint64_t)src->length) read_id3v2(src, (int64_t)at, sink);
+}
+
+/* DSDIFF: an "ID3 " chunk (written by most tools, not in the specification) and the
+ * edited master information chunk "DIIN" with the title "DITI" and artist "DIAR" (a 32-bit
+ * length, then the text). Chunks: 4-byte ID, 64-bit big-endian size, padded to even. */
+static void read_dff(fa_source* src, fa_tag_sink* sink)
+{
+    int64_t pos = 16, end = src->length, id3 = -1, diin = -1, diin_end = 0;
+    int n = 0;
+    while (pos + 12 <= end && n++ < 10000) {
+        uint8_t c[12];
+        uint64_t size;
+        if (fa_source_seek(src, pos) != FA_OK || !read_exact(src, c, 12)) break;
+        size = fa_be64(c + 4);
+        if (size > (uint64_t)(end - pos - 12)) break;
+        if (memcmp(c, "ID3 ", 4) == 0 && id3 < 0) id3 = pos + 12;
+        if (memcmp(c, "DIIN", 4) == 0 && diin < 0) { diin = pos + 12; diin_end = pos + 12 + (int64_t)size; }
+        pos += 12 + (int64_t)size + (int64_t)(size & 1);
+    }
+    if (id3 >= 0) read_id3v2(src, id3, sink);
+    for (pos = diin, n = 0; diin >= 0 && pos + 12 <= diin_end && n++ < 1000;) {
+        uint8_t c[16];
+        uint64_t size;
+        if (fa_source_seek(src, pos) != FA_OK || !read_exact(src, c, 12)) break;
+        size = fa_be64(c + 4);
+        if (size > (uint64_t)(diin_end - pos - 12)) break;
+        if ((memcmp(c, "DITI", 4) == 0 || memcmp(c, "DIAR", 4) == 0) && size >= 4 && read_exact(src, c + 12, 4)) {
+            char key[5];
+            uint32_t len = fa_be32(c + 12);
+            memcpy(key, c, 4);
+            key[4] = '\0';
+            if (len <= size - 4) text_chunk(src, FA_TAG_FORMAT_DSDIFF, key, pos + 16, len, sink);
+        }
+        pos += 12 + (int64_t)size + (int64_t)(size & 1);
+    }
+}
+
 /* ---- CAF ---------------------------------------------------------------------------- */
 
 /* Core Audio Format: an 'info' chunk (Core Audio Format Specification 1.0, "Information
@@ -1263,6 +1310,12 @@ void fa_tags_collect(fa_source* src, fa_tag_sink* sink)
         read_riff(src, sink);
     } else if (n >= 12 && memcmp(head, "FORM", 4) == 0 && (memcmp(head + 8, "AIFF", 4) == 0 || memcmp(head + 8, "AIFC", 4) == 0)) {
         read_aiff(src, sink);
+    } else if (n >= 32 && memcmp(head, "DSD ", 4) == 0 && memcmp(head + 28, "fmt ", 4) == 0) {
+        read_dsf(src, sink);
+        return;
+    } else if (n >= 16 && memcmp(head, "FRM8", 4) == 0 && memcmp(head + 12, "DSD ", 4) == 0) {
+        read_dff(src, sink);
+        return;
     } else if (n >= 8 && memcmp(head, "caff", 4) == 0) {
         read_caf(src, sink);
         return;

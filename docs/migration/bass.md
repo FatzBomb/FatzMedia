@@ -490,6 +490,24 @@ WMA plays through the ordinary open calls: a built-in ASF demuxer, decoded by Wi
 | BASS_WMA_EncodeOpenNetwork(Multi), EncodeOpenPublish(Multi), EncodeGetPort, EncodeGetClients | Not provided | — | ➖ (Windows Media Services broadcasting is retired) |
 | BASS_PluginLoad("basswma.dll") | Not needed: built in | — | ➖ (by design) |
 
+### bassdsd (DSD: DSF and DSDIFF)
+
+DSF and DSDIFF (`.dff`) files open with the ordinary calls and are converted to PCM as they decode, at 88.2 kHz and +6 dB by default, the same as bassdsd's defaults ([DSD](../features/streams.md#dsd-dsf-and-dsdiff)).
+
+| bassdsd | FatzAudio (C) | FatzAudio (.NET) | Status |
+|---|---|---|---|
+| BASS_DSD_StreamCreateFile (file or memory) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
+| BASS_DSD_StreamCreateFileUser | `fa_stream_open_io` (forward-only when `seek` is NULL) | `engine.OpenStream` | ✅ |
+| BASS_DSD_StreamCreateURL | `fa_stream_open_url` | `engine.OpenUrl` | ✅ |
+| BASS_CONFIG_DSD_FREQ (default 88200) | `fa_open_options.dsd_rate` per stream: 0 = 88200 (96000 for the 48 kHz family), else the nearest of 44100 to 352800 | `StreamOptions.DsdRate` | ✅ |
+| BASS_CONFIG_DSD_GAIN, BASS_ATTRIB_DSD_GAIN (default 6 dB) | Fixed at +6 dB; for another level set the stream's volume (`fa_stream_set_param(s, FA_PARAM_VOLUME, ...)`) or let normalization level it | `stream.Volume` | ✅ |
+| BASS_ATTRIB_DSD_RATE (the DSD rate) | `fa_stream_info.bitrate / format.channels` (2822400 for DSD64); `bits_per_sample` is 1 | `Info.Bitrate / Info.Format.Channels` | ✅ |
+| BASS_TAG_DSD_ARTIST, BASS_TAG_DSD_TITLE | `fa_tags_read_*` / `fa_stream_get_tags`: DSDIFF `DIAR` and `DITI` (`FA_TAG_FORMAT_DSDIFF`), and the ID3v2 tag of DSF and DSDIFF files ([tags](../features/tags.md)) | `Tags.Read`, `GetTags()` | ✅ |
+| BASS_TAG_DSD_COMMENT + index (DSDIFF `COMT`) | Not read | — | ➖ (rare; the ID3v2 tag's comments are read) |
+| BASS_DSD_RAW (raw 1-bit data), BASS_DSD_DOP / BASS_DSD_DOP_AA (DSD over PCM) | Not provided | — | ➖ (by design: the engine mixes in float, so the bits never reach a DAC untouched) |
+| DST-compressed DSDIFF | Recognised, returns `FA_ERROR_UNSUPPORTED_FORMAT`; tags give codec `dst` with `can_decode` 0 | `ErrorCode.UnsupportedFormat` | ➖ |
+| BASS_PluginLoad("bassdsd.dll") | Not needed: built in | — | ➖ (by design) |
+
 ### bass_fx tempo, pitch and rate
 
 bass_fx needs a decode stream wrapped in a separate tempo stream; FatzAudio puts three parameters on every stream ([tempo and pitch](../features/tempo-pitch.md)).
@@ -677,6 +695,7 @@ MIDI files are a built-in format: the ordinary open calls play them with a Sound
 | basswma.dll | Built-in ASF demuxer (`.wma`, `.asf`, `.wmv` audio; files, memory, your own reader, HTTP), decoded by Media Foundation on Windows (unsupported elsewhere); ReplayGain attributes for normalization, tags and covers ([WMA](../features/streams.md#wma)) | ✅ playback; ➖ encoding (record to MP3, FLAC or WAV with `fa_encoder_*` instead), MMS, broadcasting and DRM |
 | bassenc.dll, bassenc_mp3.dll, bassenc_flac.dll (if added later) | Built in: `fa_encoder_*` writes WAV and FLAC itself and MP3 through the app's LAME ([recording and encoding](../features/recording-encoding.md)) | ✅ WAV/FLAC/MP3, 🗓️ Opus/AAC/casting |
 | bassmidi.dll | Built-in SoundFont 2 synthesizer for `.mid`, `.kar` and `.rmi`: SF2 or DLS banks, engine-wide or per-stream, stacks of several banks, the OS's `gm.dls` when the app sets none, SF3 banks, reverb and chorus, lyrics and text events, transpose and channel mute, a real-time synthesizer and events sent by the app ([MIDI](../features/midi.md)) | ✅ (SFZ and MIDI input 🗓️) |
+| bassdsd.dll (if used) | Built-in: DSF and DSDIFF files, DSD64 to DSD1024, converted to PCM at 88.2 kHz (or a rate you choose), ID3 and DSDIFF tags ([bassdsd](#bassdsd-dsd-dsf-and-dsdiff)) | ✅ playback; ➖ raw DSD and DoP, DST |
 | bass_fx.dll | Tempo/pitch/rate params on every stream ([tempo and pitch](../features/tempo-pitch.md)); BPM and beat detection in [track analysis](../features/analysis.md); reverse playback with `fa_stream_set_reverse`. DAMP and COMPRESSOR2 used for level control are replaced by normalization and the output limiter | ✅ tempo/pitch/rate, reverse, BPM and beats, and level control |
 | basscd.dll | Built-in disc source: drives on Windows, macOS and Linux, `.cue` images, CD-Text, freedb and MusicBrainz ids, CD+G graphics ([disc playback](../features/disc.md)); analog playback not provided | ✅ disc and CD+G discs |
 | Your own CD+G decoder and renderer (MP3+G, ZIP) | Built in: `fa_cdg_surface_*` draws the graphics in sync with the audio ([CD+G](../features/cdg.md)) | ✅ |
@@ -1205,7 +1224,8 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 | `BASS_CTYPE_MUSIC_*` flags (`BASS_MUSIC_*`) | see [Tracker music](#tracker-music) | |
 | `STREAM_APE` | `ape` | `ape` |
 | `STREAM_WV` (basswv) | `wavpack` | `wavpack` |
-| `STREAM_MPC`, `_SPX`, `_TTA`, `_DSD` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
+| `STREAM_DSD` (bassdsd) | `dsd` (`dst` in tags for DST files) | `dsf` or `dff` |
+| `STREAM_MPC`, `_SPX`, `_TTA` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
 
 ### Appendix D: configuration (`BASS_SetConfig`)
 
@@ -1227,6 +1247,7 @@ FatzAudio has no global option table. The few global settings are fields of `fa_
 | `HANDLES` | No limit; handles are pointers | | ➖ |
 | `ASYNCFILE_BUFFER` | Not needed: file reads are internal | | ➖ |
 | `OGG_PRESCAN` | Always exact | | ✅ |
+| `DSD_FREQ`, `DSD_GAIN` | see [bassdsd](#bassdsd-dsd-dsf-and-dsdiff) | | ✅ |
 | `MF_VIDEO`, `MF_DISABLE` | Not needed: WMA and xHE-AAC use Media Foundation by themselves where it is available | | ➖ |
 | `LIBSSL`, `NET_AGENT`, `NET_PROXY` | No SSL library to load: HTTPS uses the system's stack. Agent and proxy: `fa_net_options.user_agent`, `.proxy` | `NetworkOptions` | ✅ |
 | `AIRPLAY`, `IOS_MIXAUDIO`, `IOS_SPEAKER`, `IOS_NOCATEGORY`, `IOS_NOTIFY` | Not provided: configure `AVAudioSession` in your app before opening a device | | ➖ |

@@ -2,7 +2,7 @@
 # Runs the fuzz targets built in a FA_FUZZ tree (see CMakeLists.txt).
 #   tests/fuzz/run.sh BUILD_DIR OUT_DIR [EXECS] [target...]
 # Targets: stream_<fmt> (aac mp3 flac mkv mp4 caf avi flv mpeg wavpack ogg asf dolby dts ape, seeded from tests/data; wav midi
-# tracker, seeded from seeds/), tags, zip, archive (tar, gz, bz2, xz, ZIP methods), hls (playlists, .pls / .m3u, TS), net (cookies, a loopback web server), sound, soundfont, cue,
+# tracker dsd, seeded from seeds/), tags, zip, archive (tar, gz, bz2, xz, ZIP methods), hls (playlists, .pls / .m3u, TS), net (cookies, a loopback web server), sound, soundfont, cue,
 # cdg (seeds/), font (tests/data/fonts). stream_zip runs the ZIP seeds through the stream and tag readers.
 # Needs python3 for make_seeds.py.
 set -e
@@ -12,7 +12,7 @@ python3 "$D/make_seeds.py"
 export ASAN_OPTIONS=detect_leaks=1:max_allocation_size_mb=1024:abort_on_error=1:handle_abort=0
 export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:abort_on_error=1
 [ $# -gt 0 ] || set -- stream_aac stream_mp3 stream_flac stream_mkv stream_mp4 stream_caf stream_avi stream_flv stream_mpeg stream_wavpack stream_ogg stream_asf stream_ape \
-  stream_dolby stream_dts stream_wav stream_midi stream_tracker stream_zip tags zip archive hls net sound soundfont cue cdg font
+  stream_dolby stream_dts stream_wav stream_midi stream_tracker stream_dsd stream_zip tags zip archive hls net sound soundfont cue cdg font
 for t in "$@"; do
   case $t in
     stream_aac) bin=fuzz_stream; seeds="$DATA/aac $DATA/net/tone.aac $DATA/tone.aac $DATA/aac.m4a $DATA/aac51.m4a $DATA/aac_switch.aac" ;;
@@ -33,8 +33,9 @@ for t in "$@"; do
     stream_wav) bin=fuzz_stream; seeds="$D/seeds/wav $DATA/tags/tags.aiff" ;;
     stream_midi) bin=fuzz_stream; seeds="$D/seeds/midi" ;;
     stream_tracker) bin=fuzz_stream; seeds="$D/seeds/tracker" ;;
+    stream_dsd) bin=fuzz_stream; seeds="$D/seeds/dsd" ;;
     stream_zip) bin=fuzz_stream; seeds="$D/seeds/zip" ;;
-    tags) bin=fuzz_tags; seeds="$DATA/tags $D/seeds/tags $D/seeds/midi $D/seeds/zip $DATA/mp3 $DATA/flac $DATA/caf" ;;
+    tags) bin=fuzz_tags; seeds="$DATA/tags $D/seeds/tags $D/seeds/midi $D/seeds/dsd $D/seeds/zip $DATA/mp3 $DATA/flac $DATA/caf" ;;
     zip) bin=fuzz_zip; seeds="$D/seeds/zip" ;;
     archive) bin=fuzz_archive; seeds="$D/seeds/archive $D/seeds/zip" ;;
     hls) bin=fuzz_hls; seeds="$D/seeds/hls" ;;

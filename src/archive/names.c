@@ -161,7 +161,7 @@ int32_t fa_name_kind(const char* name)
     static const char* const audio[] = { "mp3", "mp2", "mp1", "wav", "wave", "flac", "ogg", "oga", "opus", "m4a", "m4b", "aac", "adts",
         "aif", "aiff", "aifc", "caf", "wma", "ac3", "eac3", "ec3", "mid", "midi", "kar", "rmi", "mod", "xm", "s3m", "it", "mptm",
         "mo3", "umx", "mtm", "669", "amf", "ams", "dbm", "digi", "dmf", "dsm", "far", "j2b", "mdl", "med", "okt", "psm", "ptm", "stm",
-        "ult", "dts", "mka", "weba", "mp4a", "ape", "wv", "tta", "au", "snd", NULL };
+        "ult", "dts", "mka", "weba", "mp4a", "ape", "wv", "tta", "au", "snd", "dsf", "dff", NULL };
     static const char* const video[] = { "mp4", "m4v", "mkv", "webm", "avi", "mov", "wmv", "mpg", "mpeg", "flv", "3gp", "ogv", "vob", "ts", "m2ts", "mts", "m2t", "m2p", "mpe", "dvr-ms", NULL };
     static const char* const image[] = { "jpg", "jpeg", "png", "gif", "bmp", "webp", "tif", "tiff", "ico", "heic", NULL };
     static const char* const text[] = { "txt", "nfo", "lrc", "srt", "ass", "ssa", "vtt", "md", "log", "diz", "html", "htm", "xml", "json", "csv", "cue", "m3u", "m3u8", "pls", NULL };

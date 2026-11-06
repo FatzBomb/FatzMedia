@@ -12,6 +12,7 @@ A stream is anything that produces audio. You open it from a file, a memory bloc
 | MP2, MP1 | MPEG-1 and 2 Layers II and I (`.mp2`, `.mpa`, `.mp1`), with or without ID3v2 tags ([MP3, MP2 and MP1](#mp3-mp2-and-mp1)) | `mp2`, `mp1` |
 | AU, SND | Sun/NeXT `.au`/`.snd`: 8, 16, 24 and 32-bit PCM, 32 and 64-bit float, µ-law, A-law ([AU, G.711 and IMA4](#au-g711-and-ima4)) | `pcm`, `pcm_float`, `pcm_mulaw`, `pcm_alaw` (container `au`) |
 | WavPack | `.wv` files: lossless and hybrid (lossy) WavPack 4 and 5, 8 to 32-bit integer, 32-bit float, mono to 32 channels, and DSD, which plays as PCM at an eighth of its rate ([WavPack](#wavpack)) | `wavpack` (container `wavpack`) |
+| DSD | DSF (`.dsf`) and DSDIFF (`.dff`) files of DSD64 to DSD1024, mono to 6 channels (DSDIFF: any count up to 32), converted to PCM at 88.2 kHz by default ([DSD](#dsd-dsf-and-dsdiff)). DST-compressed DSDIFF returns `FA_ERROR_UNSUPPORTED_FORMAT` | `dsd` (container `dsf` or `dff`) |
 | AAC (ADTS) | `.aac` files, AAC internet radio and AAC in HLS segments: AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP in ADTS frames, with or without ID3v2 tags ([AAC](#aac)) | `aac` (container `adts`) |
 | Ogg Opus, Ogg Vorbis, Ogg FLAC | `.opus`, `.ogg`, `.oga`, including chained files (one song after another) and Ogg files with several streams ([Ogg](#ogg-opus-and-ogg-vorbis)) | `opus`, `vorbis` or `flac` (container `ogg`) |
 | MP4, M4A, MOV | ISO MP4 and QuickTime, including fragmented MP4. Audio tracks only: video is never read | the track's codec: `aac`, `mp3`, `ac3`, `eac3`, `opus`, `flac`, `alac`, `pcm_*`, ... (container `mp4` or `mov`) |
@@ -269,6 +270,36 @@ fa_stream_open_path(engine, "album/01.wv", NULL, &s);
 ```csharp
 using var s = engine.OpenFile("album/01.wv");
 Console.WriteLine($"{s.Info.Codec} {s.Info.BitsPerSample}-bit {s.Info.Format.SampleRate} Hz");
+```
+
+## DSD (DSF and DSDIFF)
+
+Super Audio CD rips and hi-res downloads come as DSD: one bit per sample at 2.8 MHz (DSD64) or a multiple of it. FatzAudio converts DSD to PCM as it decodes, so a DSD file plays, seeks, normalizes, records and analyses like any other file.
+
+- **Files:** DSF (Sony's format, most downloads) and DSDIFF (`.dff`, Philips' format, most SACD rips), found by content. DSD64, DSD128, DSD256, DSD512 and DSD1024, on the 44.1 kHz family (2.8224 MHz and up) and the 48 kHz family (3.072 MHz and up). DSF holds 1 to 6 channels in its standard layouts; the 3-channel and wider ones get a speaker mask (`format.channel_mask`). In DSDIFF the channels named in the file (`SLFT`, `SRGT`, `MLFT`, `MRGT`, `C`, `LFE`, `LS`, `RS`) come out in WAVE order (front left, right, centre, LFE, back left, right); others stay in the file's order. DSDIFF compressed with DST is recognised and returns `FA_ERROR_UNSUPPORTED_FORMAT`; `fa_tags_read_*` still gives its codec (`dst`), rate, channels and length with `can_decode` 0.
+- **Output rate:** 88.2 kHz (96 kHz on the 48 kHz family) unless `fa_open_options.dsd_rate` (.NET `StreamOptions.DsdRate`) asks for another: the nearest of 44.1, 88.2, 176.4 and 352.8 kHz (48 to 384 kHz) is used. The engine resamples to the device as for any other file, so the default suits playback; a higher rate only matters when you decode or record and want to keep more of the ultrasonic band. The PCM is 32-bit float.
+- **Level:** +6 dB, as most players and BASS do: the SACD reference level (50 % modulation) is full scale. Loud SACD masters peak above full scale, which float carries without clipping; [normalization](normalization.md) and the output limiter take care of it, or lower the stream's volume.
+- **Quality:** two linear-phase low-pass filters with 120 dB stop bands, so DSD's large ultrasonic noise is not folded into the audio. The pass band is flat to 30 kHz at 88.2 kHz (20 kHz at 44.1 kHz, 60 kHz at 176.4 kHz, 120 kHz at 352.8 kHz); at 44.1 kHz only noise above 20 kHz can fold, which is out of hearing. The conversion's own rounding stays below -125 dB. The audio comes out 0.3 ms late at 88.2 kHz (1 ms at 44.1 kHz), the filters' delay, on every channel alike. A stereo DSD64 file takes about 2 % of one core, DSD512 about 4 %.
+- **Seeking** is exact: the samples after a seek are the ones a straight decode gives there.
+- **Stream info:** codec `dsd`, `bits_per_sample` 1, `bitrate` the DSD rate times the channel count (so `bitrate / channels` is the DSD rate: 2822400 for DSD64).
+- **Tags:** the ID3v2 tag of a DSF file, and in DSDIFF the `ID3 ` chunk most tools write and the title and artist of the edited master information (`DITI`, `DIAR`, as `FA_TAG_FORMAT_DSDIFF` items, .NET `TagFormat.Dsdiff`) ([tags](tags.md)).
+- **Not provided:** raw DSD output and DSD over PCM (DoP) to an external DAC. They need the bits to reach the DAC untouched, and FatzAudio mixes every stream in float.
+
+```c
+fa_open_options o;
+fa_open_options_init(&o);
+o.flags = FA_OPEN_DECODE_ONLY;
+o.dsd_rate = 176400;               /* 0 = 88.2 kHz */
+fa_stream* s;
+if (fa_stream_open_path(engine, "album.dsf", &o, &s) == FA_OK) {
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_stream_get_info(s, &info);  /* codec "dsd", 176400 Hz */
+}
+```
+
+```csharp
+using var s = engine.OpenFile("album.dff", new StreamOptions { DsdRate = 176400 });
+Console.WriteLine($"DSD{s.Info.Bitrate / s.Info.Format.Channels / 44100}, played at {s.Info.Format.SampleRate} Hz");
 ```
 
 ## AAC

@@ -457,6 +457,13 @@ typedef struct fa_open_options {
                                 cache and takes part in a fed scan (fa_scan_open_packets) of the
                                 same song, as a stream opened from the file itself does. Copied
                                 by the call. Other opens ignore it */
+    uint32_t dsd_rate;       /* DSD files (DSF, DFF): the PCM rate they are converted to.
+                                0 = default: 88200 (96000 for DSD on the 48 kHz family).
+                                Otherwise the nearest of 44100, 88200, 176400 and 352800
+                                (48000 ... 384000 for the 48 kHz family) is used. The
+                                engine resamples to the device as for any other file;
+                                a higher rate only keeps more of the ultrasonic band
+                                (and DSD's noise in it). Other formats ignore it */
 } fa_open_options;
 
 /* fa_open_options.text_code_page, and fa_midi_credits.code_page. */
@@ -1198,7 +1205,8 @@ typedef enum fa_tag_format {
     FA_TAG_FORMAT_MIDI,
     FA_TAG_FORMAT_TRACKER,   /* a tracker module's title, artist and song message */
     FA_TAG_FORMAT_LYRICS3,   /* Lyrics3 v1.00 and v2.00 at the end of an MP3 */
-    FA_TAG_FORMAT_CAF        /* CAF 'info' chunk: title, artist, album, comments, ... */
+    FA_TAG_FORMAT_CAF,       /* CAF 'info' chunk: title, artist, album, comments, ... */
+    FA_TAG_FORMAT_DSDIFF     /* DSDIFF (.dff) edited master information: DITI (title), DIAR (artist) */
 } fa_tag_format;
 
 typedef enum fa_tags_flags {

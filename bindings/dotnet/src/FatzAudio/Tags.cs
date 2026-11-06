@@ -44,6 +44,8 @@ public enum TagFormat
     Lyrics3 = 12,
     /// <summary>A CAF file's <c>info</c> chunk (title, artist, album, comments, ...).</summary>
     Caf = 13,
+    /// <summary>A DSDIFF (<c>.dff</c>) file's edited master information: <c>DITI</c> (title) and <c>DIAR</c> (artist).</summary>
+    Dsdiff = 14,
 }
 
 /// <summary>What a picture shows: the ID3v2 / FLAC picture types.</summary>

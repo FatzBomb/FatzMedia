@@ -1224,6 +1224,7 @@ internal unsafe ref struct NativeOptions
         o._ptr->DynamicRange = (int)options.DynamicRange;
         o._ptr->DolbyDownmix = (int)options.DolbyDownmix;
         o._ptr->TextCodePage = (int)options.TextCodePage;
+        o._ptr->DsdRate = (uint)Math.Max(0, options.DsdRate);
         if (options.SourceIdentity is { } identity)
         {
             o._identity = (FaFingerprint*)NativeMemory.AllocZeroed((nuint)sizeof(FaFingerprint));

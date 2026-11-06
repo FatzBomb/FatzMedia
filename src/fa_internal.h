@@ -158,6 +158,7 @@ struct fa_decoder {
     int32_t text_code_page;           /* MIDI: FA_CODE_PAGE_*, 0 = detect */
     int32_t midi_lyrics_only;         /* MIDI: parse only, no soundfont or synth (FA_OPEN_MIDI_LYRICS_ONLY) */
     int32_t no_cdg;                   /* FA_OPEN_NO_CDG: CD+G with no audio is refused before it is read */
+    uint32_t dsd_rate;                /* DSD files: output rate asked for (fa_open_options.dsd_rate), 0 = default */
     /* Properties (fa_stream_info), set by the decoder when it knows them;
      * fa_decoder_open fills the rest in for whole-file formats. */
     int64_t audio_bytes;              /* coded audio data, -1 = unknown */
@@ -185,6 +186,7 @@ typedef struct fa_decoder_env {
     int32_t text_code_page;           /* MIDI: fa_open_options.text_code_page, 0 = detect */
     int32_t midi_lyrics_only;         /* MIDI: parse only (FA_OPEN_MIDI_LYRICS_ONLY) */
     int32_t no_cdg;                   /* FA_OPEN_NO_CDG */
+    uint32_t dsd_rate;                /* DSD files: fa_open_options.dsd_rate, 0 = default */
     int32_t info_only;                /* tags reader: a container whose codec nobody decodes opens
                                          anyway with dec->undecodable = 1 (details only) */
 } fa_decoder_env;
@@ -287,6 +289,8 @@ extern const fa_decoder_vtable fa_decoder_ts;
 extern const fa_decoder_vtable fa_decoder_caf;
 /* ASF / Windows Media Audio (demux_asf.c). */
 extern const fa_decoder_vtable fa_decoder_asf;
+/* DSD audio, DSF and DSDIFF (dec_dsd.c). */
+extern const fa_decoder_vtable fa_decoder_dsd;
 /* CD+G graphics with no audio: silence for the graphics' length (dec_silence.c). */
 extern const fa_decoder_vtable fa_decoder_cdg;
 int fa_decoder_is_cdg(const fa_decoder* dec);
@@ -2093,6 +2097,29 @@ fa_result fa_g711_codec_open(fa_codec* c, const fa_codec_params* p);
 fa_result fa_ima4_codec_open(fa_codec* c, const fa_codec_params* p);
 /* n G.711 bytes to n floats. */
 void fa_g711_to_f32(const uint8_t* in, int alaw, size_t n, float* out);
+
+/* DSD to PCM (dsd.c). DSD rates are 64, 128, 256, 512 or 1024 x 44.1 or 48 kHz; the
+ * output is 1, 2 (default), 4 or 8 x that family rate. */
+#define FA_DSD_GAIN 2.0        /* +6 dB: 50 % modulation (0 dB SACD) is full scale */
+typedef struct fa_dsd_conv fa_dsd_conv;
+/* The DSD multiple (64 .. 1024) and family rate (44100 or 48000) of `dsd_rate`; 0 = not a DSD rate. */
+int fa_dsd_rate_family(uint32_t dsd_rate, uint32_t* out_base);
+/* The output rate for `want` (0 = default): the supported one nearest to it; 0 = not a DSD rate. */
+uint32_t fa_dsd_out_rate(uint32_t dsd_rate, uint32_t want);
+fa_result fa_dsd_conv_create(uint32_t dsd_rate, uint32_t channels, uint32_t want_rate, fa_dsd_conv** out);
+void fa_dsd_conv_free(fa_dsd_conv* c);
+uint32_t fa_dsd_conv_rate(const fa_dsd_conv* c);
+uint32_t fa_dsd_conv_frame_bytes(const fa_dsd_conv* c);   /* DSD bytes of one channel per output frame */
+/* Back to the state of the start (silence before it). After a reset at frame k, frames from
+ * k + fa_dsd_conv_preroll on are the same as when everything before them was converted. */
+void fa_dsd_conv_reset(fa_dsd_conv* c);
+uint32_t fa_dsd_conv_preroll(const fa_dsd_conv* c);
+/* `frames` output frames, interleaved, from frames x frame_bytes bytes of each channel:
+ * channel c's bytes at planes[c], planes[c] + stride, ...; bit order MSB first (oldest bit
+ * highest) unless lsb_first. */
+void fa_dsd_conv_run(fa_dsd_conv* c, const uint8_t* const* planes, size_t stride, int lsb_first, size_t frames, float* out);
+/* Tests: the two filters' taps (h2 has n2 = 0 taps when the output is at r1, the stage 1 rate). */
+void fa_dsd_conv_filters(const fa_dsd_conv* c, const float** h1, uint32_t* n1, const float** h2, uint32_t* n2, uint32_t* r1);
 typedef struct fa_alac_info {
     const uint8_t* config;      /* the 24-byte ALACSpecificConfig, within the extradata */
     uint32_t frame_length, rate, channels, bit_depth;

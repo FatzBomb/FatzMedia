@@ -86,6 +86,7 @@ internal unsafe struct FaOpenOptions
     public int DolbyDownmix;
     public byte* ArchiveEntry;
     public FaFingerprint* SourceIdentity;
+    public uint DsdRate;
 }
 
 [StructLayout(LayoutKind.Sequential)]

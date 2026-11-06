@@ -25,6 +25,7 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_mpg,
     &fa_decoder_ts,
     &fa_decoder_tracker,
+    &fa_decoder_dsd,
     &fa_decoder_cdg,
 };
 const uint32_t fa_decoder_registry_count = (uint32_t)(sizeof(fa_decoder_registry) / sizeof(fa_decoder_registry[0]));
@@ -183,6 +184,7 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
             dec->text_code_page = env->text_code_page;
             dec->midi_lyrics_only = env->midi_lyrics_only;
             dec->no_cdg = env->no_cdg;
+            dec->dsd_rate = env->dsd_rate;
             dec->info_only = env->info_only;
         } else {
             dec->midi_rate = FA_MIDI_DEFAULT_RATE;

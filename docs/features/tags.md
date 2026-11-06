@@ -15,6 +15,7 @@ FatzAudio reads the title, artist, album and the rest of a file's tags, its embe
 | AIFF text chunks | AIFF, AIFF-C | `NAME`, `AUTH`, `(c) `, `ANNO` | - |
 | Matroska tags | MKV, MKA, WebM | Global and album-level `SimpleTag`s; the segment title as a fallback; tags aimed at one track, chapter, edition or attachment as `TRACK:<uid>/NAME` and so on | Image attachments (`cover.*` is the front cover) |
 | MIDI | MID, KAR, RMI | Title, artist, copyright | - |
+| DSD | DSF (ID3v2 tag at the end), DSDIFF (`ID3 ` chunk; `DITI` title and `DIAR` artist as `FA_TAG_FORMAT_DSDIFF` items) | ID3v2 as above; `DITI`, `DIAR` | `APIC` in the ID3v2 tag |
 | CAF `info` chunk | CAF | `title`, `artist`, `album`, `composer`, `genre`, `recorded date`, `year`, `track number`, `comments`, `copyright`, `encoding application`, `tempo`, and any other key as an item (`FA_TAG_FORMAT_CAF`) | - |
 
 A ZIP (MP3+G) is read through the audio file inside it: the one named like the `.cdg`, else the first audio file. Text in any encoding the format allows (Latin-1, UTF-16 with or without BOM, UTF-8) comes out as UTF-8; a file that claims UTF-8 but isn't is read as Latin-1, so nothing is lost. "Isn't UTF-8" is strict: overlong forms, UTF-16 surrogates and code points above U+10FFFF count as not UTF-8, the same check MIDI text, stream titles and HTTP headers use.

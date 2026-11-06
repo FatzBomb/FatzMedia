@@ -275,6 +275,7 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     env.soundfont = s->soundfont;
     env.midi_rate = fa_engine_midi_rate(s->engine);
     env.text_code_page = s->text_code_page;
+    env.dsd_rate = options ? options->dsd_rate : 0;
     r = fa_decoder_open(&s->decoder, &s->source, name_hint, options ? options->mime_hint : NULL,
                         options ? options->audio_track : -1, &env);
     if (r != FA_OK) return r;

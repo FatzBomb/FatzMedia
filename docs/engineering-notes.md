@@ -184,3 +184,17 @@ done in codecs step 4; 14-bit DTS words are still not read); raw `.thd`/`.mlp` a
 decoded (DTS in MKV) is not taken as the song, so `Tags.Read(archive)` does not give its details (`Tags.Read(archive, entry)`
 does not either: the archive path keeps the "audio means decodable" rule); the CAF `info` chunk is read once, and not after a
 `data` chunk of size -1.
+
+## DSD (DSF, DSDIFF) leftovers
+
+- DST-compressed DSDIFF is recognised but not decoded (codec `dst`): DST is a lossless predictor plus arithmetic coder
+  (ISO/IEC 14496-3 subpart 10); it is rare outside SACD rips, which are mostly stored uncompressed.
+- DSDIFF `COMT` comments, `MARK` markers (track starts on a whole-disc rip), `ABSS` start time and `LSCO` loudspeaker
+  configuration are not read; channels are placed from `CHNL` names only. A whole-disc `.dff` therefore plays as one track.
+- DSF channel type 6 (5 channels) and 7 (5.1) map their surrounds to the WAVE back pair (`0x10`, `0x20`), not the side pair.
+- The test files are made by a second-order modulator in `tests/test_dsd.c` (about 70 dB in-band SNR), so the end-to-end
+  noise check is loose (62 dB); the filters' 120 dB and the arithmetic (better than -125 dB) are checked white-box. No real
+  SACD rip or commercial DSF was played.
+- DSD32 (1.4 MHz) and rates that are not 64 to 1024 times 44.1 or 48 kHz are refused.
+- `fa_decoder_open` scores at most 24 registry entries (a compile-time check in `decoder.c` now guards it); DSD is entry 20,
+  and WavPack and Monkey's Audio will make 22.
