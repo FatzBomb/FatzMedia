@@ -10,13 +10,6 @@ public class CrossfadeTests
 
     private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static async Task WaitFor(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow + Timeout;
-        while (!condition() && DateTime.UtcNow < deadline) await Task.Delay(10);
-        Assert.True(condition());
-    }
-
     [Fact]
     public async Task DeviceTime_AdvancesWhileRunning()
     {
@@ -24,7 +17,7 @@ public class CrossfadeTests
         using var output = engine.OpenOutput();
         output.Start();
         var t0 = output.Time;
-        await WaitFor(() => output.Time - t0 > TimeSpan.FromMilliseconds(100));
+        await TestAudio.WaitFor(() => output.Time - t0 > TimeSpan.FromMilliseconds(100));
     }
 
     [Fact]
@@ -80,7 +73,7 @@ public class CrossfadeTests
         Assert.Same(b, a.Next);
         Assert.Equal(StreamState.Scheduled, b.State);
         await started.Task.WaitAsync(Timeout);
-        await WaitFor(() => a.State == StreamState.Ended);
+        await TestAudio.WaitFor(() => a.State == StreamState.Ended);
         Assert.Equal(StreamState.Playing, b.State);
         Assert.Null(a.Next);
     }

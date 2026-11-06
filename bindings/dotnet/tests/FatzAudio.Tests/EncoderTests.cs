@@ -19,15 +19,6 @@ public class EncoderTests
         return x;
     }
 
-    private static float[] ReadAll(AudioStream s, int channels)
-    {
-        var all = new List<float>();
-        var buf = new float[4096 * channels];
-        int frames;
-        while ((frames = s.Read(buf)) > 0) all.AddRange(buf.AsSpan(0, frames * channels).ToArray());
-        return [.. all];
-    }
-
     [Theory]
     [InlineData(EncodeFormat.Wav, 32)]
     [InlineData(EncodeFormat.Wav, 24)]
@@ -50,7 +41,7 @@ public class EncoderTests
             using var engine = AudioEngine.Create();
             using var s = engine.OpenFile(path, DecodeOnly);
             Assert.Equal(30000, s.Info.LengthFrames);
-            var y = ReadAll(s, 2);
+            var y = TestAudio.ReadAllSamples(s, 2);
             Assert.Equal(x.Length, y.Length);
             double tol = bits == 32 ? 0 : 1.0 / (1 << 23);
             for (int i = 0; i < x.Length; i++) Assert.InRange(y[i] - x[i], -tol, tol);
@@ -97,7 +88,7 @@ public class EncoderTests
         using var engine = AudioEngine.Create();
         using var s = engine.OpenMemory(ms.ToArray(), DecodeOnly);
         Assert.Equal(10000, s.Info.LengthFrames);   // the header was completed through Seek
-        Assert.Equal(10000, ReadAll(s, 1).Length);
+        Assert.Equal(10000, TestAudio.ReadAllSamples(s, 1).Length);
     }
 
     [Fact]
@@ -191,7 +182,7 @@ public class EncoderTests
             using var engine = AudioEngine.Create();
             using var s = engine.OpenFile(path, DecodeOnly);
             Assert.Equal("mp3", s.Info.Codec);
-            Assert.InRange(ReadAll(s, 2).Length / 2, 44100 - 1152, 44100 + 1152);
+            Assert.InRange(TestAudio.ReadAllSamples(s, 2).Length / 2, 44100 - 1152, 44100 + 1152);
         }
         finally
         {

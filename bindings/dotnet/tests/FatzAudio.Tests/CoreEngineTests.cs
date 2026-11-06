@@ -298,6 +298,7 @@ public class PlaybackTests
         Assert.False(fadeIn.IsCompleted);      // not playing yet: the fade has not started
         s.PlayOn(output);
         await fadeIn.WaitAsync(TimeSpan.FromSeconds(5));
+        await TestAudio.WaitFor(() => Math.Abs(s.Volume - 1f) < 0.0005f);   // the done event can arrive before the last block's value is readable
         Assert.Equal(1f, s.Volume, 3);
     }
 

@@ -30,30 +30,7 @@ public class AnalysisTests
                 samples[start + i] += (float)(Math.Sin(phase) * Math.Exp(-t * 14) * 0.9);
             }
         }
-        return FloatWav(samples);
-    }
-
-    private static byte[] FloatWav(float[] samples)
-    {
-        int dataBytes = samples.Length * 4;
-        using var ms = new MemoryStream(44 + dataBytes);
-        using var w = new BinaryWriter(ms);
-        w.Write("RIFF"u8);
-        w.Write(36 + dataBytes);
-        w.Write("WAVE"u8);
-        w.Write("fmt "u8);
-        w.Write(16);
-        w.Write((short)3);          // IEEE float
-        w.Write((short)1);          // mono
-        w.Write(Rate);
-        w.Write(Rate * 4);          // byte rate
-        w.Write((short)4);          // block align
-        w.Write((short)32);
-        w.Write("data"u8);
-        w.Write(dataBytes);
-        foreach (float s in samples) w.Write(s);
-        w.Flush();
-        return ms.ToArray();
+        return TestAudio.FloatWav(samples, Rate);
     }
 
     private static string TempFile(byte[] data, string extension = "wav")
@@ -368,7 +345,7 @@ public class AnalysisTests
     [Fact]
     public void Analyze_SilenceHasNoBeatAndNoKey()
     {
-        string path = TempFile(FloatWav(new float[10 * Rate]));
+        string path = TempFile(TestAudio.FloatWav(new float[10 * Rate], Rate));
         try
         {
             using var engine = CreateHeadless();
@@ -390,7 +367,7 @@ public class AnalysisTests
             for (int h = 1; h <= 4; h++)
                 for (int i = 0; i < samples.Length; i++)
                     samples[i] += (float)(Math.Sin(2 * Math.PI * freq * h * i / Rate) * 0.1 / h);
-        string path = TempFile(FloatWav(samples));
+        string path = TempFile(TestAudio.FloatWav(samples, Rate));
         try
         {
             using var engine = CreateHeadless();
