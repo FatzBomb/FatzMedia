@@ -153,20 +153,35 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         _grid.PerformLayout();
     }
 
+    // ENG-053: the border and window-state changes each resize the form; with layout suspended the
+    // panels (and their surfaces' swap chains) are laid out once, at the final size, instead of once
+    // per step. Normal is set first only when the form is maximized already (a maximized form does not
+    // re-cover the screen when its border goes).
     void IPlayerSetHost<PlayerPanel>.SetWindowFullScreen(bool fullScreen)
     {
-        if (fullScreen)
+        SuspendLayout();
+        _grid.SuspendLayout();
+        try
         {
-            _restoreWindowState = WindowState == FormWindowState.Minimized ? FormWindowState.Normal : WindowState;
-            _restoreBorderStyle = FormBorderStyle;
-            FormBorderStyle = FormBorderStyle.None;
-            WindowState = FormWindowState.Normal;
-            WindowState = FormWindowState.Maximized;
+            if (fullScreen)
+            {
+                _restoreWindowState = WindowState == FormWindowState.Minimized ? FormWindowState.Normal : WindowState;
+                _restoreBorderStyle = FormBorderStyle;
+                FormBorderStyle = FormBorderStyle.None;
+                if (WindowState == FormWindowState.Maximized)
+                    WindowState = FormWindowState.Normal;
+                WindowState = FormWindowState.Maximized;
+            }
+            else
+            {
+                FormBorderStyle = _restoreBorderStyle;
+                WindowState = _restoreWindowState;
+            }
         }
-        else
+        finally
         {
-            FormBorderStyle = _restoreBorderStyle;
-            WindowState = _restoreWindowState;
+            _grid.ResumeLayout(performLayout: false);
+            ResumeLayout(performLayout: true);
         }
     }
 

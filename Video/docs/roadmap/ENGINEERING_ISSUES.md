@@ -99,6 +99,11 @@ Avalonia. Likely the layout change (the others hidden, the panel resized, the fo
 resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
 the other panels before the resize, or suspending layout around the switch, removes it.
 
+Change (2026-11-06, pending the owner's check): `MainForm.SetWindowFullScreen` suspends layout around the
+border and window-state changes, so the panels and their surfaces are laid out once at the final size
+instead of once per step. If the stutter stays, the next suspect is the hidden panels' surfaces stopping
+and restarting presentation.
+
 ### ENG-052 - Embedded subtitle scan reads a large MKV twice
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
