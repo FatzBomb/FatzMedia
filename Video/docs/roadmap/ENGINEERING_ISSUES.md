@@ -107,6 +107,15 @@ within 5 s: the whole file twice. On a laptop disk or a network share that compe
 scan should read the file once at most (one pass for all text tracks, sharing the open demuxer or
 reading only the subtitle packets' clusters), and at a lower priority than playback.
 
+Found (2026-11-06): the subtitle scan reads the file once. On Linux a 533 MB MKV with an SRT track read
+533 MB (`DecodeTracks_ReadsALargeFileAtMostOnce`, opt-in with `FATZBOMB_LINUX_LARGE_SUBTITLE_MKV`). The
+second full read is the video soundtrack's peak normalization: `VideoAudioEngine.RunNormalizationAnalysis`
+opens its own `FfmpegAudioReader` and decodes the whole soundtrack for the deep pass ("Deep normalization
+complete" in the owner's log), which in an MKV means reading the whole file again. That is the BASS
+soundtrack path, which 037A slice 5 replaces (owner rule: BASS-path issues are not fixed). Slice 5 must not
+bring it back: FatzAudio measures a soundtrack's loudness from the audio we feed it (request 13) or from its
+cache, with no separate read of the file. The subtitle side needs no change.
+
 ### ENG-051 - Background video hitches at the song's loop point
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 6, WPF, BASS): a song looping with a same-name
