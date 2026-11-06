@@ -320,6 +320,44 @@ public sealed class PlayerPresentationHelperTests
     }
 
     [Fact]
+    public void AbSwapDemoOptions_ParseTheDemoFlags_AndResolveFoldersToTheirVideos()
+    {
+        Assert.False(AbSwapDemoOptions.Parse(["clip.mp4"]).IsEnabled);
+
+        AbSwapDemoOptions options = AbSwapDemoOptions.Parse(
+            ["--ab-demo=\"D:\\- Testing Files\"", "--ab-demo=C:\\media\\a.mp4", "--ab-swaps=5000", "--ab-interval=1.5", "--ab-mode=Native", "--ab-collapsed", "--ab-exit"]);
+        Assert.True(options.IsEnabled);
+        Assert.Equal(["D:\\- Testing Files", "C:\\media\\a.mp4"], options.Sources);
+        Assert.Equal(AbSwapDemoOptions.MaxSwaps, options.Swaps);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), options.Interval);
+        Assert.True(options.Native);
+        Assert.True(options.Collapsed);
+        Assert.True(options.ExitWhenDone);
+
+        AbSwapDemoOptions defaults = AbSwapDemoOptions.Parse(["--ab-demo=x", "--ab-swaps=bad", "--ab-interval=0"]);
+        Assert.Equal(AbSwapDemoOptions.DefaultSwaps, defaults.Swaps);
+        Assert.Equal(TimeSpan.FromSeconds(0.5), defaults.Interval);
+        Assert.False(defaults.Native);
+        Assert.False(defaults.Collapsed);
+        Assert.False(defaults.ExitWhenDone);
+
+        IReadOnlyList<string> clips = options.ResolveClips(
+            static source => source.EndsWith("Files", StringComparison.Ordinal),
+            static _ => ["D:\\- Testing Files\\b.MKV", "D:\\- Testing Files\\notes.txt", "D:\\- Testing Files\\A.mp4"]);
+        Assert.Equal(["D:\\- Testing Files\\A.mp4", "D:\\- Testing Files\\b.MKV", "C:\\media\\a.mp4"], clips);
+        Assert.Empty(AbSwapDemoOptions.Parse(["--ab-demo=gone"]).ResolveClips(static _ => true, static _ => null));
+    }
+
+    [Fact]
+    public void AbSwapDemoSummary_DescribesCountsAndReadyTimes()
+    {
+        Assert.Equal("0 of 3 swaps, 3 without a first frame", AbSwapDemoSummary.Describe(3, [], 3));
+        Assert.Equal(
+            "4 of 5 swaps, 1 without a first frame; ready after min 40 ms, median 75 ms, max 300 ms",
+            AbSwapDemoSummary.Describe(5, [300, 40, 70, 80], 1));
+    }
+
+    [Fact]
     public void UiThreadCostMeter_ReadsMillisecondsPerSecondAndPerFrame_FromRunningTotals()
     {
         long now = 0;

@@ -258,6 +258,48 @@ public sealed class WinFormsMediaSurfaceTests
     });
 
     [Fact]
+    public void FrameSink_FirstFrameReady_RaisesOncePerLoadWithTheFramePublished() => RunSta(() =>
+    {
+        // Stage 051A: on the UI thread, once per load, after the frame is in the sink's bitmap.
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(4, 2), PreferNativeWindow = false, Player = session };
+        _ = surface.Handle;
+        var published = new List<long>();
+        surface.FirstFrameReady += (_, _) =>
+        {
+            Assert.False(surface.InvokeRequired);
+            published.Add(surface.FrameSink!.PublishedFrames);
+        };
+        byte[] pixels = new byte[4 * 2 * 4];
+        void Present()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                surface.FrameSink!.PresentFrame(pixels, 4, 2, 16);
+                recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+            }).Wait();
+            var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(300);
+            while (DateTime.UtcNow < deadline)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                Thread.Sleep(5);
+            }
+        }
+
+        Present();
+        Present();
+        Assert.Single(published);
+        Assert.True(published[0] >= 1);
+
+        var source = new MediaSourceInfo(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
+        recorder.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(source));
+        recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(source, TimeSpan.Zero));
+        Present();
+        Assert.Equal(2, published.Count);
+        surface.Player = null;
+    });
+
+    [Fact]
     public void PreferNativeWindowOff_AttachesOnlyAFrameSink() => RunSta(() =>
     {
         (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();

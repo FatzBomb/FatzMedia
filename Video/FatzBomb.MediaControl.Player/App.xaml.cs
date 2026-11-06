@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using FatzBomb.MediaControl.Player.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
+using FatzBomb.MediaControl.Player.Shared.Presentation;
 
 namespace FatzBomb.MediaControl.Player;
 
@@ -46,20 +48,63 @@ public partial class App : Application
         UseRenderer(options.RendererRequest);
         if (options.LightweightSurfacesWindow)
             _ = ShowLightweightSurfacesWindowAsync();
+        AbSwapDemoOptions abDemo = AbSwapDemoOptions.Parse(e.Args);
+        if (abDemo.IsEnabled)
+            _ = ShowAbSwapDemoWindowAsync(abDemo);
     }
 
-    /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
-    private async Task ShowLightweightSurfacesWindowAsync()
+    /// <summary>Stage 051A: the A/B swap demo window (<c>--ab-demo=</c>), with the startup renderer.</summary>
+    private async Task ShowAbSwapDemoWindowAsync(AbSwapDemoOptions options)
     {
         PlayerRendererSelection selection = await RendererSelection;
+        await WhenMainWindowLoadedAsync();
 
-        // An owner must have been shown: wait for the main window (StartupUri) to load.
+        IReadOnlyList<string> clips = options.ResolveClips(
+            Directory.Exists,
+            static folder =>
+            {
+                try
+                {
+                    return Directory.EnumerateFiles(folder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            });
+        // The software renderer presents only through the composited path.
+        Wpf.WpfPresentationMode mode = options.Native && !selection.UsesSoftwareRenderer
+            ? Wpf.WpfPresentationMode.NativeHwndOverlay
+            : Wpf.WpfPresentationMode.WpfComposited;
+        var window = new AbSwapDemoWindow(
+            () => new WindowsMediaControlPlatformFactory(selection.CreateFactory()),
+            PlayerNativePaths.Combine(StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths()),
+            options,
+            clips,
+            mode,
+            AutoHideSurfaces)
+        {
+            Owner = MainWindow,
+        };
+        window.Show();
+    }
+
+    // An owner must have been shown: wait for the main window (StartupUri) to load.
+    private async Task WhenMainWindowLoadedAsync()
+    {
         if (MainWindow is { IsLoaded: false } main)
         {
             var loaded = new TaskCompletionSource();
             main.Loaded += (_, _) => loaded.TrySetResult();
             await loaded.Task;
         }
+    }
+
+    /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
+    private async Task ShowLightweightSurfacesWindowAsync()
+    {
+        PlayerRendererSelection selection = await RendererSelection;
+        await WhenMainWindowLoadedAsync();
 
         var window = new LightweightSurfacesWindow(
             () => new WindowsMediaControlPlatformFactory(selection.CreateFactory()),

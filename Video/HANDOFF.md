@@ -124,7 +124,13 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
 
-- Last results: Portable 1784, Avalonia 52 (2026-11-06); Linux 145, Vulkan 102 (2026-11-05); 0 warnings.
+- Last results (2026-11-06): Portable 1786, Avalonia 52, Linux 203 + 9 FatzAudio native failures (no native
+  library in a managed-only pack); Vulkan 102 (2026-11-05); whole solution 0 warnings.
+- FatzAudio for a sandbox build without the token (2026-11-06): `add_repo` FatzBomb75/FatzAudio (public: the
+  git proxy serves it), `git fetch --depth=1000 origin`, check out 59741a5 (rc.1),
+  `dotnet pack bindings/dotnet/src/FatzAudio -c Release -p:VersionSuffix=rc.1 -o <feed>`, restore with a
+  `nuget.config` outside the repo mapping `FatzAudio` to that feed. Native FatzAudio tests also need
+  `libfatzaudio.so` built with cmake (see `updates/037A_2`).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
 Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three

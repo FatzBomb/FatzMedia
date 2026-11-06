@@ -6,7 +6,7 @@
     Does the git and build steps for you, then runs each test: it starts the players with the right
     flags, reads their logs for the expected lines, maximizes windows, collects the composited
     UI-thread numbers (047A's before numbers) and writes PASS/FAIL per check. You only do what needs
-    hands or eyes (dropping a file, watching the TriviaBomb swap); the script tells you exactly what.
+    hands or eyes (dropping a file, watching the A/B swap demo); the script tells you exactly what.
 
     Everything is saved to a folder on your Desktop (FatzBomb-051A-<date>); at the end the results are
     copied to your clipboard so you can paste them into the chat.
@@ -20,7 +20,7 @@
 
     Optional parameters:
         -Repo       repo folder             (default: the folder above this script)
-        -MediaDir   folder with your media  (default C:\media)
+        -MediaDir   folders with your media (default C:\media and D:\- Testing Files, two levels deep)
         -Branch     branch to test          (default claude/zen-tesla-ux51s6)
         -Steps      which tests, e.g. "1,3" or "all" (default: asks you)
         -SkipGit    do not fetch, switch or pull
@@ -30,7 +30,7 @@
 [CmdletBinding()]
 param(
     [string]$Repo = (Split-Path -Parent $PSScriptRoot),
-    [string]$MediaDir = 'C:\media',
+    [string[]]$MediaDir = @('C:\media', 'D:\- Testing Files'),
     [string]$Branch = 'claude/zen-tesla-ux51s6',
     [string]$Steps = '',
     [switch]$SkipGit,
@@ -221,24 +221,64 @@ function Test-4 {
     }
 }
 
-# 5. The A/B swap in TriviaBomb (or any WPF app following the WPF README's example).
+# 5. The A/B swap demo in the WPF player (--ab-demo): two players, swapped on FirstFrameReady.
+# Runs one demo and returns its log (or $null when the player did not start or finish).
+function Invoke-AbDemo([string]$Tag, [string[]]$DemoArgs, [int]$Swaps, [int]$IntervalSeconds) {
+    $demo = @("--ab-demo=$($Media.clipA)", "--ab-demo=$($Media.clipB)", "--ab-swaps=$Swaps", "--ab-interval=$IntervalSeconds", '--ab-exit') + $DemoArgs
+    $p = Start-Fresh 'Wpf' $demo
+    if (-not $p) { return $null }
+    $limit = [Diagnostics.Stopwatch]::StartNew()
+    $budget = 60 + $Swaps * ($IntervalSeconds + 12)
+    while (-not $p.HasExited -and $limit.Elapsed.TotalSeconds -lt $budget) { Start-Sleep -Milliseconds 500 }
+    if (-not $p.HasExited) {
+        Say-Warn "The demo did not finish within $budget s; closing the player."
+        Stop-Player $p
+    }
+    Start-Sleep -Seconds 1
+    return (Save-RunLog 'Wpf' $Tag)
+}
+
+# Checks one demo run: every swap got its first frame, nothing was missed, no warnings or errors.
+function Test-AbDemoLog([string]$Name, [string]$Log, [int]$Swaps) {
+    if (-not $Log) { Add-Check "${Name}: demo ran" $false 'the player did not start or no log'; return }
+    $ready = @(Get-Lines $Log '[ABDemo] swap' | Where-Object { $_.Contains('ready after') })
+    $missed = @(Get-Lines $Log '[ABDemo] swap' | Where-Object { $_.Contains('MISSED') -or $_.Contains('could not load') })
+    $done = @(Get-Lines $Log '[ABDemo] done')
+    $problems = @(Get-Lines $Log '[ABDemo] diagnostic')
+    Add-Check "${Name}: all $Swaps swaps got their first frame" ($ready.Count -eq $Swaps -and $missed.Count -eq 0) ("ready {0}, missed {1}" -f $ready.Count, $missed.Count)
+    Add-Check "${Name}: the demo finished" ($done.Count -eq 1) $(if ($done) { $done[0] -replace '^.*\[ABDemo\] ', '' } else { 'no done line' })
+    Add-Check "${Name}: no warnings or errors" ($problems.Count -eq 0) (($problems | Select-Object -First 3 | ForEach-Object { $_ -replace '^.*\[ABDemo\] ', '' }) -join ' / ')
+}
+
 function Test-5 {
-    if (-not (Start-Step 5 'A/B swap in TriviaBomb' 'The same-frame swap needs eyes; the test players have no A/B mode. Guided.' '10')) { return }
+    if (-not (Start-Step 5 'A/B swap demo (WPF player, --ab-demo)' 'Two players swap clips on FirstFrameReady 20 times; the script checks every swap, you watch for black or old frames.' '6')) { return }
+    if (-not (Need-Media @('clipA', 'clipB'))) { return }
     Say-Do @(
-        'In TriviaBomb: two surfaces in WpfComposited mode, stacked, the waiting one Visibility.Hidden (WPF README, "First frame ready and the A/B swap").',
-        'Swap clips 20 times from FirstFrameReady, showing the question panel in the same handler.',
-        'Optional: film the screen with a phone in slow motion (240 fps).')
-    Wait-Enter 'Press Enter when you have done the 20 swaps'
-    Add-Answer 'no black frame between clips' 'Did every swap go straight from one clip to the next, with no black frame?'
-    Add-Answer 'no old frame on the new surface' 'Did the new clip start with its own picture (never the previous clip''s last frame)?'
-    Add-Answer 'panel and clip change together' 'Did the question panel change in the same frame as the clip?'
-    Say-Do @('Change the waiting surface to Visibility.Collapsed instead of Hidden and swap a few times.')
-    Wait-Enter
-    Add-Answer 'Collapsed shows a wrong-size first frame (expected, why the pattern says Hidden)' 'With Collapsed, did the first frame look blurred or wrong-sized for a moment?'
-    Say-Do @('Now set both surfaces to NativeHwndOverlay and swap a few times.')
-    Wait-Enter
-    $a = Ask-Choice 'Native mode: the question panel compared with the new clip?' @('same frame', 'panel a frame early', 'panel a frame late', 'could not tell')
-    Add-Info "native mode, panel vs clip: $a (a frame early or late is possible in native mode)"
+        'A window opens with a coloured bar above the video. It swaps clips every 2 seconds, 20 times, then closes by itself.',
+        'Watch: at each swap the bar changes colour (red/blue) and its text changes. The new clip must appear in that same moment.',
+        'Look for: a black flash between clips, the old clip''s last picture for a moment, or the bar changing before/after the clip.',
+        'Optional: film it with your phone in slow motion (240 fps) for a frame-exact look.')
+    Wait-Enter 'Press Enter to start the composited run'
+    $log = Invoke-AbDemo 'test5-composited' @() 20 2
+    Test-AbDemoLog 'composited' $log 20
+    Add-Answer 'composited: no black frame between clips' 'Did every swap go straight from one clip to the next, with no black flash?'
+    Add-Answer 'composited: no old frame on the new clip' 'Did each new clip start with its own picture (never the previous clip''s last frame)?'
+    Add-Answer 'composited: bar and clip change together' 'Did the coloured bar change in the same moment as the clip?'
+
+    Say-Do @('Next: the same with the waiting surface Collapsed (6 swaps). This is the counter-check: the first frame of each clip may look blurred or blocky for a moment.')
+    Wait-Enter 'Press Enter to start the Collapsed run'
+    $log = Invoke-AbDemo 'test5-collapsed' @('--ab-collapsed') 6 2
+    Test-AbDemoLog 'collapsed' $log 6
+    $a = Ask-YesNo 'With Collapsed, did the first picture of a clip look blurred or wrong-sized for a moment?'
+    Add-Info "collapsed counter-check, wrong-size first frame seen: $a (yes is expected; it is why the pattern uses Hidden)"
+
+    Say-Do @('Last: native mode (10 swaps). Here the bar may change a frame before or after the clip; that is allowed, just note it.')
+    Wait-Enter 'Press Enter to start the native run'
+    $log = Invoke-AbDemo 'test5-native' @('--ab-mode=native') 10 2
+    Test-AbDemoLog 'native' $log 10
+    $c = Ask-Choice 'Native mode: the coloured bar compared with the new clip?' @('same moment', 'bar a little early', 'bar a little late', 'could not tell')
+    Add-Info "native mode, bar vs clip: $c"
+    Add-Answer 'native: no black frame between clips' 'Native mode: did every swap go straight from one clip to the next, with no black flash?'
 }
 
 # 6. Avalonia and WinForms start their media at once too.
@@ -310,7 +350,7 @@ if (-not $Steps) {
     Write-Host '   2  G   Once per load (you drop three files)                  ~3 min'
     Write-Host '   3  AG  Composited UI-thread time, 047A before numbers        ~5 min'
     Write-Host '   4  A   Auto-hide off                                         ~1 min'
-    Write-Host '   5  G   A/B swap in TriviaBomb (needs TriviaBomb)             ~10 min'
+    Write-Host '   5  AG  A/B swap demo, 20 swaps (you watch)                   ~6 min'
     Write-Host '   6  A   Avalonia and WinForms startup                         ~2 min'
     Write-Host ''
     Write-Host 'On the laptop, test 3 alone is enough: type 3.' -ForegroundColor DarkGray
@@ -319,6 +359,8 @@ if (-not $Steps) {
 if (-not $Steps -or $Steps.Trim().ToLowerInvariant() -eq 'all') { $selected = $all }
 else { $selected = @($Steps -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { [int]$_ }) }
 
+$MediaDir = @($MediaDir | Where-Object { Test-Path -LiteralPath $_ })
+if ($MediaDir.Count -eq 0) { throw 'None of the media folders exists. Pass -MediaDir <folder>.' }
 $Media = @{}
 $videoExt = @('.mp4', '.mkv', '.mov', '.m4v', '.webm')
 $audioExt = @('.mp3', '.flac', '.wav', '.m4a', '.ogg')
@@ -326,6 +368,10 @@ if (@($selected | Where-Object { $_ -in 1, 2, 3, 4, 6 }).Count -gt 0) {
     $Media.video = Select-Media 'a 1080p60 video (H.264 or HEVC; at least 1 minute long)' $videoExt @('1080', '60', 'h264', 'hd') $null ''
 }
 if ($selected -contains 2) { $Media.song = Select-Media 'any song (audio only)' $audioExt @() $null '' }
+if ($selected -contains 5) {
+    $Media.clipA = Select-Media 'clip A for the A/B swap (a video that does not start on black)' $videoExt @('1080', 'hd') $null ''
+    $Media.clipB = Select-Media 'clip B for the A/B swap (a different video)' $videoExt @('1080', 'hd') $null $Media.clipA
+}
 
 $gpuNames = (@(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | ForEach-Object { '{0} (driver {1})' -f $_.Name, $_.DriverVersion }) -join '; ')
 Add-Result 'FatzBomb.MediaControl smoke 051A results'

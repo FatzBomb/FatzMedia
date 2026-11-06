@@ -128,6 +128,15 @@ player and the startup renderer (WPF-composited for the software renderer). Type
 path, then **Background** or **Karaoke** sets that control's `Source`; **Colour** cycles solid
 background colours; **Stop both** stops them.
 
+`--ab-demo=<video file or folder>` (WPF player only, repeatable, Stage 051A) also opens the A/B swap
+demo: two players on two stacked surfaces; the next clip loads into the hidden one and its
+`FirstFrameReady` handler shows it, hides the other and changes the coloured bar above them in one
+UI-thread turn. Options: `--ab-swaps=N` (default 20), `--ab-interval=seconds` (default 3),
+`--ab-mode=native` (default composited), `--ab-collapsed` (the waiting surface Collapsed instead of
+Hidden: the counter-check), `--ab-exit` (close the player when done). Each swap goes to the debug log
+as `[ABDemo] swap i/N ready after x ms: <clip>`, then `[ABDemo] done: ...`; `scripts/smoke-051A.ps1`
+test 5 runs it.
+
 ## Renderer choice
 
 `--renderer=auto|gpu|warp|software|vulkan|direct3d11` picks the renderer (Stage 036A; the shared

@@ -13,6 +13,7 @@ Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, a
 | WinForms `MediaSurface` | `FirstFrameReady`; frame sink: inline publish and paint; native window: after the child window is shown. |
 | `PlayerViewModel` | `StartupMediaDelay` (500 ms) and its cancellation source removed: the startup media loads as soon as the engine is ready. |
 | Player.Shared | `UiThreadCostMeter`, `PlayerStatsLine.WithUiThreadCost`. |
+| WPF test player, A/B demo | `--ab-demo=` window (`AbSwapDemoWindow`; options and summary in Player.Shared `AbSwapDemo.cs`, tested): two players, swaps on `FirstFrameReady`, a `[ABDemo]` log line per swap. |
 | WPF test player | Stats line: `surface WxH via frame sink, UI thread x.x ms/s (y.yy ms/frame)` (primary and second screen); log line `P1 first frame ready: <file> via <path>` per load. |
 
 ## Decisions
@@ -37,8 +38,15 @@ Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, a
   bitmap, a load before the surface attaches).
 - WPF and WinForms adapters build with `EnableWindowsTargeting=true`, 0 warnings; `dotnet format
   --verify-no-changes` clean on every touched project; the four boundary scripts pass.
-- **Not built here:** the WPF, Avalonia and WinForms test players and Linux.Tests (they restore the
-  token-gated FatzAudio package; this session could not build it from source). Windows CI builds them.
+- The whole solution builds in Release (warnings as errors) with `EnableWindowsTargeting=true`, 0 warnings,
+  against FatzAudio rc.1 packed locally from its source (managed part only, commit 59741a5).
+- Linux.Tests: 203 passed with FFmpeg; the 9 `FatzAudioEngineNativeTests` fail only because the local
+  package has no native `libfatzaudio.so` (`DllNotFoundException`), unrelated. New
+  `LinuxFirstFrameNativeTests` (real FFmpeg and software renderer): a load before the surface attaches
+  still reaches the surface and arms the first frame (why the startup delay could go); an A/B swap of
+  two players reports each load's first frame after a frame reached its surface (76-256 ms per swap).
+- New Windows-only tests (CI runs them): `WpfFirstFrameReadyTests` (composited surface in a shown window:
+  once per load, the bitmap written first, the counter) and a WinForms frame-sink test.
 - Not verified: anything on screen (same-frame swap, native timing, the counter's numbers).
 
 ## Manual smoke (Windows, PowerShell)
@@ -71,8 +79,8 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3
 | 2 | guided (you drop 3 files) | Two video loads, with pause, seek and an MP3 between them, give exactly two lines and none for the MP3. |
 | 3 | automatic + 2 drops | Composited UI-thread time, ms/s and ms/frame: one player at window size, the same maximized, then three players. Records machine, GPU and power state. These are 047A's before numbers. |
 | 4 | automatic | `--no-auto-hide`, native and composited: one line each. |
-| 5 | guided (TriviaBomb) | A/B swap: no black frame, no old frame, panel and clip change together; the `Collapsed` counter-check; native mode frame offset (noted, not failed). |
+| 5 | automatic + you watch | The WPF player's A/B swap demo (`--ab-demo`): 20 composited swaps, 6 with the waiting surface `Collapsed` (counter-check), 10 native. The log must show every swap's first frame, no misses and no warnings; you answer whether there was a black flash, an old frame, or the bar changing apart from the clip. Native-mode offset is noted, not failed. |
 | 6 | automatic + 1 question | Avalonia and WinForms players load the startup video at once. |
 
-The test players have no A/B mode, so test 5 needs TriviaBomb (or a small app following the WPF
-README's example).
+Media is offered from `C:\media` and `D:\- Testing Files` (two levels deep, so `sample files` too);
+pass `-MediaDir` for other folders. TriviaBomb itself is a final check after this.

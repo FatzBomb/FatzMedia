@@ -61,12 +61,6 @@ public partial class PlayerView : UserControl, IPlayerSlot
         Focusable = true;
         FocusVisualStyle = null;
 
-        // Stage 051A: the smoke script reads this line from the debug log.
-        MediaSurface.FirstFrameReady += (_, _) => ViewModel.AddLogEntry(
-            MediaDiagnosticLevel.Info,
-            "Surface",
-            $"{ViewModel.Label} first frame ready: {ViewModel.LoadedMediaText} via {MediaSurfacePresentationPathText.Describe(MediaSurface.PresentationPath)}");
-
         _standardMediaMargin = MediaViewportBorder.Margin;
         _standardMediaBorderThickness = MediaViewportBorder.BorderThickness;
         _standardMediaPadding = MediaViewportBorder.Padding;
@@ -82,6 +76,11 @@ public partial class PlayerView : UserControl, IPlayerSlot
             App.StartupOptions.ForBuild(index, atStartup));
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        // Stage 051A: the smoke script reads this line from the debug log.
+        MediaSurface.FirstFrameReady += (_, _) => ViewModel.AddLogEntry(
+            MediaDiagnosticLevel.Info,
+            "Surface",
+            $"{ViewModel.Label} first frame ready: {ViewModel.LoadedMediaText} via {MediaSurfacePresentationPathText.Describe(MediaSurface.PresentationPath)}");
         // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
         _chrome = new FullScreenChromeController(
             new WpfPlayerDispatcher(),
