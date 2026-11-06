@@ -209,6 +209,20 @@ static HINTERNET open_session(const wchar_t* wua, const char* proxy)
     return session;
 }
 
+/* Closes the session's handles and opens them again for the same agent, proxy and
+ * server, which drops every pooled connection. 0 on failure (the handles are then
+ * NULL and the next request opens them again). */
+static int reopen_pool(fa_http_session* s)
+{
+    if (s->connect) WinHttpCloseHandle(s->connect);
+    if (s->session) WinHttpCloseHandle(s->session);
+    s->connect = NULL;
+    s->session = open_session(s->agent, s->proxy);
+    if (!s->session) return 0;
+    s->connect = WinHttpConnect(s->session, s->host, s->port, 0);
+    return s->connect != NULL;
+}
+
 fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_head, fa_http_data_proc on_data, void* user,
                             char** out_redirect)
 {
@@ -300,6 +314,11 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
         if (!slot_remove(slot)) WinHttpCloseHandle(request);
         request = NULL;
         slot = -1;
+        /* The pool may hold more than the one dead connection (the server closed
+         * several, or WinHTTP hands out one of another session's): a second try on
+         * the same pool can pick another stale one. A new session handle starts
+         * with an empty pool, so the retry always opens a connection of its own. */
+        if (!reopen_pool(s)) goto done;
     }
 
     size = sizeof(status);

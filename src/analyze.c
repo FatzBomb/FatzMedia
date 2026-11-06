@@ -532,7 +532,7 @@ static void cache_write(const char* dir, const char* path, const fa_analysis* a)
     f = fa_fopen_utf8(tmp, "wb");
     if (f) {
         int ok = fwrite(b.d, 1, b.n, f) == b.n;
-        if (fclose(f) != 0 || !ok || fa_replace_file(tmp, path) != 0) remove(tmp);
+        if (fclose(f) != 0 || !ok || fa_replace_file(tmp, path) != 0) fa_remove_utf8(tmp);
     }
     free(b.d);
 }

@@ -2610,24 +2610,45 @@ static int real_system(void)
 }
 #endif
 
-/* Before the HTTPS cases: waits up to 15 s for the first request to FA_NET_HTTPS_ECHO_URL
- * to go through. A test root certificate added just before the run (the iOS simulator
- * job: simctl keychain add-root-cert) can take a few seconds to be trusted, and every
- * handshake until then fails. A failure that lasts is still a failure. */
+/* Before the HTTPS cases: waits up to 60 s for a first request to each of serve.py's
+ * two origins (FA_NET_HTTPS_ECHO_URL's port and the next one) to go through. A test
+ * root certificate added just before the run (the iOS simulator job: simctl keychain
+ * add-root-cert) can take a while to be trusted on a busy runner, and every handshake
+ * until then fails. The wait ends at the first success, so it costs nothing when the
+ * certificate is trusted at once; a failure that lasts is still a failure. */
+static int https_origin(char* out, size_t cap, int* out_port);
+
+static fa_result wait_https_origin(const char* url, int64_t* waited_ms)
+{
+    int64_t t0 = fa_monotonic_ns();
+    fa_result r;
+    conn_fetch c;
+    memset(&c, 0, sizeof(c));
+    while ((r = fetch_with(NULL, url, NULL, &c)) == FA_ERROR_NETWORK && fa_monotonic_ns() - t0 < 60000000000LL)
+        fa_sleep_ms(250);
+    free(c.body.p);
+    *waited_ms = (fa_monotonic_ns() - t0) / 1000000;
+    return r;
+}
+
 static void test_https_ready_optional(void)
 {
     const char* url = getenv("FA_NET_HTTPS_ECHO_URL");
-    int64_t t0 = fa_monotonic_ns(), waited;
-    fa_result r = FA_ERROR_NETWORK;
-    conn_fetch c;
+    int64_t waited;
+    char origin[300], other[400];
+    int port;
+    fa_result r;
     if (!url) { printf("  skipped (set FA_NET_HTTPS_ECHO_URL)\n"); return; }
-    memset(&c, 0, sizeof(c));
-    while ((r = fetch_with(NULL, url, NULL, &c)) == FA_ERROR_NETWORK && fa_monotonic_ns() - t0 < 15000000000LL)
-        fa_sleep_ms(250);
-    free(c.body.p);
-    waited = (fa_monotonic_ns() - t0) / 1000000;
+    r = wait_https_origin(url, &waited);
     printf("  first request: %d after %lld ms\n", (int)r, (long long)waited);
     CHECK_EQ(r, FA_OK);
+    /* The redirect cases use the second origin: it has to be trusted and listening too. */
+    if (https_origin(origin, sizeof(origin), &port)) {
+        snprintf(other, sizeof(other), "https://127.0.0.1:%d/echo-headers", port + 1);
+        r = wait_https_origin(other, &waited);
+        printf("  second origin: %d after %lld ms\n", (int)r, (long long)waited);
+        CHECK_EQ(r, FA_OK);
+    }
 }
 
 /* HTTPS through the system's TLS stack, when FA_NET_HTTPS_URL names an audio file
