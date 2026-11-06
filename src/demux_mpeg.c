@@ -7,7 +7,7 @@
  *
  * Both are read the same way. The audio of a stream is carried in PES packets, each of
  * which may begin with a PTS (90 kHz, 33 bits). The payloads of the chosen stream are joined
- * into one elementary stream and cut into frames (MPEG audio, AC-3 / E-AC-3, ADTS AAC) that
+ * into one elementary stream and cut into frames (MPEG audio, AC-3 / E-AC-3, ADTS AAC, DTS) that
  * go to the decoder one at a time. A frame has the PTS of the PES packet in which it starts;
  * the frames after it follow on by their own length, so audio from a muxer whose PTS jitter by
  * a tick still plays without a click.
@@ -27,8 +27,11 @@
  * packet, 192 with the 4-byte time stamp of an M2TS file, or 204 with error correction
  * bytes): the first program's streams of MPEG audio (types 0x03 and 0x04), ADTS AAC (0x0F),
  * AC-3 (0x81, or a DVB private stream with an AC-3 descriptor), E-AC-3 (0x84 and 0x87, or
- * descriptor 0x7A). DTS, TrueHD, LPCM and AAC in LATM are listed as tracks but reported
- * unsupported when asked for. Scrambled transport streams are reported as protected.
+ * descriptor 0x7A), DTS and DTS-HD (0x82, 0x85, 0x86, descriptor 0x7B, registration DTS1 to
+ * DTS3; program stream substreams 0x88 to 0x8F and 0x98 to 0x9F). DTS plays only through the
+ * system's decoder where the machine has one (dts.c); without one it is reported unsupported
+ * like TrueHD, LPCM, DTS Express and AAC in LATM, which are listed as tracks only. Scrambled
+ * transport streams are reported as protected.
  *
  * A source that cannot seek is read as it comes: the first audio stream of a program stream,
  * any stream of a transport stream; no length, no seeking. */
@@ -47,7 +50,7 @@
 #define PM_MAX 4                     /* PTS waiting at once */
 #define MPG_GRAN (32 << 10)          /* a seek stops searching this close */
 
-enum { K_MPA = 1, K_DOLBY, K_ADTS, K_UNSUPPORTED };
+enum { K_MPA = 1, K_DOLBY, K_ADTS, K_DTS, K_UNSUPPORTED };
 
 typedef struct mpg_stream {
     int id;                  /* program stream: stream id; transport stream: PID */
@@ -187,10 +190,26 @@ static int dolby_frame(const uint8_t* p, size_t n, mpg_frame* f)
     return 1;
 }
 
+/* A DTS core frame; extract() adds the extension substreams after it. */
+static int dts_frame(const uint8_t* p, size_t n, mpg_frame* f)
+{
+    fa_dts_header h;
+    if (n >= 1 && p[0] != 0x7F && p[0] != 0xFE) return 0;
+    if (n < FA_DTS_HEADER_BYTES) return -1;
+    if (!fa_dts_parse_core(p, n, &h)) return 0;
+    f->len = h.size;
+    f->rate = h.rate;
+    f->channels = h.channels;
+    f->codec = "dts";
+    f->samples = h.samples;
+    return 1;
+}
+
 static int frame_at(int kind, const uint8_t* p, size_t n, mpg_frame* f)
 {
     memset(f, 0, sizeof(*f));
-    return kind == K_MPA ? mpa_frame(p, n, f) : kind == K_ADTS ? adts_frame(p, n, f) : dolby_frame(p, n, f);
+    return kind == K_MPA ? mpa_frame(p, n, f) : kind == K_ADTS ? adts_frame(p, n, f) :
+           kind == K_DTS ? dts_frame(p, n, f) : dolby_frame(p, n, f);
 }
 
 /* What the first bytes of an MPEG audio stream's payload are. */
@@ -247,6 +266,14 @@ static int extract(mpg* m, int eof, mpg_frame* f)
                 }
             }
             if (wait) break;
+        }
+        if (kind == K_DTS) {
+            /* The DTS-HD extension substreams that follow the core frame. */
+            fa_dts_header h;
+            size_t len = 0;
+            int u = fa_dts_unit(a + i, n - i, eof, &h, &len);
+            if (u < 0 && !eof && len > f->len) break;
+            if (u == 1) f->len = len;
         }
         if (i + f->len > n) { if (eof) i = n; break; }
         if (i + f->len < n) {
@@ -386,8 +413,8 @@ static int ps_sub_kind(int sub, int* skip)
 {
     *skip = 4;
     if (sub >= 0x80 && sub <= 0x87) return K_DOLBY;
-    if (sub >= 0x88 && sub <= 0x8F) return K_UNSUPPORTED;     /* DTS */
-    if (sub >= 0x98 && sub <= 0x9F) return K_UNSUPPORTED;     /* DTS-HD */
+    if (sub >= 0x88 && sub <= 0x8F) return K_DTS;
+    if (sub >= 0x98 && sub <= 0x9F) return K_DTS;             /* DTS-HD */
     if (sub >= 0xA0 && sub <= 0xAF) { *skip = 7; return K_UNSUPPORTED; }   /* LPCM */
     return 0;
 }
@@ -511,16 +538,19 @@ static int ts_stream_kind(int type, const uint8_t* desc, int dlen, int* kind)
     case 0x03: case 0x04: *kind = K_MPA; return 1;
     case 0x0F: *kind = K_ADTS; return 1;
     case 0x81: case 0x84: case 0x87: case 0xA1: *kind = K_DOLBY; return 1;    /* AC-3, E-AC-3, Blu-ray secondary E-AC-3 */
-    case 0x11: case 0x80: case 0x82: case 0x83: case 0x85: case 0x86: case 0xA2: *kind = K_UNSUPPORTED; return 1;
+    case 0x82: case 0x85: case 0x86: *kind = K_DTS; return 1;      /* DTS, DTS-HD High Resolution, Master Audio */
+    case 0x11: case 0x80: case 0x83: case 0xA2: *kind = K_UNSUPPORTED; return 1;   /* LATM, LPCM, TrueHD, DTS Express */
     case 0x06:
     case 0x05:
         for (i = 0; i + 2 <= dlen; i += 2 + desc[i + 1]) {
             if (i + 2 + desc[i + 1] > dlen) break;
             if (desc[i] == 0x6A || desc[i] == 0x7A) { *kind = K_DOLBY; return 1; }
-            if (desc[i] == 0x7B || desc[i] == 0x7C) { *kind = K_UNSUPPORTED; return 1; }
+            if (desc[i] == 0x7B) { *kind = K_DTS; return 1; }          /* DVB DTS descriptor */
+            if (desc[i] == 0x7C) { *kind = K_UNSUPPORTED; return 1; }
             if (desc[i] == 0x05 && desc[i + 1] >= 4) {   /* registration descriptor */
                 const uint8_t* f = desc + i + 2;
                 if (memcmp(f, "AC-3", 4) == 0 || memcmp(f, "EAC3", 4) == 0) { *kind = K_DOLBY; return 1; }
+                if (memcmp(f, "DTS", 3) == 0 && f[3] >= '1' && f[3] <= '3') { *kind = K_DTS; return 1; }
                 if (memcmp(f, "DTS", 3) == 0) { *kind = K_UNSUPPORTED; return 1; }
             }
         }

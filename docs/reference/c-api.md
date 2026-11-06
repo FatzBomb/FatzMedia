@@ -552,9 +552,11 @@ FA_API fa_result FA_CALL fa_stream_push_pcm(fa_stream* stream, const void* const
 FA_API fa_result FA_CALL fa_stream_push_frame(fa_stream* stream, const fa_audio_frame* frame);
 
 /* A push stream for compressed packets of one audio track, decoded by the library:
- * PCM, MP3, AAC, AC-3, E-AC-3, Opus, Vorbis, FLAC, ALAC, and WMA on Windows.
- * FA_ERROR_UNSUPPORTED_FORMAT for any other codec (DTS, TrueHD, ...): decode those
- * with your own decoder and push the frames (fa_stream_open_push).
+ * PCM, MP3, AAC, AC-3, E-AC-3, Opus, Vorbis, FLAC, ALAC, WMA on Windows, and DTS
+ * and TrueHD where the system has a decoder for them (DTS packets may be cut
+ * anywhere). FA_ERROR_UNSUPPORTED_FORMAT for any other codec, or DTS and TrueHD
+ * with no system decoder: decode those with your own decoder and push the frames
+ * (fa_stream_open_push).
  * The stream's format is the track's rate and channel count. */
 FA_API fa_result FA_CALL fa_stream_open_packets(fa_engine* engine, const fa_codec_params* params, const fa_open_options* options, fa_stream** out_stream);
 /* Queues a packet. A packet that fails to decode is skipped (FA_EVENT_DECODE_ERROR)
@@ -1149,7 +1151,7 @@ typedef struct fa_stream_info {
                                     16, 24, ...; 0 for lossy codecs */
     int32_t can_decode;          /* 1 when FatzAudio can play the file. 0 only in the details
                                     fa_tags_get_info gives for a file whose codec nobody
-                                    decodes here (DTS, TrueHD, WMA off Windows, ...): codec,
+                                    decodes here (DTS or TrueHD with no system decoder, WMA off Windows, ...): codec,
                                     container, format, duration and bitrate are what the file
                                     says; opening a stream fails. */
 } fa_stream_info;

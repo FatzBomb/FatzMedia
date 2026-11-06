@@ -1,5 +1,6 @@
-/* AAC through Android's MediaCodec (the NDK's AMediaCodec): the
- * device's own decoders, one packet in, interleaved float out.
+/* AAC, and DTS and TrueHD where the device has a decoder for them, through
+ * Android's MediaCodec (the NDK's AMediaCodec): the device's own decoders, one
+ * packet in, interleaved float out.
  *
  * libmediandk.so is loaded at run time (Android 5.0, API 21, and later), never
  * linked, so the library loads on any Android; its functions are declared here
@@ -259,6 +260,15 @@ fa_result fa_mc_codec_open(fa_codec* c, const fa_codec_params* p)
         frames = 1024;
         ch = fa_aac_config_channels(info.channel_config);
         if (ch == 0) ch = p->channels;
+    } else if (strcmp(p->codec, "dtshd") == 0 || strcmp(p->codec, "dts") == 0 || strcmp(p->codec, "truehd") == 0) {
+        /* Frames as dts.c cuts them (DTS-HD whole, or core frames alone), TrueHD access
+         * units as the container holds them; only some devices have such a decoder.
+         * The frame count only paces the input timestamps. */
+        mime = p->codec[0] == 't' ? "audio/true-hd" : p->codec[3] == 'h' ? "audio/vnd.dts.hd" : "audio/vnd.dts";
+        csd_n = 0;
+        rate = p->sample_rate;
+        ch = p->channels;
+        frames = p->codec[0] == 't' ? 40 : 512;
     } else {
         return FA_ERROR_UNSUPPORTED_FORMAT;
     }
@@ -281,7 +291,7 @@ fa_result fa_mc_codec_open(fa_codec* c, const fa_codec_params* p)
     mc.set_int32(f, "channel-count", (int32_t)ch);
     mc.set_int32(f, "pcm-encoding", MC_PCM_FLOAT);
     if (aac) mc.set_int32(f, "is-adts", 0);
-    mc.set_buffer(f, "csd-0", csd, csd_n);
+    if (csd_n > 0) mc.set_buffer(f, "csd-0", csd, csd_n);
     if (mc.configure(st->codec, f, NULL, NULL, 0) != 0 || mc.start(st->codec) != 0) {
         mc.format_delete(f);
         mc_free(st);
