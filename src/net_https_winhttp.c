@@ -5,6 +5,7 @@
 #  define WIN32_LEAN_AND_MEAN
 #endif
 #include "net.h"
+#include "fa_platform.h"
 #include <windows.h>
 #include <winhttp.h>
 #include <stdio.h>
@@ -14,16 +15,6 @@
 #ifndef WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
 #  define WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY 4   /* Windows 8.1 and later */
 #endif
-
-static wchar_t* widen(const char* s)
-{
-    wchar_t* w;
-    int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
-    if (n <= 0) return NULL;
-    w = (wchar_t*)malloc((size_t)n * sizeof(wchar_t));
-    if (w) MultiByteToWideChar(CP_UTF8, 0, s, -1, w, n);
-    return w;
-}
 
 static char* narrow(const wchar_t* w)
 {
@@ -197,7 +188,7 @@ static HINTERNET open_session(const wchar_t* wua, const char* proxy)
         if (fa_proxy_parse(proxy, &pu) != FA_OK) return NULL;
         if (strchr(pu.host, ':')) snprintf(hostport, sizeof(hostport), "[%s]:%u", pu.host, (unsigned)pu.port);   /* IPv6 */
         else snprintf(hostport, sizeof(hostport), "%s:%u", pu.host, (unsigned)pu.port);
-        wproxy = widen(hostport);
+        wproxy = fa_widen(hostport);
         if (!wproxy) return NULL;
         session = WinHttpOpen(wua, WINHTTP_ACCESS_TYPE_NAMED_PROXY, wproxy, WINHTTP_NO_PROXY_BYPASS, 0);
         free(wproxy);
@@ -207,6 +198,20 @@ static HINTERNET open_session(const wchar_t* wua, const char* proxy)
             session = WinHttpOpen(wua, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     }
     return session;
+}
+
+/* Closes the session's handles and opens them again for the same agent, proxy and
+ * server, which drops every pooled connection. 0 on failure (the handles are then
+ * NULL and the next request opens them again). */
+static int reopen_pool(fa_http_session* s)
+{
+    if (s->connect) WinHttpCloseHandle(s->connect);
+    if (s->session) WinHttpCloseHandle(s->session);
+    s->connect = NULL;
+    s->session = open_session(s->agent, s->proxy);
+    if (!s->session) return 0;
+    s->connect = WinHttpConnect(s->session, s->host, s->port, 0);
+    return s->connect != NULL;
 }
 
 fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_head, fa_http_data_proc on_data, void* user,
@@ -232,9 +237,9 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
         r = FA_ERROR_OUT_OF_MEMORY;
         goto done;
     }
-    wurl = widen(req->url);
-    wua = widen(block.agent ? block.agent : "FatzAudio");
-    wheaders = block.text ? widen(block.text) : NULL;
+    wurl = fa_widen(req->url);
+    wua = fa_widen(block.agent ? block.agent : "FatzAudio");
+    wheaders = block.text ? fa_widen(block.text) : NULL;
     if (!wurl || !wua || (block.text && !wheaders)) { r = FA_ERROR_OUT_OF_MEMORY; goto done; }
     memset(&uc, 0, sizeof(uc));
     uc.dwStructSize = sizeof(uc);
@@ -300,6 +305,11 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
         if (!slot_remove(slot)) WinHttpCloseHandle(request);
         request = NULL;
         slot = -1;
+        /* The pool may hold more than the one dead connection (the server closed
+         * several, or WinHTTP hands out one of another session's): a second try on
+         * the same pool can pick another stale one. A new session handle starts
+         * with an empty pool, so the retry always opens a connection of its own. */
+        if (!reopen_pool(s)) goto done;
     }
 
     size = sizeof(status);

@@ -16,8 +16,23 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ## Unreleased
 
+### Fixed
+
+- Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
+- .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
+- Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.
+- macOS and iOS: render-ahead fell behind on a busy CPU (most lyric frames flagged `behind` during a tempo ramp in the iOS simulator). A worker rendering ahead dropped to QoS utility, which the scheduler can keep waiting 75-150 ms while default-QoS threads of any process are busy; it now stays in its QoS class at a lower relative priority, so decoding still wins.
+
 ### Added
 
+- DTS and TrueHD through the system's decoder, where the machine has one (codecs step 4). FatzAudio has no DTS decoder of
+  its own (the DTS specification, ETSI TS 102 114, leaves out two tables every stream needs). It now reads DTS core and
+  DTS-HD frames in raw `.dts`/`.cpt` files (new reader: exact length and seeks, either byte order, ID3v2 and junk slid
+  over), Matroska, MP4, AVI and MPEG program and transport streams (DVD, Blu-ray), and hands them to Media Foundation
+  (Windows) or MediaCodec (Android; also TrueHD in Matroska and MP4). Pushed `dts` packets may be cut anywhere. Without a
+  system decoder (macOS, iOS, Linux, most PCs and phones) these still return `FA_ERROR_UNSUPPORTED_FORMAT` and
+  `fa_tags_read_*` still gives their details, so keep the FFmpeg hand-off for DTS and TrueHD. Raw `.dts` details now come
+  from that reader (exact length also for DTS-HD frames of varying size); DTS in MPEG streams is a track like any other.
 - Monkey's Audio (`.ape`): every file version from 3.80, all five compression levels, 8, 16, 24 and 32-bit integer and 32-bit float, 1 to 32 channels, decoded to the bit by the official Monkey's Audio SDK 13.45 (BSD-3-Clause, decoder part built in; `third_party/monkeysaudio`). Exact seeks, ID3v2/APEv2/ID3v1 tags, codec and container `ape`. The source must seek (`FA_ERROR_NOT_SEEKABLE` otherwise). Adds about 120 KB to the Linux library. ([Monkey's Audio](docs/features/streams.md#monkeys-audio))
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it

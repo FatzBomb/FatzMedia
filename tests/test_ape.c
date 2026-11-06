@@ -4,19 +4,10 @@
  * lossless. Also seeks across the SDK's frames, tags around the audio, damaged
  * and cut files, and sources that cannot seek. */
 #include "fa_internal.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #ifndef FA_TEST_DATA_DIR
 #  define FA_TEST_DATA_DIR "data"
 #endif
-
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
+#include "test_util.h"
 
 static fa_engine* g_engine;
 
@@ -28,23 +19,8 @@ static void data_path(char* out, size_t cap, const char* name)
 static uint8_t* load_file(const char* name, size_t* size)
 {
     char path[512];
-    FILE* f;
-    long n;
-    uint8_t* p;
     data_path(path, sizeof(path), name);
-    f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    p = (uint8_t*)malloc((size_t)n + 1);
-    if (p && fread(p, 1, (size_t)n, f) != (size_t)n) {
-        free(p);
-        p = NULL;
-    }
-    fclose(f);
-    *size = (size_t)n;
-    return p;
+    return test_read_file(path, size);
 }
 
 static fa_result open_file(const char* name, fa_stream** s)

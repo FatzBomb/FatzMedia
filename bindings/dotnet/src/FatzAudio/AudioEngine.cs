@@ -861,7 +861,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>A packet stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
     /// <exception cref="FatzAudioException">FatzAudio does not decode the codec (<see cref="ErrorCode.UnsupportedFormat"/>:
-    /// DTS, TrueHD and the like; decode those with your FFmpeg and use <see cref="CreatePushStream"/>), or a parameter is invalid.</exception>
+    /// DTS and TrueHD with no system decoder, and the like; decode those with your FFmpeg and use <see cref="CreatePushStream"/>), or a parameter is invalid.</exception>
     /// <example>
     /// <code>
     /// using var audio = engine.OpenPackets(new CodecParameters("ac3", 48000, 6) { TimeBase = new Rational(1, 90000) });

@@ -21,13 +21,7 @@
 #  define FA_TEST_DATA_DIR "data"
 #endif
 
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define CHECK_NEAR(a, b, tol) do { double va_ = (a), vb_ = (b); if (fabs(va_ - vb_) > (tol)) { \
-    fprintf(stderr, "  FAIL %s:%d: %s ~ %s (%.6f vs %.6f)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
+#include "test_util.h"
 
 static fa_engine* g_engine;
 static fa_device* g_dev;
@@ -35,20 +29,8 @@ static fa_device* g_dev;
 static uint8_t* load_file(const char* name, size_t* size)
 {
     char path[512];
-    FILE* f;
-    uint8_t* p;
-    long n;
     snprintf(path, sizeof(path), "%s/%s", FA_TEST_DATA_DIR, name);
-    f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    p = (uint8_t*)malloc((size_t)n + 1);
-    if (p && fread(p, 1, (size_t)n, f) != (size_t)n) { free(p); p = NULL; }
-    fclose(f);
-    *size = (size_t)n;
-    return p;
+    return test_read_file(path, size);
 }
 
 static fa_result open_file(const char* name, int32_t dynamic_range, fa_stream** s)
@@ -1000,7 +982,9 @@ int main(void)
     fa_engine_config_init(&cfg);
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;
+    cfg.cache_directory = "dolby_cache";
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
+    fa_engine_clear_cache(g_engine);
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }
 
     RUN(test_registry_lists_dolby);
@@ -1022,7 +1006,9 @@ int main(void)
     RUN(test_dialnorm_loudness);
     RUN(test_fed_scan_dialnorm);
 
+    fa_engine_clear_cache(g_engine);
     fa_engine_destroy(g_engine);
+    test_clear_cache_dir("dolby_cache");
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }
     printf("PASS\n");
     return 0;

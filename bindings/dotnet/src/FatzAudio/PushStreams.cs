@@ -275,7 +275,7 @@ public sealed unsafe class PacketAudioStream : FeedAudioStream
 
 /// <summary>
 /// Helpers for apps that read audio with FFmpeg (the hand-off). FatzAudio never loads, links or bundles FFmpeg:
-/// packet streams decode their codecs themselves, and codecs it does not decode (DTS, TrueHD, ...) are decoded by
+/// packet streams decode their codecs themselves, and codecs it does not decode (DTS and TrueHD with no system decoder, ...) are decoded by
 /// your FFmpeg and pushed as frames (<see cref="PushAudioStream.PushFrame"/>).
 /// </summary>
 public static class FFmpeg

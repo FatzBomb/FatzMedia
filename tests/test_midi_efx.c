@@ -15,8 +15,6 @@
 #endif
 
 #define BLOCK 64
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
 
 /* `frames` of `in` (stereo) through the effect in 64-frame blocks, from song frame
  * `start`; silence where process says there is none. */

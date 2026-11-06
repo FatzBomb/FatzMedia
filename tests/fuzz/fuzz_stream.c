@@ -1,7 +1,8 @@
 /* Fuzz target: any audio or container file opened from memory and decoded. Covers the
  * AAC / HE-AAC (ADTS, MP4, CAF, Matroska), MP3, FLAC (native, Ogg, MKV, MP4), MP4,
- * Matroska, CAF, ASF, Ogg, WAV/AIFF, Dolby and tracker/MIDI paths, which all start in the same
- * place. MIDI renders with a tiny built-in soundfont (one looped sine, a melodic and a drum
+ * Matroska, CAF, ASF, Ogg, WAV/AIFF, Dolby, DTS and tracker/MIDI paths, which all start in the same
+ * place. DTS has no decoder of its own: a stand-in system decoder takes its frames (silence of
+ * each frame's length), so the framing and the raw reader run. MIDI renders with a tiny built-in soundfont (one looped sine, a melodic and a drum
  * preset), so notes, envelopes and effects run without an OS bank.
  * Fails (abort) on a sanitizer report, a hang, or decoded samples that are not finite. */
 #include "fa_internal.h"
@@ -193,9 +194,36 @@ static void exercise_live(const uint8_t* data, size_t size)
     fa_stream_close(s);
 }
 
+/* The stand-in system DTS decoder: every packet must be one whole frame. */
+static fa_result fake_dts_decode(fa_codec* c, const uint8_t* d, size_t n)
+{
+    fa_dts_header h;
+    size_t len = 0;
+    c->out_frames = 0;
+    if (!d) return FA_OK;
+    if (fa_dts_unit(d, n, 1, &h, &len) != 1 || (len != n && h.size != n)) { fprintf(stderr, "not one DTS frame\n"); abort(); }
+    if (fa_codec_reserve(c, h.samples, h.channels) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
+    c->rate = h.rate;
+    c->channels = h.channels;
+    memset(c->out, 0, (size_t)h.samples * h.channels * sizeof(float));
+    c->out_frames = h.samples;
+    return FA_OK;
+}
+static void fake_dts_flush(fa_codec* c) { (void)c; }
+static const fa_codec_vtable fake_dts_vtable = { "fake-dts", fake_dts_decode, fake_dts_flush, fake_dts_flush };
+static fa_result fake_dts_open(fa_codec* c, const fa_codec_params* p)
+{
+    if (strcmp(p->codec, "dtshd") != 0) return FA_ERROR_NOT_FOUND;
+    c->vt = &fake_dts_vtable;
+    c->rate = p->sample_rate;
+    c->channels = p->channels;
+    return FA_OK;
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     if (!g_engine) {
+        fa_test_system_codec = fake_dts_open;
         fa_engine_config cfg;
         fa_soundfont* font;
         fa_engine_config_init(&cfg);

@@ -6,6 +6,7 @@
 #ifndef FA_PLATFORM_H
 #define FA_PLATFORM_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -161,8 +162,9 @@ void fa_thread_detach(fa_thread* t);
 /* Opaque id of the calling thread, comparable with fa_thread_id_of. */
 uintptr_t fa_thread_current_id(void);
 /* Lowers the calling thread below normal priority for work that may wait, so other
- * work (decoding) wins on a busy CPU: Windows BELOW_NORMAL, Apple QoS utility, Linux
- * and Android nice + FA_THREAD_LOW_NICE. Returns what fa_thread_restore_priority
+ * work (decoding) wins on a busy CPU: Windows BELOW_NORMAL, Apple the same QoS class
+ * at a relative priority FA_THREAD_LOW_NICE lower, Linux and Android nice +
+ * FA_THREAD_LOW_NICE. Returns what fa_thread_restore_priority
  * needs to put it back. Where it could not be put back (Linux without the
  * RLIMIT_NICE room to lower nice again) it leaves the thread as it is. */
 int fa_thread_lower_priority(void);
@@ -174,6 +176,10 @@ void fa_sleep_ms(uint32_t ms);
 
 /* Files with UTF-8 paths (wide-character APIs on Windows). */
 FILE* fa_fopen_utf8(const char* path, const char* mode);
+#ifdef _WIN32
+/* malloc'd UTF-16 copy of a UTF-8 string (free it); NULL on failure. */
+wchar_t* fa_widen(const char* s);
+#endif
 /* An open file's identity and last-write time (device, file id, seconds, nanoseconds; Windows: volume, index,
  * FILETIME, 0). Two reads with the same identity saw the same bytes unless it changed within the clock's step.
  * 0 when the OS gives none. */

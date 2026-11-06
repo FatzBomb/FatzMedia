@@ -1,6 +1,7 @@
 /* Decompression for archives: bzip2, LZMA (ZIP method 14) and xz, from the vendored decoders,
  * and the pool that decodes independent blocks on several cores. See codec.h. */
 #include "archive/codec.h"
+#include "fa_util.h"
 #include "cdg.h"
 #include "bzlib.h"
 #include "LzmaDec.h"
@@ -683,7 +684,7 @@ fa_result fa_xz_index(fa_source* src, uint64_t size, fa_xzblock** blocks, uint32
     free(idx);
     *blocks = b;
     *count = (uint32_t)n;
-    *flags = (uint16_t)(head[6] << 8 | head[7]);
+    *flags = fa_be16(head + 6);
     return FA_OK;
 bad:
     free(idx);

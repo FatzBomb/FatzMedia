@@ -100,37 +100,20 @@ static struct {
     jmethodID get_property;
 } J;
 
-static int clear_exception(JNIEnv* env)
-{
-    if (!(*env)->ExceptionCheck(env)) return 0;
-    (*env)->ExceptionClear(env);
-    return 1;
-}
-
-static jclass global_class(JNIEnv* env, const char* name)
-{
-    jclass local = (*env)->FindClass(env, name);
-    jclass g;
-    if (!local) { clear_exception(env); return NULL; }
-    g = (jclass)(*env)->NewGlobalRef(env, local);
-    (*env)->DeleteLocalRef(env, local);
-    return g;
-}
-
 static int load_classes(JNIEnv* env)
 {
     jclass conn, stream, type;
     jfieldID f;
     jobject o;
     int ok;
-    J.url = global_class(env, "java/net/URL");
-    J.proxy = global_class(env, "java/net/Proxy");
-    J.inet = global_class(env, "java/net/InetSocketAddress");
-    J.system = global_class(env, "java/lang/System");
+    J.url = fa_jni_global_class(env, "java/net/URL");
+    J.proxy = fa_jni_global_class(env, "java/net/Proxy");
+    J.inet = fa_jni_global_class(env, "java/net/InetSocketAddress");
+    J.system = fa_jni_global_class(env, "java/lang/System");
     conn = (*env)->FindClass(env, "java/net/HttpURLConnection");
     stream = (*env)->FindClass(env, "java/io/InputStream");
     type = (*env)->FindClass(env, "java/net/Proxy$Type");
-    if (!J.url || !J.proxy || !J.inet || !J.system || !conn || !stream || !type) { clear_exception(env); return 0; }
+    if (!J.url || !J.proxy || !J.inet || !J.system || !conn || !stream || !type) { fa_jni_clear_exception(env); return 0; }
     /* Each lookup only while none failed: no JNI call may run with an exception pending. */
     ok = 1;
 #define M(dst, cls, name, sig) do { if (ok && !(dst = (*env)->GetMethodID(env, cls, name, sig))) ok = 0; } while (0)
@@ -155,14 +138,14 @@ static int load_classes(JNIEnv* env)
     SM(J.get_property, J.system, "getProperty", "(Ljava/lang/String;)Ljava/lang/String;");
 #undef M
 #undef SM
-    if (!ok) { clear_exception(env); return 0; }
+    if (!ok) { fa_jni_clear_exception(env); return 0; }
     f = (*env)->GetStaticFieldID(env, J.proxy, "NO_PROXY", "Ljava/net/Proxy;");
     o = f ? (*env)->GetStaticObjectField(env, J.proxy, f) : NULL;
     J.no_proxy = o ? (*env)->NewGlobalRef(env, o) : NULL;
     f = J.no_proxy ? (*env)->GetStaticFieldID(env, type, "HTTP", "Ljava/net/Proxy$Type;") : NULL;
     o = f ? (*env)->GetStaticObjectField(env, type, f) : NULL;
     J.type_http = o ? (*env)->NewGlobalRef(env, o) : NULL;
-    ok = !clear_exception(env) && J.no_proxy && J.type_http;
+    ok = !fa_jni_clear_exception(env) && J.no_proxy && J.type_http;
     (*env)->DeleteLocalRef(env, conn);
     (*env)->DeleteLocalRef(env, stream);
     (*env)->DeleteLocalRef(env, type);
@@ -218,7 +201,7 @@ static void get_jstring(JNIEnv* env, jstring s, char* out, size_t cap)
 {
     const char* c = (*env)->GetStringUTFChars(env, s, NULL);
     out[0] = 0;
-    if (!c) { clear_exception(env); return; }
+    if (!c) { fa_jni_clear_exception(env); return; }
     if (strlen(c) < cap) strcpy(out, c);
     (*env)->ReleaseStringUTFChars(env, s, c);
 }
@@ -281,7 +264,7 @@ void fa_http_abort(fa_atomic32* cancel)
     fa_lazy_mutex_unlock(&g_slots_lock);
     for (i = 0; i < n; i++) {
         (*env)->CallVoidMethod(env, conns[i], J.disconnect);
-        clear_exception(env);
+        fa_jni_clear_exception(env);
         (*env)->DeleteGlobalRef(env, conns[i]);
     }
     if (attached) (*vm)->DetachCurrentThread(vm);
@@ -293,7 +276,7 @@ static void add_property(JNIEnv* env, jobject conn, const char* name, const char
 {
     jstring k = jstr0(env, name), v = jstr(env, value, value_len);
     if (k && v) (*env)->CallVoidMethod(env, conn, J.add_property, k, v);
-    clear_exception(env);
+    fa_jni_clear_exception(env);
     if (k) (*env)->DeleteLocalRef(env, k);
     if (v) (*env)->DeleteLocalRef(env, v);
 }
@@ -323,8 +306,8 @@ static jobject make_proxy(JNIEnv* env, const char* setting)
     if (fa_proxy_parse(setting, &pu) != FA_OK) return NULL;
     h = jstr0(env, pu.host);
     addr = h ? (*env)->CallStaticObjectMethod(env, J.inet, J.inet_unresolved, h, (jint)pu.port) : NULL;
-    proxy = addr && !clear_exception(env) ? (*env)->NewObject(env, J.proxy, J.proxy_init, J.type_http, addr) : NULL;
-    clear_exception(env);
+    proxy = addr && !fa_jni_clear_exception(env) ? (*env)->NewObject(env, J.proxy, J.proxy_init, J.type_http, addr) : NULL;
+    fa_jni_clear_exception(env);
     return proxy;
 }
 
@@ -339,16 +322,16 @@ static jobject open_connection(JNIEnv* env, const fa_http_request* req, const ch
     jobject u = jurl ? (*env)->NewObject(env, J.url, J.url_init, jurl) : NULL;
     jobject proxy, conn;
     fa_url parsed;
-    if (!u || clear_exception(env)) { clear_exception(env); *out_r = FA_ERROR_INVALID_ARG; return NULL; }
+    if (!u || fa_jni_clear_exception(env)) { fa_jni_clear_exception(env); *out_r = FA_ERROR_INVALID_ARG; return NULL; }
     proxy = make_proxy(env, req->proxy);
     conn = proxy ? (*env)->CallObjectMethod(env, u, J.url_open_proxy, proxy) : (*env)->CallObjectMethod(env, u, J.url_open);
-    if (!conn || clear_exception(env)) { clear_exception(env); *out_r = FA_ERROR_NETWORK; return NULL; }
+    if (!conn || fa_jni_clear_exception(env)) { fa_jni_clear_exception(env); *out_r = FA_ERROR_NETWORK; return NULL; }
     *out_slot = slot_add(env, req->cancel, conn);
     (*env)->CallVoidMethod(env, conn, J.set_connect_timeout, timeout);
     (*env)->CallVoidMethod(env, conn, J.set_read_timeout, timeout);
     (*env)->CallVoidMethod(env, conn, J.set_use_caches, JNI_FALSE);
     (*env)->CallVoidMethod(env, conn, J.set_follow, JNI_FALSE);   /* fa_http_fetch follows them */
-    clear_exception(env);
+    fa_jni_clear_exception(env);
     {
         /* HttpURLConnection ignores credentials in the URL: the walk sends them. */
         property_sink sink;
@@ -356,15 +339,15 @@ static jobject open_connection(JNIEnv* env, const fa_http_request* req, const ch
         sink.conn = conn;
         if (fa_http_each_header(req, fa_url_parse(url, &parsed) == FA_OK ? &parsed : NULL, add_header, &sink) != FA_OK) {
             (*env)->CallVoidMethod(env, conn, J.disconnect);
-            clear_exception(env);
+            fa_jni_clear_exception(env);
             *out_r = FA_ERROR_OUT_OF_MEMORY;
             return NULL;
         }
     }
     *out_status = (*env)->CallIntMethod(env, conn, J.response_code);
-    if (clear_exception(env) || *out_status < 100) {
+    if (fa_jni_clear_exception(env) || *out_status < 100) {
         (*env)->CallVoidMethod(env, conn, J.disconnect);
-        clear_exception(env);
+        fa_jni_clear_exception(env);
         *out_r = FA_ERROR_NETWORK;
         return NULL;
     }
@@ -376,7 +359,7 @@ static int append_jstring(JNIEnv* env, jstring s, char** out, size_t* n, size_t*
 {
     const char* c = (*env)->GetStringUTFChars(env, s, NULL);
     size_t len, slen = strlen(suffix);
-    if (!c) { clear_exception(env); return 0; }
+    if (!c) { fa_jni_clear_exception(env); return 0; }
     len = strlen(c);
     if (*n + len + slen + 1 > *cap) {
         size_t ncap = (*n + len + slen + 1) * 2;
@@ -404,9 +387,9 @@ static char* collect_headers(JNIEnv* env, jobject conn, fa_result* err)
     out[0] = 0;
     for (i = 0; i < 1024; i++) {
         jstring k = (jstring)(*env)->CallObjectMethod(env, conn, J.header_key, i);
-        jstring v = clear_exception(env) ? NULL : (jstring)(*env)->CallObjectMethod(env, conn, J.header_value, i);
+        jstring v = fa_jni_clear_exception(env) ? NULL : (jstring)(*env)->CallObjectMethod(env, conn, J.header_value, i);
         int ok = 1;
-        clear_exception(env);
+        fa_jni_clear_exception(env);
         if (!v) { if (k) (*env)->DeleteLocalRef(env, k); break; }
         if (k) {   /* index 0 is the status line, without a name */
             size_t line = n;
@@ -453,15 +436,15 @@ static fa_result run_response(JNIEnv* env, const fa_http_request* req, const cha
     if (status >= 400) return FA_ERROR_NOT_FOUND;
 
     in = (*env)->CallObjectMethod(env, conn, J.input_stream);
-    if (!in || clear_exception(env)) { clear_exception(env); return FA_ERROR_NETWORK; }
+    if (!in || fa_jni_clear_exception(env)) { fa_jni_clear_exception(env); return FA_ERROR_NETWORK; }
     buf = (*env)->NewByteArray(env, 65536);
     chunk = (jbyte*)malloc(65536);
-    if (!buf || !chunk) { clear_exception(env); r = FA_ERROR_OUT_OF_MEMORY; goto done; }
+    if (!buf || !chunk) { fa_jni_clear_exception(env); r = FA_ERROR_OUT_OF_MEMORY; goto done; }
     for (;;) {
         jint got;
         if (req->cancel && fa_load32(req->cancel)) { r = FA_ERROR_BUSY; break; }
         got = (*env)->CallIntMethod(env, in, J.read, buf, 0, 65536);
-        if (clear_exception(env)) { r = FA_ERROR_NETWORK; break; }   /* also a body cut short */
+        if (fa_jni_clear_exception(env)) { r = FA_ERROR_NETWORK; break; }   /* also a body cut short */
         if (got < 0) {
             /* A short body or a chunked one without its end throws above. The
              * platform's HttpURLConnection speaks HTTP/1.1. */
@@ -476,7 +459,7 @@ static fa_result run_response(JNIEnv* env, const fa_http_request* req, const cha
     }
 done:
     (*env)->CallVoidMethod(env, in, J.close);
-    clear_exception(env);
+    fa_jni_clear_exception(env);
     free(chunk);
     return r;
 }
@@ -500,14 +483,14 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
     jobject conn = NULL;
     *out_redirect = NULL;
     if (!env) return FA_ERROR_PROVIDER_MISSING;
-    if ((*env)->PushLocalFrame(env, 32) != JNI_OK) { clear_exception(env); return FA_ERROR_OUT_OF_MEMORY; }
+    if ((*env)->PushLocalFrame(env, 32) != JNI_OK) { fa_jni_clear_exception(env); return FA_ERROR_OUT_OF_MEMORY; }
     if (req->cancel && fa_load32(req->cancel)) r = FA_ERROR_BUSY;
     else conn = open_connection(env, req, req->url, &status, &r, &slot);
     if (conn) {
         r = run_response(env, req, req->url, conn, status, on_head, on_data, user, out_redirect, &whole);
         if (!whole) {   /* a body left unread (a redirect, an error, a stop) closes the socket */
             (*env)->CallVoidMethod(env, conn, J.disconnect);
-            clear_exception(env);
+            fa_jni_clear_exception(env);
         }
     }
     slot_remove(env, slot);
@@ -522,7 +505,7 @@ static void system_property(JNIEnv* env, const char* name, char* out, size_t cap
     jstring k = jstr0(env, name);
     jstring v = k ? (jstring)(*env)->CallStaticObjectMethod(env, J.system, J.get_property, k) : NULL;
     out[0] = 0;
-    if (!clear_exception(env) && v) get_jstring(env, v, out, cap);
+    if (!fa_jni_clear_exception(env) && v) get_jstring(env, v, out, cap);
 }
 
 /* 1 if `host` matches a pattern of http.nonProxyHosts ("a.com|*.lan|192.168.*"). */

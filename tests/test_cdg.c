@@ -23,10 +23,7 @@
 #  include <utime.h>
 #endif
 
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
+#include "test_util.h"
 /* Sanitizer builds run some expensive checks on a sample only (CI time). */
 #if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
 #  define FA_TEST_SANITIZED 1
@@ -38,7 +35,6 @@ static int g_failures = 0;
 #ifndef FA_TEST_SANITIZED
 #  define FA_TEST_SANITIZED 0
 #endif
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
 
 static fa_engine* g_engine;
 
@@ -1371,8 +1367,10 @@ static void test_zip_temp_song(void)
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.zip_memory_limit_mb = 1;
     cfg.temp_directory = "cdg_tmp";
+    cfg.cache_directory = "cdg_cache_zip";
     CHECK(wav.n > (1u << 20));
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    fa_engine_clear_cache(e);
     fa_open_options_init(&o);
     CHECK_EQ(fa_stream_open_path(e, "cdg_temp.zip", &o, &s), FA_OK);
     CHECK_EQ(fa_stream_get_tags(s, 0, &t), FA_OK);
@@ -1392,7 +1390,9 @@ static void test_zip_temp_song(void)
     CHECK_EQ(decode_all(s), 700000);
     fa_stream_close(s);
     CHECK_EQ(count_temp_files(), 0);
+    fa_engine_clear_cache(e);
     fa_engine_destroy(e);
+    test_clear_cache_dir("cdg_cache_zip");
     remove("cdg_temp.zip");
     free(zip.p); free(wav.p);
 }
@@ -5053,7 +5053,9 @@ int main(void)
     fa_engine_config_init(&cfg);
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;   /* render-ahead needs two (ra_request) */
+    cfg.cache_directory = "cdg_cache";
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine\n"); return 1; }
+    fa_engine_clear_cache(g_engine);
     RUN(test_inflate_vectors);
     RUN(test_zip_pair);
     RUN(test_zip_damaged);
@@ -5116,7 +5118,9 @@ int main(void)
     RUN(test_update_into_never_waits);
     RUN(test_presentation_costs);
     RUN(test_drawn_times);
+    fa_engine_clear_cache(g_engine);
     fa_engine_destroy(g_engine);
+    test_clear_cache_dir("cdg_cache");
     remove("cdg_pair.zip");
     remove("cdg_lone.cdg");
     remove("cdg_lone.zip");

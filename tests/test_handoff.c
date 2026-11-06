@@ -16,13 +16,7 @@
 #  define FA_TEST_DATA_DIR "data"
 #endif
 
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define CHECK_NEAR(a, b, tol) do { double va_ = (a), vb_ = (b); if (fabs(va_ - vb_) > (tol)) { \
-    fprintf(stderr, "  FAIL %s:%d: %s ~ %s (%.6f vs %.6f)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
+#include "test_util.h"
 
 #define PERIOD 480
 #define MAX_REC (1 << 18)
@@ -902,7 +896,9 @@ static void test_ac3_packets_cut_anywhere(void)
 }
 
 /* Codecs the library does not decode are unsupported, even with FFmpeg in the
- * process (Linux CI has it): the app decodes those itself and pushes frames. */
+ * process (Linux CI has it): the app decodes those itself and pushes frames. DTS
+ * and TrueHD would go to a system decoder where the machine has one (none here:
+ * no_system_dts). */
 static void test_unsupported_codecs(void)
 {
     static const char* names[] = { "dts", "truehd", "mlp", "wmav2", "nonsense" };
@@ -1042,6 +1038,17 @@ static void test_bad_arguments(void)
     CHECK_EQ(fa_stream_push_flush(NULL), FA_ERROR_INVALID_ARG);
 }
 
+/* No system DTS or TrueHD decoder, whatever the machine has (a Windows PC or an
+ * Android device may have one): the checks here expect them unsupported. Every other
+ * codec goes on to the system's decoders as usual. */
+static fa_result no_system_dts(fa_codec* c, const fa_codec_params* p)
+{
+    (void)c;
+    if (strncmp(p->codec, "dts", 3) == 0 || strcmp(p->codec, "truehd") == 0 || strcmp(p->codec, "mlp") == 0)
+        return FA_ERROR_UNSUPPORTED_FORMAT;
+    return FA_ERROR_NOT_FOUND;
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1049,6 +1056,7 @@ int main(void)
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
+    fa_test_system_codec = no_system_dts;
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }
     g_rec = (float*)malloc((size_t)MAX_REC * 2 * sizeof(float));
     printf("null device at %u Hz, latency %.1f ms (not started: this test is the audio thread)\n",

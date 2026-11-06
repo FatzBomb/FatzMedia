@@ -11,7 +11,7 @@ Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` 
 | `FA_ERROR_INVALID_ARG` (-2) | `InvalidArgument` | A `NULL` handle or pointer, a value out of range, a `struct_size` of 0, or a call that does not apply to this stream | Fix the call. Output structs need `struct_size = sizeof(...)` before the call |
 | `FA_ERROR_OUT_OF_MEMORY` (-3) | `OutOfMemory` | An allocation failed | Close what you no longer use; see [limits](limits.md) |
 | `FA_ERROR_NOT_FOUND` (-4) | `NotFound` | No such file, track, device, tag or header | Check the path (UTF-8 in C), the track number or the device id |
-| `FA_ERROR_UNSUPPORTED_FORMAT` (-5) | `UnsupportedFormat` | No built-in decoder recognised the data, or it is a codec FatzAudio does not play (DTS, TrueHD, WMA outside Windows), or a damaged file, or a file with no audio | See [formats](formats.md). For other codecs, hand FatzAudio frames from your own FFmpeg ([FFmpeg hand-off](features/ffmpeg.md)) |
+| `FA_ERROR_UNSUPPORTED_FORMAT` (-5) | `UnsupportedFormat` | No built-in decoder recognised the data, or it is a codec FatzAudio does not play (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file, or a file with no audio | See [formats](formats.md). For other codecs, hand FatzAudio frames from your own FFmpeg ([FFmpeg hand-off](features/ffmpeg.md)) |
 | `FA_ERROR_DEVICE` (-6) | `Device` | The output or input device could not be opened | In use by another app in exclusive mode, unplugged, or no permission. List devices and try another ([devices](features/devices.md)) |
 | `FA_ERROR_IO` (-7) | `Io` | A file could not be read or created, or a temp directory is missing | Check permissions and free space |
 | `FA_ERROR_NETWORK` (-8) | `Network` | A URL could not be reached, timed out, or the server said 401 or 403 | See [web streams](features/web-streams.md); read `fa_net_status.last_error` |
@@ -39,7 +39,7 @@ A problem *inside* a playing stream (a bad packet, an unreadable disc sector) do
 
 **MIDI is silent or fails with `NoSoundFont`.** MIDI needs instrument sounds. FatzAudio uses a soundfont you load, or the operating system's bank (Windows `gm.dls`, macOS's, an installed `.sf2` on Linux). It never bundles one. See [MIDI](features/midi.md).
 
-**`UnsupportedFormat` on a file that plays elsewhere.** Check the codec with a different tool: DTS, TrueHD and WMA outside Windows are not supported. A file renamed to the wrong extension is fine (FatzAudio reads the content), but a damaged header or a file that is really a text or HTML error page is not. See [formats](formats.md).
+**`UnsupportedFormat` on a file that plays elsewhere.** Check the codec with a different tool: DTS and TrueHD play only where the system has a decoder for them, and WMA only on Windows. A file renamed to the wrong extension is fine (FatzAudio reads the content), but a damaged header or a file that is really a text or HTML error page is not. See [formats](formats.md).
 
 **.NET: `DllNotFoundException` or `BadImageFormatException`.** The native library is missing or is for another architecture. The NuGet package carries `win-x64` and `linux-x64`; other platforms need their library staged ([platforms](platforms.md#net-package)).
 

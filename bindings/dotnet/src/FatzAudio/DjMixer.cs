@@ -233,7 +233,12 @@ public sealed partial class DjMixer : IDisposable
         AutoMix = new DjAutoMix(this);
         // The state lives until the device closes (fa_mixer_destroy waits for running callbacks).
         var gc = output.Handle.Pin(new EventState(this));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_event_callback(mixer, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc)));
+        int rc = NativeMethods.fa_mixer_set_event_callback(mixer, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
+        if (rc < 0)
+        {
+            output.Handle.Unpin(gc);
+            throw new FatzAudioException((ErrorCode)rc);
+        }
     }
 
     /// <summary>The engine the mixer belongs to.</summary>

@@ -117,7 +117,7 @@ uint32_t fa_cpu_count(void)
     GetSystemInfo(&si);
     return si.dwNumberOfProcessors > 0 ? (uint32_t)si.dwNumberOfProcessors : 1;
 }
-static wchar_t* widen(const char* s)
+wchar_t* fa_widen(const char* s)
 {
     wchar_t* w;
     int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
@@ -129,8 +129,8 @@ static wchar_t* widen(const char* s)
 FILE* fa_fopen_utf8(const char* path, const char* mode)
 {
     FILE* f = NULL;
-    wchar_t* wp = widen(path);
-    wchar_t* wm = widen(mode);
+    wchar_t* wp = fa_widen(path);
+    wchar_t* wm = fa_widen(mode);
     if (wp && wm && _wfopen_s(&f, wp, wm) != 0) f = NULL;
     free(wp); free(wm);
     return f;
@@ -148,7 +148,7 @@ int fa_file_identity(FILE* fp, uint64_t id[4])
 }
 int fa_mkdir_utf8(const char* path)
 {
-    wchar_t* wp = widen(path);
+    wchar_t* wp = fa_widen(path);
     int ok;
     if (!wp) return -1;
     ok = CreateDirectoryW(wp, NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
@@ -167,8 +167,8 @@ int fa_system_soundfont_path(int index, char* out, size_t cap)
 }
 int fa_replace_file(const char* from, const char* to)
 {
-    wchar_t* wf = widen(from);
-    wchar_t* wt = widen(to);
+    wchar_t* wf = fa_widen(from);
+    wchar_t* wt = fa_widen(to);
     int ok = wf && wt && MoveFileExW(wf, wt, MOVEFILE_REPLACE_EXISTING);
     free(wf); free(wt);
     return ok ? 0 : -1;
@@ -187,7 +187,7 @@ FILE* fa_temp_file_create(const char* folder)
         if (snprintf(path, sizeof(path), "%s/fa-%lu-%ld.tmp", folder, (unsigned long)GetCurrentProcessId(),
                      (long)fa_fetch_add32(&counter, 1)) >= (int)sizeof(path))
             return NULL;
-        wp = widen(path);
+        wp = fa_widen(path);
         if (!wp) return NULL;
         h = CreateFileW(wp, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW,
                         FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
@@ -226,7 +226,7 @@ int fa_os_cache_dir(char* out, size_t cap)
 
 int fa_free_space(const char* path, uint64_t* bytes)
 {
-    wchar_t* wp = widen(path);
+    wchar_t* wp = fa_widen(path);
     ULARGE_INTEGER avail;
     int ok;
     if (!wp) return 0;
@@ -245,7 +245,7 @@ void fa_temp_folder_sweep(const char* folder)
     HANDLE find;
     size_t dir_len;
     if (snprintf(pattern, sizeof(pattern), "%s/fa-*.tmp", folder) >= (int)sizeof(pattern)) return;
-    wp = widen(pattern);
+    wp = fa_widen(pattern);
     if (!wp) return;
     dir_len = wcslen(wp) - wcslen(L"fa-*.tmp");
     find = FindFirstFileW(wp, &fd);
@@ -266,7 +266,7 @@ void fa_temp_folder_sweep(const char* folder)
 /* FILE_APPEND_DATA alone: the system moves each write to the end itself, atomically. */
 int fa_append_utf8(const char* path, const void* data, size_t n)
 {
-    wchar_t* wp = widen(path);
+    wchar_t* wp = fa_widen(path);
     HANDLE h;
     DWORD done = 0;
     BOOL ok;
@@ -282,7 +282,7 @@ int fa_append_utf8(const char* path, const void* data, size_t n)
 
 int fa_remove_utf8(const char* path)
 {
-    wchar_t* wp = widen(path);
+    wchar_t* wp = fa_widen(path);
     int ok = wp && DeleteFileW(wp);
     free(wp);
     return ok ? 0 : -1;
@@ -290,7 +290,7 @@ int fa_remove_utf8(const char* path)
 
 void* fa_file_lock(const char* path, uint32_t timeout_ms)
 {
-    wchar_t* wp = widen(path);
+    wchar_t* wp = fa_widen(path);
     HANDLE h;
     int64_t until = fa_monotonic_ns() + (int64_t)timeout_ms * 1000000;
     if (!wp) return NULL;
@@ -325,7 +325,7 @@ void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, cons
     WIN32_FIND_DATAW fd;
     HANDLE find;
     if (snprintf(pattern, sizeof(pattern), "%s/*", folder) >= (int)sizeof(pattern)) return;
-    wp = widen(pattern);
+    wp = fa_widen(pattern);
     if (!wp) return;
     find = FindFirstFileW(wp, &fd);
     free(wp);
@@ -536,16 +536,23 @@ void fa_thread_detach(fa_thread* t)
 uintptr_t fa_thread_current_id(void) { return (uintptr_t)pthread_self(); }
 
 #  if defined(__APPLE__)
+/* Lower within the thread's own QoS class (its relative priority), not a class down:
+ * the scheduler serves the classes in turn, and a utility thread can wait 75-150 ms
+ * while default-QoS threads, of any process, keep the cores busy; a render-ahead
+ * frame is due every 16 ms. Saved as class * 16 - relative priority (0..15 below). */
 int fa_thread_lower_priority(void)
 {
-    qos_class_t was = qos_class_self();
+    qos_class_t was = QOS_CLASS_UNSPECIFIED;
+    int rel = 0;
+    if (pthread_get_qos_class_np(pthread_self(), &was, &rel) != 0) return FA_THREAD_PRIORITY_KEPT;
     if (was == QOS_CLASS_UNSPECIFIED) was = QOS_CLASS_DEFAULT;
-    if (was <= QOS_CLASS_UTILITY) return FA_THREAD_PRIORITY_KEPT;
-    return pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0) == 0 ? (int)was : FA_THREAD_PRIORITY_KEPT;
+    if (rel > 0 || rel - FA_THREAD_LOW_NICE < QOS_MIN_RELATIVE_PRIORITY) return FA_THREAD_PRIORITY_KEPT;
+    if (pthread_set_qos_class_self_np(was, rel - FA_THREAD_LOW_NICE) != 0) return FA_THREAD_PRIORITY_KEPT;
+    return (int)was * 16 - rel;
 }
 void fa_thread_restore_priority(int saved)
 {
-    if (saved != FA_THREAD_PRIORITY_KEPT) pthread_set_qos_class_self_np((qos_class_t)saved, 0);
+    if (saved != FA_THREAD_PRIORITY_KEPT) pthread_set_qos_class_self_np((qos_class_t)(saved / 16), -(saved % 16));
 }
 #  elif defined(__linux__) || defined(__ANDROID__)
 /* Raising nice is always allowed; lowering it back only within RLIMIT_NICE (Android

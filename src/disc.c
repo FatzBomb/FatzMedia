@@ -231,7 +231,7 @@ static char* latin1_to_utf8(const uint8_t* s, size_t n)
 
 static int pack_ok(const uint8_t* p)
 {
-    uint16_t stored = (uint16_t)((p[16] << 8) | p[17]);
+    uint16_t stored = fa_be16(p + 16);
     return stored == 0 || stored == fa_cdtext_crc(p);  /* some drives return zeroed CRCs */
 }
 
@@ -457,7 +457,7 @@ static int q_read(pregap_search* ps, int64_t lba, int64_t* where)
         } else {
             memcpy(q, sub + 12, 12);
         }
-        if (((q[10] << 8) | q[11]) != crc16_inv(q, 10) || (q[0] & 0x0F) != 1) continue;   /* ADR 1: a position */
+        if (fa_be16(q + 10) != crc16_inv(q, 10) || (q[0] & 0x0F) != 1) continue;   /* ADR 1: a position */
         m = bcd(q[7]); sc = bcd(q[8]); f = bcd(q[9]);
         *where = m >= 0 && sc >= 0 && f >= 0 ? ((int64_t)m * 60 + sc) * 75 + f - FA_CD_PREGAP : lba;
         return q[1] == (uint8_t)(((ps->number / 10) << 4) | (ps->number % 10)) && q[2] == 0;

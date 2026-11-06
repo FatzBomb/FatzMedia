@@ -62,7 +62,7 @@ set(FA_SOURCES
     src/dec_au.c
     src/dec_ape.c
     src/codec_ape.h
-    src/info_dts.c
+    src/dts.c
     src/codec_g711.c
     src/fa_platform.c
     src/ring.c
