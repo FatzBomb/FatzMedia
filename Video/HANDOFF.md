@@ -128,7 +128,7 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
 Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three
-monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI.
+monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI. **Owner preference (2026-11-06):** full commands for every smoke step, and a `.ps1` script (on `scripts/smoke-common.ps1`, like `smoke-backlog.ps1` and `smoke-051A.ps1`) whenever there are many steps or they can be automated; the owner is still learning git and PowerShell, so scripts do the git steps too.
 
 ## Next steps
 
@@ -137,7 +137,7 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
    question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
    resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
-2. Owner: the 051A smoke (`updates/051A_1`), including the A/B swap in TriviaBomb and the composited
+2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`), including the A/B swap in TriviaBomb and the composited
    UI-thread numbers on the desktop and the laptop; then start 047A slice 1 with those as the baseline.
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.

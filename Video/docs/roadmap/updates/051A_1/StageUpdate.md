@@ -43,45 +43,36 @@ Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, a
 
 ## Manual smoke (Windows, PowerShell)
 
-Repo at `C:\development\nuget\FatzbombMedia`, BASS and FFmpeg DLLs in
-`FatzBomb.MediaControl.Player\native\`, media in `C:\media`.
+`scripts/smoke-051A.ps1` runs all of it: it fetches and switches to the branch (it stops if you have
+uncommitted changes), builds, asks you to pick a 1080p60 video and a song from `C:\media`, runs each
+test, reads the players' logs, and writes PASS/FAIL to a Desktop folder (`FatzBomb-051A-<date>`). The
+results are copied to the clipboard at the end. Needs `FATZAUDIO_PACKAGES_TOKEN` set (as for every build)
+and the BASS and FFmpeg DLLs in the players' `native\` folders.
+
+Desktop (all tests):
 
 ```powershell
 cd C:\development\nuget\FatzbombMedia
-git fetch origin; git checkout claude/zen-tesla-ux51s6; git pull
-dotnet build FatzBomb.MediaControl.sln -c Release
-$log = Join-Path $env:TEMP 'FatzBombMedia\player-debug.log'
-function Run-Player([string[]]$PlayerArgs) {
-  Remove-Item $log -ErrorAction SilentlyContinue
-  dotnet run --project FatzBomb.MediaControl.Player -c Release --no-build -- @PlayerArgs
-}
 ```
 
-1. **No startup delay.** `Run-Player @('C:\media\video.mp4')`: the video shows at once (no half-second
-   black). Close, then:
-   `Select-String $log -Pattern 'first frame ready','Loaded:' | Select-Object -First 4`
-   expect one `P1 first frame ready: video.mp4 via native window` after `Loaded: C:\media\video.mp4`.
-2. **Once per load.** Start `Run-Player @()`, drop `C:\media\video.mp4`, pause, seek, play, loop it
-   (A/V flyout), then drop `C:\media\song.mp3`, then `C:\media\video.mp4` again. Close, then
-   `(Select-String $log -Pattern 'first frame ready').Count` expect **2** (the two video loads; none
-   for the MP3, none for pause/seek/loop).
-3. **Composited and the counter (047A's before numbers).** `Run-Player @('--surface=framesink','--players=3','C:\media\video.mp4')`,
-   drop a 1080p60 clip on P2 and P3, let it run 30 s, close, then
-   `Select-String $log -Pattern '\[Stats\].*UI thread' | Select-Object -Last 6`
-   expect `surface WxH via frame sink, UI thread x.x ms/s (y.yy ms/frame)` for each player. Note the
-   ms/frame at window size and maximized (one player, F11), on the desktop and on the laptop: these are
-   047A's before numbers. Also `Select-String $log -Pattern 'first frame ready'` shows `via frame sink`.
-4. **Auto-hide off.** `Run-Player @('--no-auto-hide','--surface=framesink','C:\media\video.mp4')`: one
-   `first frame ready` line, as in step 1.
-5. **A/B swap, same frame (TriviaBomb, WPF composited).** In TriviaBomb (or a small WPF app following
-   the WPF README's A/B example): two `WpfComposited` surfaces stacked, B `Visibility.Hidden`; swap clips
-   from the handler 20 times, with a question panel shown in the same handler. Watch for a black frame,
-   the old clip's last frame on the new surface, or the panel appearing a frame before/after the new
-   clip (a 240 fps phone video helps). Repeat once with B `Collapsed`: the first frame looks blurred
-   or wrong-sized for a frame (why the pattern says Hidden).
-6. **Native mode (best effort).** Same app in `NativeHwndOverlay`: the event fires per swap; note if the
-   panel leads or lags the video by a frame (expected possible; record it).
-7. **Avalonia and WinForms.** `dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 -- C:\media\video.mp4`
-   and `dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- C:\media\video.mp4`: the
-   video shows at once (no startup delay). (The event is covered by the Avalonia headless tests; these
-   players do not log it.)
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1
+```
+
+Laptop (only the UI-thread numbers, test 3):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3
+```
+
+| Test | Kind | What it checks |
+| --- | --- | --- |
+| 1 | automatic | WPF native and composited: the startup video gives exactly one `first frame ready` line naming its path; prints the seconds from window to first frame. |
+| 2 | guided (you drop 3 files) | Two video loads, with pause, seek and an MP3 between them, give exactly two lines and none for the MP3. |
+| 3 | automatic + 2 drops | Composited UI-thread time, ms/s and ms/frame: one player at window size, the same maximized, then three players. Records machine, GPU and power state. These are 047A's before numbers. |
+| 4 | automatic | `--no-auto-hide`, native and composited: one line each. |
+| 5 | guided (TriviaBomb) | A/B swap: no black frame, no old frame, panel and clip change together; the `Collapsed` counter-check; native mode frame offset (noted, not failed). |
+| 6 | automatic + 1 question | Avalonia and WinForms players load the startup video at once. |
+
+The test players have no A/B mode, so test 5 needs TriviaBomb (or a small app following the WPF
+README's example).
