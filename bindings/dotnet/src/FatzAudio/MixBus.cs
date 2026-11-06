@@ -77,12 +77,10 @@ public sealed class MixBus : IDisposable
     /// <exception cref="FatzAudioException">The parameter cannot be ramped on a bus (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch).</exception>
     public unsafe void Ramp(AudioParameter parameter, float target, TimeSpan duration, Curve? curve = null, TimeSpan? startAt = null)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
-        var c = curve ?? Curve.Linear;
+        var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_bus_ramp_param(Handle, (int)parameter, target,
-            TimeConvert.ToNanoseconds(duration), startAt is { } t ? Math.Max(1, TimeConvert.ToNanoseconds(t)) : 0, &ramp));
+            durationNs, startNs, &ramp));
         GC.KeepAlive(c);
     }
 

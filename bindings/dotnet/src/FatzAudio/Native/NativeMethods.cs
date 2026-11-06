@@ -391,6 +391,10 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_scan_loudness_path(EngineHandle engine, string path, ref FaLoudness loudness);
 
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_tags_write_loudness(EngineHandle engine, nint* paths, uint count, uint flags,
+        FaLoudnessTagResult* results);
+
     // ---- Loudness of fed audio -----------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void fa_scan_options_init(FaScanOptions* options);

@@ -222,10 +222,10 @@ public sealed class Disc : IDisposable
                 {
                     FaDiscTrack n = raw[i];
                     tracks.Add(new DiscTrack(n.Number, n.IsAudio != 0, n.Preemphasis != 0, n.CopyPermitted != 0, n.FourChannel != 0,
-                                             n.StartSector, n.Sectors, n.Frames, TimeSpan.FromTicks(n.Duration / 100)));
+                                             n.StartSector, n.Sectors, n.Frames, TimeConvert.FromNanoseconds(n.Duration)));
                 }
                 return new DiscToc(t->FirstTrack, t->LastTrack, tracks, t->AudioTrackCount, t->LeadoutSector,
-                                   TimeSpan.FromTicks(t->Duration / 100), t->FreedbId, NativeText.Read(t->FreedbQuery), NativeText.Read(t->MusicBrainzId),
+                                   TimeConvert.FromNanoseconds(t->Duration), t->FreedbId, NativeText.Read(t->FreedbQuery), NativeText.Read(t->MusicBrainzId),
                                    t->HasCdText != 0);
             }
             finally

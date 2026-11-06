@@ -199,10 +199,7 @@ public sealed class Tags
         var gc = GCHandle.Alloc(new IoState(source, leaveOpen: true));
         try
         {
-            FaIoCallbacks io = default;
-            io.Read = &IoState.Read;
-            io.Seek = &IoState.Seek;
-            io.Length = &IoState.Length;
+            var io = IoState.Callbacks(close: false);
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out nint native));
             return Take(native);
         }

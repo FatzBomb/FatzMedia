@@ -82,6 +82,11 @@ set(FA_SOURCES
     src/loudness.c
     src/tags.c
     src/tags_read.c
+    src/tags_write.c
+    src/tags_write.h
+    src/tags_write_fmt.c
+    src/tags_write_mp4.c
+    src/tags_write_ogg.c
     src/walk.c
     src/walk.h
     src/scan.c
