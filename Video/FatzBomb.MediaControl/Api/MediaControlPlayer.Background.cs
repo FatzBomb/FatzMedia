@@ -29,29 +29,25 @@ public partial class MediaControlPlayer
     public Task<bool> PauseBackgroundAsync() => EnqueueControlOperation(() => SetBackgroundPaused(true));
 
     /// <summary>
-    /// Ends an explicit background pause: the background plays again at once, or with the media when
-    /// it follows the media's transport. Blocks; UI code uses <see cref="ResumeBackgroundAsync"/>.
+    /// Ends an explicit background pause and plays the background video now, whatever the media
+    /// does, also while it is paused or stopped. When the background follows the media, the media's
+    /// next pause or stop applies that rule again. Blocks; UI code uses <see cref="ResumeBackgroundAsync"/>.
     /// </summary>
     public bool ResumeBackground() => ExecuteControlOperation(() => SetBackgroundPaused(false));
 
-    /// <summary>Ends an explicit background pause, on the control queue.</summary>
+    /// <summary>Ends an explicit background pause and plays the background, on the control queue.</summary>
     public Task<bool> ResumeBackgroundAsync() => EnqueueControlOperation(() => SetBackgroundPaused(false));
 
     private bool SetBackgroundPaused(bool paused)
     {
-        _backgroundPaused = paused;
-        return ApplyBackgroundPause();
-    }
-
-    /// <summary>Applies the host's background pause to the current engine (also after a rebuild).</summary>
-    private bool ApplyBackgroundPause()
-    {
         if (_mediaEngine is not IBackgroundPlaybackControl control)
             return false;
 
-        if (_backgroundPaused)
-            return control.PauseBackground();
-
-        return !control.IsBackgroundPaused || control.ResumeBackground();
+        _backgroundPaused = paused;
+        return paused ? control.PauseBackground() : control.ResumeBackground();
     }
+
+    /// <summary>After a rebuild: the new engine gets the host's pause again (a resume needs nothing).</summary>
+    private bool ApplyBackgroundPause() =>
+        !_backgroundPaused || (_mediaEngine is IBackgroundPlaybackControl control && control.PauseBackground());
 }

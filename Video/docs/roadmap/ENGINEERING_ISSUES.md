@@ -735,6 +735,12 @@ pauses with the song) and `PlayerModeSwitchTests.ExplicitBackgroundPause_HoldsAc
 
 Owner check passed 2026-11-06: the background keeps playing through the song's loop. Closed (the background pause and `--background-follows-media` checks are reported separately).
 
+Owner check of the background transport (2026-11-06): all as intended except one case. Resuming the
+background while the song was paused did not play it. Fixed: `ResumeBackground` now plays the
+background at once, whatever the media does and whether or not it follows the media (the media's next
+pause or stop applies that rule again). The player's resume also no longer needs an explicit pause
+first. Test: `LinuxBackgroundLoopNativeTests`, follow mode: the song paused, `ResumeBackground` moves it.
+
 
 ### ENG-053 - WinForms: other players stutter when one goes full screen (fixed)
 
