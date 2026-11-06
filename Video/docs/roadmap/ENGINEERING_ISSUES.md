@@ -91,19 +91,6 @@ one that is not the owner's (`Player.Shared/Presentation/PlayerScreenChooser.cs`
 app needs the same: an adapter helper (`ShowOnOtherScreen(owner, preferred)`) with the screen rule in Core.
 Fits 052A or its own small item.
 
-### ENG-053 - WinForms: other players stutter when one goes full screen
-
-Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,
-RTX 5090): when one player switches to full screen, the others stutter briefly. Not seen in WPF or
-Avalonia. Likely the layout change (the others hidden, the panel resized, the form made borderless)
-resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
-the other panels before the resize, or suspending layout around the switch, removes it.
-
-Change (2026-11-06, pending the owner's check): `MainForm.SetWindowFullScreen` suspends layout around the
-border and window-state changes, so the panels and their surfaces are laid out once at the final size
-instead of once per step. If the stutter stays, the next suspect is the hidden panels' surfaces stopping
-and restarting presentation.
-
 ### ENG-052 - Embedded subtitle scan reads a large MKV twice
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
@@ -187,22 +174,6 @@ device's close took 14.7 s in the background, off the recovery path. The one att
 in `vkCreateInstance` itself (14.1 s, until the driver finished its reset; then
 `VK_ERROR_INCOMPATIBLE_DRIVER`). That is the NVIDIA driver holding graphics calls during the reset, not
 ours to cut. ENG-050 is closed apart from that. The failure message now counts the attempts made.
-
-### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
-
-Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
-at 333x250 matched 99.1% of pixels exactly; some edge pixels take the neighbouring CD+G pixel (channel
-delta 255). lavapipe matches exactly, so the GPU's nearest-texel rounding at texel boundaries differs
-from the Software renderer's integer mapping. Not visible in practice. Fix: compute the source texel in
-the shader with the Software renderer's integer formula (`texelFetch`) instead of a nearest sampler.
-
-Fix (2026-11-06, pending the owner's Vulkan test run on the RTX 5090): computing the texel in the shader in
-float cannot match the software renderer's double-precision mapping (a simulation over 29 million
-destination columns at every output size from 50 to 4000 found 2,400 to 7,800 mismatches whichever float
-formula was used). So the CPU writes the software renderer's own source column and row for every drawn pixel
-(`VulkanCompositionPlanner.WriteCdgSourceMap`, from `NearestSampledPlacement`) into a small storage buffer,
-and `cdg.frag` reads the texel through it with `texelFetch`. The GPU does no rounding of its own. On
-lavapipe: all CD+G tests exact, and they fail when the map is deliberately broken.
 
 ### ENG-048 - FatzAudio loudness cache never written on a fresh machine (fixed)
 
@@ -741,6 +712,39 @@ details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage)
   tell a transient failure from a permanent one.
 
 ## Completed
+
+### ENG-053 - WinForms: other players stutter when one goes full screen (fixed)
+
+Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,
+RTX 5090): when one player switches to full screen, the others stutter briefly. Not seen in WPF or
+Avalonia. Likely the layout change (the others hidden, the panel resized, the form made borderless)
+resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
+the other panels before the resize, or suspending layout around the switch, removes it.
+
+Change (2026-11-06, pending the owner's check): `MainForm.SetWindowFullScreen` suspends layout around the
+border and window-state changes, so the panels and their surfaces are laid out once at the final size
+instead of once per step. If the stutter stays, the next suspect is the hidden panels' surfaces stopping
+and restarting presentation.
+
+Owner check passed 2026-11-06: no stutter when a player enters or leaves full screen. Closed.
+
+### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA (fixed)
+
+Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
+at 333x250 matched 99.1% of pixels exactly; some edge pixels take the neighbouring CD+G pixel (channel
+delta 255). lavapipe matches exactly, so the GPU's nearest-texel rounding at texel boundaries differs
+from the Software renderer's integer mapping. Not visible in practice. Fix: compute the source texel in
+the shader with the Software renderer's integer formula (`texelFetch`) instead of a nearest sampler.
+
+Fix (2026-11-06, pending the owner's Vulkan test run on the RTX 5090): computing the texel in the shader in
+float cannot match the software renderer's double-precision mapping (a simulation over 29 million
+destination columns at every output size from 50 to 4000 found 2,400 to 7,800 mismatches whichever float
+formula was used). So the CPU writes the software renderer's own source column and row for every drawn pixel
+(`VulkanCompositionPlanner.WriteCdgSourceMap`, from `NearestSampledPlacement`) into a small storage buffer,
+and `cdg.frag` reads the texel through it with `texelFetch`. The GPU does no rounding of its own. On
+lavapipe: all CD+G tests exact, and they fail when the map is deliberately broken.
+
+Owner check passed 2026-11-06: the Vulkan tests pass 103 of 103 on the RTX 5090, CD+G at 333x250 exact. Closed.
 
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 
