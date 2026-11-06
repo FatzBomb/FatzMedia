@@ -1,9 +1,18 @@
 # Handoff
 
-Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main` after each merge).
+Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6` (051A slice 1; PR open).
 `main` holds everything through PR #56.
 
 ## State
+
+- **051A first-frame-ready: slice 1 implemented, pending the owner's Windows smoke**
+  (`active/051A_ACTIVE_FirstFrameReadySignal.md`, `updates/051A_1/StageUpdate.md`).
+  `MediaSurface.FirstFrameReady` on WPF, Avalonia, WinForms (once per load, UI thread; WPF composited in
+  the bitmap-writing operation, after the host is visible); Core's tracker numbers loads
+  (`FirstFrameLoad`). WPF `CompositedUiThreadTime`/`CompositedFramesPublished`, shown in the WPF test
+  player's stats line (047A's before numbers come from the smoke). The 500 ms `StartupMediaDelay` is
+  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. The test players and
+  Linux.Tests were not built in that session (FatzAudio package not available): Windows CI is the check.
 
 - **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
   `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
@@ -33,7 +42,7 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
-  1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **next**.
+  1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **slice 1 done, pending smoke**.
   2. `047A` WPF shared GPU surface - **planned again** (owner 2026-11-05): the cost that matters is
      UI-thread time per frame (1-2 ms per 1080p surface, estimated), for every host animating over
      video; most shows run on laptops; venue displays are 4K. Slice 1: shared GPU image with the
@@ -115,11 +124,17 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
 
-- Last results: Portable 1766, Linux 145, Vulkan 102, Avalonia 47; 0 warnings.
+- Last results (2026-11-06): Portable 1786, Avalonia 52, Linux 203 + 9 FatzAudio native failures (no native
+  library in a managed-only pack); Vulkan 102 (2026-11-05); whole solution 0 warnings.
+- FatzAudio for a sandbox build without the token (2026-11-06): `add_repo` FatzBomb75/FatzAudio (public: the
+  git proxy serves it), `git fetch --depth=1000 origin`, check out 59741a5 (rc.1),
+  `dotnet pack bindings/dotnet/src/FatzAudio -c Release -p:VersionSuffix=rc.1 -o <feed>`, restore with a
+  `nuget.config` outside the repo mapping `FatzAudio` to that feed. Native FatzAudio tests also need
+  `libfatzaudio.so` built with cmake (see `updates/037A_2`).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
 Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three
-monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI.
+monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI. **Owner preference (2026-11-06):** full commands for every smoke step, and a `.ps1` script (on `scripts/smoke-common.ps1`, like `smoke-backlog.ps1` and `smoke-051A.ps1`) whenever there are many steps or they can be automated; the owner is still learning git and PowerShell, so scripts do the git steps too.
 
 ## Next steps
 
@@ -128,10 +143,8 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
    question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
    resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
-2. Start `051A`: move it to `active/`, write acceptance criteria, then implement across WPF, Avalonia
-   and WinForms (WPF composited: raise in `WpfCompositedSurfaceHost.PublishPendingFrame`, same
-   dispatcher turn as the bitmap write, after the host is visible; check that a hidden surface is
-   still presented to). Also add the composited UI-thread time counter (047A's before numbers).
+2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`), including the A/B swap in TriviaBomb and the composited
+   UI-thread numbers on the desktop and the laptop; then start 047A slice 1 with those as the baseline.
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
    Cache (FatzAudio's 2026-11-05 answer, on its main after rc.3): unset `CacheDirectory` then means
@@ -148,9 +161,7 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next-session prompt
 
-> Read HANDOFF.md. Start queue item 1, stage 051A (first-frame-ready signal and the A/B swap pattern
-> for TriviaBomb): move `docs/roadmap/future/051A_IDEA_FirstFrameReadySignal.md` to `active/` with
-> bounded acceptance criteria, investigate how each adapter (WPF native and composited, Avalonia,
-> WinForms) learns that the first frame of a new load is on screen, and propose the event's name and
-> exact timing before coding. Include the composited UI-thread time counter (047A's before numbers).
-> Then implement, validate, open a PR, and give me PowerShell smoke steps.
+> Read HANDOFF.md. 051A slice 1 is in review: check the PR's Windows CI and the owner's smoke results
+> (`docs/roadmap/updates/051A_1/StageUpdate.md`); fix what they find. When the smoke passes, move 051A to
+> `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), using the smoke's
+> composited UI-thread numbers as the before baseline.

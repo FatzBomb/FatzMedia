@@ -232,6 +232,87 @@ public sealed class MediaSurfaceContentTrackerTests
         Assert.Null(tracker.Session);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FirstFrameLoad_IsSetByTheLoadsFirstFrame_AndANewLoadGetsANewNumber(bool autoHide)
+    {
+        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        using var tracker = new MediaSurfaceContentTracker(autoHide) { Session = session };
+        var changes = 0;
+        tracker.Changed += (_, _) => changes++;
+
+        fake.Load(hasVisualContent: true);
+        Assert.Equal(0, tracker.FirstFrameLoad);
+        changes = 0;
+
+        fake.PresentFrame();
+        var first = tracker.FirstFrameLoad;
+        Assert.NotEqual(0, first);
+        Assert.Equal(1, changes);
+
+        // Later frames, pause, loop and stop-and-play keep the number and raise nothing new for it.
+        fake.PresentFrame();
+        fake.Raise(nameof(IMediaControlSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
+        fake.Raise(nameof(IMediaControlSession.MediaLooped), new MediaLoopedEventArgs(TimeSpan.Zero));
+        Assert.Equal(first, tracker.FirstFrameLoad);
+
+        fake.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(Source));
+        Assert.Equal(0, tracker.FirstFrameLoad);
+        fake.Load(hasVisualContent: true);
+        fake.PresentFrame();
+        Assert.True(tracker.FirstFrameLoad > first);
+    }
+
+    [Fact]
+    public void FirstFrameLoad_CountsAFrameLatchedBeforeTheLoadNotice()
+    {
+        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        using var tracker = new MediaSurfaceContentTracker(autoHide: false) { Session = session };
+        var changes = 0;
+        tracker.Changed += (_, _) => changes++;
+
+        fake.PresentFrame();
+        Assert.Equal(0, tracker.FirstFrameLoad);
+        fake.Load(hasVisualContent: true);
+
+        Assert.NotEqual(0, tracker.FirstFrameLoad);
+        Assert.True(changes > 0);
+    }
+
+    [Fact]
+    public void FirstFrameLoad_StaysZeroForAudioOnlyMediaAndAfterAnError()
+    {
+        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        using var tracker = new MediaSurfaceContentTracker { Session = session };
+
+        fake.Load(hasVisualContent: false);
+        fake.PresentFrame();
+        Assert.Equal(0, tracker.FirstFrameLoad);
+
+        fake.Load(hasVisualContent: true);
+        fake.Raise(nameof(IMediaControlSession.MediaError), new MediaErrorEventArgs(MediaErrorCode.OpenFailed, "failed"));
+        fake.PresentFrame();
+        Assert.Equal(0, tracker.FirstFrameLoad);
+    }
+
+    [Fact]
+    public void FirstFrameLoad_ArmsASessionAlreadyOpen_AndASessionChangeClearsIt()
+    {
+        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        fake.IsOpen = true;
+        fake.HasVisualContent = true;
+        using var tracker = new MediaSurfaceContentTracker { Session = session };
+        Assert.Equal(0, tracker.FirstFrameLoad);
+
+        fake.PresentFrame();
+        Assert.NotEqual(0, tracker.FirstFrameLoad);
+
+        (IMediaControlSession other, _) = TrackedSession.Create();
+        tracker.Session = other;
+        Assert.Equal(0, tracker.FirstFrameLoad);
+    }
+
     [Fact]
     public async Task FramesFromTheRenderThread_RaiseChangedOnlyOnTheTransition()
     {

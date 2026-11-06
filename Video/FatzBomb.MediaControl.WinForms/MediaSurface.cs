@@ -66,6 +66,7 @@ public class MediaSurface : Control
     private bool _preferNativeWindow = true;
     private WinFormsFrameSink? _sink;
     private bool _framesShown;
+    private int _firstFrameReadyLoad;
     private Control? _overlayContent;
     private bool _overlayHitTestVisible;
     private MediaOverlayForm? _overlayForm;
@@ -89,6 +90,17 @@ public class MediaSurface : Control
 
     /// <summary>Raised on the UI thread when <see cref="PresentationPath"/> or its reason changes.</summary>
     public event EventHandler? PresentationPathChanged;
+
+    /// <summary>
+    /// Raised on the UI thread once per load of media with visual content (and once when
+    /// <see cref="Player"/> is set to a session that already has such media open), when a frame of
+    /// that load is on this surface and the surface shows its content (Stage 051A): on the frame-sink
+    /// path the frame is published and painted; on the native-window path the child window is shown
+    /// after the swap chain presented it (the desktop shows it at the next refresh). Not raised for
+    /// audio-only media or in Audio mode. Subscribe before loading. A surface waiting for its first
+    /// frame may be hidden with <see cref="Control.Visible"/> = false: it keeps its size.
+    /// </summary>
+    public event EventHandler? FirstFrameReady;
 
     /// <summary>Gets or sets the session this surface presents.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -562,6 +574,12 @@ public class MediaSurface : Control
         if (!ReferenceEquals(sink, _sink) || !sink.Publish())
             return;
 
+        PaintPublishedFrame();
+        RaiseFirstFrameReadyIfDue();
+    }
+
+    private void PaintPublishedFrame()
+    {
         if (!_framesShown)
             return;
 
@@ -571,6 +589,34 @@ public class MediaSurface : Control
         // stayed unshown (owner's 045A smoke: seeking one player stalled the other). Publishes
         // are coalesced (latest frame wins), so this paints at most once per published frame.
         Update();
+    }
+
+    // UI thread: after the content state changed or the sink published a frame (Stage 051A).
+    private void RaiseFirstFrameReadyIfDue()
+    {
+        var load = _contentTracker.FirstFrameLoad;
+        if (load == 0 || load == _firstFrameReadyLoad || _attachedSession is null || IsDisposed)
+            return;
+
+        if (PresentationPath == MediaSurfacePresentationPath.FrameSink)
+        {
+            if (_sink is not { } sink || !_framesShown)
+                return;
+
+            // The renderer hands the frame to the sink before it announces it, so a frame still
+            // waiting is at least as new as the announced one: publish and paint it now.
+            if (sink.Publish())
+                PaintPublishedFrame();
+            if (sink.Bitmap is null)
+                return;
+        }
+        else if (!_presentationWindowShown)
+        {
+            return;
+        }
+
+        _firstFrameReadyLoad = load;
+        FirstFrameReady?.Invoke(this, EventArgs.Empty);
     }
 
     private void ShowPresentationWindow(bool show)
@@ -696,6 +742,8 @@ public class MediaSurface : Control
             _isContentVisible = isContentVisible;
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        RaiseFirstFrameReadyIfDue();
     }
 
     // The renderer may skip work during a live resize (as the WPF surface tells it from

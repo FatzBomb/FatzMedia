@@ -605,6 +605,8 @@ public sealed partial class MediaSurface : Grid
 
                 _surfaceHost.SetNativeVisible(true);
             }
+
+            RaiseFirstFrameReadyIfDue();
             return;
         }
 
@@ -785,7 +787,7 @@ public sealed partial class MediaSurface : Grid
 
     private WpfCompositedSurfaceHost EnsureCompositedHost()
     {
-        _compositedHost ??= new WpfCompositedSurfaceHost();
+        _compositedHost ??= new WpfCompositedSurfaceHost(RaiseFirstFrameReadyIfDue);
         return _compositedHost;
     }
 
@@ -795,6 +797,7 @@ public sealed partial class MediaSurface : Grid
             return;
 
         Children.Remove(_compositedHost);
+        RetireCompositedCounters(_compositedHost);
         _compositedHost.Dispose();
         _compositedHost = null;
     }

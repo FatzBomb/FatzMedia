@@ -44,6 +44,49 @@ and live mode switching while media is open are not supported.
   `PresentationPathChanged`, an Info diagnostic owned by the player, and one Warning when the
   player refuses the surface. Notices use the `Wpf.MediaSurface` diagnostic category.
 
+### First frame ready and the A/B swap (Stage 051A)
+
+`FirstFrameReady` is raised on the UI thread once per load of media with visual content (and once
+when `Player` is set to a session that already has such media open), when a frame of that load is on
+the surface and its presentation host is shown. In `WpfComposited` mode the bitmap holds that frame
+(a frame still waiting is written in the same dispatcher operation, after the host is made visible),
+so whatever the handler changes renders in the same WPF frame. In `NativeHwndOverlay` mode it is
+raised after the swap chain presented the frame (best effort: the desktop shows it at the next
+refresh). It is not raised for audio-only media or in Audio mode. `PresentationFramePresented` (per
+session, every frame, background thread) is unchanged.
+
+A/B swap without a black flash: two players, two surfaces stacked in one grid cell, the next clip
+loaded into the hidden one.
+
+```csharp
+// Hidden, not Collapsed: a collapsed surface has no size, so its first frame would be rendered at 1x1.
+surfaceB.Visibility = Visibility.Hidden;
+
+async Task SwapToAsync(string clip)
+{
+    void OnReady(object? sender, EventArgs e)
+    {
+        surfaceB.FirstFrameReady -= OnReady;
+        // One UI-thread turn: the new clip, the old one gone and the rest of the screen change together.
+        surfaceB.Visibility = Visibility.Visible;
+        surfaceA.Visibility = Visibility.Hidden;
+        questionPanel.Visibility = Visibility.Visible;
+        _ = playerA.StopAsync();
+        (playerA, playerB, surfaceA, surfaceB) = (playerB, playerA, surfaceB, surfaceA);
+    }
+
+    surfaceB.FirstFrameReady += OnReady;   // subscribe before loading
+    await playerB.LoadAsync(clip);
+    await playerB.PlayAsync();
+}
+```
+
+Use `PresentationMode="WpfComposited"` on both surfaces: in native mode the video is a separate
+window, so WPF content cannot change in the same frame. The same works for an inset clip (a smaller
+surface shown over the main one on its first frame). `Background`-mode players keep the hidden one
+cheap. `CompositedUiThreadTime` and `CompositedFramesPublished` total the UI-thread time spent writing
+composited frames (047A's before and after numbers); the WPF test player shows them per second.
+
 `SecondaryPresentationWindow` hosts a projector `MediaSurface` (`Surface`) in the primary's
 presentation mode:
 

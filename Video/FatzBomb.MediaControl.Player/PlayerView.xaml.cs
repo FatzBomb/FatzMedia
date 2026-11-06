@@ -39,6 +39,9 @@ public partial class PlayerView : UserControl, IPlayerSlot
     private readonly int _bottomChromeWindowedIndex;
     private Grid? _fullScreenOverlayRoot;
     private SecondaryPresentationWindow? _secondScreen;
+    // Composited bitmap writes on the UI thread (Stage 051A, 047A's before numbers).
+    private readonly UiThreadCostMeter _surfaceCost = new();
+    private readonly UiThreadCostMeter _secondScreenCost = new();
     private bool _isSeekBarDragging;
     private bool _disposed;
 
@@ -73,6 +76,11 @@ public partial class PlayerView : UserControl, IPlayerSlot
             App.StartupOptions.ForBuild(index, atStartup));
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        // Stage 051A: the smoke script reads this line from the debug log.
+        MediaSurface.FirstFrameReady += (_, _) => ViewModel.AddLogEntry(
+            MediaDiagnosticLevel.Info,
+            "Surface",
+            $"{ViewModel.Label} first frame ready: {ViewModel.LoadedMediaText} via {MediaSurfacePresentationPathText.Describe(MediaSurface.PresentationPath)}");
         // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
         _chrome = new FullScreenChromeController(
             new WpfPlayerDispatcher(),
@@ -123,8 +131,8 @@ public partial class PlayerView : UserControl, IPlayerSlot
     /// <summary>Refreshes the stats line with the window's process reading.</summary>
     public void UpdateStatus(ProcessSample process)
     {
-        var surface = DescribeSurface(MediaSurface);
-        ViewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, _secondScreen is { } window ? DescribeSurface(window.Surface) : null));
+        var surface = DescribeSurface(MediaSurface, _surfaceCost);
+        ViewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, _secondScreen is { } window ? DescribeSurface(window.Surface, _secondScreenCost) : null));
     }
 
     /// <summary>Gets whether a flyout is open (Escape closes it).</summary>
@@ -140,14 +148,18 @@ public partial class PlayerView : UserControl, IPlayerSlot
         return true;
     }
 
-    private static string DescribeSurface(MediaSurface surface)
+    private static string DescribeSurface(MediaSurface surface, UiThreadCostMeter cost)
     {
         DpiScale dpi = VisualTreeHelper.GetDpi(surface);
-        return PlayerStatsLine.DescribeSurface(
+        var description = PlayerStatsLine.DescribeSurface(
             (int)Math.Round(surface.ActualWidth * dpi.DpiScaleX),
             (int)Math.Round(surface.ActualHeight * dpi.DpiScaleY),
             surface.PresentationPath,
             surface.IsPresentationSuspended);
+        (double, double)? reading = cost.Sample(surface.CompositedUiThreadTime, surface.CompositedFramesPublished);
+        return surface.PresentationPath == MediaSurfacePresentationPath.FrameSink
+            ? PlayerStatsLine.WithUiThreadCost(description, reading)
+            : description;
     }
 
     private void Panel_DragOver(object sender, DragEventArgs e)

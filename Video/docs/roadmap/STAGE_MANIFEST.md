@@ -52,6 +52,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
   (`updates/043A_1`, `updates/043A_2`).
 
+- `active/051A_ACTIVE_FirstFrameReadySignal.md` - `MediaSurface.FirstFrameReady` on WPF, Avalonia and
+  WinForms (once per load, UI thread; WPF composited in the bitmap-writing operation) and the A/B swap
+  pattern (TriviaBomb); WPF `CompositedUiThreadTime` for 047A; the test players' 500 ms startup delay
+  removed. Slice 1 implemented, pending manual smoke (`updates/051A_1`).
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzBomb.MediaControl.Player.Shared`), at feature parity with the WPF
   player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
@@ -121,8 +125,6 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   present-time estimate with Direct3D11 present statistics, after 037A slice 3.
 - `future/050A_IDEA_TagsAndFileInformation.md` - **planned** (owner 2026-11-05): `player.Tags` and
   `MediaInfo.ReadAsync` (tags, details, hashes, cover-art thumbnails); after FatzAudio rc.4 and 056A.
-- `future/051A_IDEA_FirstFrameReadySignal.md` - **planned, next** (owner 2026-11-05): a per-surface
-  first-frame-ready event on the UI thread and the A/B swap pattern (TriviaBomb).
 - `future/052A_IDEA_ImageOverlayAndPictureFade.md` - **planned**: a host image overlay layer on every
   renderer, "change together" with a load, and `FadePictureAsync`.
 - `future/053A_IDEA_StreamMediaSource.md` - **planned**: `MediaInputSource.FromStream` through FFmpeg

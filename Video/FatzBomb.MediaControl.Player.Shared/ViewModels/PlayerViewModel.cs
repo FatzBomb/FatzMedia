@@ -29,16 +29,11 @@ public enum PlayerFlyout
 public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
     private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
-    // Lets the surface bind to the new player before the startup media loads.
-    private static readonly TimeSpan StartupMediaDelay = TimeSpan.FromMilliseconds(500);
 
     private readonly PlayerHost _host;
     private readonly IPlayerTimer _positionTimer;
     private readonly Lock _startGate = new();
     private Task? _startTask;
-    // Cancelled when the view model is disposed, so a close right after start does not wait out
-    // the startup media delay.
-    private readonly CancellationTokenSource _disposing = new();
     private bool _isSeekPreviewActive;
     private DateTime _suppressPositionRefresh = DateTime.MinValue;
     private int _pitch;
@@ -370,19 +365,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     {
         _positionTimer.Start();
         await InitializePlayerAsync();
-        if (Player is null || Options.MediaPath is not { } path)
-            return;
-
-        try
-        {
-            await Task.Delay(StartupMediaDelay, _disposing.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        if (!_disposed && Player is not null)
+        // No wait for the surface (Stage 051A): setting Player binds it synchronously, and a surface
+        // that attaches after the load gets the current frame re-presented by Core.
+        if (!_disposed && Player is not null && Options.MediaPath is { } path)
             await LoadMediaAsync(path);
     }
 
@@ -835,7 +820,6 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         if (_disposed) return null;
 
         _disposed = true;
-        _disposing.Cancel();
         _positionTimer.Stop();
         _positionTimer.Dispose();
         if (Player is not { } player)

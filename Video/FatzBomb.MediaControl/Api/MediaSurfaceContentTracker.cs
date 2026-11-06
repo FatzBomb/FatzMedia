@@ -24,6 +24,13 @@ namespace FatzBomb.MediaControl;
 /// ignored.
 /// </para>
 /// <para>
+/// First frame (Stage 051A): each load of media with visual content (and a session that already has
+/// such media open when it is set) gets a new load number; <see cref="FirstFrameLoad"/> reports it once
+/// a frame of that load was presented (the latch counts), with <see cref="AutoHide"/> on or off. The
+/// adapters raise their <c>FirstFrameReady</c> event once per load number, when their own frame and host
+/// are ready. Close, error and a session change clear it.
+/// </para>
+/// <para>
 /// Threading: set <see cref="Session"/> and <see cref="AutoHide"/> on the adapter's UI thread.
 /// Session events arrive on background threads (the present notice on the render thread); the
 /// tracker applies them under a lock and raises <see cref="Changed"/> on the thread that changed
@@ -41,6 +48,9 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     private bool _hasVisualContent;
     private bool _lifecycleSeen;
     private bool _disposed;
+    private int _loadNumber;
+    private bool _firstFrameArmed;
+    private bool _firstFramePresented;
 
     /// <param name="autoHide">The initial <see cref="AutoHide"/> (default <see langword="true"/>).</param>
     public MediaSurfaceContentTracker(bool autoHide = true) => _autoHide = autoHide;
@@ -115,6 +125,21 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the number of the current load once a frame of it was presented to the session's surfaces,
+    /// or 0 before that (no load, audio-only media, closed, failed). A new load gets a new, larger
+    /// number, so an adapter that remembers the number it signalled signals each load once.
+    /// <see cref="Changed"/> is raised when it becomes non-zero.
+    /// </summary>
+    public int FirstFrameLoad
+    {
+        get
+        {
+            lock (_lock)
+                return CurrentFirstFrameLoad();
+        }
+    }
+
     /// <summary>Stops following the session.</summary>
     public void Dispose()
     {
@@ -132,7 +157,10 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         || _policy.IsContentVisible
         || (_policy.State == SurfaceAutoHideState.PendingShow && _hasVisualContent);
 
-    private (bool Visible, bool Allowed) Snapshot() => (_autoHide && _policy.IsContentVisible, AutoHideAllowsContent());
+    private (bool Visible, bool Allowed, int FirstFrameLoad) Snapshot() =>
+        (_autoHide && _policy.IsContentVisible, AutoHideAllowsContent(), CurrentFirstFrameLoad());
+
+    private int CurrentFirstFrameLoad() => _firstFrameArmed && _firstFramePresented ? _loadNumber : 0;
 
     private void SetSession(IMediaControlSession? session)
     {
@@ -148,6 +176,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
             _framePresented = false;
             _hasVisualContent = false;
             _lifecycleSeen = false;
+            _firstFrameArmed = false;
+            _firstFramePresented = false;
             _ = _policy.Reset();
         }
 
@@ -167,6 +197,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
                 if (ReferenceEquals(session, _session) && !_lifecycleSeen)
                 {
                     _hasVisualContent = hasVisualContent;
+                    if (isOpen)
+                        ArmFirstFrame();
                     if (_autoHide && isOpen)
                         ArmForCurrentMedia();
                 }
@@ -192,6 +224,15 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         }
 
         RaiseChanged();
+    }
+
+    // Under the lock: a load (or a session already open) with visual content gets a new load number;
+    // a frame latched before the load notice counts as its first frame.
+    private void ArmFirstFrame()
+    {
+        _loadNumber++;
+        _firstFrameArmed = _hasVisualContent;
+        _firstFramePresented = _hasVisualContent && _framePresented;
     }
 
     // Under the lock: a load arms; a frame latched before the load notice shows at once.
@@ -239,6 +280,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         Apply(sender, () =>
         {
             _hasVisualContent = hasVisualContent;
+            ArmFirstFrame();
             if (_autoHide)
                 ArmForCurrentMedia();
         });
@@ -252,6 +294,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     {
         _hasVisualContent = false;
         _framePresented = false;
+        _firstFrameArmed = false;
+        _firstFramePresented = false;
         if (_autoHide)
             _ = transition(_policy);
     });
@@ -299,8 +343,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
     private void ApplyTransport(object? sender, Func<SurfaceAutoHidePolicy, bool> transition)
     {
-        (bool Visible, bool Allowed) before;
-        (bool Visible, bool Allowed) after;
+        (bool Visible, bool Allowed, int FirstFrameLoad) before;
+        (bool Visible, bool Allowed, int FirstFrameLoad) after;
         lock (_lock)
         {
             if (_disposed || !IsCurrent(sender) || !_autoHide)
@@ -332,10 +376,19 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
             // A present of a replaced item (no visual content known yet) must not reveal a new
             // audio-only item; MediaLoaded replays the latch once it knows.
-            if (!_autoHide || !_hasVisualContent || _policy.State != SurfaceAutoHideState.PendingShow)
+            if (!_hasVisualContent)
                 return;
 
-            _ = _policy.FramePresented();
+            var firstFrame = _firstFrameArmed && !_firstFramePresented;
+            if (firstFrame)
+                _firstFramePresented = true;
+
+            var show = _autoHide && _policy.State == SurfaceAutoHideState.PendingShow;
+            if (show)
+                _ = _policy.FramePresented();
+
+            if (!firstFrame && !show)
+                return;
         }
 
         RaiseChanged();
@@ -357,8 +410,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
     private void Apply(object? sender, Action change)
     {
-        (bool Visible, bool Allowed) before;
-        (bool Visible, bool Allowed) after;
+        (bool Visible, bool Allowed, int FirstFrameLoad) before;
+        (bool Visible, bool Allowed, int FirstFrameLoad) after;
         lock (_lock)
         {
             if (_disposed || !IsCurrent(sender))

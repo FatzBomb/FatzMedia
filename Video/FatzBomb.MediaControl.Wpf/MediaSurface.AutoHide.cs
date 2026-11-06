@@ -120,6 +120,8 @@ public sealed partial class MediaSurface
 
         if (visibilityChanged)
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+
+        RaiseFirstFrameReadyIfDue();
     }
 
     // Audio mode (Stage 043A) keeps the surface attached, but whatever drew the last
