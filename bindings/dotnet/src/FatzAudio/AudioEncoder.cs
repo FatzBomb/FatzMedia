@@ -407,8 +407,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <summary>Bridges a managed <see cref="Stream"/> to the native output callbacks.</summary>
     private sealed class OutputState(Stream stream, bool leaveOpen)
     {
-        private static OutputState? From(void* user) =>
-            user == null ? null : GCHandle.FromIntPtr((nint)user).Target as OutputState;
+        private static OutputState? From(void* user) => NativeUser.From<OutputState>(user);
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
         public static int Write(void* user, void* data, nuint size)

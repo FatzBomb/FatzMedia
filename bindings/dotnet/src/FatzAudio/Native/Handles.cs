@@ -65,26 +65,9 @@ internal sealed class DeviceHandle : SafeHandle
 /// Owns an <c>fa_mic*</c> of a DJ mixer and keeps the mixer's device open, so the mic is always removed before the
 /// mixer goes (<c>fa_mixer_destroy</c> would free it).
 /// </summary>
-internal sealed class MicHandle : SafeHandle
+internal sealed class MicHandle : ChildHandle<DeviceHandle>
 {
-    private DeviceHandle? _device;
-
-    public MicHandle() : base(0, true) { }
-    public override bool IsInvalid => handle == 0;
-
-    public void Initialize(nint native, DeviceHandle device)
-    {
-        _device = HandleRef.AddRef(device);
-        SetHandle(native);
-    }
-
-    protected override bool ReleaseHandle()
-    {
-        NativeMethods.fa_mic_remove(handle);
-        _device?.DangerousRelease();
-        _device = null;
-        return true;
-    }
+    protected override void Free(nint native) => NativeMethods.fa_mic_remove(native);
 }
 
 /// <summary>A surface whose native object goes with its stream (<see cref="StreamHandle.TrackSurface"/>).</summary>
@@ -213,26 +196,9 @@ internal sealed class StreamHandle : SafeHandle
 }
 
 /// <summary>Owns an <c>fa_bus*</c> and keeps its device (and so its engine) alive.</summary>
-internal sealed class BusHandle : SafeHandle
+internal sealed class BusHandle : ChildHandle<DeviceHandle>
 {
-    private DeviceHandle? _device;
-
-    public BusHandle() : base(0, true) { }
-    public override bool IsInvalid => handle == 0;
-
-    public void Initialize(nint native, DeviceHandle device)
-    {
-        _device = HandleRef.AddRef(device);
-        SetHandle(native);
-    }
-
-    protected override bool ReleaseHandle()
-    {
-        NativeMethods.fa_bus_destroy(handle);
-        _device?.DangerousRelease();
-        _device = null;
-        return true;
-    }
+    protected override void Free(nint native) => NativeMethods.fa_bus_destroy(native);
 }
 
 /// <summary>Owns an <c>fa_disc*</c>. Streams opened from the disc hold their own native reference.</summary>
@@ -280,47 +246,40 @@ internal sealed class SilenceDetectorHandle : SafeHandle
 
 /// <summary>Owns an <c>fa_sound*</c> and keeps its engine alive. Its voices' stream handles hold a reference to
 /// it, so the sound is closed only after every voice wrapper let go (<c>fa_sound_close</c> closes the voices left).</summary>
-internal sealed class SoundHandle : SafeHandle
+internal sealed class SoundHandle : ChildHandle<EngineHandle>
 {
-    private EngineHandle? _engine;
-
-    public SoundHandle() : base(0, true) { }
-    public override bool IsInvalid => handle == 0;
-
-    public void Initialize(nint native, EngineHandle engine)
-    {
-        _engine = HandleRef.AddRef(engine);
-        SetHandle(native);
-    }
-
-    protected override bool ReleaseHandle()
-    {
-        NativeMethods.fa_sound_close(handle);
-        _engine?.DangerousRelease();
-        _engine = null;
-        return true;
-    }
+    protected override void Free(nint native) => NativeMethods.fa_sound_close(native);
 }
 
 /// <summary>Owns an <c>fa_scan_feed*</c> and keeps its engine alive.</summary>
-internal sealed class ScanHandle : SafeHandle
+internal sealed class ScanHandle : ChildHandle<EngineHandle>
 {
-    private EngineHandle? _engine;
+    protected override void Free(nint native) => NativeMethods.fa_scan_close(native);
+}
 
-    public ScanHandle() : base(0, true) { }
+/// <summary>A native object that needs its parent (engine, device) open until it is closed: the parent gets a
+/// reference on <see cref="Initialize"/> and lets go after the child's own close function ran.</summary>
+internal abstract class ChildHandle<TParent> : SafeHandle where TParent : SafeHandle
+{
+    private TParent? _parent;
+
+    protected ChildHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
 
-    public void Initialize(nint native, EngineHandle engine)
+    public void Initialize(nint native, TParent parent)
     {
-        _engine = HandleRef.AddRef(engine);
+        _parent = HandleRef.AddRef(parent);
         SetHandle(native);
     }
 
+    /// <summary>Calls the native close function.</summary>
+    protected abstract void Free(nint native);
+
     protected override bool ReleaseHandle()
     {
-        NativeMethods.fa_scan_close(handle);
-        _engine?.DangerousRelease();
-        _engine = null;
+        Free(handle);
+        _parent?.DangerousRelease();
+        _parent = null;
         return true;
     }
 }

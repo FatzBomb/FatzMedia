@@ -116,7 +116,7 @@ internal sealed unsafe class CallbackState
     {
         try
         {
-            if (GCHandle.FromIntPtr((nint)user).Target is not CallbackState s) return AudioEngine.EndOfStream;
+            if (NativeUser.From<CallbackState>(user) is not { } s) return AudioEngine.EndOfStream;
             int n = s._fill is { } f
                 ? f(new Span<float>(buffer, checked((int)(frames * s._unit))))
                 : s._raw!(new Span<byte>(buffer, checked((int)(frames * s._unit))));
