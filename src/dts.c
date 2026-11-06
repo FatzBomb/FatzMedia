@@ -183,7 +183,7 @@ static fa_result take_output(fa_codec* c, dts_codec* st)
 static fa_result feed_units(fa_codec* c, dts_codec* st, int end)
 {
     size_t pos = 0;
-    fa_result r = FA_OK;
+    fa_result r = FA_OK, bad = FA_OK;
     while (pos < st->len) {
         fa_dts_header h;
         size_t whole = 0, give;
@@ -218,13 +218,17 @@ static fa_result feed_units(fa_codec* c, dts_codec* st, int end)
         r = st->inner.vt->decode(&st->inner, u, give);
         if (r == FA_OK) r = take_output(c, st);
         pos += whole;
-        if (r != FA_OK) break;
+        if (r == FA_ERROR_OUT_OF_MEMORY) break;
+        /* A frame that fails to decode is skipped alone: the audio of the frames
+         * before it in this call is kept, and the error stands only if there is none. */
+        if (r != FA_OK) { bad = r; r = FA_OK; }
     }
     if (pos > 0) {
         memmove(st->buf, st->buf + pos, st->len - pos);
         st->len -= pos;
     }
     if (st->len > DTS_MAX_UNIT + DTS_RESYNC) st->len = 0;   /* junk that never makes a frame */
+    if (r == FA_OK && bad != FA_OK && c->out_frames == 0) r = bad;
     return r;
 }
 
@@ -334,7 +338,9 @@ static int chain(const uint8_t* d, size_t n, size_t i, int want)
         int r;
         if (i + 4 > n) return k > 0;
         r = fa_dts_unit(d + i, n - i, 0, &h, &len);
-        if (r < 0) return k > 0;
+        /* Cut short by the window: a first unit counts once its core frame is whole
+         * and an extension substream follows it (a DTS-HD unit too big to see). */
+        if (r < 0) return k > 0 || len > h.size;
         if (r == 0) return 0;
         i += len;
     }
@@ -543,8 +549,9 @@ static fa_result build_index(dts_raw* a, int64_t* out_end)
         fa_dts_header h;
         size_t ul;
         if (!unit_at(a, pos, &h, &ul)) {
-            pos = resync_at(a, pos);
-            if (pos < 0 || !unit_at(a, pos, &h, &ul)) break;
+            int64_t next = resync_at(a, pos);
+            if (next < 0 || !unit_at(a, next, &h, &ul)) break;
+            pos = next;
         }
         if (len > 0 && pos + (int64_t)ul > len) break;   /* cut short */
         if (a->nindex == cap) {

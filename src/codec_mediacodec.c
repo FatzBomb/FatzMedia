@@ -268,7 +268,8 @@ fa_result fa_mc_codec_open(fa_codec* c, const fa_codec_params* p)
         csd_n = 0;
         rate = p->sample_rate;
         ch = p->channels;
-        frames = p->codec[0] == 't' ? 40 : 512;
+        /* TrueHD: 40 samples an access unit at 44.1 / 48 kHz, 80 at 88.2 / 96, 160 above. */
+        frames = p->codec[0] == 't' ? (rate > 96000 ? 160 : rate > 48000 ? 80 : 40) : 512;
     } else {
         return FA_ERROR_UNSUPPORTED_FORMAT;
     }
