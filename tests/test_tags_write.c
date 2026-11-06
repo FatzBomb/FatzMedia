@@ -6,44 +6,15 @@
 #  define _POSIX_C_SOURCE 200809L
 #endif
 #include "fa_internal.h"
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "test_util.h"
 
 #ifndef FA_TEST_DATA_DIR
 #  define FA_TEST_DATA_DIR "data"
 #endif
 
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define CHECK_NEAR(a, b, tol) do { double va_ = (a), vb_ = (b); if (!(fabs(va_ - vb_) <= (tol))) { \
-    fprintf(stderr, "  FAIL %s:%d: %s ~ %s (%.6f vs %.6f)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define CHECK_STR(a, b) do { const char* va_ = (a); const char* vb_ = (b); if (strcmp(va_, vb_) != 0) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (\"%s\" vs \"%s\")\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
-
 static fa_engine* g_engine;
 
 /* ---- files ------------------------------------------------------------------------ */
-
-static uint8_t* load(const char* path, size_t* n)
-{
-    FILE* f = fopen(path, "rb");
-    uint8_t* p;
-    long len;
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    p = (uint8_t*)malloc((size_t)len + 1);
-    if (p && fread(p, 1, (size_t)len, f) != (size_t)len) { free(p); p = NULL; }
-    fclose(f);
-    *n = (size_t)len;
-    return p;
-}
 
 static int save(const char* path, const void* p, size_t n)
 {
@@ -61,7 +32,7 @@ static int copy_data(const char* rel, const char* out)
     uint8_t* p;
     int ok;
     snprintf(path, sizeof(path), "%s/%s", FA_TEST_DATA_DIR, rel);
-    p = load(path, &n);
+    p = test_read_file(path, &n);
     if (!p) return 0;
     ok = save(out, p, n);
     free(p);
@@ -248,7 +219,7 @@ static void test_m4a_no_ilst(void) { check_rg_file("aac.m4a", "tw_aac.m4a", FA_T
 static int ogg_pages_ok(const char* path, int* out_pages)
 {
     size_t n, pos = 0;
-    uint8_t* d = load(path, &n);
+    uint8_t* d = test_read_file(path, &n);
     uint32_t serial = 0, next = 0;
     int pages = 0;
     if (!d) return 0;
@@ -356,7 +327,7 @@ static void test_ogg_renumber(void)
     size_t big = 140000;
 
     CHECK(copy_data("ogg/tone.ogg", "tw_big_src.ogg"));
-    d = load("tw_big_src.ogg", &n);
+    d = test_read_file("tw_big_src.ogg", &n);
     CHECK(d != NULL);
     /* tone.ogg: page 0 = identification, page 1 = comment + setup, then audio. */
     serial = fa_le32(d + 14);
@@ -457,7 +428,7 @@ static void test_mp3_ape(void)
     uint8_t v1[128];
     FILE* f;
     CHECK(copy_data("mp3/cbr.mp3", "tw_ape.mp3"));
-    d = load("tw_ape.mp3", &n);
+    d = test_read_file("tw_ape.mp3", &n);
     CHECK(d != NULL);
 #define LE32(x) do { uint32_t x_ = (uint32_t)(x); ape[a++] = (uint8_t)x_; ape[a++] = (uint8_t)(x_ >> 8); ape[a++] = (uint8_t)(x_ >> 16); ape[a++] = (uint8_t)(x_ >> 24); } while (0)
     {
@@ -497,7 +468,7 @@ static void test_mp3_ape(void)
         CHECK_EQ(apen, 1);
         CHECK(title_ok);
     }
-    d = load("tw_ape.mp3", &n);
+    d = test_read_file("tw_ape.mp3", &n);
     CHECK(d != NULL);
     CHECK(memcmp(d + n - 128, "TAGV1 title", 11) == 0);
     free(d);
@@ -512,11 +483,11 @@ static void test_unsupported(void)
     uint8_t* a;
     uint8_t* b;
     CHECK(copy_data("tags/tags.aiff", "tw_tags.aiff"));
-    a = load("tw_tags.aiff", &n1);
+    a = test_read_file("tw_tags.aiff", &n1);
     CHECK_EQ(write1("tw_tags.aiff", &res), FA_ERROR_UNSUPPORTED_FORMAT);
     CHECK_EQ(res.result, FA_ERROR_UNSUPPORTED_FORMAT);
     CHECK_EQ(res.tag_format, 0);
-    b = load("tw_tags.aiff", &n2);
+    b = test_read_file("tw_tags.aiff", &n2);
     CHECK(a && b && n1 == n2 && memcmp(a, b, n1) == 0);
     free(a);
     free(b);
@@ -558,13 +529,13 @@ static void test_album_incomplete(void)
     uint8_t* a;
     uint8_t* b;
     CHECK(copy_data("flac/tone.flac", paths[0]));
-    a = load(paths[0], &n1);
+    a = test_read_file(paths[0], &n1);
     memset(res, 0, sizeof(res));
     res[0].struct_size = res[1].struct_size = sizeof(res[0]);
     CHECK(fa_tags_write_loudness(g_engine, paths, 2, FA_TAGS_WRITE_ALBUM, res) != FA_OK);
     CHECK_EQ(res[0].result, FA_ERROR_CANCELLED);
     CHECK_EQ(res[1].result, FA_ERROR_NOT_FOUND);
-    b = load(paths[0], &n2);
+    b = test_read_file(paths[0], &n2);
     CHECK(a && b && n1 == n2 && memcmp(a, b, n1) == 0);
     free(a);
     free(b);
