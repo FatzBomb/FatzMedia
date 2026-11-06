@@ -43,11 +43,17 @@ fuzz builds, are unaffected.
 
 ## NuGet package and versions
 
-CI builds the NuGet package `FatzAudio` on every run, from the `win-x64` and
-`linux-x64` libraries its own build and test jobs just tested, and keeps it as
-the run's `nuget` artifact. The Linux library is built on Ubuntu 22.04, so it
-runs on any distribution with glibc 2.35 or newer (Debian 12, Ubuntu 22.04,
-Fedora 36 and later).
+CI builds the NuGet package `FatzAudio` on every run, from the libraries its
+own build jobs just produced, and keeps it as the run's `nuget` artifact. It
+carries `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx` (one universal
+`libfatzaudio.dylib`, macOS 11 or later), `android-arm64`, `android-x64` and
+`ios` (`fatzaudio.xcframework`, linked into iOS projects by
+`build/FatzAudio.targets`). The Linux libraries are built on Ubuntu 22.04, so
+they run on any distribution with glibc 2.35 or newer (Debian 12, Ubuntu 22.04,
+Fedora 36 and later). win-arm64 and linux-arm64 are cross-compiled on x64
+runners (`cmake/toolchain-linux-arm64.cmake` for Linux); linux-arm64 runs a
+smoke subset of the tests under qemu-user, win-arm64 is checked for its machine
+type only.
 
 Each run's package is a prerelease, such as `1.0.0-ci.123`, and pushes to
 `main` publish it to the repository owner's GitHub Packages feed, so the

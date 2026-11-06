@@ -61,12 +61,12 @@ alive until it is disposed itself, so disposal order never causes a crash.
 
 ## Native library
 
-Resolved through the normal `runtimes/<rid>/native` layout, with a fallback to the application directory. The NuGet package ships **win-x64** and **linux-x64** only. For macOS, Android and iOS build the native library and place it in the app yourself ([Building](../../docs/building.md)).
+Resolved through the normal `runtimes/<rid>/native` layout, with a fallback to the application directory. The NuGet package ships win-x64, win-arm64, linux-x64, linux-arm64, osx (universal), android-arm64, android-x64 and an iOS xcframework (linked by `build/FatzAudio.targets` in iOS projects). For other Android ABIs build the library and place it in the app yourself ([Building](../../docs/building.md)).
 
 When packing, the `win-x64` library is taken from `$(FatzAudioNativeDir)\fatzaudio.dll`
 (default: `build\bin\Release` of the repository; override with `-p:FatzAudioNativeDir=...`).
 Binaries for other platforms placed in `src/FatzAudio/runtimes/<rid>/native/` are packed too.
-CI packs `win-x64` and `linux-x64` and publishes the package ([building](../../docs/building.md#nuget-package-and-versions)).
+CI packs all of the above and publishes the package ([building](../../docs/building.md#nuget-package-and-versions)).
 
 The binding and the native library share one version. The first call into the library throws
 `InvalidOperationException` when the native library is another major.minor version

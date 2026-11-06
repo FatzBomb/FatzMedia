@@ -21,7 +21,7 @@ The package is `FatzAudio`, for `net8.0` and `net10.0`. CI publishes a prereleas
 dotnet add package FatzAudio --version 1.0.0-rc.1
 ```
 
-The package carries the native library for **win-x64** and **linux-x64**, in `runtimes/<rid>/native/`, and .NET finds it from there. For **macOS, Android and iOS** build the native library yourself ([Building](building.md)) and put it in `runtimes/<rid>/native/` (macOS), in the app's `lib/<abi>/` folders (Android) or link the xcframework (iOS). Nothing else is needed: there are no add-on libraries and no runtime to install.
+The package carries the native library for **Windows** (x64, arm64), **Linux** (x64, arm64), **macOS** (universal), **Android** (arm64, x64) and **iOS** (xcframework), in `runtimes/<rid>/native/`, and .NET finds it from there. For other Android ABIs build the library yourself ([Building](building.md)). Nothing else is needed: there are no add-on libraries and no runtime to install.
 
 Use the same version of the package and the native library. The first call throws `InvalidOperationException` when their major.minor versions differ (`AudioEngine.BindingVersion` against `AudioEngine.NativeVersion`).
 
