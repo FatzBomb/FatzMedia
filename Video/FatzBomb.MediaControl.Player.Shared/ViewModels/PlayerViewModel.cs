@@ -265,6 +265,19 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
+    /// <summary>The background video's own pause (<see cref="MediaControlPlayer.PauseBackgroundAsync"/>), separate from the song's.</summary>
+    public bool BackgroundPaused
+    {
+        get;
+        set
+        {
+            if (!SetProperty(ref field, value) || Player is not { } player)
+                return;
+
+            _ = value ? player.PauseBackgroundAsync() : player.ResumeBackgroundAsync();
+        }
+    }
+
     public PlayerFlyout ActiveFlyout
     {
         get;
@@ -457,6 +470,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
                 ResetPitchOnMediaLoad = Options.ResetPitchOnLoad,
                 ResetTempoOnMediaLoad = Options.ResetTempoOnLoad,
                 SilenceTrim = new SilenceTrimOptions { Enabled = Options.TrimSilence },
+                BackgroundFollowsMedia = Options.BackgroundFollowsMedia,
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = Options.NetworkRetries },
                 NetworkTls = new NetworkTlsPolicy
                 {
@@ -491,6 +505,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             player.ScrubAudio = ToScrubAudio(SilentDrag);
             player.VideoFrameTiming = ToFrameTiming(DisplayLockedTiming);
             player.LoopMedia = LoopPlayback;
+            if (BackgroundPaused)
+                _ = player.PauseBackgroundAsync();
             player.ShowMidiLyrics = true;
             player.Equalizer = BuildEqualizerSettings();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;

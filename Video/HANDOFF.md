@@ -86,6 +86,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - One archive reader, FatzAudio's; rar is dropped entirely, SharpCompress goes with it.
 - The control ships FFmpeg (LGPL only, never GPL or nonfree) in runtime packages: stage 058A, after the
   rc.4 work (2026-11-06). Codec patents: the owner checks with a lawyer before a paid release.
+- The control is sold under a proprietary licence; FFmpeg ships as a trimmed, decode-only, pinned LGPL
+  build (058A). A background video loops on its own by default; `BackgroundFollowsMedia` restores the old
+  transport-following behaviour; `PauseBackground`/`ResumeBackground` pause it explicitly (ENG-051).
 - BASS-only audio issues are not fixed (BASS is going away); audio bugs are checked on FatzAudio.
 - No `Simple` player mode; idle costs are fixed in `Full`.
 - TriviaBomb (a WPF trivia host replacing LibVLC) designs for `WpfComposited`; native mode cannot

@@ -147,6 +147,16 @@ public readonly record struct MediaPlayerConfiguration
     public NormalizationOptions Normalization { get; init; }
 
     /// <summary>
+    /// Whether a background video follows the media's transport (default <see langword="false"/>).
+    /// <see langword="false"/>: the background loops on its own while it is shown, from the moment it
+    /// appears, through the media's pause, stop, end and loop. <see langword="true"/>: it waits for
+    /// Play, pauses with the media, shows its first frame again on Stop and at the end, and restarts
+    /// when the media loops. Either way <see cref="MediaControlPlayer.PauseBackground"/> pauses it
+    /// explicitly until <see cref="MediaControlPlayer.ResumeBackground"/>.
+    /// </summary>
+    public bool BackgroundFollowsMedia { get; init; }
+
+    /// <summary>
     /// Bounded retry policy for network sources. <see langword="null"/> uses
     /// <see cref="NetworkRetryPolicy.Default"/> (one attempt, no retry).
     /// </summary>

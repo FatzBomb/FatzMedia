@@ -72,6 +72,7 @@
         </Button>
         <Button Classes="small" Content="Stop" Command="{Binding StopCommand}" />
         <ToggleButton Classes="small" Content="Loop" IsChecked="{Binding LoopPlayback}" ToolTip.Tip="Loop playback (Background mode always loops)" />
+        <ToggleButton Classes="small" Content="BG pause" IsChecked="{Binding BackgroundPaused}" ToolTip.Tip="Pause the background video (it otherwise loops on its own)" />
         <TextBlock Classes="label" Text="Mode" Margin="6,0,0,0" />
         <ComboBox MinWidth="110" ItemsSource="{Binding PlayerModes}" SelectedItem="{Binding PlayerMode}" IsEnabled="{Binding CanSwitchMode}"
                   ToolTip.Tip="Player mode (Stage 043A): Full, Background (video only, loops) or Audio (no picture); switches on the fly" />

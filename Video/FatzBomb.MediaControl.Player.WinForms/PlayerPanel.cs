@@ -245,6 +245,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         var pause = new Button { Text = "Pause", AutoSize = true };
         var stop = new Button { Text = "Stop", AutoSize = true };
         var loop = new CheckBox { Text = "Loop", Appearance = Appearance.Button, AutoSize = true };
+        var backgroundPause = new CheckBox { Text = "BG pause", Appearance = Appearance.Button, AutoSize = true };
         var mode = new ComboBox { Width = 110, Margin = new Padding(3, 5, 3, 3) };
         var volume = new TrackBar { Width = 140, TickStyle = TickStyle.None, AutoSize = false, Height = 28 };
         var volumeText = new Label { AutoSize = true, Margin = new Padding(0, 8, 8, 0) };
@@ -253,6 +254,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         _binder.Command(pause, _viewModel.PauseCommand);
         _binder.Command(stop, _viewModel.StopCommand);
         _binder.Check(loop, () => _viewModel.LoopPlayback, value => _viewModel.LoopPlayback = value, nameof(PlayerViewModel.LoopPlayback));
+        _binder.Check(backgroundPause, () => _viewModel.BackgroundPaused, value => _viewModel.BackgroundPaused = value, nameof(PlayerViewModel.BackgroundPaused));
         _binder.Choice(mode, _viewModel.PlayerModes, () => _viewModel.PlayerMode, value => _viewModel.PlayerMode = value, nameof(PlayerViewModel.PlayerMode));
         _binder.OnChanged(() => mode.Enabled = _viewModel.CanSwitchMode, nameof(PlayerViewModel.CanSwitchMode));
         _binder.OnChanged(() => _secondScreenBox.Enabled = _viewModel.CanOpen, nameof(PlayerViewModel.CanOpen));
@@ -261,7 +263,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         fullScreen.Click += (_, _) => FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
         row.Controls.AddRange(
         [
-            play, pause, stop, loop,
+            play, pause, stop, loop, backgroundPause,
             Caption("Mode"), mode,
             _secondScreenBox,
             Caption("Volume"), volume, volumeText,

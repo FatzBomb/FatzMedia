@@ -77,6 +77,27 @@ public sealed class PlayerModeSwitchTests
     }
 
     [Fact]
+    public async Task ExplicitBackgroundPause_HoldsAcrossAModeSwitch_UntilResumed()
+    {
+        var factory = new SwitchTestPlatformFactory();
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(await player.PauseBackgroundAsync());
+        Assert.True(player.IsBackgroundPaused);
+        Assert.True(factory.Engines[0].IsBackgroundPaused);
+
+        Assert.True(await player.SetModeAsync(MediaPlayerMode.Background));
+
+        // The rebuilt engine gets the host's pause again; Play does not end it.
+        Assert.True(factory.Engines[1].IsBackgroundPaused);
+        Assert.True(await player.PlayAsync());
+        Assert.True(factory.Engines[1].IsBackgroundPaused);
+        Assert.True(await player.ResumeBackgroundAsync());
+        Assert.False(player.IsBackgroundPaused);
+        Assert.False(factory.Engines[1].IsBackgroundPaused);
+    }
+
+    [Fact]
     public async Task UnacceptedSource_SwitchesAndClosesWithAWarning()
     {
         // Background mode does not accept audio files: its engine refuses to open them.

@@ -125,6 +125,17 @@ with every frame: after the wrap the background reads blue 138, still playing; w
 over). A standby-decoder design (instant restart) was built and dropped: it only sped up the restart.
 `smoke-audit.ps1` test 6's question now expects the video to keep playing. Pending the owner's check.
 
+Extended (owner 2026-11-06): the background is independent of the media's whole transport by default.
+It loops from the moment it is shown (before Play), and through the song's pause, stop, end and loop.
+`MediaPlayerConfiguration.BackgroundFollowsMedia = true` gives the previous behaviour exactly (waits for
+Play, pauses with the song, rewinds on Stop and at the end, restarts with the song's loop).
+`MediaControlPlayer.PauseBackground[Async]` / `ResumeBackground[Async]` / `IsBackgroundPaused` pause it
+explicitly in either mode; the pause holds across loads and mode switches (`RestoreSettings` applies it to
+the rebuilt engine). Test players: `--background-follows-media` and a background pause button (WPF "BG",
+Avalonia and WinForms "BG pause"). Tests: `LinuxBackgroundLoopNativeTests` (moves before Play and while
+paused, held by the explicit pause through Play, moves on resume; with the setting: waits for Play and
+pauses with the song) and `PlayerModeSwitchTests.ExplicitBackgroundPause_HoldsAcrossAModeSwitch_UntilResumed`.
+
 ### ENG-050 - Vulkan does not recover from a GPU reset on Windows
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 3d, Avalonia, Vulkan, RTX 5090): after

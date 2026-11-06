@@ -93,6 +93,12 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets whether leading and trailing silence is trimmed (<c>--trim-silence</c>).</summary>
     public bool TrimSilence { get; init; }
 
+    /// <summary>
+    /// Gets whether a background video follows the song's transport (<c>--background-follows-media</c>,
+    /// <see cref="MediaPlayerConfiguration.BackgroundFollowsMedia"/>); by default it loops on its own.
+    /// </summary>
+    public bool BackgroundFollowsMedia { get; init; }
+
     /// <summary>Gets whether HDR video is shown without tone mapping (<c>--no-hdr-tonemap</c>), for comparison.</summary>
     public bool DisableHdrToneMapping { get; init; }
 
@@ -180,6 +186,7 @@ public sealed record PlayerStartupOptions
             ResetTempoOnLoad = HasFlag(args, "--reset-tempo-on-load"),
             VisualTransformDemo = HasFlag(args, "--visual-transform-demo"),
             TrimSilence = HasFlag(args, "--trim-silence"),
+            BackgroundFollowsMedia = HasFlag(args, "--background-follows-media"),
             DisableHdrToneMapping = HasFlag(args, "--no-hdr-tonemap"),
             PreferCpuHdrToneMapping = HasFlag(args, "--hdr-tonemap-cpu"),
             HdrOutput = HasFlag(args, "--hdr-output"),

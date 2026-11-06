@@ -100,6 +100,19 @@ internal interface ILoopPlaybackControl
     bool HandlesLoopInternally { get; }
 }
 
+/// <summary>
+/// The background video's own pause, separate from the media's (owner decision 2026-11-06): an
+/// explicit pause holds until it is resumed, whatever the media does.
+/// </summary>
+internal interface IBackgroundPlaybackControl
+{
+    bool IsBackgroundPaused { get; }
+
+    bool PauseBackground();
+
+    bool ResumeBackground();
+}
+
 internal interface IMediaLoopEventSource
 {
     event EventHandler? MediaLooped;

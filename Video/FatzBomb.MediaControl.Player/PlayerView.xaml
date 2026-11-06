@@ -189,6 +189,11 @@
                                 Style="{StaticResource ToggleChromeButtonStyle}"
                                 Tag="{Binding LoopPlayback}"
                                 ToolTip="Loop playback" />
+                            <ToggleButton
+                                Margin="5,0,0,0"
+                                Content="BG"
+                                IsChecked="{Binding BackgroundPaused}"
+                                ToolTip="Pause the background video (it otherwise loops on its own)" />
                         </StackPanel>
 
                         <!--  Flyout toggle buttons  -->

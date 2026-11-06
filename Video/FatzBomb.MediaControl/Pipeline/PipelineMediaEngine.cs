@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
     private const string NetworkDiagnosticCategory = "Network";
 
@@ -37,6 +37,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     // A Stop or end asked for the first frame again and no run has rewound yet (under
     // _backgroundGate): a Play that cancels the queued restart still starts from the beginning.
     private bool _backgroundRewindPending;
+    // The host paused the background explicitly (under _backgroundGate): no run starts until it resumes.
+    private bool _backgroundHostPaused;
     private bool _disposed;
     // The cancellation of the network video open in progress (Stage 039A), or null.
     private CancellationTokenSource? _pendingNetworkOpen;
@@ -578,7 +580,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         var success = _coordinator.Play();
-        if (success)
+        if (success && BackgroundFollowsMedia)
         {
             StartBackgroundVideoPlayback();
         }
@@ -590,7 +592,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         var success = _coordinator.Pause();
-        if (success)
+        if (success && BackgroundFollowsMedia)
         {
             StopBackgroundVideoPlayback(wait: true);
         }
@@ -602,7 +604,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         var success = _coordinator.Stop();
-        RequestBackgroundRestart(resume: false);
+        if (BackgroundFollowsMedia)
+            RequestBackgroundRestart(resume: false);
         return success;
     }
 
@@ -719,7 +722,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             _backgroundVideoDecoder = decoder;
         }
 
-        if (State == MediaPlayerState.Playing)
+        // By default it loops from the moment it is shown; following the media, from Play.
+        if (!BackgroundFollowsMedia || State == MediaPlayerState.Playing)
         {
             StartBackgroundVideoPlayback();
         }
@@ -991,7 +995,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         lock (_backgroundGate)
         {
-            if (_backgroundVideoDecoder == null)
+            if (_backgroundVideoDecoder == null || _backgroundHostPaused)
                 return;
 
             _backgroundGeneration++;
@@ -1086,15 +1090,49 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     // May run on BASS's mixing thread (a trimmed end or loop sync): only queue work here.
-    // ENG-051 (owner 2026-11-06): a background video loops on its own while it is visible,
-    // independent of the song, so a song that loops leaves it playing; only a real end (no loop)
-    // rewinds it to its first frame, as Stop does.
+    // ENG-051 (owner 2026-11-06): by default a background video loops on its own while it is
+    // shown, so the media's end or loop leaves it playing. With BackgroundFollowsMedia it shows its
+    // first frame again at the end, and restarts with the media's loop, as before.
     private void OnPlaybackEnded(object? sender, EventArgs e)
     {
-        if (!LoopPlayback)
-            RequestBackgroundRestart(resume: false);
+        if (BackgroundFollowsMedia)
+            RequestBackgroundRestart(resume: LoopPlayback && HandlesLoopInternally);
 
         MediaEnded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool BackgroundFollowsMedia => _configuration.BackgroundFollowsMedia;
+
+    public bool IsBackgroundPaused
+    {
+        get
+        {
+            lock (_backgroundGate)
+                return _backgroundHostPaused;
+        }
+    }
+
+    /// <summary>Pauses the background video until <see cref="ResumeBackground"/>, whatever the media does.</summary>
+    public bool PauseBackground()
+    {
+        ThrowIfDisposed();
+        lock (_backgroundGate)
+            _backgroundHostPaused = true;
+
+        StopBackgroundVideoPlayback(wait: true);
+        return true;
+    }
+
+    /// <summary>Lets the background video play again: at once, or with the media when it follows the media.</summary>
+    public bool ResumeBackground()
+    {
+        ThrowIfDisposed();
+        lock (_backgroundGate)
+            _backgroundHostPaused = false;
+
+        if (!BackgroundFollowsMedia || State == MediaPlayerState.Playing)
+            StartBackgroundVideoPlayback();
+        return true;
     }
 
     private void OnPlaybackLooped(object? sender, EventArgs e) => MediaLooped?.Invoke(this, EventArgs.Empty);
