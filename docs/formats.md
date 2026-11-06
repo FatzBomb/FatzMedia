@@ -14,6 +14,7 @@ What FatzAudio can open, decode and write. The full detail, with how detection w
 | AAC-LC, HE-AAC, HE-AAC v2, Main, LTP (ADTS, MP4, M4A, CAF, MKV, HLS) | Yes | ✅ | ✅ | ✅ | ✅ | [AAC](features/streams.md#aac) |
 | Opus, Vorbis (Ogg, WebM, MKV) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | ALAC (MP4, M4A, CAF) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
+| Monkey's Audio (`.ape`, all versions from 3.80, every compression level, up to 32-bit and float) | Yes | ✅ | ✅ | ✅ | ✅ | [Monkey's Audio](features/streams.md#monkeys-audio) |
 | Dolby Digital, Dolby Digital Plus (up to 7.1) | Yes | ✅ | ✅ | ✅ | ✅ | [Dolby](features/dolby.md) |
 | MIDI, karaoke `.kar`, RMI | Needs a soundfont (yours or the system's) | ✅ | ✅ | ✅ | ✅ | [MIDI](features/midi.md) |
 | Tracker modules (MOD, XM, S3M, IT, MPTM and more) | Yes | ✅ | ✅ | ✅ | ✅ | [trackers](features/trackers.md) |

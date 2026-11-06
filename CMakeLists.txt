@@ -60,6 +60,8 @@ set(FA_SOURCES
     src/dec_miniaudio.c
     src/dec_mp3.c
     src/dec_au.c
+    src/dec_ape.c
+    src/codec_ape.h
     src/info_dts.c
     src/codec_g711.c
     src/fa_platform.c
@@ -224,8 +226,9 @@ endif()
 include(third_party/xiph.cmake)
 include(third_party/libopenmpt.cmake)
 include(third_party/archive.cmake)
+include(third_party/monkeysaudio.cmake)
 add_library(fatzaudio SHARED ${FA_SOURCES})
-target_link_libraries(fatzaudio PRIVATE fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
+target_link_libraries(fatzaudio PRIVATE fa_opus fa_vorbis fa_openmpt fa_mac fa_lzma fa_bzip2)
 set_source_files_properties(src/stretch.cpp PROPERTIES
     INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/signalsmith)
 # One self-contained binary: no compiler runtime DLLs next to fatzaudio.dll (the
@@ -271,7 +274,7 @@ if(FA_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT fa_ipo_ok OUTPUT fa_ipo_why LANGUAGES C CXX)
     if(fa_ipo_ok)
-        foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
+        foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_mac fa_lzma fa_bzip2)
             set_target_properties(${t} PROPERTIES
                 INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
                 INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
@@ -286,7 +289,7 @@ if(FA_LTO)
     endif()
 endif()
 if(MSVC)
-    foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
+    foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_mac fa_lzma fa_bzip2)
         target_compile_options(${t} PRIVATE $<$<CONFIG:Release,MinSizeRel,RelWithDebInfo>:/Gw>)
     endforeach()
 endif()

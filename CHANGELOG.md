@@ -18,6 +18,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Monkey's Audio (`.ape`): every file version from 3.80, all five compression levels, 8, 16, 24 and 32-bit integer and 32-bit float, 1 to 32 channels, decoded to the bit by the official Monkey's Audio SDK 13.45 (BSD-3-Clause, decoder part built in; `third_party/monkeysaudio`). Exact seeks, ID3v2/APEv2/ID3v1 tags, codec and container `ape`. The source must seek (`FA_ERROR_NOT_SEEKABLE` otherwise). Adds about 120 KB to the Linux library. ([Monkey's Audio](docs/features/streams.md#monkeys-audio))
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
