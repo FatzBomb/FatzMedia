@@ -356,7 +356,7 @@ static fa_result deliver(mpg* m, const uint8_t* p, size_t n, int has_pts, int64_
         m->pm_n++;
         m->time_ok = 1;
     }
-    memcpy(m->acc + m->acc_len, p, n);
+    if (n) memcpy(m->acc + m->acc_len, p, n); /* an empty payload before the first one: acc is still NULL */
     m->acc_len += n;
     return FA_OK;
 }
