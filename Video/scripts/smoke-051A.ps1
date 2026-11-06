@@ -91,6 +91,21 @@ function Wait-LogText([string]$Kind, [string]$Text, [int]$TimeoutSeconds = 30) {
     return -1
 }
 
+# Waits until the log has a line for each of $Texts (or the timeout); returns the seconds each took
+# from the same start (-1 for one that never came), in the order given.
+function Wait-LogTexts([string]$Kind, [string[]]$Texts, [int]$TimeoutSeconds = 30) {
+    $log = Get-LiveLog $Kind
+    $times = @{}
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while ($times.Count -lt $Texts.Count -and $sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        foreach ($text in $Texts) {
+            if (-not $times.ContainsKey($text) -and @(Get-Lines $log $text).Count -gt 0) { $times[$text] = [Math]::Round($sw.Elapsed.TotalSeconds, 1) }
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    return @($Texts | ForEach-Object { if ($times.ContainsKey($_)) { $times[$_] } else { -1 } })
+}
+
 # Starts a player, removing its old log first. Returns the process, or $null when it did not start.
 function Start-Fresh([string]$Kind, [string[]]$PlayerArgs) {
     Remove-Item -Path (Get-LiveLog $Kind) -ErrorAction SilentlyContinue
@@ -140,30 +155,38 @@ function Show-Explorer([string]$File) { Start-Process explorer.exe -ArgumentList
 function Test-1 {
     if (-not (Start-Step 1 'Startup without delay, one first-frame line' 'The 500 ms startup delay is gone; FirstFrameReady fires once per load. Automatic.' '2')) { return }
     if (-not (Need-Media @('video'))) { return }
-    foreach ($mode in @(@{ Name = 'native window'; Args = @() }, @{ Name = 'frame sink'; Args = @('--surface=framesink') })) {
-        $p = Start-Fresh 'Wpf' ($mode.Args + @($Media.video))
-        if (-not $p) { Add-Check "WPF $($mode.Name): player starts" $false; continue }
-        $t = Wait-LogText 'Wpf' 'first frame ready' 30
+    # Native runs twice: the first start after a build also pays for cold caches (DLLs, the file, the
+    # GPU driver), so the second run shows the real startup time.
+    $runs = @(
+        @{ Name = 'native window'; Tag = 'native-window'; Args = @() },
+        @{ Name = 'frame sink'; Tag = 'frame-sink'; Args = @('--surface=framesink') },
+        @{ Name = 'native window'; Tag = 'native-window-again'; Args = @() })
+    foreach ($run in $runs) {
+        $label = "WPF $($run.Tag -replace '-', ' ')"
+        $p = Start-Fresh 'Wpf' ($run.Args + @($Media.video))
+        if (-not $p) { Add-Check "${label}: player starts" $false; continue }
+        $first, $loaded = Wait-LogTexts 'Wpf' @('first frame ready', 'Loaded:') 30
         Start-Sleep -Seconds 3
         Stop-Player $p
-        $log = Save-RunLog 'Wpf' ("test1-" + ($mode.Name -replace ' ', '-'))
+        $log = Save-RunLog 'Wpf' "test1-$($run.Tag)"
         $lines = @(Get-Lines $log 'first frame ready')
-        Add-Check "WPF $($mode.Name): one first-frame line" ($lines.Count -eq 1) ("found {0}; {1}" -f $lines.Count, $(if ($lines) { $lines[0] -replace '^.*\] Surface: ', '' } else { 'none' }))
-        Add-Check "WPF $($mode.Name): the line names the path" (@($lines | Where-Object { $_.Contains("via $($mode.Name)") }).Count -eq 1)
-        if ($t -ge 0) { Add-Info ("WPF {0}: first frame {1} s after the window appeared" -f $mode.Name, $t) }
+        $name = Split-Path -Leaf $Media.video
+        Add-Check "${label}: one first-frame line" ($lines.Count -eq 1) ("found {0}; {1}" -f $lines.Count, $(if ($lines) { $lines[0] -replace '^.*\] Surface: ', '' } else { 'none' }))
+        Add-Check "${label}: the line names the file and the path" (@($lines | Where-Object { $_.Contains($name) -and $_.Contains("via $($run.Name)") }).Count -eq 1)
+        Add-Info ("{0}: after the window appeared, first frame {1} s, load finished {2} s" -f $label, $first, $loaded)
     }
 }
 
 # 2. Once per load: pause, seek and loop do not raise it again; audio-only media never does.
 function Test-2 {
-    if (-not (Start-Step 2 'Once per load' 'Two video loads give two lines; pause, seek, loop and an MP3 give none. Guided: you drop files.' '3')) { return }
+    if (-not (Start-Step 2 'Once per load' 'Two video loads give two lines; pause and seek give none; the MP3 gives one only if it shows a picture (cover art or a background). Guided: you drop files.' '3')) { return }
     if (-not (Need-Media @('video', 'song'))) { return }
     $p = Start-Fresh 'Wpf' @()
     if (-not $p) { Add-Check 'WPF player starts' $false; return }
     Show-Explorer $Media.video
     Say-Do @(
         "An Explorer window shows the video: drag $(Split-Path -Leaf $Media.video) onto the player's picture.",
-        'Pause it (Space), click somewhere on the seek bar, play again (Space).',
+        'Click the Pause button, click somewhere on the seek bar, then click Play.',
         "Drag $(Split-Path -Leaf $Media.song) onto the picture (Explorer: $($Media.song)).",
         "Drag $(Split-Path -Leaf $Media.video) onto the picture again and let it play a few seconds.",
         'Leave the player open; the script closes it.')
@@ -171,8 +194,13 @@ function Test-2 {
     Stop-Player $p
     $log = Save-RunLog 'Wpf' 'test2-once-per-load'
     $lines = @(Get-Lines $log 'first frame ready')
-    Add-Check 'two first-frame lines (one per video load)' ($lines.Count -eq 2) "found $($lines.Count)"
-    Add-Check 'no line for the MP3' (@($lines | Where-Object { $_.Contains((Split-Path -Leaf $Media.song)) }).Count -eq 0)
+    $videoLines = @($lines | Where-Object { $_.Contains((Split-Path -Leaf $Media.video)) })
+    $songLines = @($lines | Where-Object { $_.Contains((Split-Path -Leaf $Media.song)) })
+    Add-Check 'two first-frame lines for the two video loads' ($videoLines.Count -eq 2) "found $($videoLines.Count)"
+    $picture = Ask-YesNo "While $(Split-Path -Leaf $Media.song) played, did the player show a picture (cover art or a background)?"
+    $expected = if ($picture -eq 'yes') { 1 } else { 0 }
+    Add-Check "the MP3: $expected first-frame line(s), as its picture ($picture) says" ($songLines.Count -eq $expected) ("found {0}{1}" -f $songLines.Count, $(if ($songLines) { ': ' + ($songLines[0] -replace '^.*\] Surface: ', '') } else { '' }))
+    Add-Check 'no other first-frame lines' ($lines.Count -eq $videoLines.Count + $songLines.Count) "found $($lines.Count) in all"
 }
 
 # 3. The composited UI-thread counter: 047A's before numbers.
@@ -256,7 +284,7 @@ function Invoke-AbDemo([string]$Tag, [string[]]$DemoArgs, [int]$Swaps, [int]$Int
 }
 
 # Checks one demo run: every swap got its first frame, nothing was missed, no warnings or errors.
-function Test-AbDemoLog([string]$Name, [string]$Log, [int]$Swaps) {
+function Test-AbDemoLog([string]$Name, [string]$Log, [int]$Swaps, [switch]$Collapsed) {
     if (-not $Log) { Add-Check "${Name}: demo ran" $false 'the player did not start or no log'; return }
     $ready = @(Get-Lines $Log '[ABDemo] swap' | Where-Object { $_.Contains('ready after') })
     $missed = @(Get-Lines $Log '[ABDemo] swap' | Where-Object { $_.Contains('MISSED') -or $_.Contains('could not load') })
@@ -265,6 +293,15 @@ function Test-AbDemoLog([string]$Name, [string]$Log, [int]$Swaps) {
     Add-Check "${Name}: all $Swaps swaps got their first frame" ($ready.Count -eq $Swaps -and $missed.Count -eq 0) ("ready {0}, missed {1}" -f $ready.Count, $missed.Count)
     Add-Check "${Name}: the demo finished" ($done.Count -eq 1) $(if ($done) { $done[0] -replace '^.*\[ABDemo\] ', '' } else { 'no done line' })
     Add-Check "${Name}: no warnings or errors" ($problems.Count -eq 0) (($problems | Select-Object -First 3 | ForEach-Object { $_ -replace '^.*\[ABDemo\] ', '' }) -join ' / ')
+    # The size each waiting surface had when its first frame was rendered: a Hidden one keeps its
+    # layout size; a Collapsed one has none, so its first frame is rendered at 1x1.
+    $sizes = @($ready | ForEach-Object { if ($_ -match 'surface (\d+)x(\d+)') { [int]$Matches[1] * [int]$Matches[2] } })
+    $empty = @($sizes | Where-Object { $_ -le 1 }).Count
+    if ($Collapsed) {
+        Add-Info ("${Name}: {0} of {1} first frames were rendered for a surface with no size (1x1), as expected for Collapsed" -f $empty, $sizes.Count)
+    } else {
+        Add-Check "${Name}: every first frame was rendered at the surface's full size" ($sizes.Count -eq $ready.Count -and $empty -eq 0) ("{0} of {1} at no size" -f $empty, $sizes.Count)
+    }
 }
 
 function Test-5 {
@@ -285,9 +322,9 @@ function Test-5 {
     Say-Do @('Next: the same with the waiting surface Collapsed (6 swaps). This is the counter-check: the first frame of each clip may look blurred or blocky for a moment.')
     Wait-Enter 'Press Enter to start the Collapsed run'
     $log = Invoke-AbDemo 'test5-collapsed' @('--ab-collapsed') 6 2
-    Test-AbDemoLog 'collapsed' $log 6
+    Test-AbDemoLog 'collapsed' $log 6 -Collapsed
     $a = Ask-YesNo 'With Collapsed, did the first picture of a clip look blurred or wrong-sized for a moment?'
-    Add-Info "collapsed counter-check, wrong-size first frame seen: $a (yes is expected; it is why the pattern uses Hidden)"
+    Add-Info "collapsed counter-check, wrong-size first frame seen by eye: $a (it lasts about one frame, so it is easy to miss; the size line above is the real check)"
 
     Say-Do @('Last: native mode (10 swaps). Here the bar may change a frame before or after the clip; that is allowed, just note it.')
     Wait-Enter 'Press Enter to start the native run'
@@ -382,7 +419,7 @@ $Media = @{}
 $videoExt = @('.mp4', '.mkv', '.mov', '.m4v', '.webm')
 $audioExt = @('.mp3', '.flac', '.wav', '.m4a', '.ogg')
 if (@($selected | Where-Object { $_ -in 1, 2, 3, 4, 6 }).Count -gt 0) {
-    $Media.video = Select-Media 'a 1080p60 video (H.264 or HEVC; at least 1 minute long)' $videoExt @('1080', '60', 'h264', 'hd') $null ''
+    $Media.video = Select-Media 'a 1080p60 video (H.264 or HEVC; at least 1 minute long; best one that does not start on a fade from black)' $videoExt @('1080', '60', 'h264', 'hd') $null ''
 }
 if ($selected -contains 2) { $Media.song = Select-Media 'any song (audio only)' $audioExt @() $null '' }
 if ($selected -contains 5) {

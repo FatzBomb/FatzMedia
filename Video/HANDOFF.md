@@ -15,7 +15,11 @@ one unmerged commit (a Full-mode first-frame native test and these notes): open 
   gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. WPF player
   `--ab-demo=` (A/B swap demo) and `scripts/smoke-051A.ps1` (6 tests). **PR #72 merged 2026-11-06, CI green.**
   Sandbox after the merge: Linux 212/212 with real FFmpeg, BASS and FatzAudio (Full mode with sound,
-  load before attach, both engines). Waiting only for the owner's Windows run of the script.
+  load before attach, both engines). **Owner smoke 2026-11-06 (desktop): 26 pass, 2 fail** (test 2: a
+  logging bug and a wrong expectation, both fixed in PR #73; `updates/051A_1`). Test 3 gave 047A's before
+  numbers (in the 047A idea). New ENG-060 (native: first A/B swaps a frame or two late). Left: rerun
+  tests 1, 2 and 5 with PR #73 (`-Steps 1,2,5`); check test 1's native time on the second start (8.1 s
+  on the first start after the build, 0.6 s frame sink).
 
 - **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
   `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
@@ -171,7 +175,8 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next-session prompt
 
-> Read HANDOFF.md. 051A slice 1 is merged (PR #72) and waits only for the owner's Windows run of
-> `scripts/smoke-051A.ps1` (desktop all tests, laptop `-Steps 3`). Read the results the owner pastes, fix
-> what they find, and when the smoke passes move 051A to `complete/`. Then start queue item 2, stage 047A
-> slice 1 (WPF shared GPU surface), with the smoke's composited UI-thread numbers as the before baseline.
+> Read HANDOFF.md. 051A slice 1 is merged (PR #72); its first owner smoke passed except two test-2
+> checks, fixed in PR #73 with a script update. Check PR #73's CI, then read the owner's rerun of
+> `scripts/smoke-051A.ps1 -Steps 1,2,5` (on `main` after #73 merges) and fix what it finds. When it passes,
+> move 051A to `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), with the
+> before numbers recorded in the 047A idea.

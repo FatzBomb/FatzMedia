@@ -55,6 +55,16 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-060 - Native WPF: the first A/B swaps show the new clip a frame or two late
+
+Reported: 2026-11-06 (owner, 051A smoke test 5, `NativeHwndOverlay`): the first one or two swaps of the
+A/B demo showed the new clip a frame or two after the swap, later swaps looked normal. Not seen in
+composited mode. Likely: the waiting surface's child window had never been shown, and a swap chain that
+presents into a hidden window may have its first presents dropped or the desktop compositor needs a
+frame to start composing the newly shown window. Native mode is best effort for same-frame changes
+(051A), so this is low priority; a possible fix is a re-present when the surface's window becomes
+visible. Check with `--ab-mode=native` after a fix.
+
 ### ENG-059 - WPF composited surface keeps its last bitmap while auto-hide hides it
 
 Reported: 2026-11-06 (051A investigation). The Avalonia and WinForms frame-sink paths drop the

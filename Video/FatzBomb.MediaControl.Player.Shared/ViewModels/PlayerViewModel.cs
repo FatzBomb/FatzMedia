@@ -80,6 +80,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     [ObservableProperty]
     public partial string LoadedMediaText { get; private set; } = "(no media)";
 
+    /// <summary>
+    /// Gets the item of the latest load request, set when it starts: a surface's first frame
+    /// (Stage 051A) arrives before the load returns, so <see cref="LoadedMediaText"/> still names
+    /// the previous item then. UI thread.
+    /// </summary>
+    public string LoadingMediaText { get; private set; } = "(no media)";
+
     /// <summary>Gets the engine, once <see cref="StartAsync"/> created it; bind the host's surface to it.</summary>
     public MediaControlPlayer? Player
     {
@@ -379,6 +386,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         try
         {
             IsBusy = true;
+            LoadingMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } loading ? loading : mediaPath;
             StatusText = $"Loading: {mediaPath}";
             MediaControlPlayer? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);

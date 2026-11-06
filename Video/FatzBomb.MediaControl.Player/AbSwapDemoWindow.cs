@@ -111,14 +111,14 @@ internal sealed class AbSwapDemoWindow : Window
             var next = shown == 0 ? 1 : 0;
             var clip = _clips[(swap - 1) % _clips.Count];
             var name = Path.GetFileName(clip);
-            var milliseconds = await SwapToAsync(next, shown, clip, swap);
+            var result = await SwapToAsync(next, shown, clip, swap);
             if (_closed)
                 return;
 
-            if (milliseconds is { } ms)
+            if (result is { } swapped)
             {
-                ready.Add(ms);
-                Log($"swap {swap}/{_options.Swaps} ready after {ms:F0} ms: {name}");
+                ready.Add(swapped.Milliseconds);
+                Log($"swap {swap}/{_options.Swaps} ready after {swapped.Milliseconds:F0} ms, surface {swapped.Size}: {name}");
                 if (shown >= 0)
                     _ = _players[shown]!.StopAsync();
                 shown = next;
@@ -142,23 +142,27 @@ internal sealed class AbSwapDemoWindow : Window
     }
 
     // Loads the clip into the hidden player; its first frame swaps the surfaces and the panel in one
-    // UI-thread turn. Returns the load-to-ready time, or null when no first frame came in time.
-    private async Task<double?> SwapToAsync(int next, int shown, string clip, int swap)
+    // UI-thread turn. Returns the load-to-ready time and the surface's pixel size then, or null when
+    // no first frame came in time.
+    private async Task<(double Milliseconds, string Size)?> SwapToAsync(int next, int shown, string clip, int swap)
     {
         MediaSurface incoming = _surfaces[next];
         var stopwatch = Stopwatch.StartNew();
-        var swapped = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var swapped = new TaskCompletionSource<(double, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void OnFirstFrameReady(object? sender, EventArgs e)
         {
             incoming.FirstFrameReady -= OnFirstFrameReady;
             var elapsed = stopwatch.Elapsed.TotalMilliseconds;
+            // The size the first frame was rendered for: a Collapsed surface has none (0x0, so 1x1).
+            DpiScale dpi = VisualTreeHelper.GetDpi(incoming);
+            var size = $"{Math.Round(incoming.ActualWidth * dpi.DpiScaleX)}x{Math.Round(incoming.ActualHeight * dpi.DpiScaleY)}";
             incoming.Visibility = Visibility.Visible;
             if (shown >= 0)
                 _surfaces[shown].Visibility = WaitingVisibility;
             _panel.Background = PanelColours[swap % PanelColours.Length];
             _panelText.Text = $"Swap {swap}/{_options.Swaps}: {Path.GetFileName(clip)}";
-            _ = swapped.TrySetResult(elapsed);
+            _ = swapped.TrySetResult((elapsed, size));
         }
 
         incoming.FirstFrameReady += OnFirstFrameReady;
