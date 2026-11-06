@@ -76,17 +76,27 @@ else()
     # The AVX2 / AVX-512 / SSE4.1 filters are picked at run time from the CPU's
     # features; each file needs its instruction set switched on (x86 only; the
     # others compile to "not available" stubs elsewhere). Apple builds both
-    # architectures in one go, so the flags go to the x86_64 half only.
+    # architectures in one go, so the flags go to the x86_64 half only
+    # (-Xarch_x86_64 covers just the one option after it, so each gets its own).
     if(APPLE)
         set(fa_mac_x86 "-Xarch_x86_64")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
         set(fa_mac_x86 "")
     endif()
     if(DEFINED fa_mac_x86)
-        set_source_files_properties(${FA_MAC_DIR}/MACLib/NNFilterSSE2.cpp PROPERTIES COMPILE_OPTIONS "${fa_mac_x86};-msse2")
-        set_source_files_properties(${FA_MAC_DIR}/MACLib/NNFilterSSE4.1.cpp PROPERTIES COMPILE_OPTIONS "${fa_mac_x86};-msse4.1")
-        set_source_files_properties(${FA_MAC_DIR}/MACLib/NNFilterAVX2.cpp PROPERTIES COMPILE_OPTIONS "${fa_mac_x86};-mavx2")
-        set_source_files_properties(${FA_MAC_DIR}/MACLib/NNFilterAVX512.cpp PROPERTIES COMPILE_OPTIONS "${fa_mac_x86};-mavx512dq;-mavx512bw")
+        # COMPILE_FLAGS is a plain string, so CMake keeps the repeated -Xarch_x86_64
+        # (COMPILE_OPTIONS would merge the duplicates).
+        foreach(fa_mac_simd SSE2:-msse2 SSE4.1:-msse4.1 AVX2:-mavx2 AVX512:-mavx512dq,-mavx512bw)
+            string(REPLACE ":" ";" fa_mac_simd "${fa_mac_simd}")
+            list(GET fa_mac_simd 0 fa_mac_name)
+            list(GET fa_mac_simd 1 fa_mac_flags)
+            string(REPLACE "," ";" fa_mac_flags "${fa_mac_flags}")
+            set(fa_mac_opts "")
+            foreach(fa_mac_flag IN LISTS fa_mac_flags)
+                string(APPEND fa_mac_opts " ${fa_mac_x86} ${fa_mac_flag}")
+            endforeach()
+            set_source_files_properties(${FA_MAC_DIR}/MACLib/NNFilter${fa_mac_name}.cpp PROPERTIES COMPILE_FLAGS "${fa_mac_opts}")
+        endforeach()
     endif()
 endif()
 if(UNIX)
