@@ -11,6 +11,7 @@ What FatzAudio can open, decode and write. The full detail, with how detection w
 | MP3 | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | MP2, MP1 (MPEG audio Layers I and II; `.mp2`, `.mpa`, and in Matroska, MP4) | Yes | ✅ | ✅ | ✅ | ✅ | [MP3, MP2 and MP1](features/streams.md#mp3-mp2-and-mp1) |
 | Sun/NeXT AU and SND (PCM, float, µ-law, A-law); µ-law and A-law in CAF and MP4; IMA 4:1 ADPCM (`ima4`) in CAF and QuickTime | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md#au-g711-and-ima4) |
+| WavPack `.wv` (lossless, hybrid, 32-bit float, DSD; libwavpack built in) | Yes | ✅ | ✅ | ✅ | ✅ | [WavPack](features/streams.md#wavpack) |
 | AAC-LC, HE-AAC, HE-AAC v2, Main, LTP (ADTS, MP4, M4A, CAF, MKV, HLS) | Yes | ✅ | ✅ | ✅ | ✅ | [AAC](features/streams.md#aac) |
 | Opus, Vorbis (Ogg, WebM, MKV) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | ALAC (MP4, M4A, CAF) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |

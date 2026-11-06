@@ -1861,6 +1861,168 @@ static void test_au_files(void)
     check_au("au/alaw.au", "pcm_alaw", 8, 0.012);
 }
 
+/* ---- WavPack (make_wavpack_data.sh) -------------------------------------------------- */
+
+static void check_wv(const char* name, uint32_t bits, double tol)
+{
+    /* Blocks of 1024 frames: seeks land on, next to and inside block boundaries. */
+    static const int64_t targets[] = { 0, 1, 1023, 1024, 1025, 4095, 5999, 3000, 17 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "wavpack") == 0);
+    CHECK(strcmp(info.container, "wavpack") == 0);
+    CHECK_EQ(info.format.sample_rate, 8000);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.length_frames, 6000);
+    CHECK_EQ(info.bits_per_sample, bits);
+    CHECK_EQ(info.seekable, 1);
+    CHECK(info.audio_bytes > 0 && info.audio_bytes < info.file_size + 1);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, 6000);
+    check_sine2(full, n, 2, 8000, 0.5, 0.3, tol, 0);
+    CHECK(seek_matches(s, full, n, 2, targets, (int)(sizeof(targets) / sizeof(targets[0])), 0.0, &worst));
+    {
+        /* A seek to the end is allowed and leaves nothing to read (not the start again). */
+        float tail[64 * 2];
+        fa_frames got = 1;
+        CHECK_EQ(fa_stream_seek(s, 6000), FA_OK);
+        fa_stream_read(s, tail, 64, &got);
+        CHECK_EQ(got, 0);
+        CHECK_EQ(fa_stream_seek(s, 5000), FA_OK);
+    }
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_wavpack_files(void)
+{
+    check_wv("wavpack/u8.wv", 8, 1.0 / 100);
+    check_wv("wavpack/s16.wv", 16, 1e-4);
+    check_wv("wavpack/s16_high.wv", 16, 1e-4);
+    check_wv("wavpack/s24.wv", 24, 1e-5);
+    check_wv("wavpack/s32.wv", 32, 1e-5);
+    check_wv("wavpack/f32.wv", 32, 1e-5);
+}
+
+static void test_wavpack_hybrid_mono_51(void)
+{
+    static const int64_t targets[] = { 0, 1024, 3001, 5000 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    uint32_t c;
+    /* Lossy hybrid (no correction file): no bit depth, the tones survive. */
+    CHECK_EQ(open_file("wavpack/hybrid.wv", -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.bits_per_sample, 0);
+    CHECK_EQ(info.length_frames, 6000);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, 6000);
+    check_sine2(full, n, 2, 8000, 0.5, 0.3, 0.05, 0);
+    CHECK(seek_matches(s, full, n, 2, targets, 4, 0.0, &worst));
+    free(full);
+    fa_stream_close(s);
+    /* Mono at 22.05 kHz. */
+    CHECK_EQ(open_file("wavpack/mono22k.wv", -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.format.channels, 1);
+    CHECK_EQ(info.format.sample_rate, 22050);
+    CHECK_EQ(info.length_frames, 11025);
+    full = read_all(s, 1, &n);
+    CHECK_EQ(n, 11025);
+    check_sine2(full, n, 1, 22050, 0.5, 0, 1e-4, 0);
+    free(full);
+    fa_stream_close(s);
+    /* 5.1 keeps the WAVE channel order: 200, 300, ..., 700 Hz. */
+    CHECK_EQ(open_file("wavpack/51.wv", -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.format.channels, 6);
+    full = read_all(s, 6, &n);
+    CHECK_EQ(n, 6000);
+    for (c = 0; c < 6; c++) {
+        CHECK_NEAR(freq(full + c, 0, n, 6, 8000), 200.0 + 100.0 * c, 2.0);
+        CHECK_NEAR(rms(full + c, 0, n, 6), 0.4 / sqrt(2.0), 1e-3);
+    }
+    free(full);
+    fa_stream_close(s);
+}
+
+/* DSD64 in WavPack plays as 24-bit PCM at 352.8 kHz (the library's 8x decimation). */
+static void test_wavpack_dsd(void)
+{
+    static const int64_t targets[] = { 0, 4096, 20000, 30001 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file("wavpack/dsd64.wv", -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "wavpack") == 0);
+    CHECK_EQ(info.format.sample_rate, 352800);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.bits_per_sample, 1);
+    CHECK_EQ(info.length_frames, 35280);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, 35280);
+    CHECK_NEAR(freq(full, 2000, n, 2, 352800), 1000.0, 5.0);
+    CHECK_NEAR(rms(full, 2000, n, 2), 0.5 / sqrt(2.0), 0.03);
+    CHECK_NEAR(rms(full + 1, 2000, n, 2), 0.3 / sqrt(2.0), 0.02);
+    CHECK(seek_matches(s, full, n, 2, targets, 4, 0.0, &worst));
+    free(full);
+    fa_stream_close(s);
+}
+
+/* From a forward-only source, and cut short: the same audio, as far as it goes. */
+static void test_wavpack_forward_only_and_cut(void)
+{
+    fa_stream* s;
+    float* full;
+    float* fwd;
+    float* cut;
+    int64_t n, nf, nc;
+    fa_result r;
+    int seekable = -1;
+    size_t size = 0;
+    uint8_t* data;
+    fa_open_options o;
+    CHECK_EQ(open_file("wavpack/s16.wv", -1, &s), FA_OK);
+    if (!s) return;
+    full = read_all(s, 2, &n);
+    fa_stream_close(s);
+    fwd = forward_only("wavpack/s16.wv", -1, 2, &nf, &r, &seekable);
+    CHECK_EQ(r, FA_OK);
+    CHECK_EQ(seekable, 0);
+    CHECK_EQ(nf, n);
+    CHECK(fwd && memcmp(fwd, full, (size_t)n * 2 * sizeof(float)) == 0);
+    free(fwd);
+    data = load_file("wavpack/s16.wv", &size);
+    CHECK(data != NULL);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_memory(g_engine, data, size / 2, &o, &s), FA_OK);
+    if (!s) { free(data); free(full); return; }
+    cut = read_all(s, 2, &nc);
+    CHECK(nc > 1024 && nc < n);
+    CHECK(nc >= 1024 && memcmp(cut, full, (size_t)1024 * 2 * sizeof(float)) == 0);
+    free(cut);
+    fa_stream_close(s);
+    free(data);
+    free(full);
+}
+
 /* G.711 against the standard's endpoints: code 0xFF is µ-law zero, 0x80 the most
  * positive; A-law 0xD5 is the smallest positive step, 0x55 the smallest negative. */
 static void test_g711_values(void)
@@ -2644,6 +2806,10 @@ int main(void)
     RUN(test_mp2_packets);
     RUN(test_mp2_tag_and_probe);
     RUN(test_au_files);
+    RUN(test_wavpack_files);
+    RUN(test_wavpack_hybrid_mono_51);
+    RUN(test_wavpack_dsd);
+    RUN(test_wavpack_forward_only_and_cut);
     RUN(test_g711_values);
     RUN(test_caf_g711_and_ima4);
     RUN(test_mov_ima4);

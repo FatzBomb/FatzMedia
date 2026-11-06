@@ -501,7 +501,7 @@ target_include_directories(fa_whitebox PUBLIC
     ${PROJECT_SOURCE_DIR}/third_party/tinysoundfont)
 target_compile_definitions(fa_whitebox PUBLIC FA_STATIC)
 target_compile_options(fa_whitebox PRIVATE ${FA_WARNINGS})
-target_link_libraries(fa_whitebox PUBLIC fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2 Threads::Threads ${CMAKE_DL_LIBS} ${FA_NET_LIBS})
+target_link_libraries(fa_whitebox PUBLIC fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2 fa_wavpack Threads::Threads ${CMAKE_DL_LIBS} ${FA_NET_LIBS})
 if(UNIX)
     target_link_libraries(fa_whitebox PUBLIC m)
 endif()

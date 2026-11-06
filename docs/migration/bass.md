@@ -69,7 +69,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 | BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
 |---|---|---|---|
-| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/MP2/MP1/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA). Also Sun `.au`, which BASS does not read |
+| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/MP2/MP1/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA, WavPack). Also Sun `.au`, which BASS does not read |
 | BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3-mp2-and-mp1)) | `new StreamOptions { Prescan = true }` | ✅ |
 | BASS_StreamCreateFile (memory) | `fa_stream_open_memory` | `engine.OpenMemory(bytes)`, `await engine.OpenMemoryAsync(bytes, null, token)` | ✅ |
 | BASS_StreamCreateFileUser | `fa_stream_open_io`; `close` is called once by `fa_stream_close`, never on a failed open ([custom I/O](../features/streams.md#custom-io-your-own-reader)) | `engine.OpenStream(System.IO.Stream)` | ✅ |
@@ -440,6 +440,21 @@ ALAC is a built-in format: ALAC tracks in `.m4a`/`.mp4`/`.mov` and Matroska file
 | ALAC packets from your own demuxer | `fa_stream_open_packets` with codec `alac` and the 24-byte ALACSpecificConfig (or the `alac` box holding it) as extradata ([FFmpeg hand-off](../features/ffmpeg.md)) | `engine.OpenPackets`, `PushPacket` | ✅ |
 | BASS_PluginLoad("bassalac.dll") | Not needed: built in | — | ➖ (by design) |
 
+### basswv (WavPack)
+
+WavPack is a built-in format: `.wv` files open with the ordinary calls, decoded by libwavpack compiled into the library ([WavPack](../features/streams.md#wavpack)).
+
+| basswv | FatzAudio (C) | FatzAudio (.NET) | Status |
+|---|---|---|---|
+| BASS_WV_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
+| BASS_WV_StreamCreateURL | `fa_stream_open_url` | `engine.OpenUrl` | ✅ |
+| BASS_WV_StreamCreateFileUser | `fa_stream_open_io` | `engine.OpenStream` | ✅ |
+| Hybrid files with their `.wvc` correction file | The lossy part plays; the correction file is not read | — | ➖ |
+| DSD in WavPack (BASS_DSD or BASS_WV with DSD output) | Plays as 24-bit PCM at 1/8 of the DSD rate; no DoP or native DSD output | — | ✅ PCM, ➖ DoP |
+| BASS_CTYPE_STREAM_WV (from BASS_ChannelGetInfo) | `fa_stream_get_info`: codec and container `wavpack` | `stream.Info` | ✅ |
+| BASS_ChannelGetTags `BASS_TAG_APE` on a `.wv` | `fa_stream_get_tags`, `fa_tags_read_path` | `stream.GetTags()`, `Tags.Read(path)` | ✅ |
+| BASS_PluginLoad("basswv.dll") | Not needed: built in | — | ➖ (by design) |
+
 ### basswma (Windows Media Audio)
 
 WMA plays through the ordinary open calls: a built-in ASF demuxer, decoded by Windows' own Media Foundation decoders. On macOS, iOS, Linux and Android WMA is not supported (`FA_ERROR_UNSUPPORTED_FORMAT`); an app that needs it there can decode it with its own FFmpeg and push the frames ([WMA](../features/streams.md#wma)). Only playback is replaced; basswma's encoder and its Windows Media server functions are not.
@@ -637,6 +652,7 @@ MIDI files are a built-in format: the ordinary open calls play them with a Sound
 |---|---|---|
 | bass_aac.dll | `BASS_AAC_StreamCreateFile`/`URL`/`User` → the normal open calls: MP4/M4A/MOV files (built-in demuxer, any audio track), `.aac` (ADTS) files and AAC radio, and AAC packets (`fa_stream_open_packets`), decoded by the built-in AAC decoder (LC, HE-AAC, HE-AAC v2, Main, LTP) on every platform | ✅ |
 | bass_ac3.dll | Built-in AC-3 and E-AC-3 decoder: raw `.ac3`/`.ec3` files, MP4/MKV tracks, web streams and HLS, and pushed packets, with dynamic range modes ([Dolby Digital](../features/dolby.md)) | ✅ (passthrough 🗓️) |
+| basswv.dll (if used) | Built-in WavPack decoder (libwavpack, BSD-3-Clause): `.wv` files lossless, hybrid, float and DSD (as PCM), from a path, memory, your own reader or a URL ([basswv](#basswv-wavpack)) | ✅ (`.wvc` correction files ➖) |
 | bassalac.dll | Built-in ALAC decoder: ALAC tracks in MP4/M4A/MOV and Matroska files, over HTTP, and pushed packets, bit exact on every platform ([bassalac](#bassalac-apple-lossless)) | ✅ |
 | bassflac.dll | Built-in: `.flac` files, Ogg FLAC (`.oga`), FLAC tracks in MP4 and Matroska, FLAC web streams and FLAC packets through `fa_stream_open_packets`, all with the same decoder ([bassflac](#bassflac)) | ✅ |
 | basshls.dll (if used) | Built-in: `fa_stream_open_url` plays `.m3u8` (MPEG-TS, fMP4, AES-128, audio renditions chosen by bandwidth) | ✅ |
@@ -1172,7 +1188,8 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 | `BASS_CTYPE_SAMPLE` | `fa_sound` is not a stream: `fa_sound_get_info` | |
 | `STREAM_TEMPO`, `_REVERSE` (bass_fx), `_MIXER`, `_SPLIT` (bassmix), `_DUMMY`, `_DEVICE`, `_SAMPLE` | no counterpart: there are no wrapper or mixer streams | |
 | `BASS_CTYPE_MUSIC_*` flags (`BASS_MUSIC_*`) | see [Tracker music](#tracker-music) | |
-| `STREAM_WV`, `_APE`, `_MPC`, `_SPX`, `_TTA`, `_DSD` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
+| `STREAM_WV` (basswv) | `wavpack` | `wavpack` |
+| `STREAM_APE`, `_MPC`, `_SPX`, `_TTA`, `_DSD` and other plugin types | the container list at [streams](../features/streams.md#supported-formats), or `AudioEngine.SupportedFormats` | |
 
 ### Appendix D: configuration (`BASS_SetConfig`)
 

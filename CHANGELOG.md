@@ -25,6 +25,9 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- WavPack: `.wv` files play built in (libwavpack 5.9.0, BSD-3-Clause, decoder only): lossless and hybrid (without the `.wvc`
+  correction file), 8 to 32-bit integer, 32-bit float, up to 32 channels, and DSD64/DSD128 as PCM at 1/8 of its rate. Codec and
+  container `wavpack`; exact seeks; tags from the APEv2 tag at the end.
 - Writing loudness tags on request: `fa_tags_write_loudness` (.NET `AudioEngine.WriteLoudnessTags`) measures files (track, or a whole album with `FA_TAGS_WRITE_ALBUM`) and writes ReplayGain 2 tags (Opus: R128 gains) into MP3 (ID3v2, plus an APEv2 tag already there), FLAC, Ogg Vorbis, Opus, MP4/M4A and APEv2 files (Monkey's Audio, WavPack, Musepack, TTA). Never automatic; it does not use the loudness cache. Each file is rewritten through a checked temp file and renamed, keeping all other tags and the audio byte for byte. See [writing loudness tags](docs/features/normalization.md#writing-loudness-tags).
 - DTS and TrueHD through the system's decoder, where the machine has one (codecs step 4). FatzAudio has no DTS decoder of
   its own (the DTS specification, ETSI TS 102 114, leaves out two tables every stream needs). It now reads DTS core and
