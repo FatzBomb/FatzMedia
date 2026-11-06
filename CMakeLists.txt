@@ -61,7 +61,7 @@ set(FA_SOURCES
     src/dec_mp3.c
     src/dec_au.c
     src/dec_wavpack.c
-    src/info_dts.c
+    src/dts.c
     src/codec_g711.c
     src/fa_platform.c
     src/ring.c

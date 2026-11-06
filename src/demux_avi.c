@@ -23,8 +23,8 @@
  *
  * Supported audio: PCM (8 to 32 bit, float), µ-law, A-law, MP3, MP2, AC-3, AAC (raw
  * with an AudioSpecificConfig, or ADTS) and, where the system has a decoder, Windows
- * Media Audio. DTS and others are named but reported as unsupported; ADPCM is
- * unsupported. */
+ * Media Audio and DTS (dts.c joins chunks into whole frames). Others are named but
+ * reported as unsupported; ADPCM is unsupported. */
 #include "demux.h"
 #include "pkt_index.h"
 #include <stdlib.h>

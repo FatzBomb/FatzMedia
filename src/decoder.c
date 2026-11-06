@@ -14,6 +14,7 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_mkv,
     &fa_decoder_ogg,
     &fa_decoder_ac3,
+    &fa_decoder_dts,
     &fa_decoder_adts,
     &fa_decoder_midi,
     &fa_decoder_asf,
@@ -64,7 +65,7 @@ static const char* extension_of(const char* path)
     return dot + 1;
 }
 
-/* Elementary-stream files (MP3, AAC, AC-3, FLAC) are all audio but their tags,
+/* Elementary-stream files (MP3, AAC, AC-3, FLAC, DTS) are all audio but their tags,
  * FLAC's metadata blocks and an MP3's Xing/LAME frame (lead_bytes). Read on a
  * local source only, with the source put back where the decoder left it. */
 static void whole_file_size(fa_decoder* dec)
@@ -75,7 +76,7 @@ static void whole_file_size(fa_decoder* dec)
     uint32_t bits;
     if (dec->audio_bytes >= 0 || !src->seekable || src->remote || src->length <= 0) return;
     if (strcmp(c, "mp3") != 0 && strcmp(c, "adts") != 0 && strcmp(c, "ac3") != 0 && strcmp(c, "ec3") != 0 &&
-        strcmp(c, "flac") != 0 && strcmp(c, "wavpack") != 0)
+        strcmp(c, "flac") != 0 && strcmp(c, "dts") != 0 && strcmp(c, "wavpack") != 0)
         return;
     at = fa_source_tell(src);
     fa_tags_audio_span(src, &start, &end, &bits);

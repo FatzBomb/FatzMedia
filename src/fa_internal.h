@@ -194,9 +194,6 @@ typedef struct fa_decoder_env {
  * file, a picture); 1 when one does or the bytes cannot tell (a tag that fills them). */
 int fa_decoder_recognizes(const uint8_t* data, size_t size);
 
-/* info_dts.c: details of a raw DTS core stream (.dts) that no decoder opens; 1 when `src` is one. */
-int fa_dts_core_info(fa_source* src, fa_stream_info* out);
-
 /* Detects the format of `src` and opens the matching decoder. `name_hint` (a path
  * or NULL) and `mime_hint` only break ties when the content is ambiguous.
  * `audio_track`: 0-based among the audio tracks, -1 = default; FA_ERROR_NOT_FOUND
@@ -271,6 +268,8 @@ extern const fa_decoder_vtable fa_decoder_mkv;
 extern const fa_decoder_vtable fa_decoder_ogg;
 /* Raw AC-3 / E-AC-3 streams (dec_ac3.c). */
 extern const fa_decoder_vtable fa_decoder_ac3;
+/* Raw DTS streams, decoded by the system's decoder where there is one (dts.c). */
+extern const fa_decoder_vtable fa_decoder_dts;
 /* AAC in ADTS frames (demux_adts.c). */
 extern const fa_decoder_vtable fa_decoder_adts;
 /* Standard MIDI Files and RIFF MIDI, synthesized with a soundfont (dec_midi.c). */
@@ -1940,7 +1939,8 @@ void fa_buses_free_all(fa_device* dev);               /* fa_device_close, no cal
 /* ---- Packet codecs (codec.c) -----------------------------------------------------
  * Decode one compressed packet at a time into interleaved F32: the built-in codecs
  * (PCM, MP3, AAC, AC-3, E-AC-3, Opus, Vorbis, FLAC, ALAC), then the systems' own
- * decoders (WMA on Windows, xHE-AAC). Nothing else is decoded. */
+ * decoders (WMA on Windows, xHE-AAC, and DTS and TrueHD where the machine has a
+ * decoder for them). Nothing else is decoded. */
 
 typedef struct fa_codec fa_codec;
 
@@ -1973,6 +1973,12 @@ struct fa_codec {
 
 /* Opens a decoder for `p` (validated). FA_ERROR_UNSUPPORTED_FORMAT: nobody decodes it. */
 fa_result fa_codec_open(fa_codec* c, const fa_codec_params* p);
+/* The system's decoder for `p` alone (Media Foundation, AudioToolbox, MediaCodec):
+ * FA_ERROR_UNSUPPORTED_FORMAT where there is none (always on Linux). */
+fa_result fa_system_codec_open(fa_codec* c, const fa_codec_params* p);
+/* Tests only: asked before the system's decoders when set; FA_ERROR_NOT_FOUND passes
+ * the codec on to them. */
+extern fa_result (*fa_test_system_codec)(fa_codec* c, const fa_codec_params* p);
 void fa_codec_close(fa_codec* c);
 /* Makes room for `frames` more frames in c->out (keeping what is there). */
 fa_result fa_codec_reserve(fa_codec* c, fa_frames frames, uint32_t channels);
@@ -2024,8 +2030,8 @@ int fa_sample_bytes(int kind);
 
 #ifdef _WIN32
 /* codec_mf.c: Windows Media Audio (wmav1, wmav2, wmapro, wmalossless, wmavoice),
- * and AAC (LC, HE, HE v2) through Media Foundation's
- * decoders. FA_ERROR_UNSUPPORTED_FORMAT for any other codec, or when Media
+ * AAC (LC, HE, HE v2), and DTS ("dtshd", "dts": frames from dts.c) where the
+ * machine has a decoder for it, through Media Foundation's decoders. FA_ERROR_UNSUPPORTED_FORMAT for any other codec, or when Media
  * Foundation or the decoder is not there (Windows N). */
 fa_result fa_mf_codec_open(fa_codec* c, const fa_codec_params* p);
 #endif
@@ -2035,8 +2041,9 @@ fa_result fa_mf_codec_open(fa_codec* c, const fa_codec_params* p);
 fa_result fa_at_codec_open(fa_codec* c, const fa_codec_params* p);
 #endif
 #ifdef __ANDROID__
-/* codec_mediacodec.c: AAC through the NDK's AMediaCodec (libmediandk.so,
- * loaded at run time). */
+/* codec_mediacodec.c: AAC, and DTS ("dtshd", "dts") and TrueHD where the device
+ * has a decoder for them, through the NDK's AMediaCodec (libmediandk.so, loaded at
+ * run time). */
 fa_result fa_mc_codec_open(fa_codec* c, const fa_codec_params* p);
 #endif
 
@@ -2099,6 +2106,28 @@ fa_result fa_aac_codec_open(fa_codec* c, const fa_codec_params* p);
  * samples in an AC-3 or E-AC-3 packet from its frame headers (-1 if none). */
 fa_result fa_ac3_codec_open(fa_codec* c, const fa_codec_params* p);
 int64_t fa_ac3_packet_samples(const uint8_t* d, size_t n, uint32_t* out_rate);
+
+/* dts.c: DTS frame headers (ETSI TS 102 114 5.4.2 and 7.5.2) and the "dts" packet
+ * codec, which cuts packets into whole frames for the system's DTS decoder (there
+ * is no built-in one). */
+#define FA_DTS_HEADER_BYTES 12      /* bytes of a core header read */
+typedef struct fa_dts_header {
+    uint32_t rate;                  /* core sampling rate */
+    uint32_t channels;              /* AMODE's, plus the LFE */
+    uint32_t samples;               /* per channel in the frame: (NBLKS + 1) * 32 */
+    uint32_t size;                  /* bytes of the core frame: FSIZE + 1 */
+    int swapped;                    /* 16-bit words in little-endian order */
+} fa_dts_header;
+/* A core frame header at d: 1 and its fields, else 0. */
+int fa_dts_parse_core(const uint8_t* d, size_t n, fa_dts_header* h);
+/* A whole frame at d (the core frame and the extension substreams right after it):
+ * 1 and *len its size; 0 if there is none; -1 if d[0..n) is too short to tell, with
+ * *len the bytes needed so far. `end`: nothing follows d[n), so a frame is not
+ * waited on for substreams. */
+int fa_dts_unit(const uint8_t* d, size_t n, int end, fa_dts_header* h, size_t* len);
+/* Samples in the DTS frames of a packet (-1 if none). */
+int64_t fa_dts_packet_samples(const uint8_t* d, size_t n, uint32_t* out_rate);
+fa_result fa_dts_codec_open(fa_codec* c, const fa_codec_params* p);
 
 /* ---- Live sources (callback.c, capture.c) ---------------------------------------- */
 

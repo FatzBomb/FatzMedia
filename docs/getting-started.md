@@ -147,7 +147,7 @@ The errors you will meet first when opening:
 | Code | Usually means |
 |---|---|
 | `NotFound` | The path is wrong, or the file has no such track |
-| `UnsupportedFormat` | Not a format FatzAudio plays (DTS, TrueHD and WMA outside Windows are not), or a damaged file |
+| `UnsupportedFormat` | Not a format FatzAudio plays (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file |
 | `NoSoundFont` | A MIDI file and no soundfont: set `engine.DefaultSoundFont` |
 | `ProtectedContent` | DRM-protected or encrypted media |
 | `Device` | The output device could not be opened (in use, unplugged, no permission) |

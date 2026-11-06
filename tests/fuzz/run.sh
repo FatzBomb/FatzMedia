@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs the fuzz targets built in a FA_FUZZ tree (see CMakeLists.txt).
 #   tests/fuzz/run.sh BUILD_DIR OUT_DIR [EXECS] [target...]
-# Targets: stream_<fmt> (aac mp3 flac mkv mp4 caf avi flv mpeg wavpack ogg asf dolby, seeded from tests/data; wav midi
+# Targets: stream_<fmt> (aac mp3 flac mkv mp4 caf avi flv mpeg wavpack ogg asf dolby dts, seeded from tests/data; wav midi
 # tracker, seeded from seeds/), tags, zip, archive (tar, gz, bz2, xz, ZIP methods), hls (playlists, .pls / .m3u, TS), net (cookies, a loopback web server), sound, soundfont, cue,
 # cdg (seeds/), font (tests/data/fonts). stream_zip runs the ZIP seeds through the stream and tag readers.
 # Needs python3 for make_seeds.py.
@@ -12,7 +12,7 @@ python3 "$D/make_seeds.py"
 export ASAN_OPTIONS=detect_leaks=1:max_allocation_size_mb=1024:abort_on_error=1:handle_abort=0
 export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:abort_on_error=1
 [ $# -gt 0 ] || set -- stream_aac stream_mp3 stream_flac stream_mkv stream_mp4 stream_caf stream_avi stream_flv stream_mpeg stream_wavpack stream_ogg stream_asf \
-  stream_dolby stream_wav stream_midi stream_tracker stream_zip tags zip archive hls net sound soundfont cue cdg font
+  stream_dolby stream_dts stream_wav stream_midi stream_tracker stream_zip tags zip archive hls net sound soundfont cue cdg font
 for t in "$@"; do
   case $t in
     stream_aac) bin=fuzz_stream; seeds="$DATA/aac $DATA/net/tone.aac $DATA/tone.aac $DATA/aac.m4a $DATA/aac51.m4a $DATA/aac_switch.aac" ;;
@@ -28,6 +28,7 @@ for t in "$@"; do
     stream_ogg) bin=fuzz_stream; seeds="$DATA/ogg $DATA/flac/tone.oga $DATA/flac/surround.oga $DATA/tags/tags.opus" ;;
     stream_asf) bin=fuzz_stream; seeds="$DATA/asf" ;;
     stream_dolby) bin=fuzz_stream; seeds="$DATA/tone.ac3 $DATA/tone.eac3 $DATA/dolby/tone_ac3.mp4 $DATA/dolby/tone_eac3.mkv $DATA/dolby/*.ec3" ;;
+    stream_dts) bin=fuzz_stream; seeds="$DATA/dts $DATA/mpeg/ts_dts.ts" ;;
     stream_wav) bin=fuzz_stream; seeds="$D/seeds/wav $DATA/tags/tags.aiff" ;;
     stream_midi) bin=fuzz_stream; seeds="$D/seeds/midi" ;;
     stream_tracker) bin=fuzz_stream; seeds="$D/seeds/tracker" ;;

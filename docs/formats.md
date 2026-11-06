@@ -18,15 +18,16 @@ What FatzAudio can open, decode and write. The full detail, with how detection w
 | Dolby Digital, Dolby Digital Plus (up to 7.1) | Yes | ✅ | ✅ | ✅ | ✅ | [Dolby](features/dolby.md) |
 | MIDI, karaoke `.kar`, RMI | Needs a soundfont (yours or the system's) | ✅ | ✅ | ✅ | ✅ | [MIDI](features/midi.md) |
 | Tracker modules (MOD, XM, S3M, IT, MPTM and more) | Yes | ✅ | ✅ | ✅ | ✅ | [trackers](features/trackers.md) |
-| Audio of AVI (PCM, MP3, MP2, AC-3, AAC; DTS and ADPCM not) and FLV (AAC, MP3, PCM) video files | Yes (WMA in AVI: system decoder) | ✅ | ✅ | ✅ | ✅ | [AVI and FLV](features/streams.md#avi-and-flv) |
-| Audio of MPEG program streams (`.mpg`, `.vob`, `.dat`), transport streams (`.ts`, `.m2ts`) and `.dvr-ms` recordings (MPEG audio, AC-3, E-AC-3, ADTS AAC; DTS, TrueHD, LPCM not) | Yes | ✅ | ✅ | ✅ | ✅ | [MPEG streams](features/streams.md#mpeg-program-and-transport-streams) |
+| Audio of AVI (PCM, MP3, MP2, AC-3, AAC; ADPCM not) and FLV (AAC, MP3, PCM) video files | Yes (WMA and DTS in AVI: system decoder) | ✅ | ✅ | ✅ | ✅ | [AVI and FLV](features/streams.md#avi-and-flv) |
+| Audio of MPEG program streams (`.mpg`, `.vob`, `.dat`), transport streams (`.ts`, `.m2ts`) and `.dvr-ms` recordings (MPEG audio, AC-3, E-AC-3, ADTS AAC; DTS through the system decoder; TrueHD, LPCM not) | Yes | ✅ | ✅ | ✅ | ✅ | [MPEG streams](features/streams.md#mpeg-program-and-transport-streams) |
 | WMA, ASF audio | System decoder (Windows Media Foundation). On Windows N editions without the Media Feature Pack it returns `ProviderMissing`; off Windows, decode WMA in your app (FatzMedia.Video does) | ✅ | ➖ | ➖ | ➖ | [WMA](features/streams.md#wma) |
 | xHE-AAC | System decoder | If present | If present | If present | ➖ | [AAC](features/streams.md#aac) |
 | MP3+G, CD+G in ZIP, CD+G discs, audio CDs, `.cue` images | Yes | ✅ | ✅ | ✅ | ✅ | [CD+G](features/cdg.md), [discs](features/disc.md) |
 | A lone `.cdg`, or a ZIP holding only one (plays as silence for the graphics' length) | Yes | ✅ | ✅ | ✅ | ✅ | [CD+G](features/cdg.md#graphics-with-no-audio) |
 | Archives: ZIP (stored, DEFLATE, Deflate64, bzip2, LZMA, xz), tar, `.tar.gz` / `.tar.bz2` / `.tar.xz`, a song or `.cdg` in a `.gz` / `.bz2` / `.xz`, 7z (Copy, LZMA, LZMA2; RAR is not read) | Yes | ✅ | ✅ | ✅ | ✅ | [archives](features/archives.md) |
 | Internet radio, HLS, HTTP and HTTPS streams | Yes | ✅ | ✅ | ✅ | ✅ | [web streams](features/web-streams.md) |
-| DTS, TrueHD, other codecs | No | ➖ | ➖ | ➖ | ➖ | Not decoded here. `fa_tags_read_*` still gives codec, rate, channels, duration and bitrate with `can_decode` 0 ([tags](features/tags.md)); decode with your own FFmpeg and hand over frames ([FFmpeg](features/ffmpeg.md)) |
+| DTS, DTS-HD (raw `.dts`, MKV, MP4, AVI, MPEG-PS/TS) and TrueHD (MKV, MP4) | No: the system's decoder, where the machine has one | DTS if the PC has a decoder | ➖ | DTS, TrueHD if the device has a decoder | ➖ | Otherwise as other codecs below; for every machine, use your own FFmpeg: [DTS and TrueHD](features/streams.md#dts-and-truehd) |
+| Other codecs | No | ➖ | ➖ | ➖ | ➖ | Not decoded here. `fa_tags_read_*` still gives codec, rate, channels, duration and bitrate with `can_decode` 0 ([tags](features/tags.md)); decode with your own FFmpeg and hand over frames ([FFmpeg](features/ffmpeg.md)) |
 | Copy-protected media (WMA DRM, FairPlay, encrypted MP4/MKV, SAMPLE-AES) | Never decrypted | `ProtectedContent` | `ProtectedContent` | `ProtectedContent` | `ProtectedContent` | [streams](features/streams.md) |
 
 You can ask the library at run time: `fa_format_count` and `fa_format_get_info` in C, `AudioEngine.SupportedFormats` in .NET. Detection reads the content, not the file extension.

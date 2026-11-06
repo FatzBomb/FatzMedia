@@ -105,7 +105,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_ChannelPause / BASS_ChannelStop | `fa_stream_pause` / `fa_stream_stop` | `Pause()` / `Stop()` | ✅ |
 | BASS_ChannelIsActive | `fa_stream_get_state` | `stream.State` | ✅ |
 | BASS_ChannelGetInfo | `fa_stream_get_info` (the source's own format; unchanged by attaching), plus `bits_per_sample` (`origres`), `file_size`, `audio_bytes` and `bitrate` ([stream info](../features/streams.md#stream-info)) | `stream.Info` | ✅ |
-| BASS_ChannelGetInfo / `BASS_StreamGetFilePosition` on a file BASS has no plugin for (DTS, TrueHD) | `fa_tags_get_info` reads codec, container, rate, channels, duration, size and bitrate from the container with `can_decode` = 0; opening a stream still fails ([tags](../features/tags.md)). BASS gave only an error | `Tags.Read(path).Info` (`CanDecode`) | ✅ |
+| BASS_ChannelGetInfo / `BASS_StreamGetFilePosition` on a file BASS has no plugin for (DTS, TrueHD) when the system has no decoder for it | `fa_tags_get_info` reads codec, container, rate, channels, duration, size and bitrate from the container with `can_decode` = 0; opening a stream still fails ([tags](../features/tags.md)). BASS gave only an error | `Tags.Read(path).Info` (`CanDecode`) | ✅ |
 | BASS_TAG_… of a CAF file (none in BASS) | CAF `info` chunk (`title`, `artist`, `album`, ...) as `FA_TAG_FORMAT_CAF` items and the common fields | `TagFormat.Caf` | ✅ |
 | BASS_ChannelGetAttribute `BASS_ATTRIB_BITRATE` | `fa_stream_info.bitrate` (average bits per second; also from `fa_tags_get_info` without opening a stream) | `Info.Bitrate`, `Tags.Bitrate` | ✅ |
 | BASS_ChannelGetLength + bitrate + file size for a media library (a decode stream per file just to read them) | `fa_tags_read_path`: tags, cover and properties in one call, no engine or stream ([tags](../features/tags.md)) | `Tags.Read(path)` | ✅ |
@@ -368,6 +368,7 @@ AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`
 | Audio of AVI and FLV video files (BASS opens neither) | Built in: `.avi` (PCM, MP3, MP2, AC-3, AAC, OpenDML) and `.flv` (AAC, MP3, PCM) open with the same calls, exact length and seeks; pick a track with `audio_track` ([streams](../features/streams.md#avi-and-flv)) | `engine.OpenFile` | ✅ |
 | Audio of MPEG program and transport streams (`.mpg`, `.vob`, `.ts`, `.m2ts`) and `.dvr-ms` (BASS opens none of them) | Built in: MPEG audio, AC-3, E-AC-3 and ADTS AAC open with the same calls, exact length and seeks; pick a track with `audio_track` ([streams](../features/streams.md#mpeg-program-and-transport-streams)) | `engine.OpenFile` | ✅ |
 | BASS_PluginLoad("bass_aac.dll") | Not needed: built in | — | ➖ (by design) |
+| DTS and DTS-HD files and tracks (BASS has no DTS add-on; the app used FFmpeg) | The same open calls play DTS where the system has a decoder (some Windows PCs, some Android devices; TrueHD on Android too): raw `.dts`, MKV, MP4, AVI, MPEG-PS/TS, exact length and seeks. Elsewhere `FA_ERROR_UNSUPPORTED_FORMAT` as before: keep the FFmpeg hand-off for DTS and TrueHD ([DTS and TrueHD](../features/streams.md#dts-and-truehd)) | `engine.OpenFile` | ✅ (system decoder only) |
 
 ### bass_ac3 (Dolby Digital and Dolby Digital Plus)
 
@@ -1134,7 +1135,7 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 | `NOTAVAIL` (37) | `FA_ERROR_NOT_FOUND`, `FA_ERROR_NOT_SEEKABLE` | `NotFound`, `NotSeekable` | The thing asked for is not there (no tag, no header), or not known for a live stream |
 | `DECODE` (38) | `FA_ERROR_INVALID_ARG` | `InvalidArgument` | Attaching a decode-only stream |
 | `DX` (39) | none | none | |
-| `FILEFORM` (41), `CODEC` (44) | `FA_ERROR_UNSUPPORTED_FORMAT` | `UnsupportedFormat` | Includes DTS, TrueHD and WMA outside Windows |
+| `FILEFORM` (41), `CODEC` (44) | `FA_ERROR_UNSUPPORTED_FORMAT` | `UnsupportedFormat` | Includes DTS and TrueHD with no system decoder, and WMA outside Windows |
 | `SPEAKER` (42) | `FA_ERROR_NOT_ENOUGH_CHANNELS` | `NotEnoughChannels` | The headphone cue channels the output does not have |
 | `VERSION` (43) | none | `InvalidOperationException` | The .NET binding refuses a native library of another major.minor version. In C compare `fa_version()` |
 | `ENDED` (45) | `FA_ERROR_END_OF_STREAM` | `EndOfStream` | `Read` returns 0 at the end instead of throwing |
