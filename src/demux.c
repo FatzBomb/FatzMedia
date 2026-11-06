@@ -255,6 +255,7 @@ int64_t fa_demux_packet_samples(const char* codec, uint32_t channels, uint32_t r
     if (strcmp(codec, "mp3") == 0 || strcmp(codec, "mp2") == 0 || strcmp(codec, "mp1") == 0)
         return mpa_samples(d, n, out_rate);
     if (strcmp(codec, "ac3") == 0 || strcmp(codec, "eac3") == 0) return fa_ac3_packet_samples(d, n, out_rate);
+    if (strcmp(codec, "dts") == 0) return fa_dts_packet_samples(d, n, out_rate);
     if (strcmp(codec, "flac") == 0 && rate > 0) {
         *out_rate = rate;
         return flac_samples(d, n);

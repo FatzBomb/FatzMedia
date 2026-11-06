@@ -258,7 +258,7 @@ public sealed record Spectrum(float[] Magnitudes, float BinHz);
 /// <param name="BitsPerSample">Bit depth of PCM and lossless sources (WAV, AIFF, FLAC, ALAC, CD); 0 for lossy codecs.</param>
 /// <param name="CanDecode">
 /// True when FatzAudio can play the file. False only in the details <see cref="Tags.Info"/> gives for a file whose codec
-/// nobody decodes here (DTS, TrueHD, WMA off Windows, ...): the codec, container, format, duration and bitrate are what
+/// nobody decodes here (DTS or TrueHD with no system decoder, WMA off Windows, ...): the codec, container, format, duration and bitrate are what
 /// the file says, and opening a stream fails.
 /// </param>
 public sealed record StreamInfo(

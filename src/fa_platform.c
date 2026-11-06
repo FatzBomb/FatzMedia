@@ -546,16 +546,23 @@ void fa_thread_detach(fa_thread* t)
 uintptr_t fa_thread_current_id(void) { return (uintptr_t)pthread_self(); }
 
 #  if defined(__APPLE__)
+/* Lower within the thread's own QoS class (its relative priority), not a class down:
+ * the scheduler serves the classes in turn, and a utility thread can wait 75-150 ms
+ * while default-QoS threads, of any process, keep the cores busy; a render-ahead
+ * frame is due every 16 ms. Saved as class * 16 - relative priority (0..15 below). */
 int fa_thread_lower_priority(void)
 {
-    qos_class_t was = qos_class_self();
+    qos_class_t was = QOS_CLASS_UNSPECIFIED;
+    int rel = 0;
+    if (pthread_get_qos_class_np(pthread_self(), &was, &rel) != 0) return FA_THREAD_PRIORITY_KEPT;
     if (was == QOS_CLASS_UNSPECIFIED) was = QOS_CLASS_DEFAULT;
-    if (was <= QOS_CLASS_UTILITY) return FA_THREAD_PRIORITY_KEPT;
-    return pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0) == 0 ? (int)was : FA_THREAD_PRIORITY_KEPT;
+    if (rel > 0 || rel - FA_THREAD_LOW_NICE < QOS_MIN_RELATIVE_PRIORITY) return FA_THREAD_PRIORITY_KEPT;
+    if (pthread_set_qos_class_self_np(was, rel - FA_THREAD_LOW_NICE) != 0) return FA_THREAD_PRIORITY_KEPT;
+    return (int)was * 16 - rel;
 }
 void fa_thread_restore_priority(int saved)
 {
-    if (saved != FA_THREAD_PRIORITY_KEPT) pthread_set_qos_class_self_np((qos_class_t)saved, 0);
+    if (saved != FA_THREAD_PRIORITY_KEPT) pthread_set_qos_class_self_np((qos_class_t)(saved / 16), -(saved % 16));
 }
 #  elif defined(__linux__) || defined(__ANDROID__)
 /* Raising nice is always allowed; lowering it back only within RLIMIT_NICE (Android

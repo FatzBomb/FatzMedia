@@ -558,6 +558,23 @@ static fa_result os_codec_open(fa_codec* c, const fa_codec_params* p)
 
 #endif /* FA_OS_CODECS */
 
+fa_result (*fa_test_system_codec)(fa_codec* c, const fa_codec_params* p) = NULL;
+
+fa_result fa_system_codec_open(fa_codec* c, const fa_codec_params* p)
+{
+    if (fa_test_system_codec) {
+        fa_result r = fa_test_system_codec(c, p);
+        if (r != FA_ERROR_NOT_FOUND) return r;
+    }
+#if FA_OS_CODECS
+    return os_codec_open(c, p);
+#else
+    (void)c;
+    (void)p;
+    return FA_ERROR_UNSUPPORTED_FORMAT;
+#endif
+}
+
 fa_result fa_codec_open(fa_codec* c, const fa_codec_params* p)
 {
     size_t i;
@@ -575,6 +592,7 @@ fa_result fa_codec_open(fa_codec* c, const fa_codec_params* p)
     else if (strcmp(p->codec, "alac") == 0) r = fa_alac_codec_open(c, p);
     else if (strcmp(p->codec, "pcm_mulaw") == 0 || strcmp(p->codec, "pcm_alaw") == 0) r = fa_g711_codec_open(c, p);
     else if (strcmp(p->codec, "ima4") == 0) r = fa_ima4_codec_open(c, p);
+    else if (strcmp(p->codec, "dts") == 0) r = fa_dts_codec_open(c, p);   /* the system's decoder, whole frames */
     else {
         /* AAC is built in: AAC-LC, HE-AAC, HE-AAC v2, Main and LTP, in ADTS or after
          * an AudioSpecificConfig. */
@@ -585,11 +603,9 @@ fa_result fa_codec_open(fa_codec* c, const fa_codec_params* p)
                 snprintf(c->name, sizeof(c->name), "%s", p->codec);
             }
         }
-        /* The system's own decoders: Windows Media Audio, and xHE-AAC where the
-         * system has it. Anything else is unsupported. */
-#if FA_OS_CODECS
-        if (r == FA_ERROR_UNSUPPORTED_FORMAT) r = os_codec_open(c, p);
-#endif
+        /* The system's own decoders: Windows Media Audio, xHE-AAC and TrueHD where
+         * the system has them. Anything else is unsupported. */
+        if (r == FA_ERROR_UNSUPPORTED_FORMAT) r = fa_system_codec_open(c, p);
     }
     if (r != FA_OK) {
         free(c->out);

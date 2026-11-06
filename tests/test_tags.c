@@ -1703,6 +1703,17 @@ static void test_damaged(void)
     }
 }
 
+/* No system DTS or TrueHD decoder, whatever the machine has (a Windows PC or an
+ * Android device may have one): the checks here expect them unsupported. Every other
+ * codec goes on to the system's decoders as usual. */
+static fa_result no_system_dts(fa_codec* c, const fa_codec_params* p)
+{
+    (void)c;
+    if (strncmp(p->codec, "dts", 3) == 0 || strcmp(p->codec, "truehd") == 0 || strcmp(p->codec, "mlp") == 0)
+        return FA_ERROR_UNSUPPORTED_FORMAT;
+    return FA_ERROR_NOT_FOUND;
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1710,6 +1721,7 @@ int main(void)
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
+    fa_test_system_codec = no_system_dts;
 
     RUN(test_id3v23_all_frames);
     RUN(test_id3v23_unsync);

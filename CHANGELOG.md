@@ -21,10 +21,19 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 - Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
 - .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
 - Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.
+- macOS and iOS: render-ahead fell behind on a busy CPU (most lyric frames flagged `behind` during a tempo ramp in the iOS simulator). A worker rendering ahead dropped to QoS utility, which the scheduler can keep waiting 75-150 ms while default-QoS threads of any process are busy; it now stays in its QoS class at a lower relative priority, so decoding still wins.
 
 ### Added
 
 - Writing loudness tags on request: `fa_tags_write_loudness` (.NET `AudioEngine.WriteLoudnessTags`) measures files (track, or a whole album with `FA_TAGS_WRITE_ALBUM`) and writes ReplayGain 2 tags (Opus: R128 gains) into MP3 (ID3v2, plus an APEv2 tag already there), FLAC, Ogg Vorbis, Opus, MP4/M4A and APEv2 files (Monkey's Audio, WavPack, Musepack, TTA). Never automatic; it does not use the loudness cache. Each file is rewritten through a checked temp file and renamed, keeping all other tags and the audio byte for byte. See [writing loudness tags](docs/features/normalization.md#writing-loudness-tags).
+- DTS and TrueHD through the system's decoder, where the machine has one (codecs step 4). FatzAudio has no DTS decoder of
+  its own (the DTS specification, ETSI TS 102 114, leaves out two tables every stream needs). It now reads DTS core and
+  DTS-HD frames in raw `.dts`/`.cpt` files (new reader: exact length and seeks, either byte order, ID3v2 and junk slid
+  over), Matroska, MP4, AVI and MPEG program and transport streams (DVD, Blu-ray), and hands them to Media Foundation
+  (Windows) or MediaCodec (Android; also TrueHD in Matroska and MP4). Pushed `dts` packets may be cut anywhere. Without a
+  system decoder (macOS, iOS, Linux, most PCs and phones) these still return `FA_ERROR_UNSUPPORTED_FORMAT` and
+  `fa_tags_read_*` still gives their details, so keep the FFmpeg hand-off for DTS and TrueHD. Raw `.dts` details now come
+  from that reader (exact length also for DTS-HD frames of varying size); DTS in MPEG streams is a track like any other.
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.

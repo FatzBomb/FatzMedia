@@ -574,8 +574,6 @@ static int read_source(fa_tags* t, fa_source* src, const char* name, uint32_t fl
             fa_source_seek(src, 0);
             if (fa_midi_read_tags(src, (flags & FA_TAGS_NO_INFO) ? NULL : &t->info, &t->sink) == FA_OK && !(flags & FA_TAGS_NO_INFO))
                 t->have_info = 1;
-        } else if (!audio_only && r == FA_ERROR_UNSUPPORTED_FORMAT && fa_dts_core_info(src, &t->info)) {
-            t->have_info = 1;   /* a raw DTS file: no decoder, but the header says what it is */
         } else if (audio_only) {
             return 0;
         }

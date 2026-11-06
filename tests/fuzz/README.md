@@ -61,6 +61,7 @@ GCC ASan+UBSan in a 4-core cloud container, `FUZZ_SEED=1`, 128 KiB inputs.
 | 2b (extras step 3) | `soundfont` 1M + 300k (seed 2, from its corpus) + 500k (seed 3, fixed seeds); `font` 1M + 300k (seed 2); `cue` 1M; `cdg` 17k + 5.5k (seed 2, 45 minutes; about 2 a second) | see left | nothing |
 | One walker each (extras step 23) | `tags`, `stream_mkv`, `stream_mp4`, `stream_ogg`, `stream_aac`, `stream_caf` after the shared EBML/MP4 walkers and the single ADTS, AudioSpecificConfig and Ogg comment parsers | 200k | nothing |
 | Audit step 9 | `hls` (with `.pls` / `.m3u` first entries) 1M; `sound` 60k; `soundfont` 300k (with `sm24`, `cdl `, stack seeds); `tags` 300k and `zip` 200k (with ZIP songs); `stream_zip` 30k; `stream_midi` 30k (GS EFX, XG insertion and variation, drum and scale-tuning seeds; sent SysEx; about 9 a second); `stream_tracker` 20k (cell and row events on); `net` 3k (about 4 a second, a connection each) | see left | nothing |
+| Codecs step 4 | `stream_dts` (raw `.dts` core and DTS-HD, DTS in MPEG-PS/TS, AVI and Matroska, through a stand-in system decoder) | 145k + 60k (seed 2, from its corpus) | an empty first PES payload in an MPEG program stream passed a null buffer to `memcpy` |
 
 The `net` target's first run found only a harness limit: a live HLS playlist whose segments are empty keeps `fa_stream_open_url` waiting
 by design (the app's cancel flag ends it), so mode 3 closes the playlist with an ENDLIST and the target raises the cancel flag after 3 s.
