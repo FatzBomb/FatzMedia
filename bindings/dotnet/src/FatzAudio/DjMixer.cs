@@ -649,7 +649,7 @@ public sealed partial class DjMixer : IDisposable
         try
         {
             if (ev == null || user == null) return;
-            if (GCHandle.FromIntPtr((nint)user).Target is EventState st && st.Mixer.TryGetTarget(out var mixer))
+            if (NativeUser.From<EventState>(user) is { } st && st.Mixer.TryGetTarget(out var mixer))
                 mixer.Raise(ev->Type, ev->Index, ev->Mic);
         }
         catch
@@ -697,14 +697,12 @@ public sealed partial class DjMixer : IDisposable
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> or <paramref name="startAt"/> is negative.</exception>
     public unsafe void Ramp(MixerParameter parameter, float target, TimeSpan duration, Curve? curve = null, TimeSpan? startAt = null)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
-        var c = curve ?? Curve.Linear;
+        var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
         using (Lease())
         {
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_ramp_param(_mixer, (int)parameter, target,
-                TimeConvert.ToNanoseconds(duration), startAt is { } t ? Math.Max(1, TimeConvert.ToNanoseconds(t)) : 0, &ramp));
+                durationNs, startNs, &ramp));
         }
         GC.KeepAlive(c);
     }
@@ -914,14 +912,12 @@ public sealed partial class DjDeck
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> or <paramref name="startAt"/> is negative.</exception>
     public unsafe void Ramp(DeckParameter parameter, float target, TimeSpan duration, Curve? curve = null, TimeSpan? startAt = null)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
-        var c = curve ?? Curve.Linear;
+        var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
         using (_mixer.Lease())
         {
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_ramp_param(_deck, (int)parameter, target,
-                TimeConvert.ToNanoseconds(duration), startAt is { } t ? Math.Max(1, TimeConvert.ToNanoseconds(t)) : 0, &ramp));
+                durationNs, startNs, &ramp));
         }
         GC.KeepAlive(c);
     }

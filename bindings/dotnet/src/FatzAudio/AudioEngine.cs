@@ -556,14 +556,7 @@ public sealed partial class AudioEngine : IDisposable
 
         var state = new IoState(source, leaveOpen);
         var gc = GCHandle.Alloc(state);
-        FaIoCallbacks io = default;
-        io.Read = &IoState.Read;
-        io.Close = &IoState.Close;
-        if (source.CanSeek)
-        {
-            io.Seek = &IoState.Seek;
-            io.Length = &IoState.Length;
-        }
+        var io = IoState.Callbacks(seekable: source.CanSeek);
         int rc = NativeMethods.fa_stream_open_io(h, &io, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out nint s);
         if (rc < 0)
         {
