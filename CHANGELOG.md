@@ -16,6 +16,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ## Unreleased
 
+### Fixed
+
+- Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
+- .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
+- Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.
+
 ### Added
 
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
