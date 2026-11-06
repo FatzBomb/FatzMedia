@@ -121,8 +121,9 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 ## Next steps
 
 1. Owner: the normalization smoke (`updates/037A_Normalization`, with rc.4). The 054A desktop
-   measurement is done (2026-11-06: Full costs about 0.02 of a core more than Background, noise); a laptop
-   run is left. No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
+   measurement is done (2026-11-06: Full costs about 0.02 of a core more than Background, noise); the laptop
+   question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
+   resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
 2. Start `051A`: move it to `active/`, write acceptance criteria, then implement across WPF, Avalonia
    and WinForms (WPF composited: raise in `WpfCompositedSurfaceHost.PublishPendingFrame`, same
