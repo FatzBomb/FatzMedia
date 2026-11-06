@@ -11,7 +11,7 @@ One page per feature, each with: what it does, C example, C# example, options, t
 | Sounds: a voice pool (a short sound loaded once, many overlapping copies with their own volume and pan, voice limit and steal rules) | [sounds.md](sounds.md) | ✅ |
 | Volume, pan and ramps (7 curves, scheduled starts, ramp-done) | [ramps.md](ramps.md) | ✅ volume and pan |
 | Events | [events.md](events.md) | ✅ every stream event, plus the mixer's auto-mix, deck and lost-device events |
-| Loudness normalization (R128 scans, tags, cache, limiter) | [normalization.md](normalization.md) | ✅ |
+| Loudness normalization (R128 scans, tags, cache, limiter, writing ReplayGain tags on request) | [normalization.md](normalization.md) | ✅ |
 | Track analysis (beat grid and BPM, musical key, waveform overview, silence detection; exact grids from MIDI and tracker files; cache) | [analysis.md](analysis.md) | ✅ |
 | Crossfades, markers, queues and gapless, scheduled starts | [crossfade.md](crossfade.md) | ✅ |
 | Buses (decks, groups) and the channel matrix | [buses.md](buses.md) | ✅ |

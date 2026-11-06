@@ -173,6 +173,16 @@ int fa_replace_file(const char* from, const char* to)
     free(wf); free(wt);
     return ok ? 0 : -1;
 }
+int fa_file_sync(FILE* f) { return fflush(f) == 0 && _commit(_fileno(f)) == 0 ? 0 : -1; }
+void fa_file_copy_mode(const char* from, FILE* to) { (void)from; (void)to; }   /* the folder's ACL applies */
+int fa_real_path(const char* path, char* out, size_t cap)
+{
+    /* Symbolic links are rare on Windows; MoveFileExW would replace the link itself. */
+    size_t n = strlen(path);
+    if (n + 1 > cap) return 0;
+    memcpy(out, path, n + 1);
+    return 1;
+}
 /* "fa-<process>-<n>.tmp", opened exclusively with delete-on-close: Windows removes
  * it when the handle closes, also when the process dies. */
 FILE* fa_temp_file_create(const char* folder)
@@ -653,6 +663,23 @@ int fa_file_identity(FILE* fp, uint64_t id[4])
 }
 int fa_mkdir_utf8(const char* path) { return (mkdir(path, 0777) == 0 || errno == EEXIST) ? 0 : -1; }
 int fa_replace_file(const char* from, const char* to) { return rename(from, to) == 0 ? 0 : -1; }
+int fa_file_sync(FILE* f) { return fflush(f) == 0 && fsync(fileno(f)) == 0 ? 0 : -1; }
+void fa_file_copy_mode(const char* from, FILE* to)
+{
+    struct stat st;
+    if (stat(from, &st) == 0) (void)fchmod(fileno(to), st.st_mode & 07777);
+}
+int fa_real_path(const char* path, char* out, size_t cap)
+{
+    char* r = realpath(path, NULL);
+    size_t n;
+    if (!r) return 0;
+    n = strlen(r);
+    if (n + 1 > cap) { free(r); return 0; }
+    memcpy(out, r, n + 1);
+    free(r);
+    return 1;
+}
 int fa_system_soundfont_path(int index, char* out, size_t cap)
 {
     static const char* const paths[] = {

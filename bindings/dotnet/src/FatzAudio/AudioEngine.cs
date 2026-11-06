@@ -1047,6 +1047,71 @@ public sealed partial class AudioEngine : IDisposable
     }
 
     /// <summary>
+    /// Measures files and writes their loudness into their tags (ReplayGain 2; Opus files get R128 gains), so any player
+    /// can level them without a scan. Runs only when called: FatzAudio never writes tags on its own. It always measures
+    /// (old loudness tags and the cache are ignored; the cache is neither read nor written). MP3 gets ID3v2 (and an APEv2
+    /// tag it already has), FLAC and Ogg Vorbis comments, MP4 iTunes items, Monkey's Audio, WavPack, Musepack and TTA
+    /// APEv2. Other formats are left alone (<see cref="ErrorCode.UnsupportedFormat"/>). Each file is written to a new file
+    /// next to it, checked, then renamed over the original, so a failure never leaves a damaged file; all other tags,
+    /// pictures and the audio are kept as they were. Blocks until done: call it from a worker thread.
+    /// </summary>
+    /// <param name="paths">The files (1 to 10000).</param>
+    /// <param name="album">The files are one album: also write album gain and peak, measured over all of them. If any
+    /// file cannot be measured, nothing is written (the others report <see cref="ErrorCode.Cancelled"/>).</param>
+    /// <returns>One result per file, in order. A file that could not be written says why in
+    /// <see cref="LoudnessTagResult.Error"/> (<see cref="ErrorCode.Io"/>: read-only, or open in another program or a
+    /// playing stream on Windows; <see cref="ErrorCode.Busy"/>: it changed while it was measured;
+    /// <see cref="ErrorCode.NotFound"/>: missing, or silent).</returns>
+    /// <exception cref="ArgumentException">No paths, or more than 10000.</exception>
+    /// <example>
+    /// <code>
+    /// var results = await Task.Run(() => engine.WriteLoudnessTags(albumFiles, album: true));
+    /// foreach (var r in results.Where(r => !r.Written)) Console.WriteLine($"{r.Path}: {r.Error}");
+    /// </code>
+    /// </example>
+    public unsafe IReadOnlyList<LoudnessTagResult> WriteLoudnessTags(IReadOnlyList<string> paths, bool album = false)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count is 0 or > 10000) throw new ArgumentException("1 to 10000 files.", nameof(paths));
+        var native = new nint[paths.Count];
+        var results = new FaLoudnessTagResult[paths.Count];
+        try
+        {
+            for (var i = 0; i < paths.Count; i++)
+            {
+                native[i] = Marshal.StringToCoTaskMemUTF8(paths[i] ?? throw new ArgumentException("A path is null.", nameof(paths)));
+                results[i] = NativeSized.New<FaLoudnessTagResult>();
+            }
+            fixed (nint* p = native)
+            fixed (FaLoudnessTagResult* r = results)
+            {
+                var rc = NativeMethods.fa_tags_write_loudness(Handle, p, (uint)paths.Count, album ? 1u : 0u, r);
+                if (rc == (int)ErrorCode.InvalidArgument) FatzAudioException.ThrowIfFailed(rc);
+            }
+        }
+        finally
+        {
+            foreach (var n in native) if (n != 0) Marshal.FreeCoTaskMem(n);
+        }
+        var list = new LoudnessTagResult[paths.Count];
+        for (var i = 0; i < list.Length; i++) list[i] = LoudnessTagResult.From(paths[i], results[i]);
+        return list;
+    }
+
+    /// <summary>Measures one file and writes its loudness into its tags: <see cref="WriteLoudnessTags(IReadOnlyList{string}, bool)"/>
+    /// for a single file, throwing when it could not be written.</summary>
+    /// <param name="path">The file.</param>
+    /// <returns>What was measured and written.</returns>
+    /// <exception cref="FatzAudioException">The file could not be written; <see cref="FatzAudioException.ErrorCode"/> says why.</exception>
+    public LoudnessTagResult WriteLoudnessTags(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        var r = WriteLoudnessTags([path])[0];
+        FatzAudioException.ThrowIfFailed((int)r.Error);
+        return r;
+    }
+
+    /// <summary>
     /// Analyses a file without playing it: one decode of the audio gives any mix of the beat grid, the key, a waveform
     /// overview and the loudness. MIDI files and tracker modules get their exact beat grid from the file (MIDI files are
     /// rendered with <see cref="DefaultSoundFont"/>, else the OS's instruments, as playback does). Results are cached when

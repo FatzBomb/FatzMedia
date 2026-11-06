@@ -24,6 +24,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Writing loudness tags on request: `fa_tags_write_loudness` (.NET `AudioEngine.WriteLoudnessTags`) measures files (track, or a whole album with `FA_TAGS_WRITE_ALBUM`) and writes ReplayGain 2 tags (Opus: R128 gains) into MP3 (ID3v2, plus an APEv2 tag already there), FLAC, Ogg Vorbis, Opus, MP4/M4A and APEv2 files (Monkey's Audio, WavPack, Musepack, TTA). Never automatic; it does not use the loudness cache. Each file is rewritten through a checked temp file and renamed, keeping all other tags and the audio byte for byte. See [writing loudness tags](docs/features/normalization.md#writing-loudness-tags).
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.

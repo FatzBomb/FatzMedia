@@ -54,3 +54,4 @@ f = FLAC("cue.flac")
 f.cuesheet = CueSheet(io.BytesIO(block))     # mutagen parses the block too: a second reader
 f.save()
 PY
+ff -i tags.m4a -map 0 -c copy -movflags +faststart -fflags +bitexact faststart.m4a   # moov before mdat, for the loudness tag writer
