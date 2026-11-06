@@ -1,9 +1,13 @@
-# Active Stage 033A - FFmpeg Audio Parity and Unsupported-Format Fallback
+# Completed Stage 033A - FFmpeg Audio Parity and Unsupported-Format Fallback
 
 Prepared: 2026-10-17
-Status: Slice 1 (equalizer, fades, normalization for video audio) and slice 2 (FFmpeg
-fallback for unsupported audio formats) implemented, pending manual smoke
-(`updates/033A_1`, `updates/033A_2`). Owner decision (2026-10-17): implement now while the
+Status: Completed 2026-11-06. Slice 1 (equalizer, fades, normalization for video audio): owner
+smoke passed 2026-10-17. Slice 2 (FFmpeg fallback for unsupported audio formats): owner smoke
+passed 2026-11-06 with real 200+ MB `.ape` and `.dsf` files (WinForms player, BASS): both played
+and seeked; the whole-file conversion took 6.0 s for the APE (698 MB temp WAV) and 1.1 s for the
+DSF (806 MB at 352.8 kHz) before playback started. Not optimised: this is the BASS path, which
+goes away with 037A, and FatzAudio is asked to decode APE and DSD itself (request 15). The other
+fallback formats ran in the Linux format matrix (`updates/033A_2`). Owner decision (2026-10-17): implement now while the
 owner's native smoke of the 2026-10-16 stages is pending.
 
 ## Why This Is Worth Doing
