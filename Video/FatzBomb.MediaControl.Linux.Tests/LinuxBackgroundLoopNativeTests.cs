@@ -101,6 +101,8 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
                 Assert.True(Moves(session), "following the media: it plays with the song");
                 Assert.True(player.Pause());
                 Assert.False(Moves(session), "following the media: it pauses with the song");
+                Assert.True(player.ResumeBackground());
+                Assert.True(Moves(session), "ResumeBackground plays it even while the song is paused");
                 Assert.Empty(session.Errors);
                 _ = player.Stop();
             }

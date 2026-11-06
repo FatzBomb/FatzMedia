@@ -1123,15 +1123,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    /// <summary>Lets the background video play again: at once, or with the media when it follows the media.</summary>
+    /// <summary>
+    /// Plays the background video now, whatever the media does (owner 2026-11-06: also while the
+    /// media is paused or stopped, and when it follows the media; the media's next pause or stop
+    /// then applies its rule again).
+    /// </summary>
     public bool ResumeBackground()
     {
         ThrowIfDisposed();
         lock (_backgroundGate)
             _backgroundHostPaused = false;
 
-        if (!BackgroundFollowsMedia || State == MediaPlayerState.Playing)
-            StartBackgroundVideoPlayback();
+        StartBackgroundVideoPlayback();
         return true;
     }
 
