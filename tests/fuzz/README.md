@@ -2,7 +2,7 @@
 
 Fuzz targets for the readers that take untrusted bytes: AAC and HE-AAC (ADTS, MP4, CAF, Matroska), MP3, FLAC (native,
 Ogg, Matroska, MP4), MP4/MOV, Matroska/WebM, CAF, AVI, FLV, ASF, Ogg (Vorbis, Opus, FLAC, chained), AC-3/E-AC-3, WAV/W64/RF64/AIFF,
-trackers (libopenmpt), MIDI (SMF, RMID, karaoke, GS/XG effect SysEx), tags (ID3, APE, Vorbis comments, MP4, RIFF, AIFF, Matroska),
+trackers (libopenmpt), Monkey's Audio (the vendored SDK), MIDI (SMF, RMID, karaoke, GS/XG effect SysEx), tags (ID3, APE, Vorbis comments, MP4, RIFF, AIFF, Matroska),
 ZIP (central directory, ZIP64, DEFLATE), HLS playlists with the MPEG-TS extractor, `.pls` / `.m3u` radio lists, and the web client
 (HTTP replies, cookies, byte-range reads for MP4 and Matroska indexes) against a server inside the process; sounds (`fa_sound_*`);
 and the parsers that take no audio file: soundfonts (SF2 with 24-bit `sm24`, SF3, DLS with conditional chunks), disc images and the
@@ -61,6 +61,7 @@ GCC ASan+UBSan in a 4-core cloud container, `FUZZ_SEED=1`, 128 KiB inputs.
 | 2b (extras step 3) | `soundfont` 1M + 300k (seed 2, from its corpus) + 500k (seed 3, fixed seeds); `font` 1M + 300k (seed 2); `cue` 1M; `cdg` 17k + 5.5k (seed 2, 45 minutes; about 2 a second) | see left | nothing |
 | One walker each (extras step 23) | `tags`, `stream_mkv`, `stream_mp4`, `stream_ogg`, `stream_aac`, `stream_caf` after the shared EBML/MP4 walkers and the single ADTS, AudioSpecificConfig and Ogg comment parsers | 200k | nothing |
 | Audit step 9 | `hls` (with `.pls` / `.m3u` first entries) 1M; `sound` 60k; `soundfont` 300k (with `sm24`, `cdl `, stack seeds); `tags` 300k and `zip` 200k (with ZIP songs); `stream_zip` 30k; `stream_midi` 30k (GS EFX, XG insertion and variation, drum and scale-tuning seeds; sent SysEx; about 9 a second); `stream_tracker` 20k (cell and row events on); `net` 3k (about 4 a second, a connection each) | see left | nothing |
+| Monkey's Audio (codecs step) | `stream_ape` 300k (seed 1) + 3 x 40k (seeds 2-4, 16 KiB inputs); the SDK built with edge coverage too | see left | signed overflow in the predictors (built with `-fwrapv` now); a seek table asking for a 4 GB frame and one shorter than the frame count (out-of-bounds read); a damaged frame that threw inside the decoder (would end the process on the SDK's own thread, hung ours); the float flag on 16-bit samples (heap overflow in the float transform) |
 
 The `net` target's first run found only a harness limit: a live HLS playlist whose segments are empty keeps `fa_stream_open_url` waiting
 by design (the app's cancel flag ends it), so mode 3 closes the playlist with an ENDLIST and the target raises the cancel flag after 3 s.
