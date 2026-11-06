@@ -23,10 +23,7 @@
 #  include <utime.h>
 #endif
 
-static int g_failures = 0;
-#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
+#include "test_util.h"
 /* Sanitizer builds run some expensive checks on a sample only (CI time). */
 #if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
 #  define FA_TEST_SANITIZED 1
@@ -38,7 +35,6 @@ static int g_failures = 0;
 #ifndef FA_TEST_SANITIZED
 #  define FA_TEST_SANITIZED 0
 #endif
-#define RUN(t) do { int before_ = g_failures; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
 
 static fa_engine* g_engine;
 

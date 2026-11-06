@@ -14,8 +14,6 @@
 #endif
 
 #define BLOCK 64
-#define CHECK_EQ(a, b) do { long long va_ = (long long)(a), vb_ = (long long)(b); if (va_ != vb_) { \
-    fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
 
 /* `frames` of `in` (stereo) through the variation in 64-frame blocks; wet out. */
 static float* var_run(fa_midi_var* v, const float* in, int frames)
