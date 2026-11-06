@@ -95,20 +95,20 @@ public sealed class PlayerViewModelTests
     }
 
     [Fact]
-    public async Task DisposeAsync_DuringTheStartupMediaDelay_DoesNotWaitItOut()
+    public async Task Start_LoadsTheStartupMediaWithoutWaitingForTheSurface()
     {
-        // The startup media loads 500 ms after the engine is ready; closing or rebuilding a player
-        // in that window must not wait for it (and must not load).
-        var harness = new PlayerViewModelHarness(new PlayerStartupOptions { MediaPath = "song.mp3" }, null);
+        // Stage 051A: the fixed 500 ms startup delay is gone; the surface binds when Player is set,
+        // and one that attaches later gets the current frame re-presented by Core.
+        // Timed from the moment the player exists, so engine creation on a slow runner does not count.
+        await using var harness = new PlayerViewModelHarness(new PlayerStartupOptions { MediaPath = "song.mp3" }, null);
         Task start = harness.ViewModel.StartAsync();
         await harness.Dispatcher.UntilAsync(() => harness.ViewModel.Player is not null);
-
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        await harness.DisposeAsync();
+
         await start;
 
         Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 400);
-        Assert.False(harness.Engine.Engine.IsOpen);
+        Assert.True(harness.Player.IsOpen);
     }
 
     [Fact]

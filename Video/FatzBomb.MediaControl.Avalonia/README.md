@@ -68,3 +68,12 @@ Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
   platform services come from the host's platform factory (Windows or Linux).
 - Session events may arrive on background threads; marshal with
   `Dispatcher.UIThread.Post` before touching UI state.
+
+## First frame ready (Stage 051A)
+
+`MediaSurface.FirstFrameReady` is raised on the UI thread once per load of media with visual content,
+when a frame of that load is on the surface: on the frame-sink path the bitmap holds it and the
+control is invalidated (changes made in the handler render in the same frame); on the shared GPU
+image path the image goes to the compositor on its own (best effort). Subscribe before `LoadAsync`.
+For an A/B swap hide the waiting surface with `Opacity = 0`, not `IsVisible = false` (an invisible
+control is not laid out), and in the handler show it and hide the old one.

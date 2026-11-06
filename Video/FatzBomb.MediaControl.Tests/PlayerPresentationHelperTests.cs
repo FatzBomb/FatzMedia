@@ -320,6 +320,29 @@ public sealed class PlayerPresentationHelperTests
     }
 
     [Fact]
+    public void UiThreadCostMeter_ReadsMillisecondsPerSecondAndPerFrame_FromRunningTotals()
+    {
+        long now = 0;
+        var meter = new UiThreadCostMeter(() => now);
+        Assert.Null(meter.Sample(TimeSpan.FromMilliseconds(5), 3));
+
+        now += Stopwatch.Frequency * 2;
+        (double MillisecondsPerSecond, double MillisecondsPerFrame)? cost = meter.Sample(TimeSpan.FromMilliseconds(5 + 240), 3 + 120);
+        Assert.NotNull(cost);
+        Assert.Equal(120, cost.Value.MillisecondsPerSecond, 3);
+        Assert.Equal(2, cost.Value.MillisecondsPerFrame, 3);
+
+        // Totals that went back (a new surface) start a new period.
+        now += Stopwatch.Frequency;
+        Assert.Null(meter.Sample(TimeSpan.FromMilliseconds(1), 1));
+        now += Stopwatch.Frequency;
+        Assert.Equal((0d, 0d), meter.Sample(TimeSpan.FromMilliseconds(1), 1));
+
+        Assert.Equal("a", PlayerStatsLine.WithUiThreadCost("a", null));
+        Assert.Equal("a, UI thread 12.3 ms/s (1.50 ms/frame)", PlayerStatsLine.WithUiThreadCost("a", (12.34, 1.5)));
+    }
+
+    [Fact]
     public void FrameCounter_CountsFramesPerSecond_AndRestartsEachPeriod()
     {
         long now = 0;

@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-31
+Updated: 2026-11-06
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -54,6 +54,26 @@ Batches:
 These came out of the 2026-10-18 code audit (ENG-020). Each was verified by reading the code
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
+
+### ENG-059 - WPF composited surface keeps its last bitmap while auto-hide hides it
+
+Reported: 2026-11-06 (051A investigation). The Avalonia and WinForms frame-sink paths drop the
+bitmap when auto-hide hides the content ("a later load shows its own first frame"); the WPF composited
+host only sets `Visibility.Hidden` (`MediaSurface.AutoHide.cs`, `ApplyAutoHideVisibility`). A later load
+arms the surface (host shown while waiting for its first frame) and the previous item's last frame
+can show until the new one is written. `FirstFrameReady` is not affected (it waits for the new
+frame); a single visible surface may flash the old frame for a frame or two. Fix for parity:
+`_compositedHost.Clear()` when auto-hide hides the composited host; check that resuming a stopped
+item still shows without a second present (the tracker's latch).
+
+### ENG-058 - First-frame latch can count a background frame
+
+Reported: 2026-11-06 (051A). `MediaSurfaceContentTracker` counts a frame presented before the load
+notice as the load's first frame (static images present once, before `MediaLoaded`). If anything
+else presents between the previous item's `MediaClosed` and the new `MediaLoaded` (a background
+that keeps playing on its own, ENG-051), auto-hide shows early and `FirstFrameReady` can be raised one
+frame before the new item's frame is on the surface. Not reproduced; check on Windows with a looping
+background video and an A/B swap. A fix needs a load identity on presented frames (Core has none).
 
 ### ENG-057 - Small items from the test-player audit
 

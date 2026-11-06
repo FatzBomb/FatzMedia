@@ -101,6 +101,49 @@ public sealed class PresentedFrameCounter
     private void OnFramePresented(object? sender, EventArgs e) => CountFrame();
 }
 
+/// <summary>
+/// Turns a surface's running totals of UI-thread work (the WPF composited bitmap writes, Stage 051A)
+/// into a reading per period: milliseconds per second and per frame. Call <see cref="Sample"/> about
+/// once a second from one thread.
+/// </summary>
+public sealed class UiThreadCostMeter
+{
+    private readonly Func<long> _timestamp;
+    private long _lastTimestamp;
+    private TimeSpan _lastTime;
+    private long _lastFrames;
+    private bool _started;
+
+    public UiThreadCostMeter()
+        : this(Stopwatch.GetTimestamp)
+    {
+    }
+
+    /// <param name="timestamp">A <see cref="Stopwatch"/>-frequency clock (tests pass a fake one).</param>
+    public UiThreadCostMeter(Func<long> timestamp) => _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+
+    /// <summary>
+    /// Gets the cost since the previous call from the surface's totals, or null on the first call
+    /// (or when the totals went back, a new surface): it starts a new period either way.
+    /// </summary>
+    public (double MillisecondsPerSecond, double MillisecondsPerFrame)? Sample(TimeSpan totalTime, long totalFrames)
+    {
+        var now = _timestamp();
+        var started = _started && totalFrames >= _lastFrames && totalTime >= _lastTime;
+        var elapsed = Math.Max((now - _lastTimestamp) / (double)Stopwatch.Frequency, 0.001);
+        var spent = (totalTime - _lastTime).TotalMilliseconds;
+        var frames = totalFrames - _lastFrames;
+        _started = true;
+        _lastTimestamp = now;
+        _lastTime = totalTime;
+        _lastFrames = totalFrames;
+        if (!started)
+            return null;
+
+        return (spent / elapsed, frames > 0 ? spent / frames : 0);
+    }
+}
+
 /// <summary>The stats line every test player shows under each player (Stage 046A slice 3).</summary>
 public static class PlayerStatsLine
 {
@@ -124,6 +167,15 @@ public static class PlayerStatsLine
         string.Create(
             CultureInfo.InvariantCulture,
             $"{pixelWidth}x{pixelHeight} via {MediaSurfacePresentationPathText.Describe(path)}{(presentationSuspended ? " (cleared: Audio mode)" : string.Empty)}");
+
+    /// <summary>
+    /// Gets <c>{surface}, UI thread {n} ms/s ({n} ms/frame)</c> for a surface whose frames cost UI-thread
+    /// time (Stage 051A), or <paramref name="surface"/> unchanged without a reading.
+    /// </summary>
+    public static string WithUiThreadCost(string surface, (double MillisecondsPerSecond, double MillisecondsPerFrame)? cost) =>
+        cost is not { } reading
+            ? surface
+            : string.Create(CultureInfo.InvariantCulture, $"{surface}, UI thread {reading.MillisecondsPerSecond:F1} ms/s ({reading.MillisecondsPerFrame:F2} ms/frame)");
 
     /// <summary>Gets <paramref name="primary"/>, followed by <c> | 2nd screen {secondScreen}</c> when a second screen is open.</summary>
     public static string WithSecondScreen(string primary, string? secondScreen) =>

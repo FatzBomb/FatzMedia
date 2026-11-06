@@ -61,6 +61,15 @@ with any renderer. Auto-hide and the Audio-mode clear work as on the window path
 is dropped). Expect a CPU copy per frame: for full-HD video use a renderer that presents into the
 window.
 
+## First frame ready (Stage 051A)
+
+`FirstFrameReady` is raised on the UI thread once per load of media with visual content, when a frame
+of that load is on the surface (frame sink: published and painted; window path: the child window is
+shown after the swap chain presented it). Subscribe before `LoadAsync`. For an A/B swap keep the
+waiting surface at its size with `Visible = false`, then in the handler show it and hide the old one.
+Same-frame changes with other controls are best effort on WinForms (the WPF adapter's composited mode
+is the exact one; see its README).
+
 ## Overlay content
 
 `OverlayContent` (a `Control`) is shown above the video in a borderless layered window owned by

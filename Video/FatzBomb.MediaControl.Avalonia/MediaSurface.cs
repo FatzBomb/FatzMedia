@@ -90,6 +90,7 @@ public class MediaSurface : Control
     private bool _isPresentationSuspended;
     private bool _contentShown;
     private bool _isContentVisible;
+    private int _firstFrameReadyLoad;
 
     static MediaSurface()
     {
@@ -104,6 +105,19 @@ public class MediaSurface : Control
 
     /// <summary>Raised on the UI thread when <see cref="IsContentVisible"/> changes.</summary>
     public event EventHandler? ContentVisibilityChanged;
+
+    /// <summary>
+    /// Raised on the UI thread once per load of media with visual content (and once when
+    /// <see cref="Player"/> is set to a session that already has such media open), when a frame of
+    /// that load is on this surface and the surface shows its content (Stage 051A). On the frame-sink
+    /// path the bitmap holds the frame and the control is invalidated, so changes made in the handler
+    /// render in the same frame; on the shared GPU image path the image is submitted to the
+    /// compositor on its own (best effort, normally the same frame). Not raised for audio-only media
+    /// or in Audio mode. Subscribe before loading; hide a waiting surface with <c>Opacity = 0</c>, not
+    /// <c>IsVisible = false</c> (an invisible control is not laid out, so the frame would be rendered
+    /// at the wrong size).
+    /// </summary>
+    public event EventHandler? FirstFrameReady;
 
     /// <summary>Gets or sets the session this surface presents.</summary>
     public IMediaControlSession? Player
@@ -235,7 +249,7 @@ public class MediaSurface : Control
     {
         base.OnAttachedToVisualTree(e);
         _isAttachedToTree = true;
-        _sink ??= new AvaloniaFrameSink(InvalidateVisual);
+        _sink ??= new AvaloniaFrameSink(OnSinkFrameUpdated);
 
         // Moving to a monitor with another scale keeps Bounds (DIPs) unchanged, so size changes
         // alone would miss the new pixel size.
@@ -747,6 +761,41 @@ public class MediaSurface : Control
             RaisePropertyChanged(IsContentVisibleProperty, wasVisible, isContentVisible);
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        RaiseFirstFrameReadyIfDue();
+    }
+
+    private void OnSinkFrameUpdated()
+    {
+        InvalidateVisual();
+        RaiseFirstFrameReadyIfDue();
+    }
+
+    // UI thread: after the content state changed or the sink published a frame (Stage 051A).
+    private void RaiseFirstFrameReadyIfDue()
+    {
+        var load = _contentTracker.FirstFrameLoad;
+        // Also reached from the sink's Clear (Audio mode, hidden content) before _contentShown is
+        // updated: a cleared or suspended surface must not publish a frame back or signal.
+        if (load == 0 || load == _firstFrameReadyLoad || _attachedSession is null || !_contentShown
+            || _isPresentationSuspended || !_contentTracker.ShowsContent)
+            return;
+
+        if (_gpuSurface is null)
+        {
+            // The renderer hands the frame to the sink before it announces it, so a frame still
+            // waiting is at least as new as the announced one: publish it now, in this turn.
+            if (_sink is not { } sink)
+                return;
+
+            if (sink.PublishPending())
+                InvalidateVisual();
+            if (sink.Bitmap is null)
+                return;
+        }
+
+        _firstFrameReadyLoad = load;
+        FirstFrameReady?.Invoke(this, EventArgs.Empty);
     }
 
     private void Detach()

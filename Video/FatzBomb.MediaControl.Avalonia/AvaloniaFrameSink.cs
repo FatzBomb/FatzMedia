@@ -38,7 +38,7 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
     {
         if (_mailbox.Post(bgraPixels, width, height, stride))
-            Dispatcher.UIThread.Post(Publish, DispatcherPriority.Render);
+            Dispatcher.UIThread.Post(PublishScheduled, DispatcherPriority.Render);
     }
 
     /// <summary>Drops the displayed frame (UI thread).</summary>
@@ -59,10 +59,21 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
         Bitmap = null;
     }
 
-    private unsafe void Publish()
+    private void PublishScheduled()
+    {
+        if (PublishPending())
+            _frameUpdated();
+    }
+
+    /// <summary>
+    /// Copies the frame waiting in the mailbox into the bitmap (UI thread); false when none waits.
+    /// The scheduled publish then reports the update; an inline caller (the surface's first-frame
+    /// check, Stage 051A) invalidates itself.
+    /// </summary>
+    public unsafe bool PublishPending()
     {
         if (!_mailbox.TryTake(out var pixels, out var width, out var height, out var stride))
-            return;
+            return false;
 
         if (Bitmap is null || Bitmap.PixelSize.Width != width || Bitmap.PixelSize.Height != height)
         {
@@ -82,6 +93,6 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
         _mailbox.Return(pixels);
 
         PublishedFrames++;
-        _frameUpdated();
+        return true;
     }
 }
