@@ -2,6 +2,7 @@
  * pass READ TOC and READ CD through to the drive. Only drives with a disc in them
  * have a disk node, so only those are listed. iOS has no optical drives. */
 #include "disc.h"
+#include "fa_util.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -92,7 +93,7 @@ static fa_result mac_read_toc(void* h, int format, int track, uint8_t* buf, uint
     t.bufferLength = (uint16_t)cap;
     t.buffer = buf;
     if (ioctl(d->fd, DKIOCCDREADTOC, &t) != 0) return errno_result();
-    len = 2u + (((uint32_t)buf[0] << 8) | buf[1]);
+    len = 2u + fa_be16(buf);
     if (len > cap) len = cap;
     *out_len = len;
     return FA_OK;

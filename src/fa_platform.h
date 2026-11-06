@@ -6,6 +6,7 @@
 #ifndef FA_PLATFORM_H
 #define FA_PLATFORM_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -174,6 +175,10 @@ void fa_sleep_ms(uint32_t ms);
 
 /* Files with UTF-8 paths (wide-character APIs on Windows). */
 FILE* fa_fopen_utf8(const char* path, const char* mode);
+#ifdef _WIN32
+/* malloc'd UTF-16 copy of a UTF-8 string (free it); NULL on failure. */
+wchar_t* fa_widen(const char* s);
+#endif
 /* An open file's identity and last-write time (device, file id, seconds, nanoseconds; Windows: volume, index,
  * FILETIME, 0). Two reads with the same identity saw the same bytes unless it changed within the clock's step.
  * 0 when the OS gives none. */

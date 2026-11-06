@@ -21,7 +21,7 @@ void fa_text_release(void* state)
     if (state != FA_TEXT_STATE_FAILED) fa_text_os_release(state);
 }
 
-/* The next code point of UTF-8 at s[*i] (U+FFFD for a bad sequence): as lyric.c. */
+/* The next code point of UTF-8 at s[*i] (U+FFFD for a bad sequence). */
 uint32_t fa_text_next_cp(const char* s, uint32_t len, uint32_t* i)
 {
     const unsigned char* u = (const unsigned char*)s;
