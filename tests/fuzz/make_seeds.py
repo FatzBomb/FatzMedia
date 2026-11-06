@@ -554,3 +554,37 @@ def lzma_zip(d):   # method 14: version, props size, then the raw LZMA stream
     props = bytes([(2 * 5 + 0) * 9 + 3]) + struct.pack("<I", 1 << 16)
     return bytes([9, 20, 5, 0]) + props + c.compress(d) + c.flush()
 asave("method14.zip", a_zip(14, lzma_zip))
+
+# DSD: DSF (LSB and MSB first, an ID3v2 tag at the end) and DSDIFF (DSD with DIIN and ID3 chunks, named channels,
+# DST), small enough for the 128 KiB cap. The bits are a fixed pattern, not music.
+dsdd = os.path.join(here, "seeds", "dsd")
+os.makedirs(dsdd, exist_ok=True)
+def dsd_bits(n, seed):
+    out, x = bytearray(), seed
+    for _ in range(n):
+        x = (x * 1103515245 + 12345) & 0x7fffffff
+        out.append(0x69 ^ ((x >> 16) & 0x11))
+    return bytes(out)
+def dsf(ch, ctype, nbytes, msb, tag=b""):
+    groups = (nbytes + 4095) // 4096
+    data = b"".join(dsd_bits(groups * 4096, 7 + c)[:nbytes].ljust(4096 * groups, b"\0")[g * 4096:(g + 1) * 4096]
+                    for g in range(groups) for c in range(ch))
+    size = 28 + 52 + 12 + len(data) + len(tag)
+    hdr = b"DSD " + struct.pack("<QQQ", 28, size, 28 + 52 + 12 + len(data) if tag else 0)
+    fmt = b"fmt " + struct.pack("<QIIIIIIQII", 52, 1, 0, ctype, ch, 2822400, 8 if msb else 1, nbytes * 8, 4096, 0)
+    return hdr + fmt + b"data" + struct.pack("<Q", 12 + len(data)) + data + tag
+def dck(cid, body): return cid + struct.pack(">Q", len(body)) + body + (b"\0" if len(body) & 1 else b"")
+def dff(ids, nbytes, cmpr=b"DSD ", extra=b""):
+    prop = b"SND " + dck(b"FS  ", struct.pack(">I", 2822400)) + dck(b"CHNL", struct.pack(">H", len(ids)) + b"".join(ids)) \
+        + dck(b"CMPR", cmpr + b"\x0enot compressed")
+    body = dck(b"DSD ", dsd_bits(nbytes * len(ids), 3)) if cmpr == b"DSD " else dck(b"DST ", dck(b"FRTE", struct.pack(">IH", 75, 75)))
+    form = b"DSD " + dck(b"FVER", struct.pack(">I", 0x01050000)) + dck(b"PROP", prop) + body + extra
+    return b"FRM8" + struct.pack(">Q", len(form)) + form
+tag = id3(3, b"TIT2" + struct.pack(">I", 5) + b"\0\0\0Song")
+open(os.path.join(dsdd, "stereo.dsf"), "wb").write(dsf(2, 2, 6000, False, tag))
+open(os.path.join(dsdd, "mono_msb.dsf"), "wb").write(dsf(1, 1, 3000, True))
+open(os.path.join(dsdd, "surround.dsf"), "wb").write(dsf(6, 7, 1000, False))
+diin = dck(b"DIIN", dck(b"DITI", struct.pack(">I", 5) + b"Title") + dck(b"DIAR", struct.pack(">I", 6) + b"Artist"))
+open(os.path.join(dsdd, "stereo.dff"), "wb").write(dff([b"SLFT", b"SRGT"], 3000, extra=diin + dck(b"ID3 ", tag)))
+open(os.path.join(dsdd, "three.dff"), "wb").write(dff([b"C   ", b"MRGT", b"MLFT"], 2000))
+open(os.path.join(dsdd, "dst.dff"), "wb").write(dff([b"SLFT", b"SRGT"], 0, cmpr=b"DST "))

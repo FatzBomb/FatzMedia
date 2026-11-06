@@ -734,6 +734,16 @@ static fa_result run(const job* jin, fa_analysis** out)
                 int i;
                 for (i = 0; i < 4; i++) rb[i] = (uint8_t)(j->env.midi_rate >> (i * 8));
                 key = fa_fnv1a(key, rb, sizeof(rb));
+            } else if (fa_decoder_dsd.probe(head, n, 0) > 0) {
+                /* DSD converts at the rate asked for, and its frames are in it. 88200 and
+                 * 96000 come out as the default (0) does on either family. */
+                uint32_t dr = j->env.dsd_rate == 88200 || j->env.dsd_rate == 96000 ? 0 : j->env.dsd_rate;
+                if (dr) {
+                    uint8_t rb[4];
+                    int i;
+                    for (i = 0; i < 4; i++) rb[i] = (uint8_t)(dr >> (i * 8));
+                    key = fa_fnv1a(key, rb, sizeof(rb));
+                }
             }
             use_cache = 1;
         }
@@ -811,6 +821,7 @@ static fa_result job_for_stream(fa_stream* stream, job* jp)
     j.engine = stream->engine;
     j.audio_track = stream->audio_track;
     j.env.midi_rate = stream->midi || stream->tracker ? stream->decoder.format.sample_rate : fa_engine_midi_rate(stream->engine);
+    j.env.dsd_rate = stream->decoder.format.sample_rate;   /* DSD: the stream's own rate, so positions match */
     fa_mutex_lock(&stream->norm_lock);   /* fa_stream_set_soundfont may change it */
     j.env.soundfont = fa_soundfont_retain(stream->soundfont);
     fa_mutex_unlock(&stream->norm_lock);

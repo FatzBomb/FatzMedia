@@ -326,6 +326,12 @@ public sealed record StreamOptions
     /// of the same song, as a stream opened from the file itself does. Other opens ignore it.
     /// </summary>
     public AudioFingerprint? SourceIdentity { get; init; }
+    /// <summary>
+    /// DSD files (DSF, DFF): the PCM rate they are converted to. 0 (default) is 88200 Hz (96000 Hz for DSD on the 48 kHz
+    /// family); otherwise the nearest of 44100, 88200, 176400 and 352800 Hz (48000 to 384000 Hz) is used. The engine
+    /// resamples to the device as for any other file, so this only matters for decoding and recording. Other formats ignore it.
+    /// </summary>
+    public int DsdRate { get; init; }
     /// <summary>Optional MIME type hint; content sniffing still wins.</summary>
     public string? MimeHint { get; init; }
     /// <summary>

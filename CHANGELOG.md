@@ -39,6 +39,13 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   from that reader (exact length also for DTS-HD frames of varying size); DTS in MPEG streams is a track like any other.
 - Monkey's Audio (`.ape`): every file version from 3.80, all five compression levels, 8, 16, 24 and 32-bit integer and 32-bit float, 1 to 32 channels, decoded to the bit by the official Monkey's Audio SDK 13.45 (BSD-3-Clause, decoder part built in; `third_party/monkeysaudio`). Exact seeks, ID3v2/APEv2/ID3v1 tags, codec and container `ape`. The source must seek (`FA_ERROR_NOT_SEEKABLE` otherwise). Adds about 120 KB to the Linux library. ([Monkey's Audio](docs/features/streams.md#monkeys-audio))
 - The NuGet package carries `THIRD_PARTY_LICENSES.txt`: the full license text and copyright lines of every component built in (BSD, MIT and zlib licenses ask for them to go with binaries). `tools/gen/gen_third_party_licenses.py` writes it from `third_party/`.
+- DSD: DSF and DSDIFF (`.dff`) files, DSD64 to DSD1024 on the 44.1 and 48 kHz families, mono to 6 channels (DSDIFF up to 32),
+  converted to PCM as they decode (codec `dsd`, containers `dsf` and `dff`). Two linear-phase filters with 120 dB stop
+  bands, flat to 30 kHz at the default 88.2 kHz; +6 dB as bassdsd; exact seeks; about 2 % of a core for stereo DSD64.
+  New last field `fa_open_options.dsd_rate` (.NET `StreamOptions.DsdRate`) picks 44.1, 88.2, 176.4 or 352.8 kHz. Tags: the
+  ID3v2 tag of DSF and DSDIFF files and DSDIFF `DITI`/`DIAR` (`FA_TAG_FORMAT_DSDIFF`, .NET `TagFormat.Dsdiff`). DST-compressed
+  DSDIFF is recognised and returns `FA_ERROR_UNSUPPORTED_FORMAT` (tags give its details with `can_decode` 0). Raw DSD and
+  DoP output are not provided. ([DSD](docs/features/streams.md#dsd-dsf-and-dsdiff), [bassdsd](docs/migration/bass.md#bassdsd-dsd-dsf-and-dsdiff))
 - The NuGet package now carries `win-arm64`, `linux-arm64`, `osx` (universal arm64 and x86_64), `android-arm64`, `android-x64` and an iOS xcframework (added to iOS projects automatically), besides `win-x64` and `linux-x64`.
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.

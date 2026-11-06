@@ -63,6 +63,8 @@ set(FA_SOURCES
     src/dec_ape.c
     src/codec_ape.h
     src/dec_wavpack.c
+    src/dec_dsd.c
+    src/dsd.c
     src/dts.c
     src/codec_g711.c
     src/fa_platform.c
