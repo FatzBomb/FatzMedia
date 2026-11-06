@@ -1367,8 +1367,10 @@ static void test_zip_temp_song(void)
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.zip_memory_limit_mb = 1;
     cfg.temp_directory = "cdg_tmp";
+    cfg.cache_directory = "cdg_cache_zip";
     CHECK(wav.n > (1u << 20));
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    fa_engine_clear_cache(e);
     fa_open_options_init(&o);
     CHECK_EQ(fa_stream_open_path(e, "cdg_temp.zip", &o, &s), FA_OK);
     CHECK_EQ(fa_stream_get_tags(s, 0, &t), FA_OK);
@@ -1388,7 +1390,9 @@ static void test_zip_temp_song(void)
     CHECK_EQ(decode_all(s), 700000);
     fa_stream_close(s);
     CHECK_EQ(count_temp_files(), 0);
+    fa_engine_clear_cache(e);
     fa_engine_destroy(e);
+    test_clear_cache_dir("cdg_cache_zip");
     remove("cdg_temp.zip");
     free(zip.p); free(wav.p);
 }
@@ -5049,7 +5053,9 @@ int main(void)
     fa_engine_config_init(&cfg);
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;   /* render-ahead needs two (ra_request) */
+    cfg.cache_directory = "cdg_cache";
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine\n"); return 1; }
+    fa_engine_clear_cache(g_engine);
     RUN(test_inflate_vectors);
     RUN(test_zip_pair);
     RUN(test_zip_damaged);
@@ -5112,7 +5118,9 @@ int main(void)
     RUN(test_update_into_never_waits);
     RUN(test_presentation_costs);
     RUN(test_drawn_times);
+    fa_engine_clear_cache(g_engine);
     fa_engine_destroy(g_engine);
+    test_clear_cache_dir("cdg_cache");
     remove("cdg_pair.zip");
     remove("cdg_lone.cdg");
     remove("cdg_lone.zip");
