@@ -25,6 +25,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Writing loudness tags on request: `fa_tags_write_loudness` (.NET `AudioEngine.WriteLoudnessTags`) measures files (track, or a whole album with `FA_TAGS_WRITE_ALBUM`) and writes ReplayGain 2 tags (Opus: R128 gains) into MP3 (ID3v2, plus an APEv2 tag already there), FLAC, Ogg Vorbis, Opus, MP4/M4A and APEv2 files (Monkey's Audio, WavPack, Musepack, TTA). Never automatic; it does not use the loudness cache. Each file is rewritten through a checked temp file and renamed, keeping all other tags and the audio byte for byte. See [writing loudness tags](docs/features/normalization.md#writing-loudness-tags).
 - DTS and TrueHD through the system's decoder, where the machine has one (codecs step 4). FatzAudio has no DTS decoder of
   its own (the DTS specification, ETSI TS 102 114, leaves out two tables every stream needs). It now reads DTS core and
   DTS-HD frames in raw `.dts`/`.cpt` files (new reader: exact length and seeks, either byte order, ID3v2 and junk slid

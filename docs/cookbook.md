@@ -26,7 +26,7 @@ Start the next song exactly on a device frame with `next.PlayAt(output.Time + Ti
 engine.SetNormalization(NormalizeMode.Track, -16);
 ```
 
-Stored values skip the scan: `song.SetLoudness(storedLufs)`. [Normalization](features/normalization.md).
+Stored values skip the scan: `song.SetLoudness(storedLufs)`. To store them in the files for every player, `engine.WriteLoudnessTags(albumFiles, album: true)` (only when you call it). [Normalization](features/normalization.md).
 
 ## Level meters and a spectrum visualizer
 

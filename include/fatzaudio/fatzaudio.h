@@ -2386,6 +2386,61 @@ FA_API fa_result FA_CALL fa_stream_set_loudness(fa_stream* stream, const fa_loud
  * and blocks until done. Uses and fills the cache. Tags are ignored (this measures). */
 FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* path, fa_loudness* out_loudness);
 
+/* ---- Writing loudness tags ---------------------------------------------------
+ *
+ * Measures files and writes the result into their tags, so other players (and
+ * FatzAudio itself, FA_LOUDNESS_TAGS) know their loudness without a scan. Nothing
+ * does this on its own: it only runs when the app calls it. It always measures
+ * (existing loudness tags and the loudness cache are ignored, and the cache is
+ * neither read nor written).
+ *
+ *   MP3 (and ADTS AAC)   ID3v2 TXXX frames; an APEv2 tag the file already has is updated too
+ *   FLAC, Ogg Vorbis     Vorbis comments
+ *   Ogg Opus             R128_TRACK_GAIN / R128_ALBUM_GAIN (RFC 7845; Q7.8 dB to -23 LUFS)
+ *   MP4, M4A, M4B        iTunes freeform atoms (----:com.apple.iTunes:replaygain_...)
+ *   Monkey's Audio, WavPack, Musepack, TTA   APEv2
+ *
+ * Others (WAV, AIFF, CAF, WMA, Matroska, MIDI, trackers, ZIP entries) give
+ * FA_ERROR_UNSUPPORTED_FORMAT and are left alone. Everything but Opus gets
+ * ReplayGain 2: REPLAYGAIN_TRACK_GAIN ("-7.89 dB", to -18 LUFS) and
+ * REPLAYGAIN_TRACK_PEAK (linear; the true peak, which is never below the sample
+ * peak), plus the ALBUM pair with FA_TAGS_WRITE_ALBUM. Older loudness tags of
+ * the kinds written are replaced (both spellings, so a stale R128 tag cannot win
+ * over the new ReplayGain one); all other tags, pictures and the audio are kept
+ * byte for byte.
+ *
+ * Each file is written to a new file next to it, checked (the new tags read back
+ * and the audio still opens), then renamed over the original, so a failure or a
+ * power cut leaves the original as it was. It fails with FA_ERROR_BUSY when the
+ * file changed while it was measured, and with FA_ERROR_IO when the folder is
+ * read-only or (Windows) the file is open elsewhere, also in a playing stream.
+ * Digital silence has no loudness: such a file gets FA_ERROR_NOT_FOUND and is not
+ * written. Blocks until done (it decodes every file: about 0.1-0.2 s for a
+ * 4-minute song on a 4-core desktop, plus the copy); call it from a worker thread. */
+typedef enum fa_tags_write_flags {
+    FA_TAGS_WRITE_ALBUM = 1 << 0      /* the files are one album: also album gain and peak,
+                                         measured over all of them as one programme */
+} fa_tags_write_flags;
+
+typedef struct fa_loudness_tag_result {
+    uint32_t struct_size;      /* sizeof(fa_loudness_tag_result), set before the call */
+    fa_result result;          /* FA_OK = written. FA_ERROR_CANCELLED: not written because
+                                  another file of the album could not be measured */
+    double integrated_lufs;    /* the file's measured loudness (NAN if not measured) */
+    double true_peak_dbtp;
+    double track_gain_db;      /* the gain written: to -18 LUFS, Opus to -23 LUFS */
+    double album_lufs;         /* with FA_TAGS_WRITE_ALBUM, else NAN */
+    double album_peak_dbtp;
+    double album_gain_db;
+    int32_t tag_format;        /* fa_tag_format written (ID3V2, VORBIS, MP4, APE), 0 if none */
+} fa_loudness_tag_result;
+
+/* `paths`: `count` files (1..10000). out_results: NULL, or `count` entries with
+ * struct_size set. Returns FA_OK when every file was written, else the first
+ * file's error (each file's own is in out_results). Flags: fa_tags_write_flags. */
+FA_API fa_result FA_CALL fa_tags_write_loudness(fa_engine* engine, const char* const* paths, uint32_t count,
+                                                uint32_t flags, fa_loudness_tag_result* out_results);
+
 /* ---- Loudness of audio you feed ---------------------------------------------
  *
  * For audio FatzAudio cannot open itself (a track of a video file that your demuxer

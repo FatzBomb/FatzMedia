@@ -191,4 +191,5 @@ Reading is synchronous and does file I/O on the calling thread, so a media libra
 - MP4 atom keys start with the copyright sign, which is two bytes in UTF-8 (`"\xC2\xA9nam"`). Use `fa_tags_get` for the common fields instead of matching keys.
 - Encrypted ID3v2 frames are skipped. `SYLT` frames with times in MPEG frames are skipped.
 - Bitrate and `audio_bytes` for MP3, AAC, AC-3 and FLAC are measured between the tags (an MP3's Xing/LAME header frame is left out). MP4, WAV, AIFF and CD are exact.
+- FatzAudio reads tags; the one thing it writes is loudness (ReplayGain / R128), and only when you call `fa_tags_write_loudness` ([writing loudness tags](normalization.md#writing-loudness-tags)). Edit other tags with a tag library.
 - The BASS `TAGS_Read` format strings (`%ARTI - %TITL`) have no equivalent: build the text from the fields.

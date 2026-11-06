@@ -77,6 +77,10 @@ struct fa_scan_job {
     uint64_t key;
     int64_t key_size;
     double album_lufs;
+    int no_cache;                  /* fa_tags_write_loudness: measure, never read or write the cache */
+    int keep_subs;                 /* ... and keep the 100 ms values (album loudness) */
+    double* all_subs;
+    int64_t all_nsubs;
 
     fa_loudness result;
     fa_result status;
@@ -205,7 +209,7 @@ static int run_prepare(fa_scan_job* j)
             return 1;
         }
     }
-    if (j->engine->lcache && fa_scan_cache_key(&src, &j->env, &j->key, &j->key_size)) {
+    if (!j->no_cache && j->engine->lcache && fa_scan_cache_key(&src, &j->env, &j->key, &j->key_size)) {
         j->have_key = 1;
         if (cache_read(j, &j->result)) {
             set_result(j, j->result.integrated_lufs, j->result.range_lu, j->result.true_peak_dbtp, FA_LOUDNESS_CACHE);
@@ -350,7 +354,12 @@ static void run_merge(fa_scan_job* j)
     if (!all) { j->status = FA_ERROR_OUT_OF_MEMORY; return; }
     set_result(j, fa_loudness_integrated(all, total), fa_loudness_range(all, total),
                fa_lin_to_db(peak), FA_LOUDNESS_SCAN);
-    free(all);
+    if (j->keep_subs) {
+        j->all_subs = all;
+        j->all_nsubs = total;
+    } else {
+        free(all);
+    }
     if (j->have_key) cache_write(j, &j->result);
 }
 
@@ -539,6 +548,7 @@ static void job_free(fa_scan_job* j)
     if (!j) return;
     if (j->chunks) for (k = 0; k < j->nchunks; k++) free(j->chunks[k].subs);
     free(j->chunks);
+    free(j->all_subs);
     free(j->path);
     fa_shared_file_release(j->shared);
     fa_soundfont_release(j->env.soundfont);
@@ -624,16 +634,20 @@ void fa_scan_shutdown(fa_engine* e)
     e->scan_thread_count = 0;
 }
 
-FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* path, fa_loudness* out_loudness)
+/* A standalone scan of `path` on the calling thread and the scan threads. no_cache
+ * skips the cache both ways; out_subs (may be NULL) takes the 100 ms values. */
+static fa_result measure_path(fa_engine* engine, const char* path, int no_cache, fa_loudness* out, double** out_subs,
+                              int64_t* out_nsubs)
 {
     fa_scan_job* j;
     fa_result r;
-    if (!engine || !path || !out_loudness || out_loudness->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     j = job_new(engine);
     if (!j) return FA_ERROR_OUT_OF_MEMORY;
     j->path = fa_strdup(path);
     if (!j->path) { job_free(j); return FA_ERROR_OUT_OF_MEMORY; }
     j->name_hint = j->path;
+    j->no_cache = no_cache;
+    j->keep_subs = out_subs != NULL;
     j->env.soundfont = fa_engine_soundfont(engine);
     if (!j->env.soundfont) {
         /* A MIDI file and no soundfont from the app: the OS's own instruments, as a stream would play it. */
@@ -655,8 +669,35 @@ FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* pa
     r = j->status;
     if (r == FA_OK) {
         j->result.gain_db = fa_engine_norm_gain_db(engine, j->result.integrated_lufs);
-        fa_copy_sized(out_loudness, &j->result, sizeof(j->result));
+        *out = j->result;
+        out->struct_size = sizeof(*out);
+        if (out_subs) {
+            *out_subs = j->all_subs;
+            *out_nsubs = j->all_nsubs;
+            j->all_subs = NULL;
+        }
     }
     job_free(j);
     return r;
+}
+
+FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* path, fa_loudness* out_loudness)
+{
+    fa_loudness l;
+    fa_result r;
+    if (!engine || !path || !out_loudness || out_loudness->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&l, 0, sizeof(l));
+    l.struct_size = sizeof(l);
+    r = measure_path(engine, path, 0, &l, NULL, NULL);
+    if (r == FA_OK) fa_copy_sized(out_loudness, &l, sizeof(l));
+    return r;
+}
+
+fa_result fa_scan_measure_path(fa_engine* engine, const char* path, fa_loudness* out, double** out_subs,
+                               int64_t* out_nsubs)
+{
+    memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(*out);
+    if (out_subs) { *out_subs = NULL; *out_nsubs = 0; }
+    return measure_path(engine, path, 1, out, out_subs, out_nsubs);
 }
