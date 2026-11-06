@@ -32,6 +32,26 @@ the 023A policy; `docs/NATIVE_DEPENDENCIES.md` is rewritten with it.
    needed; the test players stop needing FFmpeg in `native\`; `scripts/setup-linux-native.sh` keeps
    only test media.
 
+## The builds in use today (checked 2026-11-06)
+
+| | Windows (owner's players) | Linux (sandbox, `scripts/setup-linux-native.sh`) |
+|---|---|---|
+| Source | NuGet `TqkLibrary.FFmpeg.Lgpl3.Native.Win.x64` 9.0.2 (tqk2811/FFmpegBuild, BtbN-style ffbuild) | BtbN FFmpeg-Builds `latest` (not pinned) |
+| FFmpeg inside | `n9.0-2-g03d9533176`, built 2026-08-09: 9.0 plus two commits, **not** the 9.0.2 release the package number suggests | `n9.0.2-45-g1e65c6cd5d`, built 2026-11-03: 9.0.2 plus 45 release-branch commits |
+| Licence | LGPL v3 (`--enable-version3`; no `--enable-gpl`, no `--enable-nonfree`) | the same |
+| TLS | Schannel (Windows store) | OpenSSL |
+| Size | 7 DLLs, 127 MB (57 MB package) | 7 shared libraries |
+
+Both pass the licence rule. Points for the stage:
+- **Pin one exact FFmpeg version for every platform**: today Windows and Linux run different 9.0 snapshots,
+  and the Linux script downloads whatever `latest` is.
+- **Trim the build for playback**: both builds carry encoders and libraries a player never uses (x264/x265
+  are off, but SVT-AV1, VVenC, rav1e, kvazaar, libaom's encoder, OpenH264, LAME, TwoLAME, VMAF, ZeroMQ,
+  chromaprint, OpenCL, ...). A decode-only LGPL build is much smaller and has fewer third-party licences to
+  list. **OpenH264 compiled from source is not covered by Cisco's patent licence** (that covers only
+  Cisco's own binaries), so it should be left out; H.264 decoding uses FFmpeg's own decoder or the GPU.
+- Our own CI build (step 1's "later") is the way to get both.
+
 ## Open for the owner before a paid release (not a blocker for this stage)
 
 Codec patents (H.264, HEVC, AAC and others) are separate from FFmpeg's copyright licence and depend on

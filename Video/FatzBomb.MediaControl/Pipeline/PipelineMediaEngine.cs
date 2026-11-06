@@ -1086,9 +1086,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     // May run on BASS's mixing thread (a trimmed end or loop sync): only queue work here.
+    // ENG-051 (owner 2026-11-06): a background video loops on its own while it is visible,
+    // independent of the song, so a song that loops leaves it playing; only a real end (no loop)
+    // rewinds it to its first frame, as Stop does.
     private void OnPlaybackEnded(object? sender, EventArgs e)
     {
-        RequestBackgroundRestart(resume: LoopPlayback && HandlesLoopInternally);
+        if (!LoopPlayback)
+            RequestBackgroundRestart(resume: false);
+
         MediaEnded?.Invoke(this, EventArgs.Empty);
     }
 
