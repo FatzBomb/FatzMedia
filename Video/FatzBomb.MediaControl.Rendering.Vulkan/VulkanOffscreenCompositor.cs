@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics.Geometry;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -77,6 +78,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private ImageResource? _cdgImage;
     private BufferResource? _uploadBuffer;
     private BufferResource? _cdgUploadBuffer;
+    // The CDG shader's source column and row for every drawn destination pixel (ENG-049).
+    private BufferResource? _cdgMapBuffer;
     private CdgRenderSnapshot? _cdgUploadedSnapshot;
     private VkImage _cdgUploadedImage;
     // The subtitle raster held by _subtitleImage: uploaded only when the frame's subtitle revision
@@ -232,6 +235,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>((void*)cdgUpload.Mapped, (int)length));
             }
 
+            if (plan.Cdg is { } cdgMapPlan)
+            {
+                // Rewritten every frame (a few thousand values): the previous submission completed. The
+                // planner never plans an empty CDG quad, so the map always has at least one column and row.
+                NearestSampledPlacement placement = cdgMapPlan.Quad.Placement;
+                var length = (placement.ClippedRight - placement.ClippedLeft) + (placement.ClippedBottom - placement.ClippedTop);
+                BufferResource map = EnsureBuffer(ref _cdgMapBuffer, (ulong)length * sizeof(uint), BufferUsageFlags.StorageBufferBit, UploadMemoryPreferences);
+                VulkanCompositionPlanner.WriteCdgSourceMap(placement, new Span<uint>((void*)map.Mapped, length));
+            }
+
             var uploadSubtitle = false;
             if (plan.Subtitle is { } subtitle)
             {
@@ -349,7 +362,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
                     PipelineStageFlags.TransferBit,
                     PipelineStageFlags.ColorAttachmentOutputBit);
-                _overlay!.Record(_commandBuffer, renderTarget.Framebuffer, plan, cdgView, subtitleView);
+                _overlay!.Record(_commandBuffer, renderTarget.Framebuffer, plan, cdgView, _cdgMapBuffer?.Buffer ?? default, subtitleView);
                 Barrier(
                     target,
                     ImageLayout.ColorAttachmentOptimal,
@@ -614,6 +627,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 _subtitleUploadedPixels = default;
                 Destroy(ref _uploadBuffer);
                 Destroy(ref _cdgUploadBuffer);
+                Destroy(ref _cdgMapBuffer);
                 Destroy(ref _readbackBuffer);
                 _backgroundUploadedRevision = -1;
                 if (_fence.Handle != 0)

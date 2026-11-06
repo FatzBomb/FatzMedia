@@ -55,6 +55,42 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-057 - Small items from the test-player audit
+
+Reported: 2026-11-05 (audit). Low priority, each small:
+- WPF: after re-parenting the surface for full screen the player calls `RefreshPresentationLayout`
+  twice by hand (Render and ApplicationIdle priority, `Player/PlayerView.xaml.cs`): `MediaSurface` does
+  not notice a grid row/span or margin change that keeps its size.
+- Pitch (±12) and tempo (50-200) limits are hard-coded in the view model (`PlayerViewModel.cs`); Core
+  documents tempo as 5-5000 and has no range constants. Expose the ranges from Core.
+- The view model re-applies about 13 engine settings after creating a player (`PlayerViewModel.cs`);
+  055A's `ReconfigureAsync` covers carrying them over.
+
+### ENG-056 - Avalonia player re-parses the file-dialog filter string
+
+Reported: 2026-11-05 (audit). `Player.Avalonia/AvaloniaPlayerHost.cs` (`ToFileTypes`) splits
+`OpenFileDialogFilter` back into types, because the player exposes only the string while Core has the
+structured `AcceptedMediaTypes.Filters`. Expose the structured filters on the player (and optionally an
+Avalonia `FilePickerFileType` helper).
+
+### ENG-055 - A missing native library folder throws
+
+Reported: 2026-11-05 (audit). `MediaControlPlayer.ResolveNativeLibraryPaths` throws
+`DirectoryNotFoundException` for a folder that does not exist, so each player filters its list first
+(`Player/Configuration/PlayerNativeLibraries.cs`, `Player.Avalonia/NativePaths.cs`,
+`Player.Shared/Hosting/PlayerNativePaths.cs`), while the Windows bootstrap and `LinuxNativeLibraryLocator`
+already skip missing folders. Proposed: skip it with a Warning (public behaviour change: owner's call). Owner 2026-11-06: folded into 058A (FFmpeg
+ships with the control, so native paths become a rarely used override).
+
+### ENG-054 - Second-screen open/close copied in all three test players
+
+Reported: 2026-11-05 (audit). `Player/PlayerView.xaml.cs` (`OpenSecondScreen`/`CloseSecondScreen`),
+`Player.Avalonia/PlayerPanel.axaml.cs` and `Player.WinForms/PlayerPanel.cs` each list the screens, pick
+one that is not the owner's (`Player.Shared/Presentation/PlayerScreenChooser.cs`), create a
+`SecondaryPresentationWindow`, call `ShowOnScreen` and track its close (about 50 lines each). A projector
+app needs the same: an adapter helper (`ShowOnOtherScreen(owner, preferred)`) with the screen rule in Core.
+Fits 052A or its own small item.
+
 ### ENG-053 - WinForms: other players stutter when one goes full screen
 
 Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,
@@ -63,6 +99,11 @@ Avalonia. Likely the layout change (the others hidden, the panel resized, the fo
 resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
 the other panels before the resize, or suspending layout around the switch, removes it.
 
+Change (2026-11-06, pending the owner's check): `MainForm.SetWindowFullScreen` suspends layout around the
+border and window-state changes, so the panels and their surfaces are laid out once at the final size
+instead of once per step. If the stutter stays, the next suspect is the hidden panels' surfaces stopping
+and restarting presentation.
+
 ### ENG-052 - Embedded subtitle scan reads a large MKV twice
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
@@ -70,6 +111,15 @@ showed its picture at once (the scan runs after the open, ENG-039 P5-1), but the
 within 5 s: the whole file twice. On a laptop disk or a network share that competes with playback. The
 scan should read the file once at most (one pass for all text tracks, sharing the open demuxer or
 reading only the subtitle packets' clusters), and at a lower priority than playback.
+
+Found (2026-11-06): the subtitle scan reads the file once. On Linux a 533 MB MKV with an SRT track read
+533 MB (`DecodeTracks_ReadsALargeFileAtMostOnce`, opt-in with `FATZBOMB_LINUX_LARGE_SUBTITLE_MKV`). The
+second full read is the video soundtrack's peak normalization: `VideoAudioEngine.RunNormalizationAnalysis`
+opens its own `FfmpegAudioReader` and decodes the whole soundtrack for the deep pass ("Deep normalization
+complete" in the owner's log), which in an MKV means reading the whole file again. That is the BASS
+soundtrack path, which 037A slice 5 replaces (owner rule: BASS-path issues are not fixed). Slice 5 must not
+bring it back: FatzAudio measures a soundtrack's loudness from the audio we feed it (request 13) or from its
+cache, with no separate read of the file. The subtitle side needs no change.
 
 ### ENG-051 - Background video hitches at the song's loop point
 
@@ -146,6 +196,14 @@ delta 255). lavapipe matches exactly, so the GPU's nearest-texel rounding at tex
 from the Software renderer's integer mapping. Not visible in practice. Fix: compute the source texel in
 the shader with the Software renderer's integer formula (`texelFetch`) instead of a nearest sampler.
 
+Fix (2026-11-06, pending the owner's Vulkan test run on the RTX 5090): computing the texel in the shader in
+float cannot match the software renderer's double-precision mapping (a simulation over 29 million
+destination columns at every output size from 50 to 4000 found 2,400 to 7,800 mismatches whichever float
+formula was used). So the CPU writes the software renderer's own source column and row for every drawn pixel
+(`VulkanCompositionPlanner.WriteCdgSourceMap`, from `NearestSampledPlacement`) into a small storage buffer,
+and `cdg.frag` reads the texel through it with `texelFetch`. The GPU does no rounding of its own. On
+lavapipe: all CD+G tests exact, and they fail when the map is deliberately broken.
+
 ### ENG-048 - FatzAudio loudness cache never written on a fresh machine (fixed)
 
 Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a
@@ -162,6 +220,14 @@ yet narrowed down: compare BASS and `--audio=fatz` on the same file, and with fa
 FatzAudio (2026-11-05): its seeks were hard cuts; a short fade fix is built and ships with its next
 release. Owner decision: checked on FatzAudio only; BASS is going away, so BASS-only audio issues are
 not fixed.
+
+Second case (owner 2026-11-06, WinForms player, 1080p video with sound on two screens, BASS): clicks and
+pops while just playing, no seeking, intermittently for at least 30 s, then shorter and mostly gone; with
+and without `scripts/measure-process.ps1` running. Video soundtracks still go through `VideoAudioEngine`
+into a BASS push stream (also with `--audio=fatz`), so FatzAudio's seek fade does not cover this. Suspected:
+the push stream running dry early (our feeding), not BASS. Owner decision: no fix on the BASS path; check it
+in 037A slice 5 (soundtracks on FatzAudio packet or push streams) with this same run, and add a dry-feed
+counter there if it is still heard.
 ### ENG-046 - WPF frame-sink (composited) resize lags behind the drag
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 4b: WPF with `--surface=framesink`): the video

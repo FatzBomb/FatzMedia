@@ -19,11 +19,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   fallback. Slice 5, Avalonia second-screen output (one player on two screens; renderers
   accept secondary frame-sink and shared-image surfaces; Audio mode clears the surface), is
   implemented and pending manual smoke (`updates/027A_5`). WinUI 3 is deferred.
-- `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
-  normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
-  film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
-  pending manual smoke: the owner has no such files yet (`updates/033A_1`,
-  `updates/033A_2`).
 - `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
   the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
   2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux; its Windows console-app smoke
@@ -48,7 +43,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
   Direct3D11, opt-in `Direct3D11PresentationOptions.HdrOutput`: FP16 scRGB swap chain for the
   primary window, SDR layers at the system SDR white level, SDR fallback) is implemented,
-  pending manual smoke (`updates/042A_2`); the WPF Player turns it on with `--hdr-output`.
+  pending manual smoke (`updates/042A_2`); the WPF Player turns it on with `--hdr-output`. Owner
+  2026-11-06: no HDR display now or planned, so slice 2's HDR-display check cannot run here; its SDR
+  fallback passed (backlog test 4). Treat HDR output as untested on real HDR hardware.
   Secondary windows, offscreen surfaces and the Avalonia GPU-shared surface stay SDR.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
@@ -79,6 +76,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 - `complete/019A_COMPLETED_VideoFrameEventArgsReuseApiRedesign.md` — video frame event lifetime matrix, written ephemeral contract and conformance tests; no behaviour change (completed 2026-10-18)
 - `complete/020A_COMPLETED_AudioFilterFramework.md` — audio filter contract and bypassable parametric equalizer; owner smoke passed 2026-10-17 (completed 2026-10-18)
 - `complete/022A_COMPLETED_ThreadModelProfilingAndSimplification.md` — thread map and capture tooling, per-frame costs removed, reused scheduler threads, CD+G seek checkpoints; owner smoke passed 2026-10-18 (completed 2026-10-18)
+- `complete/033A_COMPLETED_FfmpegAudioParityAndFallback.md` — FFmpeg audio parity for video soundtracks (equalizer, fades, normalization) and the FFmpeg fallback for audio formats no BASS plug-in decodes; owner smoke passed 2026-10-17 and 2026-11-06 (real `.ape` and `.dsf`) (completed 2026-11-06)
 - `complete/031A_COMPLETED_PreparedNextPlaylistSlot.md` — depth-one prepared-next slot with Player Next panel; owner smoke passed 2026-10-17 (completed 2026-10-18)
 - `complete/031B_COMPLETED_AudioFadeCrossfadeModel.md` — fade envelopes, single-handle fades and fade-through transitions; owner smoke passed 2026-10-17; overlapping crossfade deferred to 040A (completed 2026-10-18)
 - `complete/034A_COMPLETED_NativeDependencyReport.md` — native dependency report; owner smoke passed 2026-10-17 (completed 2026-10-18)
@@ -135,6 +133,13 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   position, events and surfaces.
 - `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
   SharpCompress and rar dropped; after FatzAudio's archive API.
+- `future/059A_IDEA_Arm64Targets.md` - **planned** (owner 2026-11-06): win-arm64 and linux-arm64 builds,
+  natives (FatzAudio is adding them; FFmpeg via 058A) and an ARM smoke.
+- `future/058A_IDEA_ShipFfmpegWithTheControl.md` - **planned** (owner 2026-11-06): the LGPL FFmpeg
+  libraries ship in runtime packages (win-x64, linux-x64) with the licence, notices and source; no GPL
+  or nonfree build; replaces the host-owned FFmpeg policy (023A).
+- `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
+  `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy: **planned, queue item 2 after 051A** (owner 2026-11-05; UI-thread
   time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5

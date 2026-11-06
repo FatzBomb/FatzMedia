@@ -26,6 +26,10 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
     (every other audio codec FatzAudio can license: TrueHD, DTS-HD lossless, APE, WavPack, Musepack, TTA,
     DSD, RealAudio, more containers; FFmpeg push stays only where licensing blocks FatzAudio):
     `docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`; the 037A slice 5 plan uses them.
+  - FatzAudio is adding native builds for win-arm64, linux-arm64, osx (one universal arm64+x64 dylib),
+    android and iOS (xcframework) to its CI and package, after rc.4 (rc.4 does not wait); layout agreed
+    (`runtimes/<rid>/native/`, `runtimes/osx/native/` for the universal library). Our side: 059A (ARM),
+    058A (FFmpeg for the same targets), macOS platform package and renderer still to do (026A/026B).
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
@@ -41,7 +45,13 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
   6. `055A` `ReconfigureAsync`: extends 043A's existing `SetModeAsync` (mode on the fly, media kept at
-     its position) to the audio engine, renderer, device and other settings.
+     its position) to the audio engine, renderer, device and other settings. **Slice 1 (owner
+     2026-11-05): renderer fallback in place**: the swap in place, then the automatic switch after an
+     unrecoverable device loss (media kept at its position; moves out of the test players), then an
+     `Auto` renderer choice in the package.
+  6b. `057A` UI-friendly async API (audit 2026-11-05): `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`,
+     the players use Core's events instead of polling. Audit items also in 055A slice 1 (surface and
+     decoding paired by the package), 051A (the 500 ms startup delay) and ENG-054 to ENG-057.
   7. After rc.4: rc.4 pin move + start wait/cache size pass-through; `050A` tags and file info;
      `056A` archives through FatzAudio's reader, SharpCompress and rar dropped.
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
@@ -74,6 +84,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - Loudness is the only normalization on FatzAudio; the target is a code setting (no player flag).
 - Tags and full file information are exposed (audio from FatzAudio, video from FFmpeg, hashes ours).
 - One archive reader, FatzAudio's; rar is dropped entirely, SharpCompress goes with it.
+- The control ships FFmpeg (LGPL only, never GPL or nonfree) in runtime packages: stage 058A, after the
+  rc.4 work (2026-11-06). Codec patents: the owner checks with a lawyer before a paid release.
+- BASS-only audio issues are not fixed (BASS is going away); audio bugs are checked on FatzAudio.
 - No `Simple` player mode; idle costs are fixed in `Full`.
 - TriviaBomb (a WPF trivia host replacing LibVLC) designs for `WpfComposited`; native mode cannot
   switch overlay and video in the same frame (the overlay is a separate layered window).
@@ -107,8 +120,10 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next steps
 
-1. Owner: the normalization smoke (`updates/037A_Normalization`), and the 054A measurement
-   (`--mode=full` vs `--mode=background` on a plain 1080p clip). 047A's before numbers come after 051A
+1. Owner: the normalization smoke (`updates/037A_Normalization`, with rc.4). The 054A desktop
+   measurement is done (2026-11-06: Full costs about 0.02 of a core more than Background, noise); the laptop
+   question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
+   resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
    adds the UI-thread counter.
 2. Start `051A`: move it to `active/`, write acceptance criteria, then implement across WPF, Avalonia
    and WinForms (WPF composited: raise in `WpfCompositedSurfaceHost.PublishPendingFrame`, same

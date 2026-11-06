@@ -92,7 +92,7 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    until the decision slice.
 4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
    MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
-5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
+5. **Video audio.** (Smoke includes ENG-047's second case: 1080p video with sound on two screens, no clicks in the first minute.) No separate read of the file for loudness (ENG-052: today's BASS soundtrack path decodes the whole soundtrack a second time for its deep peak pass); FatzAudio measures from the fed audio (request 13) or its cache. Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
    0.75-1.5, seeks, loop wraps and pause/resume. Plan (owner 2026-11-05): FFmpeg demuxes every video
    file (AVI/DivX, MPG, TS included); the audio goes to FatzAudio as a packet stream when it decodes

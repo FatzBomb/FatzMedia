@@ -257,6 +257,19 @@ internal static class VulkanCompositionPlanner
     }
 
     /// <summary>
+    /// Fills <paramref name="map"/> with the software renderer's source column for every clipped
+    /// destination column, then its source row for every clipped destination row (ENG-049): the CDG
+    /// shader reads its texel through it, so it picks exactly the pixel the software renderer does.
+    /// </summary>
+    public static void WriteCdgSourceMap(NearestSampledPlacement placement, Span<uint> map)
+    {
+        var columns = placement.ClippedRight - placement.ClippedLeft;
+        placement.MapColumns(System.Runtime.InteropServices.MemoryMarshal.Cast<uint, int>(map[..columns]));
+        for (var row = placement.ClippedTop; row < placement.ClippedBottom; row++)
+            map[columns + row - placement.ClippedTop] = (uint)placement.GetSourceY(row);
+    }
+
+    /// <summary>
     /// Expands CDG palette indices into tightly packed straight BGRA8, as the software renderer
     /// draws them: the background index and indices past the palette are fully transparent;
     /// every other entry is forced opaque (CDG transparency is index-based, palette alpha is
