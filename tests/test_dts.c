@@ -394,6 +394,15 @@ static void test_codec_framing(void)
     free(b.p);
 }
 
+#if defined(__ANDROID__)
+static fa_result no_system_codec(fa_codec* c, const fa_codec_params* p)
+{
+    (void)c;
+    (void)p;
+    return FA_ERROR_UNSUPPORTED_FORMAT;
+}
+#endif
+
 /* Without a system decoder (Linux; most Windows and Android machines) a DTS file is
  * refused, and the tags reader still gives its details. */
 static void test_no_system_decoder(void)
@@ -403,6 +412,17 @@ static void test_no_system_decoder(void)
     fa_tags* t = NULL;
     fa_stream_info info = { .struct_size = sizeof(info) };
     fa_test_system_codec = NULL;
+#if defined(__ANDROID__)
+    {
+        /* Outside a booted system (tools/android-test/run.sh's chroot, no binder)
+         * MediaCodec waits for its service forever: stand in a phone without one. */
+        const char* real = getenv("FA_TEST_REAL_SYSTEM");
+        if (!(real && strcmp(real, "1") == 0)) {
+            printf("  real MediaCodec skipped (needs a booted Android: FA_TEST_REAL_SYSTEM=1)\n");
+            fa_test_system_codec = no_system_codec;
+        }
+    }
+#endif
     make_stream(&b, 10, 0, 0);
 #if !defined(_WIN32) && !defined(__ANDROID__)
     CHECK_EQ(open_memory(&b, &s), FA_ERROR_UNSUPPORTED_FORMAT);
