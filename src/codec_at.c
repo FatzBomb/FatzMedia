@@ -74,11 +74,10 @@ static fa_result pull(fa_codec* c, at_state* st)
         abl.mBuffers[0].mData = st->buf;
         err = AudioConverterFillComplexBuffer(st->conv, feed, st, &frames, &abl, NULL);
         if (frames > 0) {
-            float* dst;
+            float* dst = fa_codec_out_begin(c, frames, ch, c->rate);
             UInt32 f;
             uint32_t k;
-            if (fa_codec_reserve(c, frames, ch) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
-            dst = c->out + (size_t)c->out_frames * ch;
+            if (!dst) return FA_ERROR_OUT_OF_MEMORY;
             if (st->remap) {
                 for (f = 0; f < frames; f++)
                     for (k = 0; k < ch; k++) dst[(size_t)f * ch + k] = st->buf[(size_t)f * ch + st->map[k]];

@@ -155,6 +155,41 @@ fa_result fa_codec_reserve(fa_codec* c, fa_frames frames, uint32_t channels)
     return FA_OK;
 }
 
+fa_result fa_bytes_append(uint8_t** buf, size_t* len, size_t* cap, size_t first_cap, const uint8_t* data, size_t size)
+{
+    if (*len + size > *cap) {
+        size_t c = *cap ? *cap : first_cap;
+        uint8_t* b;
+        while (c < *len + size) c *= 2;
+        b = (uint8_t*)realloc(*buf, c);
+        if (!b) return FA_ERROR_OUT_OF_MEMORY;
+        *buf = b;
+        *cap = c;
+    }
+    if (size > 0) memcpy(*buf + *len, data, size);
+    *len += size;
+    return FA_OK;
+}
+
+float* fa_codec_out_begin(fa_codec* c, fa_frames frames, uint32_t channels, uint32_t rate)
+{
+    if (fa_codec_reserve(c, frames, channels) != FA_OK) return NULL;
+    c->channels = channels;
+    c->rate = rate;
+    return c->out + (size_t)c->out_frames * channels;
+}
+
+fa_result fa_codec_append(fa_codec* c, const float* pcm, fa_frames frames, uint32_t channels, uint32_t rate)
+{
+    float* dst;
+    if (frames <= 0) return FA_OK;
+    dst = fa_codec_out_begin(c, frames, channels, rate);
+    if (!dst) return FA_ERROR_OUT_OF_MEMORY;
+    memcpy(dst, pcm, (size_t)frames * channels * sizeof(float));
+    c->out_frames += frames;
+    return FA_OK;
+}
+
 fa_result fa_float_reserve(float** buf, fa_frames* cap, fa_frames frames, uint32_t channels)
 {
     fa_frames need = frames * (fa_frames)channels;
@@ -429,17 +464,7 @@ static fa_result mp3_decode(fa_codec* c, const uint8_t* data, size_t size)
     size_t pos = 0;
     int ending = !data && size == 0;
     c->out_frames = 0;
-    if (st->len + size > st->cap) {
-        size_t cap = st->cap ? st->cap : 8192;
-        uint8_t* b;
-        while (cap < st->len + size) cap *= 2;
-        b = (uint8_t*)realloc(st->buf, cap);
-        if (!b) return FA_ERROR_OUT_OF_MEMORY;
-        st->buf = b;
-        st->cap = cap;
-    }
-    if (size > 0) memcpy(st->buf + st->len, data, size);
-    st->len += size;
+    if (fa_bytes_append(&st->buf, &st->len, &st->cap, 8192, data, size) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
     for (;;) {
         float pcm[1152 * 2];
         int frames = 0, ch = 0, rate = 0, used;
@@ -488,11 +513,7 @@ static fa_result mp3_decode(fa_codec* c, const uint8_t* data, size_t size)
             pos += flen > 0 ? (size_t)flen : (size_t)used;  /* disagrees with its header: dropped */
             continue;
         }
-        if (fa_codec_reserve(c, frames, (uint32_t)ch) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
-        c->channels = (uint32_t)ch;
-        c->rate = (uint32_t)rate;
-        memcpy(c->out + (size_t)c->out_frames * c->channels, pcm, (size_t)frames * ch * sizeof(float));
-        c->out_frames += frames;
+        if (fa_codec_append(c, pcm, frames, (uint32_t)ch, (uint32_t)rate) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
         pos += flen > 0 ? (size_t)flen : (size_t)used;
     }
     if (pos > 0) memmove(st->buf, st->buf + pos, st->len - pos);

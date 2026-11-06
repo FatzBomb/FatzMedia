@@ -35,19 +35,6 @@ typedef struct ac3_codec {
     int has_dep;           /* the stream has dependent substreams */
 } ac3_codec;
 
-static fa_result append_out(fa_codec* c, const float* pcm, fa_frames frames, uint32_t channels, uint32_t rate)
-{
-    fa_result r;
-    if (frames <= 0) return FA_OK;
-    r = fa_codec_reserve(c, frames, channels);
-    if (r != FA_OK) return r;
-    c->channels = channels;
-    c->rate = rate;
-    memcpy(c->out + (size_t)c->out_frames * channels, pcm, (size_t)frames * channels * sizeof(float));
-    c->out_frames += frames;
-    return FA_OK;
-}
-
 /* Keeps decoded audio whose format differs from what this call hands out. */
 static fa_result hold(ac3_codec* st, const float* pcm, fa_frames frames, uint32_t channels, uint32_t rate)
 {
@@ -130,21 +117,11 @@ static fa_result ac3c_decode(fa_codec* c, const uint8_t* data, size_t size)
     int ending = !data && size == 0;
     c->out_frames = 0;
     if (st->pend_frames > 0) {
-        fa_result r = append_out(c, st->pend, st->pend_frames, st->pend_channels, st->pend_rate);
+        fa_result r = fa_codec_append(c, st->pend, st->pend_frames, st->pend_channels, st->pend_rate);
         if (r != FA_OK) return r;
         st->pend_frames = 0;
     }
-    if (st->len + size > st->cap) {
-        size_t cap = st->cap ? st->cap : 4096;
-        uint8_t* b;
-        while (cap < st->len + size) cap *= 2;
-        b = (uint8_t*)realloc(st->buf, cap);
-        if (!b) return FA_ERROR_OUT_OF_MEMORY;
-        st->buf = b;
-        st->cap = cap;
-    }
-    if (size > 0) memcpy(st->buf + st->len, data, size);
-    st->len += size;
+    if (fa_bytes_append(&st->buf, &st->len, &st->cap, 4096, data, size) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
     /* Units until the data runs out, or one comes out in a new format (it is
      * held, and the bytes after it wait for the next call). */
     while (st->pend_frames == 0) {
@@ -174,7 +151,7 @@ static fa_result ac3c_decode(fa_codec* c, const uint8_t* data, size_t size)
                 r = FA_OK;
             } else {
                 r = format_change(c, (uint32_t)channels, rate) ? hold(st, st->pcm, frames, (uint32_t)channels, rate)
-                                                                : append_out(c, st->pcm, frames, (uint32_t)channels, rate);
+                                                                : fa_codec_append(c, st->pcm, frames, (uint32_t)channels, rate);
             }
         }
         if (r != FA_OK) return r;

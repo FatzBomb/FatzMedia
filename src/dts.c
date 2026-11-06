@@ -167,16 +167,9 @@ static fa_result grow(uint8_t** p, size_t* cap, size_t need)
 static fa_result take_output(fa_codec* c, dts_codec* st)
 {
     fa_codec* in = &st->inner;
-    fa_result r;
     if (in->out_frames == 0) return FA_OK;
     if (c->out_frames > 0 && (in->channels != c->channels || in->rate != c->rate)) c->out_frames = 0;
-    c->rate = in->rate;
-    c->channels = in->channels;
-    r = fa_codec_reserve(c, in->out_frames, in->channels);
-    if (r != FA_OK) return r;
-    memcpy(c->out + (size_t)c->out_frames * c->channels, in->out, (size_t)in->out_frames * in->channels * sizeof(float));
-    c->out_frames += in->out_frames;
-    return FA_OK;
+    return fa_codec_append(c, in->out, in->out_frames, in->channels, in->rate);
 }
 
 /* Hands every whole frame in st->buf to the system's decoder. `end`: no bytes follow. */
@@ -247,10 +240,8 @@ static fa_result dtsc_decode(fa_codec* c, const uint8_t* data, size_t size)
         return take_output(c, st);
     }
     if (size == 0) return FA_OK;
-    r = grow(&st->buf, &st->cap, st->len + size);
+    r = fa_bytes_append(&st->buf, &st->len, &st->cap, 16384, data, size);
     if (r != FA_OK) return r;
-    memcpy(st->buf + st->len, data, size);
-    st->len += size;
     return feed_units(c, st, 0);
 }
 
