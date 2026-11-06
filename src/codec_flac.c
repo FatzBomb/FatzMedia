@@ -148,8 +148,8 @@ fa_result fa_flac_codec_open(fa_codec* c, const fa_codec_params* p)
     set_format(si, rate, channels, bits);
     /* Block sizes as broad as FLAC allows unless STREAMINFO gives usable ones
      * (broken muxers write 0): dr_flac rejects frames above the maximum. */
-    st->max_block = ((uint32_t)si[2] << 8) | si[3];
-    if (st->max_block < 16 || (((uint32_t)si[0] << 8) | si[1]) < 16) {
+    st->max_block = fa_be16(si + 2);
+    if (st->max_block < 16 || fa_be16(si) < 16) {
         st->max_block = 65535;
         si[0] = 0; si[1] = 16;
         si[2] = 0xFF; si[3] = 0xFF;

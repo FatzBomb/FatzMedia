@@ -611,6 +611,17 @@ internal static class TimeConvert
     public static TimeSpan FromNanoseconds(long ns) => TimeSpan.FromTicks(ns / 100);
     public static long ToNanoseconds(TimeSpan t) => t.Ticks * 100;
 
+    // 0 means "now" natively; a real start time of exactly 0 is in the past anyway.
+    public static long StartTime(TimeSpan? at) => at is { } t ? Math.Max(1, ToNanoseconds(t)) : 0;
+
+    /// <summary>The checked arguments every Ramp method passes to the engine.</summary>
+    public static (long DurationNs, long StartNs, Curve Curve) RampArgs(TimeSpan duration, TimeSpan? startAt, Curve? curve)
+    {
+        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
+        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
+        return (ToNanoseconds(duration), StartTime(startAt), curve ?? Curve.Linear);
+    }
+
     public static TimeSpan FromFrames(long frames, int sampleRate) =>
         sampleRate <= 0 ? TimeSpan.Zero : TimeSpan.FromTicks((long)((double)frames * TimeSpan.TicksPerSecond / sampleRate));
 

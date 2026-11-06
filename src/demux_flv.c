@@ -14,6 +14,7 @@
  * the tags come. Tag timestamps are milliseconds; the codec's own frame grid fixes
  * the rounding. */
 #include "demux.h"
+#include "fa_util.h"
 #include "pkt_index.h"
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +63,7 @@ static int read_tag(flv* f, int64_t pos, flv_tag* t)
     if (fa_br_seek(&f->br, pos) != FA_OK || fa_br_read(&f->br, h, 15) != 15) return 0;
     t->type = h[4] & 0x1F;
     if (h[4] & 0x20) t->type |= 0x100;     /* encrypted */
-    t->size = ((uint32_t)h[5] << 16) | ((uint32_t)h[6] << 8) | h[7];
+    t->size = fa_be24(h + 5);
     t->ts = ((int64_t)h[8] << 16) | ((int64_t)h[9] << 8) | h[10] | ((int64_t)h[11] << 24);
     t->data_at = pos + 15;
     t->next = t->data_at + t->size;

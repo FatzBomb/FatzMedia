@@ -230,11 +230,7 @@ public sealed unsafe class Archive : IDisposable
         try
         {
             var gc = GCHandle.Alloc(new IoState(source, leaveOpen));
-            FaIoCallbacks io = default;
-            io.Read = &IoState.Read;
-            io.Seek = &IoState.Seek;
-            io.Length = &IoState.Length;
-            io.Close = &IoState.Close;
+            var io = IoState.Callbacks();
             int rc = NativeMethods.fa_archive_open_io(&io, (void*)GCHandle.ToIntPtr(gc), o.Pointer, out nint native);
             if (rc < 0) gc.Free();   // the native call has already closed the stream through the callbacks
             return Finish(rc, native, rc < 0 ? null : gc, options, ref o);

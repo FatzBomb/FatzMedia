@@ -624,7 +624,7 @@ static int64_t read_ape(fa_source* src, int64_t v1, fa_tag_sink* sink)
 
 /* The tags at the end of a file: ID3v1, and APEv2 and Lyrics3 before it in either
  * order. *l3_end is where the Lyrics3 tag ends. */
-static void tail_sizes(fa_source* src, int64_t* v1, int64_t* ape, int64_t* l3, int64_t* l3_end)
+void fa_tags_tail_sizes(fa_source* src, int64_t* v1, int64_t* ape, int64_t* l3, int64_t* l3_end)
 {
     *v1 = read_id3v1(src, NULL);
     *l3_end = src->length - *v1;
@@ -1277,7 +1277,7 @@ void fa_tags_collect(fa_source* src, fa_tag_sink* sink)
         if (id3 > 0) read_id3v2(src, 0, sink);
     }
     /* APEv2, Lyrics3 and ID3v1 at the end of any of these (some tools tag WAV that way too). */
-    tail_sizes(src, &v1, &ape, &l3, &l3_end);
+    fa_tags_tail_sizes(src, &v1, &ape, &l3, &l3_end);
     read_ape(src, v1 + (l3_end == src->length - v1 ? l3 : 0), sink);
     read_id3v1(src, sink);
     read_lyrics3(src, l3_end, sink);
@@ -1293,7 +1293,7 @@ void fa_tags_audio_span(fa_source* src, int64_t* out_start, int64_t* out_end, ui
     id3 = read_id3v2(src, 0, NULL);
     flac = read_flac(src, id3, NULL, out_bits);
     *out_start = flac > 0 ? flac : id3;
-    tail_sizes(src, &v1, &ape, &l3, &l3_end);
+    fa_tags_tail_sizes(src, &v1, &ape, &l3, &l3_end);
     *out_end = src->length - v1 - ape - l3;
     if (*out_end < *out_start) *out_end = *out_start;
 }

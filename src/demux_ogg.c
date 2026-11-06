@@ -141,6 +141,14 @@ static int crc_build(void* ctx)
 
 static void crc_init(void) { fa_once(&crc_state, crc_build, NULL); }
 
+static uint32_t crc_update(uint32_t crc, const uint8_t* p, size_t n);
+
+uint32_t fa_ogg_crc(const uint8_t* p, size_t n)
+{
+    crc_init();
+    return crc_update(0, p, n);
+}
+
 static uint32_t crc_update(uint32_t crc, const uint8_t* p, size_t n)
 {
     for (; n >= 4; n -= 4, p += 4) {

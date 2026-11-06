@@ -6,6 +6,7 @@
 #ifndef FA_PLATFORM_H
 #define FA_PLATFORM_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -175,6 +176,10 @@ void fa_sleep_ms(uint32_t ms);
 
 /* Files with UTF-8 paths (wide-character APIs on Windows). */
 FILE* fa_fopen_utf8(const char* path, const char* mode);
+#ifdef _WIN32
+/* malloc'd UTF-16 copy of a UTF-8 string (free it); NULL on failure. */
+wchar_t* fa_widen(const char* s);
+#endif
 /* An open file's identity and last-write time (device, file id, seconds, nanoseconds; Windows: volume, index,
  * FILETIME, 0). Two reads with the same identity saw the same bytes unless it changed within the clock's step.
  * 0 when the OS gives none. */
@@ -182,6 +187,10 @@ int fa_file_identity(FILE* fp, uint64_t id[4]);
 int fa_mkdir_utf8(const char* path);                     /* 0 if created or already there */
 int fa_mkdirs_utf8(const char* path);                    /* the same with every missing parent (mkdir -p) */
 int fa_replace_file(const char* from, const char* to);   /* rename over an existing file; 0 on success */
+int fa_file_sync(FILE* f);                               /* flush to the disk itself; 0 on success */
+void fa_file_copy_mode(const char* from, FILE* to);      /* POSIX: `from`'s permission bits onto `to` */
+/* The file a path names, symbolic links resolved (POSIX realpath; Windows: the path as given). 1 on success. */
+int fa_real_path(const char* path, char* out, size_t cap);
 /* Where the OS keeps its MIDI instruments (gm.dls, gs_instruments.dls, a GM .sf2),
  * in the order to try: the `index`th path in UTF-8, 0 past the last one. */
 int fa_system_soundfont_path(int index, char* out, size_t cap);

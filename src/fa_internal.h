@@ -999,6 +999,11 @@ typedef struct fa_tag_loudness {
 void fa_tags_read_loudness(fa_source* src, fa_tag_loudness* out);
 /* The comment header of an Ogg Opus, Vorbis or FLAC file (demux_ogg.c). */
 void fa_ogg_read_tags(fa_source* src, fa_tag_sink* sink);
+/* The Ogg page checksum of `n` bytes (demux_ogg.c), checksum field zeroed by the caller. */
+uint32_t fa_ogg_crc(const uint8_t* p, size_t n);
+/* The tags at the end of a file (tags_read.c): ID3v1 (`v1` bytes at the very end), and
+ * APEv2 and Lyrics3 before it in either order; *l3_end is where the Lyrics3 tag ends. */
+void fa_tags_tail_sizes(fa_source* src, int64_t* v1, int64_t* ape, int64_t* l3, int64_t* l3_end);
 /* A Vorbis comment block (FLAC, Ogg Vorbis/Opus): vendor, count, "KEY=value"
  * items. METADATA_BLOCK_PICTURE items are delivered as pictures. */
 void fa_tags_parse_vorbis_comments(const uint8_t* data, size_t size, fa_tag_sink* sink);
@@ -1043,6 +1048,10 @@ void fa_id_detach(struct fa_stream* s);
 fa_scan_job* fa_id_start(struct fa_stream* s);
 /* Is a fed scan of this song running? */
 int fa_feed_running(fa_engine* e, uint64_t key, int64_t size, int32_t track);
+/* scan.c: fa_scan_loudness_path without the cache (neither read nor written), for
+ * fa_tags_write_loudness. out_subs (may be NULL) takes the 100 ms values, malloc'ed. */
+fa_result fa_scan_measure_path(fa_engine* engine, const char* path, fa_loudness* out, double** out_subs,
+                               int64_t* out_nsubs);
 /* scan.c: a job that looks the song up by identity instead of reading a file. */
 fa_scan_job* fa_scan_start_identity(struct fa_stream* s, uint64_t key, int64_t size, int32_t track);
 void fa_scan_cache_path(const char* dir, uint64_t key, int64_t size, int32_t track, const char* ext, char* out,

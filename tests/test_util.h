@@ -8,6 +8,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
+
+/* Tests that scan loudness give their engine a cache folder of their own (cfg.cache_directory) and
+ * clear it before and after, so a run never sees an earlier run's results and never touches the
+ * real per-user cache. */
+static inline void test_clear_cache_dir(const char* dir)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/loudness.fac", dir);
+    remove(path);
+    snprintf(path, sizeof(path), "%s/loudness.fac.lock", dir);
+    remove(path);
+#ifdef _WIN32
+    _rmdir(dir);
+#else
+    rmdir(dir);
+#endif
+}
 
 static int g_failures = 0;
 #define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); g_failures++; return; } } while (0)

@@ -2,6 +2,7 @@
  * speaks). Platforms that pass commands through to the drive (Linux SG_IO,
  * Windows SPTI) supply one `exec` function; this file does the rest. */
 #include "disc.h"
+#include "fa_util.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,7 +94,7 @@ static fa_result mmc_read_toc(void* h, int format, int track, uint8_t* buf, uint
     r = run((mmc_drive*)h, cdb, 10, buf, alloc, FA_MMC_IN, &sense, MMC_TIMEOUT);
     if (r == FA_ERROR_IO && (no_medium(&sense) || media_changed(&sense))) return FA_ERROR_NO_DISC;
     if (r != FA_OK) return r;
-    len = 2u + (((uint32_t)buf[0] << 8) | buf[1]);
+    len = 2u + fa_be16(buf);
     if (len > alloc) len = alloc;
     *out_len = len;
     return FA_OK;
@@ -179,10 +180,10 @@ static fa_result mmc_get_speed(void* h, uint32_t* out_kbps)
     memset(buf, 0, sizeof(buf));
     r = run((mmc_drive*)h, cdb, 10, buf, sizeof(buf), FA_MMC_IN, &sense, MMC_TIMEOUT);
     if (r != FA_OK) return r;
-    bd = ((uint32_t)buf[6] << 8) | buf[7];
+    bd = fa_be16(buf + 6);
     page = 8 + bd;
     if (page + 16 > sizeof(buf) || (buf[page] & 0x3F) != 0x2A) return FA_ERROR_NOT_IMPLEMENTED;
-    *out_kbps = ((uint32_t)buf[page + 14] << 8) | buf[page + 15];
+    *out_kbps = fa_be16(buf + page + 14);
     return *out_kbps ? FA_OK : FA_ERROR_NOT_IMPLEMENTED;
 }
 

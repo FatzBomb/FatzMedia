@@ -248,6 +248,46 @@ Console.WriteLine($"{scanned.IntegratedLufs:F1} LUFS, LRA {scanned.RangeLu:F1} L
 
 Values that aren't known are `NAN` (.NET: `double.NaN`), for example the range and peak of an estimate.
 
+## Writing loudness tags
+
+To store the loudness in the files themselves, so other players (and FatzAudio on another machine) know it without a scan, call `fa_tags_write_loudness`. It is never automatic: nothing writes to your files unless you call it. It always measures (old loudness tags and the cache are ignored, and the cache is neither read nor written), then writes:
+
+| Format | Tags written |
+|---|---|
+| MP3, ADTS AAC | ID3v2 `TXXX` frames (an existing ID3v2.3 or 2.4 tag keeps its version; a new tag is ID3v2.3). An APEv2 tag the file already has gets the same values. |
+| FLAC, Ogg Vorbis | Vorbis comments |
+| Ogg Opus | `R128_TRACK_GAIN` / `R128_ALBUM_GAIN` (RFC 7845: Q7.8 dB to -23 LUFS, on top of the header's output gain), never ReplayGain keys |
+| MP4, M4A, M4B | iTunes freeform items `----:com.apple.iTunes:replaygain_track_gain` etc. |
+| Monkey's Audio, WavPack, Musepack, TTA | APEv2 |
+| WAV, AIFF, CAF, WMA, Matroska, MIDI, trackers, ZIP entries | not written: `FA_ERROR_UNSUPPORTED_FORMAT`, the file is left alone |
+
+All but Opus get ReplayGain 2: `REPLAYGAIN_TRACK_GAIN` (`"-7.89 dB"`, to -18 LUFS) and `REPLAYGAIN_TRACK_PEAK` (linear; FatzAudio writes the true peak, which is never below the sample peak, so a player's clipping guard stays safe), plus the album pair with `FA_TAGS_WRITE_ALBUM`. Older loudness tags of the kinds written are replaced in both spellings (a stale `R128_TRACK_GAIN` in a FLAC file cannot win over the new ReplayGain value); every other tag, picture and the audio stay byte for byte. A track-only write keeps album tags that are already there.
+
+C:
+```c
+const char* album[] = { "01.flac", "02.flac", "03.flac" };
+fa_loudness_tag_result res[3];
+for (int i = 0; i < 3; i++) res[i].struct_size = sizeof(res[i]);
+if (fa_tags_write_loudness(engine, album, 3, FA_TAGS_WRITE_ALBUM, res) != FA_OK)
+    for (int i = 0; i < 3; i++)
+        if (res[i].result != FA_OK) printf("%s: %d\n", album[i], res[i].result);
+```
+
+C#:
+```csharp
+var results = await Task.Run(() => engine.WriteLoudnessTags(albumFiles, album: true));
+foreach (var r in results.Where(r => !r.Written))
+    Console.WriteLine($"{r.Path}: {r.Error}");
+
+engine.WriteLoudnessTags("single.mp3");   // one file; throws FatzAudioException if it was not written
+```
+
+**Safety.** Each file is written to a new file next to it (`<name>.fatzaudio-N.tmp`), flushed to the disk, and checked: its loudness tags must read back as written, and its first and middle audio must decode to exactly the same samples as the original's. Only then is it renamed over the original, so a failure, a crash or a power cut leaves the original as it was (at worst a stray `.tmp` file next to it). The original must not change while it is measured and written (`FA_ERROR_BUSY` if it did). On POSIX the new file gets the original's permissions and a symbolic link is followed (the file it points to is rewritten). On Windows the rename fails with `FA_ERROR_IO` while the file is open in another program, or in a playing stream, since FatzAudio opens files without delete sharing; close it first.
+
+**Album.** With `FA_TAGS_WRITE_ALBUM` the files are one programme: the album loudness is measured over all of their audio together (EBU R128 gating over the whole album), the album peak is the highest true peak. If any file cannot be measured, nothing is written: that file reports its error and the others `FA_ERROR_CANCELLED`.
+
+**What is refused.** ID3v2.2 tags, ID3v2 tags or APEv2 tags it cannot parse in full, FLAC files with two comment blocks, Ogg files with several streams multiplexed or audio on a header page, Ogg FLAC and Speex, fragmented MP4 whose moov would change size, and files too short to have a loudness (under 0.4 s, or digital silence: `FA_ERROR_NOT_FOUND`). Each of these is left as it was. A chained Ogg file gets the tags in its first stream only.
+
 ## Threads
 
 - Scans run on their own scan threads, never on the decode workers or the audio thread. `fa_scan_loudness_path` also uses the calling thread. A fed scan (`fa_scan_feed`) runs only on the thread that pushes into it.

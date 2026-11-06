@@ -349,25 +349,6 @@ static void cache_clear(fa_lyric* l)
 
 /* ---- text ----------------------------------------------------------------------- */
 
-/* The next code point of UTF-8 at s[*i] (U+FFFD for a bad sequence). */
-static uint32_t next_cp(const char* s, uint32_t len, uint32_t* i)
-{
-    const unsigned char* u = (const unsigned char*)s;
-    uint32_t c = u[*i], n, k, cp;
-    if (c < 0x80) { (*i)++; return c; }
-    if (c >= 0xC2 && c < 0xE0) { n = 1; cp = c & 0x1F; }
-    else if (c >= 0xE0 && c < 0xF0) { n = 2; cp = c & 0x0F; }
-    else if (c >= 0xF0 && c < 0xF5) { n = 3; cp = c & 0x07; }
-    else { (*i)++; return 0xFFFD; }
-    if (*i + n >= len) { (*i)++; return 0xFFFD; }
-    for (k = 1; k <= n; k++) {
-        if ((u[*i + k] & 0xC0) != 0x80) { (*i)++; return 0xFFFD; }
-        cp = (cp << 6) | (u[*i + k] & 0x3F);
-    }
-    *i += n + 1;
-    return cp;
-}
-
 /* A line's text laid out (shape.h), em: font size 1. */
 static float text_width(fa_font* font, float bold, const char* text, uint32_t len)
 {
@@ -389,7 +370,7 @@ static const char* lang_of(const fa_lyric* l)
         const char* t = l->song[i].text;
         uint32_t len = (uint32_t)strlen(t), j = 0;
         while (j < len) {
-            uint32_t cp = next_cp(t, len, &j);
+            uint32_t cp = fa_text_next_cp(t, len, &j);
             if ((cp >= 0x3040 && cp <= 0x30FF) || (cp >= 0x31F0 && cp <= 0x31FF)) kana++;
             else if ((cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0x3130 && cp <= 0x318F)) hangul++;
             else if (cp >= 0x4E00 && cp <= 0x9FFF) han++;
@@ -410,7 +391,7 @@ static void coverage(const fa_lyric* l, const fa_font* f, uint32_t* missing, uin
         const char* t = l->song[i].text;
         uint32_t len = (uint32_t)strlen(t), j = 0;
         while (j < len) {
-            uint32_t cp = next_cp(t, len, &j);
+            uint32_t cp = fa_text_next_cp(t, len, &j);
             if (cp <= 0x20 || cp == 0x3000) continue;
             (*total)++;
             if (!fa_font_glyph(f, cp)) (*missing)++;
@@ -442,7 +423,7 @@ static uint32_t missing_sample(const fa_lyric* l, const fa_font* f, char* out, u
         const char* t = l->song[i].text;
         uint32_t len = (uint32_t)strlen(t), j = 0;
         while (j < len) {
-            uint32_t at = j, cp = next_cp(t, len, &j), k = j - at;
+            uint32_t at = j, cp = fa_text_next_cp(t, len, &j), k = j - at;
             if (cp < 0x80 || cp == 0x3000 || cp == 0xFFFD || fa_font_glyph(f, cp)) continue;
             if (n + k > cap) return n;
             /* Each character once: a short sample covers more of the song. */
@@ -450,7 +431,7 @@ static uint32_t missing_sample(const fa_lyric* l, const fa_font* f, char* out, u
                 uint32_t q = 0, seen = 0;
                 while (q < n && !seen) {
                     uint32_t from = q;
-                    next_cp(out, n, &q);
+                    fa_text_next_cp(out, n, &q);
                     seen = q - from == k && !memcmp(out + from, t + at, k);
                 }
                 if (seen) continue;

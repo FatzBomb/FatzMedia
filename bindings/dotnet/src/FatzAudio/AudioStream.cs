@@ -350,7 +350,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         try
         {
-            if (user != null && GCHandle.FromIntPtr((nint)user).Target is DownloadState st)
+            if (NativeUser.From<DownloadState>(user) is { } st)
             {
                 var outer = t_inDownloadOf;
                 t_inDownloadOf = st.Stream;
@@ -1643,17 +1643,12 @@ public unsafe partial class AudioStream : IDisposable
     /// </example>
     public void Ramp(AudioParameter parameter, float target, TimeSpan duration, Curve? curve = null, TimeSpan? startAt = null)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
-        var c = curve ?? Curve.Linear;
+        var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
-            Handle, (int)parameter, target, TimeConvert.ToNanoseconds(duration), StartTime(startAt), &ramp));
+            Handle, (int)parameter, target, durationNs, startNs, &ramp));
         GC.KeepAlive(c);
     }
-
-    // 0 means "now" natively; a real start time of exactly 0 is in the past anyway.
-    private static long StartTime(TimeSpan? at) => at is { } t ? Math.Max(1, TimeConvert.ToNanoseconds(t)) : 0;
 
     /// <summary>
     /// Starts a ramp and completes when the engine reports it finished: when the parameter
@@ -1678,18 +1673,16 @@ public unsafe partial class AudioStream : IDisposable
     public Task RampAsync(AudioParameter parameter, float target, TimeSpan duration, Curve? curve = null,
         CancellationToken cancellationToken = default, TimeSpan? startAt = null)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
+        var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         long tag = Interlocked.Increment(ref s_nextRampTag);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_ramps) _ramps[tag] = tcs;
         try
         {
-            var c = curve ?? Curve.Linear;
             var ramp = c.ToNative();
             ramp.Tag = tag;
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
-                Handle, (int)parameter, target, TimeConvert.ToNanoseconds(duration), StartTime(startAt), &ramp));
+                Handle, (int)parameter, target, durationNs, startNs, &ramp));
             GC.KeepAlive(c);
         }
         catch
@@ -2170,7 +2163,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         try
         {
-            if (GCHandle.FromIntPtr((nint)user).Target is DspProcessor p)
+            if (NativeUser.From<DspProcessor>(user) is { } p)
                 p(new Span<float>(frames, checked((int)(count * channels))), (int)channels, (int)sampleRate);
         }
         catch
@@ -2338,7 +2331,7 @@ public unsafe partial class AudioStream : IDisposable
         try
         {
             if (ev == null || user == null) return;
-            if (GCHandle.FromIntPtr((nint)user).Target is EventState st && st.Stream.TryGetTarget(out var stream))
+            if (NativeUser.From<EventState>(user) is { } st && st.Stream.TryGetTarget(out var stream))
                 stream.Raise(ev->Type, ev->Frame, ev->Value);
         }
         catch

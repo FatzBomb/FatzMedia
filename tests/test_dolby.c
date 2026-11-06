@@ -982,7 +982,9 @@ int main(void)
     fa_engine_config_init(&cfg);
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
     cfg.worker_threads = 2;
+    cfg.cache_directory = "dolby_cache";
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
+    fa_engine_clear_cache(g_engine);
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }
 
     RUN(test_registry_lists_dolby);
@@ -1004,7 +1006,9 @@ int main(void)
     RUN(test_dialnorm_loudness);
     RUN(test_fed_scan_dialnorm);
 
+    fa_engine_clear_cache(g_engine);
     fa_engine_destroy(g_engine);
+    test_clear_cache_dir("dolby_cache");
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }
     printf("PASS\n");
     return 0;

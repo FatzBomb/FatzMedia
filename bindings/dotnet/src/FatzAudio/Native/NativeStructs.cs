@@ -210,6 +210,20 @@ internal struct FaLoudness
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct FaLoudnessTagResult
+{
+    public uint StructSize;
+    public int Result;
+    public double IntegratedLufs;
+    public double TruePeakDbtp;
+    public double TrackGainDb;
+    public double AlbumLufs;
+    public double AlbumPeakDbtp;
+    public double AlbumGainDb;
+    public int TagFormat;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaEvent
 {
     public int Type;
