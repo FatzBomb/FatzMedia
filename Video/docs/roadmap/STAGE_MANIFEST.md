@@ -52,10 +52,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
   (`updates/043A_1`, `updates/043A_2`).
 
-- `active/051A_ACTIVE_FirstFrameReadySignal.md` - `MediaSurface.FirstFrameReady` on WPF, Avalonia and
-  WinForms (once per load, UI thread; WPF composited in the bitmap-writing operation) and the A/B swap
-  pattern (TriviaBomb); WPF `CompositedUiThreadTime` for 047A; the test players' 500 ms startup delay
-  removed. Slice 1 implemented, pending manual smoke (`updates/051A_1`).
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzBomb.MediaControl.Player.Shared`), at feature parity with the WPF
   player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
@@ -68,6 +64,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/051A_COMPLETED_FirstFrameReadySignal.md` — `MediaSurface.FirstFrameReady` on WPF, Avalonia and WinForms (once per load, UI thread; WPF composited in the bitmap-writing operation) and the A/B swap pattern (TriviaBomb); WPF `CompositedUiThreadTime` (047A's before numbers); the WPF player's `--ab-demo`; the test players' 500 ms startup delay removed; owner smoke passed 2026-11-06/07 (`updates/051A_1`, `scripts/smoke-051A.ps1`)
 - `complete/045A_COMPLETED_GpuDecodingEveryPath.md` — GPU decoding on every presentation path (full compatibility): D3D11VA on the Avalonia surface, Vulkan Video on the Vulkan renderer's device (Linux and Windows) and the Avalonia shared GPU image for Vulkan frames on Windows; owner smoke passed 2026-10-26/27 on Windows (`updates/045A_1` to `045A_3`); Linux drivers unverified (ENG-038)
 - `complete/046A_COMPLETED_AdapterParity.md` — adapter and player parity (no feature solo for one player): shared Core auto-hide, presentation path and lightweight player controller; `SecondaryPresentationWindow`, `KaraokeSurface` and `BackgroundSurface` in WPF, Avalonia and WinForms; WinForms frame sink and overlay; Player.Shared chrome, stats, screen rule and renderer request; GPU-first `--renderer=auto`; the player-count and renderer toolbar in every player; owner smoke passed 2026-10-26/27 (`updates/046A_1` to `046A_3`)
 - `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26). Follow-up update `updates/039A_3` (https and HLS audio through FFmpeg so certificates are verified, ENG-034 triage: clock held for picture-only outages, bounded reconnects, moov-at-end message): implemented, pending manual smoke
@@ -143,7 +140,7 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
   `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
-  (`D3DImage`) instead of a CPU copy: **planned, queue item 2 after 051A** (owner 2026-11-05; UI-thread
+  (`D3DImage`) instead of a CPU copy: **planned, next (queue item 2; 051A completed 2026-11-07)** (owner 2026-11-05; UI-thread
   time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5
   and R7 decided in the idea.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,

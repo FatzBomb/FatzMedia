@@ -1,25 +1,19 @@
 # Handoff
 
-Updated: 2026-11-06. Branch `claude/zen-tesla-ux51s6`, restarted from `main` after PR #72 merged; it holds
-one unmerged commit (a Full-mode first-frame native test and these notes): open a PR with the next batch.
-`main` holds everything through PR #72.
+Updated: 2026-11-07. Branch `claude/zen-tesla-ux51s6`, restarted from `main` after PR #73 merged.
+`main` holds everything through PR #73; the 051A completion notes are in the PR after it.
 
 ## State
 
-- **051A first-frame-ready: slice 1 implemented, pending the owner's Windows smoke**
-  (`active/051A_ACTIVE_FirstFrameReadySignal.md`, `updates/051A_1/StageUpdate.md`).
-  `MediaSurface.FirstFrameReady` on WPF, Avalonia, WinForms (once per load, UI thread; WPF composited in
-  the bitmap-writing operation, after the host is visible); Core's tracker numbers loads
-  (`FirstFrameLoad`). WPF `CompositedUiThreadTime`/`CompositedFramesPublished`, shown in the WPF test
-  player's stats line (047A's before numbers come from the smoke). The 500 ms `StartupMediaDelay` is
-  gone (binding is synchronous; attach re-presents). New findings ENG-058, ENG-059. WPF player
-  `--ab-demo=` (A/B swap demo) and `scripts/smoke-051A.ps1` (6 tests). **PR #72 merged 2026-11-06, CI green.**
-  Sandbox after the merge: Linux 212/212 with real FFmpeg, BASS and FatzAudio (Full mode with sound,
-  load before attach, both engines). **Owner smoke 2026-11-06 (desktop): 26 pass, 2 fail** (test 2: a
-  logging bug and a wrong expectation, both fixed in PR #73; `updates/051A_1`). Test 3 gave 047A's before
-  numbers (in the 047A idea). New ENG-060 (native: first A/B swaps a frame or two late). Left: rerun
-  tests 1, 2 and 5 with PR #73 (`-Steps 1,2,5`); check test 1's native time on the second start (8.1 s
-  on the first start after the build, 0.6 s frame sink).
+- **051A first-frame-ready: complete** (2026-11-07; PR #72, #73; `complete/051A_COMPLETED_FirstFrameReadySignal.md`,
+  `updates/051A_1/StageUpdate.md`). `MediaSurface.FirstFrameReady` on WPF, Avalonia and WinForms; Core's
+  tracker numbers loads (`FirstFrameLoad`); WPF `CompositedUiThreadTime`/`CompositedFramesPublished`; the
+  WPF player's `--ab-demo=`; the 500 ms startup delay gone; `scripts/smoke-051A.ps1`. Owner smoke on the
+  desktop: all passed (2026-11-06 tests 3, 4, 6; 2026-11-07 rerun of 1, 2, 5: 24/24). 047A's before
+  numbers are in the 047A idea. No laptop run (owner): the old-app comparison stands. Open findings:
+  ENG-058 (latch and a background frame), ENG-059 (WPF composited keeps its last bitmap while
+  auto-hidden), ENG-060 (native: first A/B swaps a frame or two late; not seen on the rerun), ENG-061
+  (the first start after a build loads slowly: 8-16 s, then 0.7 s).
 
 - **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
   `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
@@ -49,7 +43,7 @@ one unmerged commit (a Full-mode first-frame native test and these notes): open 
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
-  1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **slice 1 done, pending smoke**.
+  1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **complete 2026-11-07**.
   2. `047A` WPF shared GPU surface - **planned again** (owner 2026-11-05): the cost that matters is
      UI-thread time per frame (1-2 ms per 1080p surface, estimated), for every host animating over
      video; most shows run on laptops; venue displays are 4K. Slice 1: shared GPU image with the
@@ -153,12 +147,10 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 1. Owner: the normalization smoke (`updates/037A_Normalization`, with rc.4). The 054A desktop
    measurement is done (2026-11-06: Full costs about 0.02 of a core more than Background, noise); the laptop
    question is answered by the old trivia app comparison (ours lower on CPU and memory at higher
-   resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested. 047A's before numbers come after 051A
-   adds the UI-thread counter.
-2. Owner: the 051A smoke (`scripts/smoke-051A.ps1`; `updates/051A_1`) on the desktop (test 5 is the A/B demo;
-   test 3 with `-SimulateLaptop` adds a 4-core stand-in). **No laptop run** (owner 2026-11-06: not until
-   software uses it); the owner's comparison with the old trivia app on laptops (ours clearly better) is the
-   laptop answer for now. Then start 047A slice 1 with the desktop numbers as the baseline.
+   resolution; GPU memory flat at 199 MB, while the old MediaElement app leaks about 140 MB/s; 054A note). No HDR display (owner): 042A slice 2's HDR-display check stays untested.
+2. **Next: 047A slice 1** (WPF shared GPU surface: `D3DImage` on Direct3D 9Ex with the R1/R5/R7 guards
+   and hand-written COM calls, no new package), with the before numbers in the 047A idea; measure the
+   same way after (`smoke-051A.ps1` test 3).
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
    Cache (FatzAudio's 2026-11-05 answer, on its main after rc.3): unset `CacheDirectory` then means
@@ -175,8 +167,9 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next-session prompt
 
-> Read HANDOFF.md. 051A slice 1 is merged (PR #72); its first owner smoke passed except two test-2
-> checks, fixed in PR #73 with a script update. Check PR #73's CI, then read the owner's rerun of
-> `scripts/smoke-051A.ps1 -Steps 1,2,5` (on `main` after #73 merges) and fix what it finds. When it passes,
-> move 051A to `complete/` and start queue item 2, stage 047A slice 1 (WPF shared GPU surface), with the
-> before numbers recorded in the 047A idea.
+> Read HANDOFF.md. 051A is complete. Start queue item 2, stage 047A slice 1 (WPF shared GPU surface):
+> move `docs/roadmap/future/047A_IDEA_WpfSharedGpuSurface.md` to `active/` with bounded acceptance
+> criteria, propose the design (Direct3D 9Ex device and `D3DImage`, the texture ring and GPU completion
+> wait for R1, front-buffer loss for R5, adapter LUID check for R7, hand-written COM calls) before
+> coding, then implement, validate, open a PR, and give me a smoke script. The before numbers are in the
+> 047A idea (from `scripts/smoke-051A.ps1` test 3).

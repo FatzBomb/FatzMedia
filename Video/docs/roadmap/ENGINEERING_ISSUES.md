@@ -55,6 +55,16 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-061 - The first player start after a build loads its first video slowly
+
+Reported: 2026-11-07 (owner, 051A smoke test 1): the first WPF player start after a fresh build took
+16.5 s (2026-11-06: 8.1 s) from the window to the first frame of `avsync.mp4`, native mode; the next
+starts took 1.1 s (frame sink) and 0.7 s (native). First frame and load end came together, so the load
+itself was slow. Likely a cold-start cost of new files (antivirus scanning the new executables and the
+FFmpeg/BASS DLLs on first load, the GPU driver's shader cache, the media file not yet cached), but not
+shown. It matters if end users pay it on the first start after installing: check once with a release
+build (the Windows Security protection history shows scans; Process Monitor shows where the time goes).
+
 ### ENG-060 - Native WPF: the first A/B swaps show the new clip a frame or two late
 
 Reported: 2026-11-06 (owner, 051A smoke test 5, `NativeHwndOverlay`): the first one or two swaps of the
@@ -63,7 +73,8 @@ composited mode. Likely: the waiting surface's child window had never been shown
 presents into a hidden window may have its first presents dropped or the desktop compositor needs a
 frame to start composing the newly shown window. Native mode is best effort for same-frame changes
 (051A), so this is low priority; a possible fix is a re-present when the surface's window becomes
-visible. Check with `--ab-mode=native` after a fix.
+visible. Check with `--ab-mode=native` after a fix. 2026-11-07 rerun: not seen (bar and clip at the same
+moment, 10 of 10 swaps); kept open as intermittent until it is seen again or not seen in a few more runs.
 
 ### ENG-059 - WPF composited surface keeps its last bitmap while auto-hide hides it
 

@@ -1,7 +1,9 @@
-# Active Stage 051A - First-frame-ready signal and the A/B swap pattern
+# Completed Stage 051A - First-frame-ready signal and the A/B swap pattern
 
 Prepared: 2026-11-06 (owner decision 2026-11-05, TriviaBomb: a WPF host replacing LibVLC).
-Status: slice 1 implemented, pending manual smoke (`updates/051A_1`).
+Completed: 2026-11-07. Status: slice 1 done (PR #72, #73); owner smoke passed 2026-11-07 on the
+desktop (`updates/051A_1`: 24 of 24 on the rerun of tests 1, 2 and 5; tests 3, 4 and 6 passed on
+2026-11-06). No laptop run (owner decision): the comparison with the old trivia app stands.
 
 ## Why
 
