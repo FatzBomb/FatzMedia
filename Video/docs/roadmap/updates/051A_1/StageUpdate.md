@@ -1,6 +1,6 @@
 # 051A slice 1 - First-frame-ready signal, composited UI-thread counter, no startup delay
 
-Date: 2026-11-06. Status: implemented, pending manual smoke (Windows).
+Date: 2026-11-06. Status: **complete**: owner smoke passed 2026-11-07 (rerun below).
 Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, acceptance).
 
 ## What changed
@@ -137,4 +137,18 @@ Fixed after the run (PR #73):
 - Media prompts ask for a video that does not start on a fade from black.
 
 Rerun only tests 1, 2 and 5 (`-Steps 1,2,5`).
+
+## Owner rerun of tests 1, 2 and 5 (2026-11-07, desktop, `main` at 0a11b9c): 24 passed, 0 failed
+
+Media: `avsync.mp4` (tests 1, 2; clip B), `4k-hevc.mkv` (clip A), `audio-only.mp3` (no picture).
+
+- Test 1: one line per run, naming the file and the path (`P1 first frame ready: avsync.mp4 (Audio, Video)
+  via native window`). First frame and load finished at the same moment in every run: native 16.5 s on
+  the first start after the build, frame sink 1.1 s, native again 0.7 s. The slow first start is the
+  load itself, not the event (ENG-061).
+- Test 2: two lines for the two video loads, none for the MP3 (it showed no picture), nothing else.
+- Test 5: composited 20/20 (183/260/358 ms), every first frame at full size, no black frame, no old frame,
+  bar and clip together. Collapsed 6/6, all 6 first frames rendered at no size (1x1), confirming the
+  Hidden rule (still not visible by eye). Native 10/10 (164/232/316 ms), full size, bar and clip at the
+  same moment, no black frame: ENG-060's first-swap lag did not show this time.
 
