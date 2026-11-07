@@ -1,7 +1,7 @@
 # 051A slice 1 - First-frame-ready signal, composited UI-thread counter, no startup delay
 
 Date: 2026-11-06. Status: **complete**: owner smoke passed 2026-11-07 (rerun below).
-Stage: `active/051A_ACTIVE_FirstFrameReadySignal.md` (investigation, proposal, acceptance).
+Stage: `complete/051A_COMPLETED_FirstFrameReadySignal.md` (investigation, proposal, acceptance).
 
 ## What changed
 
