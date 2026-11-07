@@ -295,12 +295,14 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
          * response, and WinHTTP doesn't try again by itself (curl, URLSession and
          * HttpURLConnection do). A GET is safe to repeat: once, on a new connection.
          * Which error a dead TLS connection gives varies (a reset, a broken record, a
-         * secure-channel error), so every error but the ones another try can't help
-         * is tried again. */
+         * secure-channel error, even "operation cancelled" when WinHTTP finds the
+         * pooled connection closed as it sends), so every error but the ones another
+         * try can't help is tried again. A real cancel is told by the flag, not the
+         * error: fa_http_abort closes a handle only once the flag is set. */
         err = GetLastError();
         if (attempt > 0 || err == ERROR_WINHTTP_TIMEOUT || err == ERROR_WINHTTP_NAME_NOT_RESOLVED ||
-            err == ERROR_WINHTTP_CANNOT_CONNECT || err == ERROR_WINHTTP_OPERATION_CANCELLED ||
-            err == ERROR_NOT_ENOUGH_MEMORY || (req->cancel && fa_load32(req->cancel)))
+            err == ERROR_WINHTTP_CANNOT_CONNECT || err == ERROR_NOT_ENOUGH_MEMORY ||
+            (req->cancel && fa_load32(req->cancel)))
             goto done;
         if (!slot_remove(slot)) WinHttpCloseHandle(request);
         request = NULL;
