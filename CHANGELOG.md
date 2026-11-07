@@ -21,6 +21,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 - Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
 - .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
 - Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.
+- Windows HTTPS: a request on a pooled connection the server had just closed could still fail at once (about one in 450 in a stress run): WinHTTP sometimes reports that dead connection as "operation cancelled", which was not retried. It is now; a real cancel is still told by the request's cancel flag.
 - macOS and iOS: render-ahead fell behind on a busy CPU (most lyric frames flagged `behind` during a tempo ramp in the iOS simulator). A worker rendering ahead dropped to QoS utility, which the scheduler can keep waiting 75-150 ms while default-QoS threads of any process are busy; it now stays in its QoS class at a lower relative priority, so decoding still wins.
 
 ### Added
