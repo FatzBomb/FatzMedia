@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+		<!-- NuGet metadata. Pack explicitly at release time (dotnet pack -c Release); not on every build. -->
+		<IsPackable>true</IsPackable>
+		<PackageId>FatzBomb.MediaControl</PackageId>
+		<AssemblyName>FatzBomb.MediaControl</AssemblyName>
+		<RootNamespace>FatzBomb.MediaControl</RootNamespace>
+		<Description>UI-agnostic FatzBomb media engine core: playback, timing, composition policy, state, CD+G, and renderer/platform contracts for audio/video/image/CD+G input, with BASS/FFmpeg integration, normalization, and effects.</Description>
+		<PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+		<EmbedUntrackedSources>false</EmbedUntrackedSources>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<DebugType>portable</DebugType>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="ManagedBass" Version="4.0.2" />
+		<PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
+		<PackageReference Include="ManagedBass.Midi" Version="4.0.2" />
+
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+		<PackageReference Include="SharpCompress" Version="0.50.5" />
+
+		<PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
+
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="" />
+		<None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Portable.Tests" />
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Linux.Tests" />
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Avalonia.Tests" />
+		<!-- 037A slice 2: the FatzAudio engine implements Core's internal audio seams (fades, EQ,
+		     loop, trim, MIDI reader, level source). Packages version in lockstep. -->
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Audio.FatzAudio" />
+	</ItemGroup>
+
+</Project>

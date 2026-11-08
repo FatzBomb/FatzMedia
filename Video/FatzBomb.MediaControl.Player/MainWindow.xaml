@@ -1,0 +1,68 @@
+<Window
+    x:Class="FatzBomb.MediaControl.Player.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="FatzBomb Media Player"
+    Width="1120"
+    Height="720"
+    MinWidth="900"
+    MinHeight="540"
+    Background="#090B0E"
+    FontFamily="Segoe UI"
+    Foreground="#F2F5F8"
+    KeyDown="Window_KeyDown"
+    PreviewKeyDown="Window_PreviewKeyDown"
+    WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  The player count and renderer, as in every test player; a change recreates the players.  -->
+        <Border
+            x:Name="Toolbar"
+            Padding="8"
+            Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    Text="Players:" />
+                <ComboBox
+                    x:Name="PlayersBox"
+                    Width="70"
+                    SelectionChanged="Layout_SelectionChanged">
+                    <ComboBoxItem Content="1" />
+                    <ComboBoxItem Content="2" />
+                    <ComboBoxItem Content="3" />
+                    <ComboBoxItem Content="4" />
+                </ComboBox>
+                <TextBlock
+                    Margin="16,0,8,0"
+                    VerticalAlignment="Center"
+                    Text="Renderer:" />
+                <ComboBox
+                    x:Name="RendererBox"
+                    Width="220"
+                    SelectionChanged="Layout_SelectionChanged" />
+                <TextBlock
+                    x:Name="InfoText"
+                    Margin="16,0,0,0"
+                    VerticalAlignment="Center"
+                    Foreground="{StaticResource MutedTextBrush}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Border>
+
+        <!--  1-4 independent players (players=N on the command line), each its own view model, side by side.  -->
+        <UniformGrid
+            x:Name="PlayersGrid"
+            Grid.Row="1"
+            Background="{StaticResource WindowBrush}"
+            Columns="1" />
+    </Grid>
+</Window>

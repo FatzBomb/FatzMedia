@@ -1,0 +1,52 @@
+name: Windows Native Package Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-native-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-package-smoke:
+    name: Package install and native load
+    runs-on: [self-hosted, Windows, X64, fatzbomb-native]
+    environment: native-media-smoke
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve host-owned native path
+        id: native-path
+        shell: pwsh
+        run: |
+          $nativePath = '${{ vars.FATZBOMB_MEDIA_NATIVE_PATH }}'
+          if ([string]::IsNullOrWhiteSpace($nativePath)) {
+            $nativePath = $env:FATZBOMB_MEDIA_NATIVE_PATH
+          }
+          if ([string]::IsNullOrWhiteSpace($nativePath)) {
+            throw 'Configure repository variable FATZBOMB_MEDIA_NATIVE_PATH or the same environment variable on the private runner service account.'
+          }
+          if (-not (Test-Path -LiteralPath $nativePath -PathType Container)) {
+            throw "Configured native path does not exist on the private runner: $nativePath"
+          }
+          "path=$nativePath" >> $env:GITHUB_OUTPUT
+
+      - name: Run package install and native loading smoke
+        shell: pwsh
+        run: |
+          .\scripts\test-windows-native-publish.ps1 `
+            -NativeLibraryPath '${{ steps.native-path.outputs.path }}' `
+            -ArtifactsDirectory $env:RUNNER_TEMP
+
+      # Do not upload artifacts: the smoke output contains host-licensed native DLLs.

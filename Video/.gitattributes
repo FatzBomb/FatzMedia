@@ -1,0 +1,8 @@
+# Keep repository text files consistent across Windows and non-Windows contributors.
+* text=auto eol=lf
+
+# Native executables and media assets must never undergo line-ending conversion.
+*.dll -text
+*.exe -text
+*.sf2 -text
+*.spv binary

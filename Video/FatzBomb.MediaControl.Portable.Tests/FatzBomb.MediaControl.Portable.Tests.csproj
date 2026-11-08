@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Portable (net10.0) test project. It links every Windows-independent test from
+		FatzBomb.MediaControl.Tests so the portable Core/Software surface can be built and
+		run on non-Windows machines, and it hosts new tests for portable features. The
+		Windows-only tests (WPF, Direct3D11, Windows platform) stay in the Windows project.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<AssemblyName>FatzBomb.MediaControl.Portable.Tests</AssemblyName>
+		<RootNamespace>FatzBomb.MediaControl.Tests</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\FatzBomb.MediaControl.Tests\*.cs"
+		         Exclude="..\FatzBomb.MediaControl.Tests\D3D11*.cs;..\FatzBomb.MediaControl.Tests\Direct3D11*.cs;..\FatzBomb.MediaControl.Tests\DwmCompositionTimingTests.cs;..\FatzBomb.MediaControl.Tests\MediaSurfacePresentationModeTests.cs;..\FatzBomb.MediaControl.Tests\NativeVideoResourceTests.cs;..\FatzBomb.MediaControl.Tests\PollingAudioDeviceMonitorTests.cs;..\FatzBomb.MediaControl.Tests\WindowsMediaControlPlatformFactoryTests.cs;..\FatzBomb.MediaControl.Tests\WinFormsMediaSurfaceTests.cs;..\FatzBomb.MediaControl.Tests\WinFormsLightweightSurfaceTests.cs;..\FatzBomb.MediaControl.Tests\WinFormsSecondaryPresentationWindowTests.cs;..\FatzBomb.MediaControl.Tests\WpfMediaSurfaceParityTests.cs;..\FatzBomb.MediaControl.Tests\WpfCompositedSurfaceHostTests.cs;..\FatzBomb.MediaControl.Tests\WpfFirstFrameReadyTests.cs"
+		         LinkBase="Shared" />
+	</ItemGroup>
+
+</Project>

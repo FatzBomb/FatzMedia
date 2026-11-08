@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- NuGet metadata. Pack explicitly at release time (dotnet pack -c Release). -->
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzBomb.MediaControl.Linux</PackageId>
+    <AssemblyName>FatzBomb.MediaControl.Linux</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Linux</RootNamespace>
+    <Description>Linux platform services for FatzBomb.MediaControl: host-supplied BASS/FFmpeg shared-library loading, precision waits, BASS device monitoring, and software video decode policy.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
+    <PackageReference Include="ManagedBass" Version="4.0.2" />
+    <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
+    <PackageReference Include="ManagedBass.Midi" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzBomb.MediaControl.Linux.Tests" />
+  </ItemGroup>
+
+</Project>

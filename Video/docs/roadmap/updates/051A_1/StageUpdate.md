@@ -1,0 +1,154 @@
+# 051A slice 1 - First-frame-ready signal, composited UI-thread counter, no startup delay
+
+Date: 2026-11-06. Status: **complete**: owner smoke passed 2026-11-07 (rerun below).
+Stage: `complete/051A_COMPLETED_FirstFrameReadySignal.md` (investigation, proposal, acceptance).
+
+## What changed
+
+| Area | Change |
+| --- | --- |
+| Core `MediaSurfaceContentTracker` | `FirstFrameLoad`: a load number per load with visual content (and per session already open when set), reported once a frame of it was presented (the latch counts); cleared by close, error, session change; `Changed` raised when it is set, `AutoHide` on or off. |
+| WPF `MediaSurface` | `FirstFrameReady` (`MediaSurface.FirstFrame.cs`); composited: a waiting frame is written inline (`WpfCompositedSurfaceHost.PublishPendingFrame`, now public to the adapter, returns whether it wrote) and the event follows in the same dispatcher operation, after the host is visible; also checked after each scheduled publish. Native: after the child HWND is shown. `CompositedUiThreadTime`, `CompositedFramesPublished` (totals kept across host re-creation). |
+| Avalonia `MediaSurface` | `FirstFrameReady`; frame sink: `AvaloniaFrameSink.PublishPending` (inline publish) then invalidate; GPU shared image: after the content is shown (best effort). |
+| WinForms `MediaSurface` | `FirstFrameReady`; frame sink: inline publish and paint; native window: after the child window is shown. |
+| `PlayerViewModel` | `StartupMediaDelay` (500 ms) and its cancellation source removed: the startup media loads as soon as the engine is ready. |
+| Player.Shared | `UiThreadCostMeter`, `PlayerStatsLine.WithUiThreadCost`. |
+| WPF test player, A/B demo | `--ab-demo=` window (`AbSwapDemoWindow`; options and summary in Player.Shared `AbSwapDemo.cs`, tested): two players, swaps on `FirstFrameReady`, a `[ABDemo]` log line per swap. |
+| WPF test player | Stats line: `surface WxH via frame sink, UI thread x.x ms/s (y.yy ms/frame)` (primary and second screen); log line `P1 first frame ready: <file> via <path>` per load. |
+
+## Decisions
+
+- Name `FirstFrameReady`: the frame is on the surface and its host is shown; the host's own element
+  visibility is the host's business (the B surface of an A/B pair is hidden by the host while it waits).
+- Hide a waiting surface with WPF `Visibility.Hidden` / Avalonia `Opacity = 0` / WinForms
+  `Visible = false`, never `Collapsed`/`IsVisible = false` (no layout size: the frame would be rendered at 1x1).
+- One event per load, no load id in the args (Core has none); subscribe before `LoadAsync`.
+- The startup delay was not needed: the binding is synchronous, attach re-presents the current frame,
+  and the device diagnostic is subscribed before `Player` is set (Avalonia test
+  `ALoadBeforeTheSurfaceAttaches_StillRaisesWhenItAttaches`).
+- Counter is WPF only (047A is WPF); it measures the bitmap write on the UI thread, not WPF's render thread.
+- Found, not fixed: ENG-058 (latch and a background frame), ENG-059 (WPF composited keeps its last
+  bitmap while auto-hidden).
+
+## Verified in the Linux sandbox
+
+- Portable.Tests 1784 passed (5 tracker tests, 1 meter test, the startup test replaced).
+- Avalonia.Tests 52 passed (5 new `FirstFrameReadyTests`: once per load with the frame in the bitmap,
+  AutoHide on and off, a new load raises again, audio-only never, an announced frame waits for the
+  bitmap, a load before the surface attaches).
+- WPF and WinForms adapters build with `EnableWindowsTargeting=true`, 0 warnings; `dotnet format
+  --verify-no-changes` clean on every touched project; the four boundary scripts pass.
+- The whole solution builds in Release (warnings as errors) with `EnableWindowsTargeting=true`, 0 warnings,
+  against FatzAudio rc.1 packed locally from its source (managed part only, commit 59741a5).
+- Linux.Tests: 203 passed with FFmpeg; the 9 `FatzAudioEngineNativeTests` fail only because the local
+  package has no native `libfatzaudio.so` (`DllNotFoundException`), unrelated. New
+  `LinuxFirstFrameNativeTests` (real FFmpeg and software renderer): a load before the surface attaches
+  still reaches the surface and arms the first frame (why the startup delay could go); an A/B swap of
+  two players reports each load's first frame after a frame reached its surface (76-256 ms per swap).
+- New Windows-only tests (CI runs them): `WpfFirstFrameReadyTests` (composited surface in a shown window:
+  once per load, the bitmap written first, the counter) and a WinForms frame-sink test. **CI green on
+  PR #72** (Windows and Linux jobs), merged 2026-11-06.
+- **Sandbox run after the merge (2026-11-06, `main` at 2a572e8 plus one new test):** FatzAudio rc.1 built
+  from source with its native `libfatzaudio.so` (cmake/ninja), BASS for Linux, FFmpeg 9 LGPL, PulseAudio
+  with a null sink, Mesa lavapipe:
+  - Linux.Tests **212 passed, 0 failed** (format matrix on both engines, player modes, FatzAudio engine,
+    first frame).
+  - `LinuxFirstFrameNativeTests`, 4 tests: Background mode and **Full mode with sound on BASS and on
+    FatzAudio**: a load before the surface attaches (no autoplay, nothing attached during the load) still
+    reaches the surface on attach, arms the first frame, and then plays on that surface (31-32 frames
+    in 1 s). The A/B swap reported every load's first frame after its frame reached the surface
+    (38-113 ms on this run).
+  - Vulkan tests 103 passed; Portable 1786, Avalonia 52.
+  - Cannot run here: anything on a Windows screen (WPF/D3D11, the demo window, the UI-thread numbers).
+- Not verified: anything on screen (same-frame swap, native timing, the counter's numbers).
+
+## Manual smoke (Windows, PowerShell)
+
+`scripts/smoke-051A.ps1` runs all of it: it fetches and switches to the branch (it stops if you have
+uncommitted changes), builds, asks you to pick a 1080p60 video and a song from `C:\media`, runs each
+test, reads the players' logs, and writes PASS/FAIL to a Desktop folder (`FatzBomb-051A-<date>`). The
+results are copied to the clipboard at the end. Needs `FATZAUDIO_PACKAGES_TOKEN` set (as for every build)
+and the BASS and FFmpeg DLLs in the players' `native\` folders.
+
+Desktop (all tests):
+
+```powershell
+cd C:\development\nuget\FatzbombMedia
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1
+```
+
+Laptop (only the UI-thread numbers, test 3):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3
+```
+
+No laptop yet (owner, 2026-11-06: not until software uses it). Test 3 on the desktop can add a rough
+stand-in, the player limited to 4 logical cores (fewer cores only; a laptop's slower memory, power limits
+and heat cannot be simulated):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1 -Steps 3 -SimulateLaptop
+```
+
+The owner's comparison with the old trivia app on laptops with many videos (ours clearly better) stands
+as the laptop answer until TriviaBomb runs on one.
+
+| Test | Kind | What it checks |
+| --- | --- | --- |
+| 1 | automatic | WPF native and composited: the startup video gives exactly one `first frame ready` line naming its path; prints the seconds from window to first frame. |
+| 2 | guided (you drop 3 files) | Two video loads, with pause, seek and an MP3 between them, give exactly two lines and none for the MP3. |
+| 3 | automatic + 2 drops | Composited UI-thread time, ms/s and ms/frame: one player at window size, the same maximized, then three players. Records machine, GPU and power state. These are 047A's before numbers. |
+| 4 | automatic | `--no-auto-hide`, native and composited: one line each. |
+| 5 | automatic + you watch | The WPF player's A/B swap demo (`--ab-demo`): 20 composited swaps, 6 with the waiting surface `Collapsed` (counter-check), 10 native. The log must show every swap's first frame, no misses and no warnings; you answer whether there was a black flash, an old frame, or the bar changing apart from the clip. Native-mode offset is noted, not failed. |
+| 6 | automatic + 1 question | Avalonia and WinForms players load the startup video at once. |
+
+Media is offered from `C:\media` and `D:\- Testing Files` (two levels deep, so `sample files` too);
+pass `-MediaDir` for other folders. TriviaBomb itself is a final check after this.
+
+## Owner smoke results (2026-11-06, desktop: RTX 5090, 20 logical cores, three screens; `main` at 2a572e8)
+
+26 passed, 2 failed, 6 notes. Media: `Scream 7.mkv` (tests 1-4, 6; about 24 fps), `audio-only.mp3`,
+A/B clips `LunchLady Land.mp4` and `4k-hevc.mkv`.
+
+| Test | Result | Notes |
+| --- | --- | --- |
+| 1 | pass | One first-frame line per run, native and frame sink. First frame 8.1 s after the window (native, the first start after the build) and 0.6 s (frame sink, second start). The line said `(no media)`: a logging bug, below. |
+| 2 | 2 fail | 3 lines for 2 video loads and an MP3. The MP3 check failed on the logging bug: the line takes its name from `LoadedMediaText`, set only after the load returns, while the first frame comes before that, so each line named the previous item. The third line is most likely the MP3 itself: an MP3 with cover art or a background has visual content and should raise it. The test's expectation was wrong too. The script also said Space pauses; the WPF player has no Space key (the Pause button). |
+| 3 | pass | UI-thread time per composited surface (047A's before numbers): one player 1062x476: 6.2 ms/s (0.26 ms/frame); maximized 3398x1164: 33.6 ms/s (1.40 ms/frame); three players at 750x297: 2.5-2.8 ms/s (0.10-0.12 ms/frame) each. |
+| 4 | pass | One line each, native and frame sink, auto-hide off. |
+| 5 | pass | Composited 20/20 (ready after 191/226/274 ms min/median/max), no black frame, no old frame, bar and clip together. Collapsed 6/6; the wrong-size first frame was not seen by eye (it lasts about one frame). Native 10/10 (156/213/268 ms), no black frame; bar vs clip "could not tell"; the first one or two native swaps were a frame or two late, then normal (ENG-060). |
+| 6 | pass | Avalonia 1.9 s, WinForms 1.7 s to `Loaded:`, picture at once (the clip starts on a fade-in). |
+
+Laptop: no run (owner): the comparison with the old trivia app on laptops stands for now.
+
+Fixed after the run (PR #73):
+- The first-frame log line names the item being loaded (`PlayerViewModel.LoadingMediaText`, set when the
+  load starts) and its content flags, e.g. `P1 first frame ready: song.mp3 (Audio, Image) via native window`.
+- Test 2: the Pause button; two lines for the videos; the MP3 must give one line exactly when the owner
+  says it showed a picture; no other lines.
+- Test 1: native runs a second time and prints both times (first frame, load finished), to tell the cold
+  first start from the steady one.
+- Test 5: the demo logs the waiting surface's pixel size at its first frame; the Hidden runs must all be
+  full size, the Collapsed run reports how many were rendered at no size (objective, instead of by eye).
+- Media prompts ask for a video that does not start on a fade from black.
+
+Rerun only tests 1, 2 and 5 (`-Steps 1,2,5`).
+
+## Owner rerun of tests 1, 2 and 5 (2026-11-07, desktop, `main` at 0a11b9c): 24 passed, 0 failed
+
+Media: `avsync.mp4` (tests 1, 2; clip B), `4k-hevc.mkv` (clip A), `audio-only.mp3` (no picture).
+
+- Test 1: one line per run, naming the file and the path (`P1 first frame ready: avsync.mp4 (Audio, Video)
+  via native window`). First frame and load finished at the same moment in every run: native 16.5 s on
+  the first start after the build, frame sink 1.1 s, native again 0.7 s. The slow first start is the
+  load itself, not the event (ENG-061).
+- Test 2: two lines for the two video loads, none for the MP3 (it showed no picture), nothing else.
+- Test 5: composited 20/20 (183/260/358 ms), every first frame at full size, no black frame, no old frame,
+  bar and clip together. Collapsed 6/6, all 6 first frames rendered at no size (1x1), confirming the
+  Hidden rule (still not visible by eye). Native 10/10 (164/232/316 ms), full size, bar and clip at the
+  same moment, no black frame: ENG-060's first-swap lag did not show this time.
+

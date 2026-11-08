@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FatzBomb.MediaControl.Player.Avalonia.MainWindow"
+        Title="FatzBomb.MediaControl Avalonia test player"
+        Width="1280" Height="900" MinWidth="720" MinHeight="520">
+  <Grid RowDefinitions="Auto,*">
+    <Border x:Name="Toolbar" Grid.Row="0" Padding="8" BorderThickness="0,0,0,1" BorderBrush="#40808080">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="12">
+        <TextBlock Text="Players:" VerticalAlignment="Center" />
+        <ComboBox x:Name="PlayersBox" Grid.Column="1" Width="70" SelectionChanged="OnLayoutChanged">
+          <ComboBoxItem>1</ComboBoxItem>
+          <ComboBoxItem>2</ComboBoxItem>
+          <ComboBoxItem>3</ComboBoxItem>
+          <ComboBoxItem>4</ComboBoxItem>
+        </ComboBox>
+        <TextBlock Text="Renderer:" Grid.Column="2" VerticalAlignment="Center" />
+        <ComboBox x:Name="RendererBox" Grid.Column="3" Width="200" SelectionChanged="OnLayoutChanged" />
+        <TextBlock x:Name="InfoText" Grid.Column="4" VerticalAlignment="Center" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+      </Grid>
+    </Border>
+    <UniformGrid x:Name="PlayersGrid" Grid.Row="1" Columns="1" />
+  </Grid>
+</Window>

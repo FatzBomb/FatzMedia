@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FatzBomb.MediaControl.Wpf</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Wpf</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- NuGet metadata. Pack explicitly at release time (dotnet pack -c Release). -->
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzBomb.MediaControl.Wpf</PackageId>
+    <Description>Strict WPF adapter for FatzBomb.MediaControl: renderer-neutral surfaces, player facade, and self-contained background/karaoke controls.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+</Project>

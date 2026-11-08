@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzBomb.MediaControl.Rendering.Vulkan</PackageId>
+    <AssemblyName>FatzBomb.MediaControl.Rendering.Vulkan</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Rendering.Vulkan</RootNamespace>
+    <Description>Vulkan renderer backend for FatzBomb.MediaControl (preview: offscreen clear, BGRA and Vulkan-decoded backgrounds, wash, CDG and subtitle overlays).</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
+  </ItemGroup>
+
+  <!-- SPIR-V compiled from Shaders/*.vert|*.frag by scripts/compile-vulkan-shaders.sh and committed
+       (CI has no glslang). -->
+  <ItemGroup>
+    <None Remove="Shaders\*.spv" />
+    <EmbeddedResource Include="Shaders\*.spv" LogicalName="FatzBomb.MediaControl.Rendering.Vulkan.Shaders.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzBomb.MediaControl.Rendering.Vulkan.Tests" />
+  </ItemGroup>
+
+</Project>

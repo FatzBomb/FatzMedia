@@ -1,0 +1,32 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.nupkg
+*.snupkg
+profiling/
+
+# Ignore the massive sea of root-level architectural notes
+/*-NOTES.md
+
+# Remove Hash for Code Cleanup, add for normal use
+# *.md
+plans/
+# docs/
+
+/*.zip
+/*.patch
+
+# Exclude all standalone build reports and HTML logs recursively
+*.htm
+*.html
+
+TestResults/
+artifacts/
+**/native/win-x64/*.dll
+**/native/*.dll
+
+# Claude Code agent worktrees
+.claude/worktrees/
+**/native/*.so*

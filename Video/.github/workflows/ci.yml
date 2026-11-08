@@ -1,0 +1,115 @@
+name: CI
+
+# Private repository: hosted runner minutes are billed (Windows at 2x). Run once per change:
+# for pull requests and for main, not again for every push to a PR branch. Changes that only
+# touch documentation skip CI; run it by hand from the Actions tab when needed.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The FatzAudio package (037A) is on GitHub Packages; this repository has Read under the
+  # package's "Manage Actions access", so the workflow's own token restores it.
+  packages: read
+
+env:
+  # Read by nuget.config as the FatzAudio source's password.
+  FATZAUDIO_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-validate:
+    name: Build, test, and validate boundaries
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore FatzBomb.MediaControl.sln
+
+      - name: Build (Release)
+        run: dotnet build FatzBomb.MediaControl.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test FatzBomb.MediaControl.sln -c Release --no-build --no-restore
+
+      - name: Core boundary check
+        shell: pwsh
+        run: ./scripts/check-core-boundary.ps1
+
+      - name: WPF boundary check
+        shell: pwsh
+        run: ./scripts/check-wpf-boundary.ps1
+
+      - name: UI adapter boundary check
+        shell: pwsh
+        run: ./scripts/check-adapter-boundary.ps1
+
+      - name: Presentation parity check
+        shell: pwsh
+        run: ./scripts/check-presentation-parity.ps1
+
+      - name: Format check
+        run: dotnet format FatzBomb.MediaControl.sln --verify-no-changes --no-restore
+
+  linux-portable:
+    name: Linux portable build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Mesa lavapipe (software Vulkan) and glslang for renderer checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 glslang-tools
+
+      - name: Vulkan SPIR-V matches its GLSL source
+        run: ./scripts/check-vulkan-shaders.sh
+
+      - name: Build portable, Linux, and Vulkan projects (Release)
+        run: |
+          dotnet build FatzBomb.MediaControl.Portable.Tests/FatzBomb.MediaControl.Portable.Tests.csproj -c Release
+          dotnet build FatzBomb.MediaControl.Linux.Tests/FatzBomb.MediaControl.Linux.Tests.csproj -c Release
+          dotnet build FatzBomb.MediaControl.Rendering.Vulkan.Tests/FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj -c Release
+          dotnet build FatzBomb.MediaControl.Avalonia.Tests/FatzBomb.MediaControl.Avalonia.Tests.csproj -c Release
+          dotnet build FatzBomb.MediaControl.Player.Avalonia/FatzBomb.MediaControl.Player.Avalonia.csproj -c Release -f net10.0
+
+      - name: Portable tests
+        run: dotnet test FatzBomb.MediaControl.Portable.Tests/FatzBomb.MediaControl.Portable.Tests.csproj -c Release --no-build
+
+      - name: Linux platform tests
+        run: dotnet test FatzBomb.MediaControl.Linux.Tests/FatzBomb.MediaControl.Linux.Tests.csproj -c Release --no-build
+
+      - name: Vulkan renderer conformance (lavapipe)
+        run: dotnet test FatzBomb.MediaControl.Rendering.Vulkan.Tests/FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj -c Release --no-build
+
+      - name: Avalonia adapter tests (headless)
+        run: dotnet test FatzBomb.MediaControl.Avalonia.Tests/FatzBomb.MediaControl.Avalonia.Tests.csproj -c Release --no-build

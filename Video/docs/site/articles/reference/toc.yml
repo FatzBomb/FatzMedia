@@ -1,0 +1,6 @@
+- name: Configuration
+  href: configuration.md
+- name: Glossary
+  href: glossary.md
+- name: Test players
+  href: test-players.md
