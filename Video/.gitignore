@@ -30,3 +30,6 @@ artifacts/
 # Claude Code agent worktrees
 .claude/worktrees/
 **/native/*.so*
+
+# Local copies of the soundfont in the other players' native folders (the tracked one is in FatzBomb.MediaControl.Player/native)
+**/native/*.sf2
