@@ -3,7 +3,7 @@
 FatzBomb ecosystem repo, id `fatzvideo` (product: FatzBomb Video; code names still say `FatzBomb.MediaControl`).
 Ecosystem rules are in the global CLAUDE.md; the map is `D:\development\FatzBomb\shared\ECOSYSTEM.md`.
 
-- Needs FatzAudio (read-only repo at `..\FatzAudio`; ask the coordinator for changes there).
+- Needs FatzAudio, which lives in `..\Audio` of this repo (FatzMedia; see the root AGENTS.md).
 - Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzvideo\`,
   never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzvideo` (read-only).
 - Don't add Claude or Copilot review workflows to .github/workflows/. Code review is done with /code-review before opening a PR.
