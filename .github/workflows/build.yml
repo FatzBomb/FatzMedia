@@ -2,14 +2,18 @@ name: build
 
 on:
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - 'Audio/**'
+      - '!Audio/docs/**'
+      - '!**/*.md'
+      - '.github/workflows/build.yml'
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - 'Audio/**'
+      - '!Audio/docs/**'
+      - '!**/*.md'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
     inputs:
       release:
@@ -32,6 +36,11 @@ env:
   CMAKE_C_COMPILER_LAUNCHER: ccache
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+
+# FatzMedia repo: this workflow builds Audio/; every run step starts there.
+defaults:
+  run:
+    working-directory: Audio
 
 jobs:
   build:
@@ -160,7 +169,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ runner.os }}
-          path: native/
+          path: Audio/native/
           retention-days: 7
 
       - uses: actions/setup-dotnet@v4
@@ -173,7 +182,7 @@ jobs:
         env:
           FA_TEST_REQUIRE_LAME: '1'
         run: |
-          native="$GITHUB_WORKSPACE/native"
+          native="$GITHUB_WORKSPACE/Audio/native"
           dotnet test bindings/dotnet/tests/FatzAudio.Tests -c Release -p:FatzAudioNativeDir="$native"
 
   # Windows on arm64, cross-compiled with MSVC on an x64 runner (no ARM runner is billed here).
@@ -212,7 +221,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-win-arm64
-          path: native/
+          path: Audio/native/
           retention-days: 7
 
   # Linux on arm64, cross-compiled on 22.04 (glibc 2.35 like the x64 library). The suite runs
@@ -250,7 +259,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux-arm64
-          path: native/
+          path: Audio/native/
           retention-days: 7
 
   # NuGet "FatzAudio" with the natives the build job just tested. The version is
@@ -269,35 +278,35 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: native-Windows
-          path: bindings/dotnet/src/FatzAudio/runtimes/win-x64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/win-x64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-Linux
-          path: bindings/dotnet/src/FatzAudio/runtimes/linux-x64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/linux-x64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-macOS
-          path: bindings/dotnet/src/FatzAudio/runtimes/osx/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/osx/native
       - uses: actions/download-artifact@v4
         with:
           name: native-win-arm64
-          path: bindings/dotnet/src/FatzAudio/runtimes/win-arm64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/win-arm64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-linux-arm64
-          path: bindings/dotnet/src/FatzAudio/runtimes/linux-arm64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/linux-arm64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-android-arm64
-          path: bindings/dotnet/src/FatzAudio/runtimes/android-arm64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/android-arm64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-android-x64
-          path: bindings/dotnet/src/FatzAudio/runtimes/android-x64/native
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/android-x64/native
       - uses: actions/download-artifact@v4
         with:
           name: native-ios
-          path: bindings/dotnet/src/FatzAudio/runtimes/ios/native/fatzaudio.xcframework
+          path: Audio/bindings/dotnet/src/FatzAudio/runtimes/ios/native/fatzaudio.xcframework
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
@@ -330,7 +339,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nuget
-          path: nupkg/*.nupkg
+          path: Audio/nupkg/*.nupkg
           retention-days: 14
       - name: Publish to GitHub Packages
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release || inputs.prerelease != '')
@@ -371,7 +380,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-crashes
-          path: fuzz-out/
+          path: Audio/fuzz-out/
           if-no-files-found: ignore
 
   # Library only, every Android ABI: checks the .so needs nothing but libc, libm
@@ -401,12 +410,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-android-arm64
-          path: native-arm64/
+          path: Audio/native-arm64/
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: native-android-x64
-          path: native-x64/
+          path: Audio/native-x64/
           retention-days: 7
       - name: Library size
         continue-on-error: true   # a report: never keeps the checks below from running
@@ -469,5 +478,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: native-ios
-          path: build-ios/fatzaudio.xcframework
+          path: Audio/build-ios/fatzaudio.xcframework
           retention-days: 7

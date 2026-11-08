@@ -1,4 +1,4 @@
-name: Windows Native Package Smoke
+name: video-windows-native-smoke
 
 on:
   workflow_dispatch:
@@ -9,6 +9,11 @@ permissions:
 concurrency:
   group: windows-native-smoke-${{ github.ref }}
   cancel-in-progress: false
+
+# FatzMedia repo: this workflow builds Video/; every run step starts there.
+defaults:
+  run:
+    working-directory: Video
 
 jobs:
   native-package-smoke:

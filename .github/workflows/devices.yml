@@ -12,33 +12,35 @@ name: devices
 on:
   pull_request:
     paths:
-      - 'src/*android*'
-      - 'src/*apple*'
-      - 'src/codec_at.c'
-      - 'src/codec_mediacodec.c'
-      - 'src/codec.c'
-      - 'src/codec_os.c'
-      - 'src/engine.c'
-      - 'src/device*.c'
-      - 'src/mic.c'
-      - 'src/fa_platform.*'
-      - 'third_party/miniaudio/**'
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'tests/CMakeLists.txt'
-      - 'tests/test_device.c'
-      - 'tests/test_aac.c'
-      - 'tests/test_net.c'
-      - 'tests/net_tls_android.*'
-      - 'tools/android-test/**'
-      - 'tools/ios-sim/**'
-      - 'tools/test-https/**'
+      - 'Audio/src/*android*'
+      - 'Audio/src/*apple*'
+      - 'Audio/src/codec_at.c'
+      - 'Audio/src/codec_mediacodec.c'
+      - 'Audio/src/codec.c'
+      - 'Audio/src/codec_os.c'
+      - 'Audio/src/engine.c'
+      - 'Audio/src/device*.c'
+      - 'Audio/src/mic.c'
+      - 'Audio/src/fa_platform.*'
+      - 'Audio/third_party/miniaudio/**'
+      - 'Audio/CMakeLists.txt'
+      - 'Audio/cmake/**'
+      - 'Audio/tests/CMakeLists.txt'
+      - 'Audio/tests/test_device.c'
+      - 'Audio/tests/test_aac.c'
+      - 'Audio/tests/test_net.c'
+      - 'Audio/tests/net_tls_android.*'
+      - 'Audio/tools/android-test/**'
+      - 'Audio/tools/ios-sim/**'
+      - 'Audio/tools/test-https/**'
       - '.github/workflows/devices.yml'
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - 'Audio/**'
+      - '!Audio/docs/**'
+      - '!**/*.md'
+      - '.github/workflows/devices.yml'
   workflow_dispatch:
 
 concurrency:
@@ -49,6 +51,11 @@ env:
   CMAKE_C_COMPILER_LAUNCHER: ccache
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+
+# FatzMedia repo: this workflow builds Audio/; every run step starts there.
+defaults:
+  run:
+    working-directory: Audio
 
 jobs:
   # Every test suite on an Android 14 emulator (x86_64, Google APIs image, KVM),
@@ -68,7 +75,7 @@ jobs:
         run: |
           sudo mkdir -p /data/local/tmp/fa
           sudo chown "$USER" /data/local/tmp/fa
-          rsync -a --exclude .git "$GITHUB_WORKSPACE/" /data/local/tmp/fa/src/
+          rsync -a --exclude .git "$GITHUB_WORKSPACE/Audio/" /data/local/tmp/fa/src/
           tools/android-configure.sh /data/local/tmp/fa/src /data/local/tmp/fa/build x86_64
           cmake --build /data/local/tmp/fa/build --parallel "$(nproc)"
       - name: Enable KVM

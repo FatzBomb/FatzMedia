@@ -9,16 +9,16 @@ name: dotnet-apps
 on:
   pull_request:
     paths:
-      - 'bindings/**'
-      - 'tools/dotnet-apps/**'
-      - 'tools/build-xcframework.sh'
+      - 'Audio/bindings/**'
+      - 'Audio/tools/dotnet-apps/**'
+      - 'Audio/tools/build-xcframework.sh'
       - '.github/workflows/dotnet-apps.yml'
   push:
     branches: [main]
     paths:
-      - 'bindings/**'
-      - 'tools/dotnet-apps/**'
-      - 'tools/build-xcframework.sh'
+      - 'Audio/bindings/**'
+      - 'Audio/tools/dotnet-apps/**'
+      - 'Audio/tools/build-xcframework.sh'
       - '.github/workflows/dotnet-apps.yml'
   workflow_dispatch:
 
@@ -30,6 +30,11 @@ env:
   CMAKE_C_COMPILER_LAUNCHER: ccache
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_OBJC_COMPILER_LAUNCHER: ccache
+
+# FatzMedia repo: this workflow builds Audio/; every run step starts there.
+defaults:
+  run:
+    working-directory: Audio
 
 jobs:
   # fatzaudio.xcframework linked into a .NET for iOS app; run in a simulator with the test file and the

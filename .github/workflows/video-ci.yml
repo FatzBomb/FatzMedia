@@ -1,4 +1,4 @@
-name: CI
+name: video-ci
 
 # Private repository: hosted runner minutes are billed (Windows at 2x). Run once per change:
 # for pull requests and for main, not again for every push to a PR branch. Changes that only
@@ -6,13 +6,17 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - 'Video/**'
+      - '!Video/docs/**'
+      - '!**/*.md'
+      - '.github/workflows/video-ci.yml'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - 'Video/**'
+      - '!Video/docs/**'
+      - '!**/*.md'
+      - '.github/workflows/video-ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +32,11 @@ env:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# FatzMedia repo: this workflow builds Video/; every run step starts there.
+defaults:
+  run:
+    working-directory: Video
 
 jobs:
   build-and-validate:
