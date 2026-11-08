@@ -13,7 +13,7 @@
     <Description>Direct3D 11 renderer and presentation backend for FatzBomb.MediaControl.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -34,7 +34,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
     <None Include="buildTransitive\FatzBomb.MediaControl.Rendering.Direct3D11.targets" Pack="true" PackagePath="buildTransitive" />
   </ItemGroup>
 

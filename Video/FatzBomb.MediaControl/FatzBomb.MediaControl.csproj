@@ -12,7 +12,7 @@
 		<Description>UI-agnostic FatzBomb media engine core: playback, timing, composition policy, state, CD+G, and renderer/platform contracts for audio/video/image/CD+G input, with BASS/FFmpeg integration, normalization, and effects.</Description>
 		<PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
 		<EmbedUntrackedSources>false</EmbedUntrackedSources>
 		<IncludeSymbols>true</IncludeSymbols>
@@ -33,7 +33,7 @@
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="" />
-		<None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+		<None Include="..\..\LICENSE" Pack="true" PackagePath="" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -14,7 +14,7 @@
     <Description>Strict WPF adapter for FatzBomb.MediaControl: renderer-neutral surfaces, player facade, and self-contained background/karaoke controls.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -31,7 +31,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
   </ItemGroup>
 
 </Project>

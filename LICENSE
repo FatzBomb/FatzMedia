@@ -1,0 +1,36 @@
+FatzMedia Proprietary License
+
+Copyright (c) 2026 FatzBomb Entertainment. All rights reserved.
+
+FatzMedia, including FatzMedia.Audio (the Audio folder) and FatzMedia.Video
+(the Video folder), their source code, compiled libraries, packages,
+documentation, samples and tools (the "Software"), is the confidential and
+proprietary property of FatzBomb Entertainment.
+
+No license, right or permission is granted to any party to use, copy, modify,
+merge, publish, distribute, sublicense, sell or create derivative works of the
+Software, in whole or in part, in source or binary form, without the prior
+written permission of FatzBomb Entertainment. That the source code can be
+viewed (for example in a public repository) grants no such right.
+
+This notice is a placeholder for a formal end-user license agreement (EULA)
+that will govern commercial distribution of the Software. Until such an
+agreement is published, all rights are reserved.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Third-party components
+----------------------
+The Software includes third-party components that are NOT covered by the terms
+above. Each remains under its own license:
+- Audio: stated in each component's folder under Audio/third_party/ and
+  summarised in Audio/THIRD_PARTY_NOTICES.md; those notices must be kept and
+  shown as that file describes.
+- Video: the General MIDI soundfont TimGM6mb.sf2 keeps its own license. FFmpeg and other native libraries are
+  not part of this repository; they are supplied separately under their own
+  licenses (Video/docs/NATIVE_DEPENDENCIES.md).

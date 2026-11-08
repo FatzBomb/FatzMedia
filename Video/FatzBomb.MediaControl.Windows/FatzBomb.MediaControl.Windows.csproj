@@ -13,7 +13,7 @@
     <Description>Windows platform services for FatzBomb.MediaControl, including native media-engine composition and library loading.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -36,7 +36,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
     <None Include="runtimes\win-x64\native\README.md" Pack="true" PackagePath="runtimes/win-x64/native/" />
     <None Include="runtimes\win-x64\native\native-assets.manifest.json" Pack="true" PackagePath="runtimes/win-x64/native/" />
     <None Include="buildTransitive\FatzBomb.MediaControl.Windows.targets" Pack="true" PackagePath="buildTransitive" />
