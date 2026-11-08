@@ -8,7 +8,7 @@
     right flags, reads their logs for the expected lines, measures CPU, takes screenshots, serves a
     local web file, and writes PASS/FAIL per check. You watch, and answer only what needs eyes or ears.
 
-    Everything is saved to a folder on your Desktop (FatzBomb-backlog-<date>); at the end the results
+    Everything is saved to a folder in work\fatzvideo\test-results (FatzBomb-backlog-<date>); at the end the results
     are copied to your clipboard so you can paste them into the chat.
 
     Run it from the repository folder:
@@ -602,7 +602,7 @@ function Test-10 {
 #     Avalonia close during rebuild, karaoke memory, MKV subtitles)
 function Test-11 {
     if (-not (Start-Step 11 'Audit tests from smoke-audit.ps1' 'ENG-039 batches 1, 2, 4b, 4c, 5: GPU reset recovery, resize, refresh rate, loop point, Avalonia rebuild, karaoke memory, MKV subtitles. Runs the existing script; it asks for its own media and writes its own results folder.' '25')) { return }
-    Add-Info 'running scripts\smoke-audit.ps1 -Steps 2,3,4,6,8,9,10 -SkipBuild (its results are in its own Desktop folder; paste them too)'
+    Add-Info 'running scripts\smoke-audit.ps1 -Steps 2,3,4,6,8,9,10 -SkipBuild (its results are in its own test-results folder; paste them too)'
     & (Join-Path $PSScriptRoot 'smoke-audit.ps1') -Repo $Repo -MediaDir $MediaDir -Steps '2,3,4,6,8,9,10' -SkipBuild
 }
 

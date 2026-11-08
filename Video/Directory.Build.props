@@ -1,16 +1,12 @@
 <Project>
 
-  <!--
-    Repo-wide build settings inherited by every project in the solution.
-    Project-level properties still override anything set here.
-    Model / cost policy is NOT configured here.
-  -->
   <PropertyGroup>
-    <LangVersion>14.0</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Deterministic>true</Deterministic>
+    <!-- true once this repo builds with 0 warnings: Release then fails on any warning (build\FatzBomb.Common.props). -->
+    <FatzBombStrict>false</FatzBombStrict>
   </PropertyGroup>
+
+  <!-- Shared FatzBomb settings, synced from shared\style; repo settings go below. -->
+  <Import Project="build\FatzBomb.Common.props" />
 
   <!-- Brand / company identity shared across all FatzBomb packages (lockstep versioning). -->
   <PropertyGroup>
@@ -24,9 +20,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
-  <!-- Release builds must be warning-clean; warnings fail the build. -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 

@@ -92,7 +92,7 @@ Run from the repository root in PowerShell, with the BASS and FFmpeg DLLs in eac
 older track (or classical) and one with ReplayGain tags if you have it.
 
 ```powershell
-cd C:\development\nuget\FatzbombMedia
+cd D:\development\FatzBomb\FatzVideo
 git fetch origin
 git checkout claude/modest-clarke-5i5piu
 git pull

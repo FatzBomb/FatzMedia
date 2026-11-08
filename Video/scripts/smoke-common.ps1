@@ -1,7 +1,7 @@
 # Shared helpers for the guided smoke scripts (smoke-audit.ps1, smoke-backlog.ps1).
 # Dot-source it after setting $Repo, $MediaDir and $SmokeName:
 #     $SmokeName = 'smoke'; . (Join-Path $PSScriptRoot 'smoke-common.ps1')
-# It creates the results folder on the Desktop (FatzBomb-<SmokeName>-<date>) and defines the UI,
+# It creates the results folder in work\fatzvideo\test-results (FatzBomb-<SmokeName>-<date>) and defines the UI,
 # player, measurement and media helpers.
 # ---------------------------------------------------------------------------------------------
 # Native helpers (C# 5, so Windows PowerShell 5.1 can compile them too)
@@ -74,7 +74,7 @@ public static class FbSmoke
 # ---------------------------------------------------------------------------------------------
 # Output folder and results file
 # ---------------------------------------------------------------------------------------------
-$OutDir = Join-Path ([Environment]::GetFolderPath('Desktop')) ('FatzBomb-' + $SmokeName + '-' + (Get-Date -Format 'yyyyMMdd-HHmm'))
+$OutDir = Join-Path (Join-Path $PSScriptRoot '..\..\work\fatzvideo\test-results') ('FatzBomb-' + $SmokeName + '-' + (Get-Date -Format 'yyyyMMdd-HHmm'))
 $LogsOut = Join-Path $OutDir 'logs'
 $ShotsOut = Join-Path $OutDir 'screenshots'
 New-Item -ItemType Directory -Force -Path $OutDir, $LogsOut, $ShotsOut | Out-Null

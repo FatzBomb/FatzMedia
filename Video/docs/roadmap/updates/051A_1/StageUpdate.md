@@ -73,7 +73,7 @@ and the BASS and FFmpeg DLLs in the players' `native\` folders.
 Desktop (all tests):
 
 ```powershell
-cd C:\development\nuget\FatzbombMedia
+cd D:\development\FatzBomb\FatzVideo
 ```
 
 ```powershell

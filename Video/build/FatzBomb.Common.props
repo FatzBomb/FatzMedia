@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    Shared FatzBomb build settings. Master: D:\development\FatzBomb\shared\style\FatzBomb.Common.props.
+    Copied to build\FatzBomb.Common.props in each repo by sync-style.ps1: edit the master, then sync.
+    The repo's Directory.Build.props sets FatzBombStrict, imports this file, then adds its own settings.
+  -->
+  <PropertyGroup>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <!-- .editorconfig style rules and the .NET code-quality checks report in every build, as in Visual Studio. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- The XML doc pass lets the build see unnecessary usings (IDE0005). -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- FatzBombStrict = true once the repo builds with 0 warnings: Release builds then fail on any warning. -->
+  <PropertyGroup Condition="'$(FatzBombStrict)' == 'true' and '$(Configuration)' == 'Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

@@ -1,5 +1,15 @@
-# FatzBomb.MediaControl
+# Agent rules
 
+FatzBomb ecosystem repo, id `fatzvideo` (product: FatzBomb Video; code names still say `FatzBomb.MediaControl`).
+Ecosystem rules are in the global CLAUDE.md; the map is `D:\development\FatzBomb\shared\ECOSYSTEM.md`.
+
+- Needs FatzAudio (read-only repo at `..\FatzAudio`; ask the coordinator for changes there).
+- Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzvideo\`,
+  never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzvideo` (read-only).
+- Don't add Claude or Copilot review workflows to .github/workflows/. Code review is done with /code-review before opening a PR.
+- The rules below were written for the repo's earlier setup. Where they conflict with this block or the global CLAUDE.md,
+  the global CLAUDE.md wins on workflow (commit each verified step on a feature branch, one PR per feature, squash merge).
+## FatzBomb.MediaControl
 .NET 10 media engine: UI-agnostic Core, renderer packages, platform packages, UI adapters, and
 test hosts. Read `docs/CURRENT_ARCHITECTURE.md`, `docs/VALIDATION.md`,
 `docs/NATIVE_DEPENDENCIES.md` and `docs/roadmap/STAGE_MANIFEST.md` when the task touches them,

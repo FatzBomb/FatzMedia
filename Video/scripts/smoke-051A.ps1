@@ -8,12 +8,12 @@
     UI-thread numbers (047A's before numbers) and writes PASS/FAIL per check. You only do what needs
     hands or eyes (dropping a file, watching the A/B swap demo); the script tells you exactly what.
 
-    Everything is saved to a folder on your Desktop (FatzBomb-051A-<date>); at the end the results are
+    Everything is saved to a folder in work\fatzvideo\test-results (FatzBomb-051A-<date>); at the end the results are
     copied to your clipboard so you can paste them into the chat.
 
     Run it from the repository folder, in PowerShell:
 
-        cd C:\development\nuget\FatzbombMedia
+        cd D:\development\FatzBomb\FatzVideo
         powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1
 
     Run it again on the laptop for the laptop numbers (test 3).

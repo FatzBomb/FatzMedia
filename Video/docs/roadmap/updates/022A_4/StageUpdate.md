@@ -80,7 +80,7 @@ Delivered:
 ## Manual smoke (Windows, native DLLs)
 
 ```
-cd C:\development\nuget\FatzbombMedia
+cd D:\development\FatzBomb\FatzVideo
 git checkout claude/wonderful-heisenberg-9x3p6a
 git pull
 dotnet run --project FatzBomb.MediaControl.Player -c Release

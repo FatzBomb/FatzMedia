@@ -73,7 +73,7 @@ Delivered:
 Pull first:
 
 ```
-cd C:\development\nuget\FatzbombMedia
+cd D:\development\FatzBomb\FatzVideo
 git pull
 ```
 
