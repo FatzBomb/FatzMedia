@@ -12,10 +12,7 @@ namespace FatzMedia.Video.Avalonia;
 sealed class LightweightSurfaceHost : IDisposable
 {
     readonly Func<Task> _reload;
-    IPlatformFactory? _platformFactory;
     bool _isAttached;
-    bool _isContentVisible;
-    bool _disposed;
 
     public LightweightSurfaceHost(MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
     {
@@ -33,29 +30,29 @@ sealed class LightweightSurfaceHost : IDisposable
 
     public LightweightPlayerController Controller { get; }
 
-    public bool IsDisposed => _disposed;
+    public bool IsDisposed { get; private set; }
 
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     public IPlatformFactory? PlatformFactory
     {
-        get => _platformFactory;
+        get;
         set
         {
-            if (ReferenceEquals(_platformFactory, value))
+            if (ReferenceEquals(field, value))
                 return;
 
             if (Controller.HasPlayerOrPendingCreation)
                 throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
 
-            _platformFactory = value;
+            field = value;
         }
     }
 
     /// <summary>Schedules one reload of the source on the UI thread (several changes reload once).</summary>
     public void QueueReload()
     {
-        if (_disposed || !_isAttached || !Controller.TryQueueReload())
+        if (IsDisposed || !_isAttached || !Controller.TryQueueReload())
             return;
 
         Dispatcher.UIThread.Post(RunQueuedReload);
@@ -70,17 +67,17 @@ sealed class LightweightSurfaceHost : IDisposable
     public void OnDetachedFromVisualTree()
     {
         _isAttached = false;
-        if (!_disposed)
+        if (!IsDisposed)
             Controller.ReleasePlayer();
     }
 
     public void Dispose()
     {
         Dispatcher.UIThread.VerifyAccess();
-        if (_disposed)
+        if (IsDisposed)
             return;
 
-        _disposed = true;
+        IsDisposed = true;
         // Releases the player: PlayerChanged unbinds the surface first.
         Controller.Dispose();
         Controller.PlayerChanged -= OnPlayerChanged;
@@ -89,7 +86,7 @@ sealed class LightweightSurfaceHost : IDisposable
 
     async void RunQueuedReload()
     {
-        await Controller.RunQueuedReloadAsync(() => !_disposed && _isAttached, _reload);
+        await Controller.RunQueuedReloadAsync(() => !IsDisposed && _isAttached, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
@@ -98,10 +95,10 @@ sealed class LightweightSurfaceHost : IDisposable
     void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = Surface.IsContentVisible;
-        if (isVisible == _isContentVisible)
+        if (isVisible == IsContentVisible)
             return;
 
-        _isContentVisible = isVisible;
+        IsContentVisible = isVisible;
         ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
     }
 }

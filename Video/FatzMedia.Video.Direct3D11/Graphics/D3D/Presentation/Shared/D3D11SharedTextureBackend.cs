@@ -39,7 +39,6 @@ sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
 
     readonly SharedTexture?[] _textures = new SharedTexture?[BufferCount];
     D3D11DeviceResources? _deviceResources;
-    ID3D11Texture2D? _targetTexture;
     IMediaSharedGpuImageConsumer? _consumer;
     MediaSharedGpuImageRing? _ring;
     MediaSharedGpuImageSet? _set;
@@ -57,10 +56,10 @@ sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
     MediaSharedGpuImageSelection? _reportedSelection;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.SharedTexture;
-    public bool IsActive => _targetTexture != null && _set != null && _consumer != null;
+    public bool IsActive => TargetTexture != null && _set != null && _consumer != null;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public ID3D11Texture2D? TargetTexture { get; private set; }
     public D3D11TargetViewCache TargetViews { get; } = new();
 
     /// <summary>What this backend exports: keyed-mutex textures as NT or legacy global handles.</summary>
@@ -119,7 +118,7 @@ sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
         try
         {
             var device = deviceResources.Device!;
-            _targetTexture = device.CreateTexture2D(Describe(width, height, ResourceOptionFlags.None));
+            TargetTexture = device.CreateTexture2D(Describe(width, height, ResourceOptionFlags.None));
             var sharing = ResourceOptionFlags.SharedKeyedMutex
                 | (selection.HandleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle ? ResourceOptionFlags.SharedNTHandle : ResourceOptionFlags.None);
             for (var i = 0; i < BufferCount; i++)
@@ -180,7 +179,7 @@ sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
                 return HandleAcquireFailure(acquired);
             }
 
-            context.CopyResource(shared.Texture, _targetTexture!);
+            context.CopyResource(shared.Texture, TargetTexture!);
             // Releasing submits the copy; the compositor's acquire of the consumer key waits for it.
             shared.Mutex.ReleaseSync(MediaSharedGpuImageRing.ConsumerKey);
         }
@@ -206,8 +205,8 @@ sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
         _ring = null;
         DisposeSharedTextures();
         TargetViews.Release();
-        _targetTexture?.Dispose();
-        _targetTexture = null;
+        TargetTexture?.Dispose();
+        TargetTexture = null;
         _deviceResources = null;
         _consumer = null;
         _recreate = false;

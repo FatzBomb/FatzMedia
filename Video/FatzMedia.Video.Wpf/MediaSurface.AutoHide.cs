@@ -11,8 +11,6 @@ public sealed partial class MediaSurface
 {
     readonly MediaSurfaceContentTracker _contentTracker = new();
     int _contentStateQueued;
-    bool _presentationCleared;
-
     public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
         nameof(AutoHide),
         typeof(bool),
@@ -48,7 +46,7 @@ public sealed partial class MediaSurface
     /// session is in <see cref="Core.Configuration.MediaPlayerMode.Audio"/> mode (Stage 046A). The last video frame
     /// is not left on screen.
     /// </summary>
-    public bool IsPresentationSuspended => _presentationCleared;
+    public bool IsPresentationSuspended { get; private set; }
 
     /// <summary>Raised on the UI thread when <see cref="IsContentVisible"/> changes.</summary>
     public event EventHandler? ContentVisibilityChanged;
@@ -129,10 +127,10 @@ public sealed partial class MediaSurface
     void UpdatePresentationCleared()
     {
         var cleared = _contentTracker.Session is not null && !_contentTracker.HasPresentation;
-        if (cleared == _presentationCleared)
+        if (cleared == IsPresentationSuspended)
             return;
 
-        _presentationCleared = cleared;
+        IsPresentationSuspended = cleared;
         if (!cleared)
             return;
 

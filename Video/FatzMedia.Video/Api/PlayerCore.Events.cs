@@ -106,7 +106,7 @@ public partial class PlayerCore
     void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
     {
         Controls.CancelScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         SubscribeSeekCompletionSources();
         HostEventDispatcher.Raise(this, MediaLoaded, e, nameof(MediaLoaded));
         if (!Controls.ReportCurrentState())
@@ -116,7 +116,7 @@ public partial class PlayerCore
     void OnFileMediaClosed(object? sender, MediaClosedEventArgs e)
     {
         Controls.CancelScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         _positionNotifier.Stop();
         ClearPendingSeek();
         UnsubscribeSeekCompletionSources();

@@ -19,20 +19,17 @@ public class KaraokeSurface : Control
 {
     /// <summary>The diagnostic category of this control's own notices.</summary>
     public const string DiagnosticCategory = "WinForms.KaraokeSurface";
-
-    readonly MediaSurface _surface = new();
     readonly LightweightSurfaceHost _host;
     // The player holds a song the Source loaded (not one LoadAsync loaded directly).
     bool _sourceLoaded;
-    string? _source;
 
     public KaraokeSurface()
     {
         BackColor = Color.Black;
         SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
-        _host = new LightweightSurfaceHost(this, _surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
+        _host = new LightweightSurfaceHost(this, Surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
         _host.ContentVisibilityChanged += (_, _) => ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
-        Controls.Add(_surface);
+        Controls.Add(Surface);
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
@@ -83,8 +80,8 @@ public class KaraokeSurface : Control
     [DefaultValue(true)]
     public bool AutoHide
     {
-        get => _surface.AutoHide;
-        set => _surface.AutoHide = value;
+        get => Surface.AutoHide;
+        set => Surface.AutoHide = value;
     }
 
     /// <summary>Gets whether the karaoke is shown now (see <see cref="MediaSurface.IsContentVisible"/>).</summary>
@@ -95,21 +92,21 @@ public class KaraokeSurface : Control
     [DefaultValue(true)]
     public bool PreferNativeWindow
     {
-        get => _surface.PreferNativeWindow;
-        set => _surface.PreferNativeWindow = value;
+        get => Surface.PreferNativeWindow;
+        set => Surface.PreferNativeWindow = value;
     }
 
     /// <summary>Gets or sets the karaoke file to load (once the control has a handle); a change reloads.</summary>
     [DefaultValue(null)]
     public string? Source
     {
-        get => _source;
+        get;
         set
         {
-            if (string.Equals(_source, value, StringComparison.Ordinal))
+            if (string.Equals(field, value, StringComparison.Ordinal))
                 return;
 
-            _source = value;
+            field = value;
             _host.QueueReload();
         }
     }
@@ -122,7 +119,7 @@ public class KaraokeSurface : Control
     }
 
     /// <summary>The inner surface (tests).</summary>
-    internal MediaSurface Surface => _surface;
+    internal MediaSurface Surface { get; } = new();
 
     /// <summary>
     /// Loads <paramref name="path"/>: <see langword="true"/> when it is karaoke and this load is still
@@ -167,7 +164,7 @@ public class KaraokeSurface : Control
     {
         base.OnLayout(levent);
         (var x, var y, var width, var height) = KaraokeLayout.Fit(ClientSize.Width, ClientSize.Height);
-        _surface.Bounds = new Rectangle((int)x, (int)y, (int)width, (int)height);
+        Surface.Bounds = new Rectangle((int)x, (int)y, (int)width, (int)height);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -188,10 +185,10 @@ public class KaraokeSurface : Control
     // reload without one (attaching) leaves a song LoadAsync loaded directly alone.
     Task ReloadSourceAsync()
     {
-        if (!string.IsNullOrWhiteSpace(_source))
+        if (!string.IsNullOrWhiteSpace(Source))
         {
             _sourceLoaded = true;
-            return _host.Controller.LoadAsync(_source, PlatformFactory);
+            return _host.Controller.LoadAsync(Source, PlatformFactory);
         }
 
         if (_sourceLoaded)

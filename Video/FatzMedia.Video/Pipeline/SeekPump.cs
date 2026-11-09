@@ -59,10 +59,9 @@ sealed class SeekPump : IDisposable
     volatile bool _shutdown;
     double? _pendingSeconds;
     double _activeTargetSeconds = double.NaN;
+
     // True from a request until its exact settle completes with nothing newer queued. A Play
     // in that window is applied by the settle, which resumes playback from the new position.
-    bool _sequenceActive;
-    double _minimumCommittedSeconds = double.NaN;
 
     /// <param name="host">The pipeline the pump drives.</param>
     /// <param name="threadName">Name of the worker thread, such as <c>VideoSeek</c>.</param>
@@ -142,7 +141,7 @@ sealed class SeekPump : IDisposable
         lock (_gate)
         {
             _pendingSeconds = target;
-            _sequenceActive = true;
+            IsSequenceActive = true;
         }
 
         _ = _signal.Set();
@@ -154,9 +153,9 @@ sealed class SeekPump : IDisposable
         lock (_gate)
         {
             _pendingSeconds = null;
-            _sequenceActive = false;
+            IsSequenceActive = false;
             _activeTargetSeconds = double.NaN;
-            _minimumCommittedSeconds = double.NaN;
+            MinimumCommittedTarget = double.NaN;
         }
     }
 
@@ -166,8 +165,8 @@ sealed class SeekPump : IDisposable
         lock (_gate)
         {
             _pendingSeconds = null;
-            _sequenceActive = false;
-            _minimumCommittedSeconds = double.NaN;
+            IsSequenceActive = false;
+            MinimumCommittedTarget = double.NaN;
         }
     }
 
@@ -203,8 +202,10 @@ sealed class SeekPump : IDisposable
         get
         {
             lock (_gate)
-                return _sequenceActive;
+                return field;
         }
+
+        private set;
     }
 
     /// <summary>Ends the seek sequence when no newer request is waiting (called at the end of a settle).</summary>
@@ -212,7 +213,7 @@ sealed class SeekPump : IDisposable
     {
         lock (_gate)
             if (!_pendingSeconds.HasValue)
-                _sequenceActive = false;
+                IsSequenceActive = false;
     }
 
     public void SetActiveTarget(double target)
@@ -238,20 +239,22 @@ sealed class SeekPump : IDisposable
         get
         {
             lock (_gate)
-                return _minimumCommittedSeconds;
+                return field;
         }
-    }
+
+        private set;
+    } = double.NaN;
 
     public void SetMinimumCommittedTarget(double target)
     {
         lock (_gate)
-            _minimumCommittedSeconds = target;
+            MinimumCommittedTarget = target;
     }
 
     public void ClearMinimumCommittedTarget()
     {
         lock (_gate)
-            _minimumCommittedSeconds = double.NaN;
+            MinimumCommittedTarget = double.NaN;
     }
 
     /// <summary>

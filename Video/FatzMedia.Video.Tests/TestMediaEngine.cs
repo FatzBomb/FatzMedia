@@ -11,7 +11,6 @@ namespace FatzMedia.Video.Tests;
 
 sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
-    double _position;
     int _cancelPendingNetworkOpenCount;
 
     /// <summary>How often the player cancelled a network open in progress (Stage 039A).</summary>
@@ -68,10 +67,10 @@ sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEve
     public MediaBackgroundCandidate? Background { get; private set; }
     public double Position
     {
-        get => TestVideo is { IsOpen: true } ? TestVideo.Position : _position;
+        get => TestVideo is { IsOpen: true } ? TestVideo.Position : field;
         set
         {
-            _position = value;
+            field = value;
             if (TestVideo is { IsOpen: true })
                 TestVideo.Position = value;
         }
@@ -368,7 +367,6 @@ sealed class TestCdgEngine : ICdgEngine
 
 sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzMedia.Video.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
-    bool _normalizationReady = true;
     public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
     public int EqualizerApplyCount { get; private set; }
 
@@ -423,7 +421,7 @@ sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLo
     public bool Normalize { get; set; } = true;
     public double NormalizationGain { get; set; } = 1;
     // Settable so a test can hold a PlayOnLoad start in its wait for the quick analysis.
-    public bool NormalizationReady { get => Volatile.Read(ref _normalizationReady); set => Volatile.Write(ref _normalizationReady, value); }
+    public bool NormalizationReady { get => Volatile.Read(ref field); set => Volatile.Write(ref field, value); } = true;
     public bool IsNormalizationReady => NormalizationReady;
     public double Duration { get; set; }
     public double Position { get; set; }

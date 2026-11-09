@@ -54,7 +54,7 @@ sealed unsafe partial class VulkanOffscreenCompositor
 
     /// <summary>Gets what the device decodes with Vulkan Video, or null (see <see cref="VideoDecodeUnavailableReason"/>).</summary>
     public VulkanVideoDecodeSupport? VideoDecode =>
-        _shared?.VideoDecode is { Codecs: not VideoCodecOperationFlagsKHR.NoneKhr } decode ? decode : null;
+        SharedDevice?.VideoDecode is { Codecs: not VideoCodecOperationFlagsKHR.NoneKhr } decode ? decode : null;
 
     /// <summary>Gets why the device does not decode with Vulkan Video, or null when it does.</summary>
     public string? VideoDecodeUnavailableReason { get; private set; }
@@ -63,7 +63,7 @@ sealed unsafe partial class VulkanOffscreenCompositor
     public nint DeviceHandle => _device.Handle;
 
     /// <summary>Gets the shared device (tests).</summary>
-    internal VulkanSharedDevice? SharedDevice => _shared;
+    internal VulkanSharedDevice? SharedDevice { get; private set; }
 
     /// <summary>Gets how many decoded frames were converted into the video layer (tests).</summary>
     internal int VideoConversionCount { get; private set; }
@@ -85,7 +85,7 @@ sealed unsafe partial class VulkanOffscreenCompositor
     }
 
     /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
-    public void MarkDeviceLost(string reason) => _shared?.MarkLost(reason);
+    public void MarkDeviceLost(string reason) => SharedDevice?.MarkLost(reason);
 
     /// <summary>
     /// A new reference to an FFmpeg Vulkan device context on this device, or 0 with the reason
@@ -93,13 +93,13 @@ sealed unsafe partial class VulkanOffscreenCompositor
     /// </summary>
     public nint CreateVideoDecodeDeviceContext(out string? failure)
     {
-        if (VideoDecode is null || _shared is null)
+        if (VideoDecode is null || SharedDevice is null)
         {
             failure = VideoDecodeUnavailableReason ?? "the Vulkan device does not decode video";
             return 0;
         }
 
-        return _shared.CreateFfmpegDeviceContextReference(out failure);
+        return SharedDevice.CreateFfmpegDeviceContextReference(out failure);
     }
 
     /// <summary>Whether a decoded frame lives on this compositor's device.</summary>
@@ -116,7 +116,7 @@ sealed unsafe partial class VulkanOffscreenCompositor
             _videoConvertedFrame = 0;
             // The decoder's frames may go with it. Every submission has completed (fence wait
             // under this lock); after a loss the views wait for Dispose.
-            if (_shared?.IsLost != true)
+            if (SharedDevice?.IsLost != true)
                 DestroyPlaneViews();
         }
     }

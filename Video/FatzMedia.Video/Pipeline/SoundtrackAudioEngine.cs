@@ -48,7 +48,6 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     int _generation;
     int _observedLoopCount;
     bool _ended;
-    bool _loopPlayback;
     bool _disposed;
     volatile bool _isNetwork;
     MediaSourceCapabilities? _networkCapabilities;
@@ -92,10 +91,10 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     /// <summary>Gets or sets whether the soundtrack loops. A network soundtrack never loops.</summary>
     public bool LoopPlayback
     {
-        get => Volatile.Read(ref _loopPlayback) && !_isNetwork;
+        get => Volatile.Read(ref field) && !_isNetwork;
         set
         {
-            Volatile.Write(ref _loopPlayback, value);
+            Volatile.Write(ref field, value);
             _audio.LoopPlayback = LoopPlayback;
         }
     }

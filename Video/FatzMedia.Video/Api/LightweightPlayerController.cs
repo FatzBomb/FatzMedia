@@ -35,7 +35,6 @@ public sealed class LightweightPlayerController : IDisposable
     int _lifetime;
     int _reloadVersion;
     int _reloadQueued;
-    bool _autoPlay = true;
     volatile bool _disposed;
 
     /// <param name="kind">Which control this is; decides the player's mode and the load rules.</param>
@@ -114,14 +113,14 @@ public sealed class LightweightPlayerController : IDisposable
     /// </summary>
     public bool AutoPlay
     {
-        get => Volatile.Read(ref _autoPlay);
+        get => Volatile.Read(ref field);
         set
         {
-            Volatile.Write(ref _autoPlay, value);
+            Volatile.Write(ref field, value);
             if (Player is { } player)
                 player.PlayOnLoad = value;
         }
-    }
+    } = true;
 
     /// <summary>
     /// Marks a source reload as queued. Returns <see langword="true"/> when the caller must schedule

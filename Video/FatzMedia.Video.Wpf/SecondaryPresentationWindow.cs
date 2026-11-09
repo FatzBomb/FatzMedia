@@ -24,7 +24,6 @@ public sealed class SecondaryPresentationWindow : Window
     public static readonly Size DefaultSize = new(960, 540);
 
     readonly IPlayerSession _session;
-    bool _isFullScreen;
     WindowStyle _restoreWindowStyle;
     ResizeMode _restoreResizeMode;
     WindowState _restoreWindowState;
@@ -74,13 +73,13 @@ public sealed class SecondaryPresentationWindow : Window
     /// <summary>Gets or sets whether the window covers its whole screen (borderless, maximized).</summary>
     public bool IsFullScreen
     {
-        get => _isFullScreen;
+        get;
         set
         {
-            if (_isFullScreen == value)
+            if (field == value)
                 return;
 
-            _isFullScreen = value;
+            field = value;
             if (value)
             {
                 _restoreWindowStyle = WindowStyle;

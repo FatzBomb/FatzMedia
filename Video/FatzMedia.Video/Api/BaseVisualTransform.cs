@@ -9,8 +9,6 @@ public readonly record struct BaseVisualTransform
     readonly float _redGainOffset;
     readonly float _greenGainOffset;
     readonly float _blueGainOffset;
-    readonly float _hueDegrees;
-    readonly float _brightness;
     readonly float _contrastOffset;
     readonly float _saturationOffset;
 
@@ -36,14 +34,14 @@ public readonly record struct BaseVisualTransform
 
     public float HueDegrees
     {
-        get => _hueDegrees;
-        init => _hueDegrees = Normalize(value, -180f, 180f, 0f);
+        get;
+        init => field = Normalize(value, -180f, 180f, 0f);
     }
 
     public float Brightness
     {
-        get => _brightness;
-        init => _brightness = Normalize(value, -1f, 1f, 0f);
+        get;
+        init => field = Normalize(value, -1f, 1f, 0f);
     }
 
     public float Contrast
@@ -60,8 +58,8 @@ public readonly record struct BaseVisualTransform
 
     public bool IncludeOverlays { get; init; }
 
-    public bool IsIdentity => _hueDegrees == 0f
-        && _brightness == 0f
+    public bool IsIdentity => HueDegrees == 0f
+        && Brightness == 0f
         && _contrastOffset == 0f
         && _saturationOffset == 0f
         && _redGainOffset == 0f

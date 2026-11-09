@@ -26,17 +26,14 @@ public readonly record struct NormalizationOptions
     const double MinimumCeilingDbtp = -20;
     const double MaximumCeilingDbtp = 0;
 
-    readonly double _targetOffset;
-    readonly double _ceilingOffset;
-
     /// <summary>
     /// Gets the integrated loudness every song is brought to, in LUFS (-60 to 0). A karaoke host
     /// wanting headroom for microphones might use about -16.
     /// </summary>
     public double TargetLufs
     {
-        get => DefaultTargetLufs + _targetOffset;
-        init => _targetOffset = Clamp(value, MinimumTargetLufs, MaximumTargetLufs, DefaultTargetLufs) - DefaultTargetLufs;
+        get => DefaultTargetLufs + field;
+        init => field = Clamp(value, MinimumTargetLufs, MaximumTargetLufs, DefaultTargetLufs) - DefaultTargetLufs;
     }
 
     /// <summary>
@@ -45,8 +42,8 @@ public readonly record struct NormalizationOptions
     /// </summary>
     public double TruePeakCeilingDbtp
     {
-        get => DefaultTruePeakCeilingDbtp + _ceilingOffset;
-        init => _ceilingOffset = Clamp(value, MinimumCeilingDbtp, MaximumCeilingDbtp, DefaultTruePeakCeilingDbtp) - DefaultTruePeakCeilingDbtp;
+        get => DefaultTruePeakCeilingDbtp + field;
+        init => field = Clamp(value, MinimumCeilingDbtp, MaximumCeilingDbtp, DefaultTruePeakCeilingDbtp) - DefaultTruePeakCeilingDbtp;
     }
 
     /// <summary>

@@ -12,7 +12,6 @@ namespace FatzMedia.Video.Direct3D11;
 sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 {
     readonly D3D11DeviceResources _deviceResources;
-    readonly D3D11RendererPresentationServices _presentation;
     readonly Lock _lock = new();
     readonly MediaPlayerConfiguration _configuration;
     readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
@@ -26,7 +25,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         _configuration = configuration;
         _deviceResources = new D3D11DeviceResources(options.DeviceSelection);
-        _presentation = new D3D11RendererPresentationServices(
+        PresentationServices = new D3D11RendererPresentationServices(
             configuration,
             options,
             _deviceResources);
@@ -35,11 +34,11 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     public event EventHandler? FramePresented;
 
     /// <summary>Gets the presentation services (tests).</summary>
-    internal D3D11RendererPresentationServices PresentationServices => _presentation;
+    internal D3D11RendererPresentationServices PresentationServices { get; }
 
     public nint NativeDeviceHandle => _deviceResources.NativeDevicePointer;
 
-    public string BackendName => _presentation.PresentationBackend;
+    public string BackendName => PresentationServices.PresentationBackend;
 
     public string DeviceLostDiagnosticCategory => "D3D11.DeviceLost";
 
@@ -71,7 +70,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.InitializeDevice(_disposed);
+            return PresentationServices.InitializeDevice(_disposed);
         }
     }
 
@@ -84,7 +83,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.InitializeFromNativeDevice(_disposed, devicePointer, deviceContextPointer);
+            return PresentationServices.InitializeFromNativeDevice(_disposed, devicePointer, deviceContextPointer);
         }
     }
 
@@ -97,7 +96,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateNativeHwndSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
+            return PresentationServices.CreateNativeHwndSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
         }
     }
 
@@ -110,7 +109,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateDirectCompositionSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
+            return PresentationServices.CreateDirectCompositionSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
         }
     }
 
@@ -123,7 +122,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateSecondaryNativeHwndSurface(_disposed, targetId, hwnd, width, height);
+            return PresentationServices.CreateSecondaryNativeHwndSurface(_disposed, targetId, hwnd, width, height);
         }
     }
 
@@ -137,7 +136,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateManagedFrameSinkSurface(
+            return PresentationServices.CreateManagedFrameSinkSurface(
                 _disposed,
                 sink,
                 width,
@@ -163,7 +162,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             }
             else
             {
-                created = _presentation.CreateSharedTextureSurface(_disposed, consumer, width, height, NotifyPresentedWithSync, out reason);
+                created = PresentationServices.CreateSharedTextureSurface(_disposed, consumer, width, height, NotifyPresentedWithSync, out reason);
             }
         }
 
@@ -182,7 +181,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return false;
 
         lock (_lock)
-            return _presentation.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
+            return PresentationServices.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
     }
 
     bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
@@ -193,7 +192,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         bool created;
         string? reason;
         lock (_lock)
-            created = _presentation.CreateSecondarySharedTextureSurface(_disposed, targetId, consumer, width, height, out reason);
+            created = PresentationServices.CreateSecondarySharedTextureSurface(_disposed, targetId, consumer, width, height, out reason);
 
         if (!created)
         {
@@ -208,7 +207,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            return _presentation.RemoveSecondaryPresentationTarget(targetId);
+            return PresentationServices.RemoveSecondaryPresentationTarget(targetId);
         }
     }
 
@@ -216,7 +215,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.SetNativeLiveResizeInProgress(isResizing);
+            PresentationServices.SetNativeLiveResizeInProgress(isResizing);
         }
     }
 
@@ -224,7 +223,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.SetNativePresentationStretch(stretchMode);
+            PresentationServices.SetNativePresentationStretch(stretchMode);
         }
     }
 
@@ -232,7 +231,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.QueueNativeHwndResize(_disposed, width, height);
+            PresentationServices.QueueNativeHwndResize(_disposed, width, height);
         }
     }
 
@@ -240,7 +239,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.QueueDirectCompositionResize(_disposed, width, height);
+            PresentationServices.QueueDirectCompositionResize(_disposed, width, height);
         }
     }
 
@@ -269,7 +268,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             // HDR output (Stage 042A slice 2) follows the primary window's monitor; a no-op
             // unless the option is on.
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
-                _presentation.HdrOutput.PrimeDisplay(hwnd);
+                PresentationServices.HdrOutput.PrimeDisplay(hwnd);
         }
 
         return attached;
@@ -316,7 +315,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
                 surface.PixelHeight);
         }
 
-        if (_presentation.IsDirectCompositionActive)
+        if (PresentationServices.IsDirectCompositionActive)
         {
             QueueDirectCompositionPresentationResize(surface.PixelWidth, surface.PixelHeight);
         }
@@ -397,7 +396,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         {
             _refreshRates.Remove(hwnd);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
-                _presentation.HdrOutput.ForgetDisplay(hwnd);
+                PresentationServices.HdrOutput.ForgetDisplay(hwnd);
         }
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
@@ -413,7 +412,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.CleanupPrimarySurfaces();
+            PresentationServices.CleanupPrimarySurfaces();
         }
     }
 
@@ -427,7 +426,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.PresentHardwareFrame(
+            return PresentationServices.PresentHardwareFrame(
                 _disposed,
                 resource.ResourceHandle,
                 resource.SubresourceIndex,
@@ -485,7 +484,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.ClearCompositionBackgroundFrame();
+            PresentationServices.ClearCompositionBackgroundFrame();
         }
     }
 
@@ -493,7 +492,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            return _presentation.PresentMediaCompositionVisible(() => _disposed, frame, RaisePresentedEvent);
+            return PresentationServices.PresentMediaCompositionVisible(() => _disposed, frame, RaisePresentedEvent);
         }
     }
 
@@ -502,7 +501,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         get
         {
             lock (_lock)
-                return _presentation.LastPresentFailureReason;
+                return PresentationServices.LastPresentFailureReason;
         }
     }
 
@@ -510,7 +509,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.CleanupResources();
+            PresentationServices.CleanupResources();
         }
     }
 
@@ -520,7 +519,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
 
-    bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
+    bool NotifyPresentedCore(bool syncImmediate = false) => PresentationServices.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
 
     void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 
@@ -533,12 +532,12 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            _presentation.CleanupResources();
+            PresentationServices.CleanupResources();
             _disposed = true;
         }
 
         _refreshRates.Clear();
-        _presentation.HdrOutput.Clear();
+        PresentationServices.HdrOutput.Clear();
         _vblankClocks.Dispose();
 
         if (_configuration.EnableLogging)

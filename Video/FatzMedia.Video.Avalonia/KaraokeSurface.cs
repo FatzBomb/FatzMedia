@@ -46,8 +46,6 @@ public class KaraokeSurface : Panel, IDisposable
 
     public static readonly DirectProperty<KaraokeSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<KaraokeSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
-
-    readonly MediaSurface _surface = new();
     readonly LightweightSurfaceHost _host;
     // The player holds a song the Source loaded (not one LoadAsync loaded directly).
     bool _sourceLoaded;
@@ -56,9 +54,9 @@ public class KaraokeSurface : Panel, IDisposable
     {
         ClipToBounds = true;
         Background = new SolidColorBrush(Colors.Black);
-        _host = new LightweightSurfaceHost(_surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
+        _host = new LightweightSurfaceHost(Surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
         _host.ContentVisibilityChanged += OnContentVisibilityChanged;
-        Children.Add(_surface);
+        Children.Add(Surface);
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
@@ -136,7 +134,7 @@ public class KaraokeSurface : Panel, IDisposable
     }
 
     /// <summary>The inner surface (tests).</summary>
-    internal MediaSurface Surface => _surface;
+    internal MediaSurface Surface { get; } = new();
 
     /// <summary>
     /// Loads <paramref name="path"/>: <see langword="true"/> when it is karaoke and this load is still
@@ -168,9 +166,9 @@ public class KaraokeSurface : Panel, IDisposable
         else if (change.Property == AutoPlayProperty)
             _host.Controller.AutoPlay = change.NewValue is true;
         else if (change.Property == AutoHideProperty)
-            _surface.AutoHide = change.NewValue is true;
+            Surface.AutoHide = change.NewValue is true;
         else if (change.Property == PreferGpuSharedSurfaceProperty)
-            _surface.PreferGpuSharedSurface = change.NewValue is true;
+            Surface.PreferGpuSharedSurface = change.NewValue is true;
         else if (change.Property == CanvasColorProperty && change.NewValue is Color color)
             Background = new SolidColorBrush(Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
     }
@@ -191,7 +189,7 @@ public class KaraokeSurface : Panel, IDisposable
     {
         _ = base.ArrangeOverride(finalSize);
         (var x, var y, var width, var height) = KaraokeLayout.Fit(finalSize.Width, finalSize.Height);
-        _surface.Arrange(new Rect(x, y, width, height));
+        Surface.Arrange(new Rect(x, y, width, height));
         return finalSize;
     }
 

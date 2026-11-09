@@ -47,7 +47,7 @@ public sealed partial class MediaSurface
     void RaiseFirstFrameReadyIfDue()
     {
         var load = _contentTracker.FirstFrameLoad;
-        if (load == 0 || load == _firstFrameReadyLoad || !_primaryAttached || !_contentTracker.HasPresentation)
+        if (load == 0 || load == _firstFrameReadyLoad || !IsSurfaceAttached || !_contentTracker.HasPresentation)
             return;
 
         if (PresentationMode == WpfPresentationMode.WpfComposited)

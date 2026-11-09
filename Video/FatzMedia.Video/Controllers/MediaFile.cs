@@ -15,7 +15,6 @@ sealed class MediaFile
     readonly CdgVisuals? _cdgVisuals;
     readonly IArchiveService? _archiveService;
     MediaSourceInfo? _currentSource;
-    LoadRequest? _currentLoad;
     int _loadGeneration;
 
     internal MediaFile(
@@ -101,7 +100,7 @@ sealed class MediaFile
     /// Gets how the open media was loaded (source, explicit background, sidecar choice), or
     /// <see langword="null"/> when nothing is open. A mode switch (043A) reopens it in the new graph.
     /// </summary>
-    internal LoadRequest? CurrentLoad => _currentLoad;
+    internal LoadRequest? CurrentLoad { get; private set; }
 
     /// <summary>
     /// Loads <paramref name="request"/> again as the same item: without honoring
@@ -222,7 +221,7 @@ sealed class MediaFile
         InvalidatePendingPlayOnLoad();
         var closedSource = _currentSource;
         _currentSource = null;
-        _currentLoad = null;
+        CurrentLoad = null;
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
@@ -309,7 +308,7 @@ sealed class MediaFile
         if (applyLoadReset)
             _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
         _cdgVisuals?.Apply();
-        _currentLoad = new LoadRequest(source, backgroundSource, ignoreSidecar);
+        CurrentLoad = new LoadRequest(source, backgroundSource, ignoreSidecar);
         _currentSource = new MediaSourceInfo(
             source,
             _mediaEngine.Content,
@@ -329,7 +328,7 @@ sealed class MediaFile
             return;
 
         _currentSource = null;
-        _currentLoad = null;
+        CurrentLoad = null;
         HostEventDispatcher.Raise(
             this,
             MediaClosed,

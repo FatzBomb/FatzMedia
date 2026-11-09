@@ -11,12 +11,9 @@ sealed class LightweightSurfaceHost : IDisposable
 {
     readonly Control _owner;
     readonly Func<Task> _reload;
-    IPlatformFactory? _platformFactory;
-    bool _isContentVisible;
     bool _reloadScheduled;
     bool _reloadDropped;
     bool _recreatingHandle;
-    bool _disposed;
 
     public LightweightSurfaceHost(Control owner, MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
     {
@@ -35,29 +32,29 @@ sealed class LightweightSurfaceHost : IDisposable
 
     public LightweightPlayerController Controller { get; }
 
-    public bool IsDisposed => _disposed;
+    public bool IsDisposed { get; private set; }
 
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     public IPlatformFactory? PlatformFactory
     {
-        get => _platformFactory;
+        get;
         set
         {
-            if (ReferenceEquals(_platformFactory, value))
+            if (ReferenceEquals(field, value))
                 return;
 
             if (Controller.HasPlayerOrPendingCreation)
                 throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
 
-            _platformFactory = value;
+            field = value;
         }
     }
 
     /// <summary>Schedules one reload of the source on the UI thread (several changes reload once).</summary>
     public void QueueReload()
     {
-        if (_disposed || !_owner.IsHandleCreated || !Controller.TryQueueReload())
+        if (IsDisposed || !_owner.IsHandleCreated || !Controller.TryQueueReload())
             return;
 
         try
@@ -94,7 +91,7 @@ sealed class LightweightSurfaceHost : IDisposable
         _reloadDropped = _reloadScheduled;
         _reloadScheduled = false;
         Controller.ClearQueuedReload();
-        if (_disposed)
+        if (IsDisposed)
             return;
 
         if (_owner.RecreatingHandle)
@@ -108,10 +105,10 @@ sealed class LightweightSurfaceHost : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        if (IsDisposed)
             return;
 
-        _disposed = true;
+        IsDisposed = true;
         // Releases the player: PlayerChanged unbinds the surface first.
         Controller.Dispose();
         Controller.PlayerChanged -= OnPlayerChanged;
@@ -121,7 +118,7 @@ sealed class LightweightSurfaceHost : IDisposable
     async void RunQueuedReload()
     {
         _reloadScheduled = false;
-        await Controller.RunQueuedReloadAsync(() => !_disposed && _owner.IsHandleCreated, _reload);
+        await Controller.RunQueuedReloadAsync(() => !IsDisposed && _owner.IsHandleCreated, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
@@ -130,10 +127,10 @@ sealed class LightweightSurfaceHost : IDisposable
     void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = Surface.IsContentVisible;
-        if (isVisible == _isContentVisible)
+        if (isVisible == IsContentVisible)
             return;
 
-        _isContentVisible = isVisible;
+        IsContentVisible = isVisible;
         ContentVisibilityChanged?.Invoke(_owner, EventArgs.Empty);
     }
 }

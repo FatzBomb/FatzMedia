@@ -1198,7 +1198,6 @@ public sealed class PlayerCoreTests
     sealed class TestPlatformFactory : IPlatformFactory
     {
         readonly Queue<TestMediaEngine> _engines;
-        readonly TestPresentationCoordinator _coordinator = new();
         int _createServiceProviderCount;
 
         public TestPlatformFactory(params TestMediaEngine[] engines)
@@ -1208,7 +1207,7 @@ public sealed class PlayerCoreTests
 
         public string LastNativeLoadMessage => string.Empty;
 
-        public TestPresentationCoordinator Coordinator => _coordinator;
+        public TestPresentationCoordinator Coordinator { get; } = new();
 
         public Action<int>? BeforeCreateServiceProvider { get; set; }
 
@@ -1216,7 +1215,7 @@ public sealed class PlayerCoreTests
 
         public IMediaPresentationCoordinator CreatePresentationCoordinator(
             IMediaEngine mediaEngine,
-            MediaPlayerConfiguration configuration) => _coordinator;
+            MediaPlayerConfiguration configuration) => Coordinator;
 
         public IServiceProvider CreateServiceProvider(
             MediaPlayerConfiguration configuration,

@@ -13,12 +13,8 @@ public readonly record struct SilenceTrimOptions
     const double MinimumThresholdDecibels = -96;
     const double MaximumThresholdDecibels = 0;
     const double MaximumDurationSeconds = 30;
-
-    readonly double _thresholdOffset;
     readonly double _minimumSilenceOffset;
     readonly double _paddingOffset;
-    readonly bool _preserveLeadingSilence;
-    readonly bool _preserveTrailingSilence;
 
     /// <summary>
     /// Gets whether analyzed silence should affect the playable window.
@@ -30,8 +26,8 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public double ThresholdDecibels
     {
-        get => DefaultThresholdDecibels + _thresholdOffset;
-        init => _thresholdOffset = Normalize(
+        get => DefaultThresholdDecibels + field;
+        init => field = Normalize(
             value,
             MinimumThresholdDecibels,
             MaximumThresholdDecibels,
@@ -69,8 +65,8 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public bool TrimLeading
     {
-        get => !_preserveLeadingSilence;
-        init => _preserveLeadingSilence = !value;
+        get => !field;
+        init => field = !value;
     }
 
     /// <summary>
@@ -78,8 +74,8 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public bool TrimTrailing
     {
-        get => !_preserveTrailingSilence;
-        init => _preserveTrailingSilence = !value;
+        get => !field;
+        init => field = !value;
     }
 
     static double Normalize(double value, double minimum, double maximum, double fallback)

@@ -17,7 +17,6 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Managed;
 sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
 {
     D3D11DeviceResources? _deviceResources;
-    ID3D11Texture2D? _targetTexture;
     ID3D11Texture2D? _stagingTexture;
     IMediaPresentationFrameSink? _sink;
     byte[] _pixels = [];
@@ -26,10 +25,10 @@ sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
     readonly RendererDiagnosticLatch _readbackFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.ManagedFrameSink;
-    public bool IsActive => _targetTexture != null && _stagingTexture != null && _sink != null;
+    public bool IsActive => TargetTexture != null && _stagingTexture != null && _sink != null;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public ID3D11Texture2D? TargetTexture { get; private set; }
     public D3D11TargetViewCache TargetViews { get; } = new();
 
     /// <summary>Gets the length of the retained readback buffer (tests).</summary>
@@ -83,7 +82,7 @@ sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
                 sampleQuality: 0,
                 ResourceOptionFlags.None);
 
-            _targetTexture = deviceResources.Device!.CreateTexture2D(in targetDescription);
+            TargetTexture = deviceResources.Device!.CreateTexture2D(in targetDescription);
             _stagingTexture = deviceResources.Device.CreateTexture2D(in stagingDescription);
             _deviceResources = deviceResources;
             _sink = sink;
@@ -113,7 +112,7 @@ sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         var context = _deviceResources.Context;
         try
         {
-            context.CopyResource(_stagingTexture!, _targetTexture!);
+            context.CopyResource(_stagingTexture!, TargetTexture!);
             var result = context.Map(
                 _stagingTexture!,
                 0,
@@ -213,8 +212,8 @@ sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         TargetViews.Release();
         _stagingTexture?.Dispose();
         _stagingTexture = null;
-        _targetTexture?.Dispose();
-        _targetTexture = null;
+        TargetTexture?.Dispose();
+        TargetTexture = null;
         _deviceResources = null;
         _sink = null;
         Width = 0;

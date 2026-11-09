@@ -57,7 +57,6 @@ sealed unsafe class MediaDemuxer : IDisposable
     readonly List<string> _tlsFailureLines = [];
     string? _networkUrl;
     bool _networkReadFailed;
-    bool _networkEndOfStream;
     int _networkLogDiagnostics;
     int _networkFailures;
     Action<int, string>? _networkLogObserver;
@@ -96,7 +95,7 @@ sealed unsafe class MediaDemuxer : IDisposable
     public string? FailedReadError { get; private set; }
 
     /// <summary>Whether a network read reached the end of the stream (or the stream dropped).</summary>
-    public bool NetworkEndOfStream => _networkEndOfStream;
+    public bool NetworkEndOfStream { get; private set; }
 
     /// <summary>True once a container has been opened and stream info probed.</summary>
     public bool IsOpen => _formatContext != null;
@@ -162,7 +161,7 @@ sealed unsafe class MediaDemuxer : IDisposable
         LastNetworkError = null;
         _networkReadFailed = false;
         FailedReadError = null;
-        _networkEndOfStream = false;
+        NetworkEndOfStream = false;
         _networkLogDiagnostics = 0;
         _networkFailures = 0;
         ResetStreamMetadata();
@@ -526,7 +525,7 @@ sealed unsafe class MediaDemuxer : IDisposable
         if (superseded && !_interrupt.IsAborted)
             return ffmpeg.AVERROR_EXIT;
 
-        _networkEndOfStream = true;
+        NetworkEndOfStream = true;
         if (result == ffmpeg.AVERROR_EOF || _interrupt.IsAborted)
             return ffmpeg.AVERROR_EOF;
 
@@ -576,7 +575,7 @@ sealed unsafe class MediaDemuxer : IDisposable
         {
             _networkReadFailed = false;
             FailedReadError = null;
-            _networkEndOfStream = false;
+            NetworkEndOfStream = false;
             // FFmpeg keeps the I/O error of a dropped connection on the context and reports the
             // real end of the source as that error (demux.c: "a demuxer might have returned EOF
             // because of an IO error"). The seek reconnected, so the error is over (ENG-034: after
@@ -602,7 +601,7 @@ sealed unsafe class MediaDemuxer : IDisposable
         _networkUrl = null;
         _networkReadFailed = false;
         FailedReadError = null;
-        _networkEndOfStream = false;
+        NetworkEndOfStream = false;
     }
 
     public void Dispose()

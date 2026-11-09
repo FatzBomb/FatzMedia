@@ -63,8 +63,8 @@ sealed unsafe class NetworkReadAhead : IDisposable
     [ThreadStatic] static long t_waitDeadline;
     [ThreadStatic] static CancellationToken t_waitCancellation;
     [ThreadStatic] static Func<bool>? t_waitAbandon;
+
     // How long reads on this thread have waited for packets in total (Stopwatch ticks).
-    [ThreadStatic] static long t_waitedTicks;
 
     readonly MediaDemuxer _demuxer;
     readonly string? _sourcePath;
@@ -214,7 +214,8 @@ sealed unsafe class NetworkReadAhead : IDisposable
     /// <see cref="Stopwatch"/> duration in ticks. A time-budgeted decode subtracts it, so its budget
     /// measures decoding rather than the download (a seek to a target outside the buffer).
     /// </summary>
-    public static long WaitedTicksOnThisThread => t_waitedTicks;
+    [field: ThreadStatic]
+    public static long WaitedTicksOnThisThread { get; private set; }
 
     /// <summary>Reads and seeks on this thread do not wait for the network until the scope ends.</summary>
     public static WaitScope NoWait() => new(1, CancellationToken.None);
@@ -519,7 +520,7 @@ sealed unsafe class NetworkReadAhead : IDisposable
             // Checked again by the caller.
         }
 
-        t_waitedTicks += Stopwatch.GetTimestamp() - started;
+        WaitedTicksOnThisThread += Stopwatch.GetTimestamp() - started;
     }
 
     void EnsureReaderStartedNoLock()

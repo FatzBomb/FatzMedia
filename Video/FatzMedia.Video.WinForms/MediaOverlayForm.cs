@@ -22,8 +22,6 @@ sealed class MediaOverlayForm : Form
     const int WmMouseActivate = 0x0021;
     const int MaNoActivate = 3;
 
-    bool _hitTestVisible;
-
     public MediaOverlayForm()
     {
         FormBorderStyle = FormBorderStyle.None;
@@ -40,7 +38,7 @@ sealed class MediaOverlayForm : Form
     }
 
     /// <summary>Gets whether the overlay takes mouse input (tests).</summary>
-    internal bool IsHitTestVisible => _hitTestVisible;
+    internal bool IsHitTestVisible { get; private set; }
 
     protected override bool ShowWithoutActivation => true;
 
@@ -50,7 +48,7 @@ sealed class MediaOverlayForm : Form
         {
             var parameters = base.CreateParams;
             parameters.ExStyle |= WsExToolWindow;
-            if (!_hitTestVisible)
+            if (!IsHitTestVisible)
                 parameters.ExStyle |= WsExTransparent | WsExNoActivate;
             return parameters;
         }
@@ -69,10 +67,10 @@ sealed class MediaOverlayForm : Form
 
     public void SetHitTestVisible(bool value)
     {
-        if (_hitTestVisible == value)
+        if (IsHitTestVisible == value)
             return;
 
-        _hitTestVisible = value;
+        IsHitTestVisible = value;
         if (IsHandleCreated)
             UpdateStyles();
     }

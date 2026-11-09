@@ -42,7 +42,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     readonly ISubtitleRasterizer _subtitleRasterizer;
     readonly TimeSpan _wipeTransitionDuration;
     readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
-    bool _isRenderLoopRunning;
+
     // Guards _isRenderLoopRunning with its scheduler start/stop: seek refreshes, StartRendering and
     // StopRendering run on different threads. PlaybackScheduler.Start/Stop never wait.
     readonly Lock _renderLoopGate = new();
@@ -389,7 +389,7 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
             PresentCurrentComposition("presentation started");
     }
 
-    internal bool IsRenderLoopRunning => _isRenderLoopRunning;
+    internal bool IsRenderLoopRunning { get; private set; }
 
     bool NeedsRenderLoop => _attachedCdg != null || (HasSubtitleContent && _attachedVideo == null);
 
@@ -401,10 +401,10 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
         var needed = NeedsRenderLoop;
         lock (_renderLoopGate)
         {
-            if (!_isRenderingActive || needed == _isRenderLoopRunning)
+            if (!_isRenderingActive || needed == IsRenderLoopRunning)
                 return;
 
-            _isRenderLoopRunning = needed;
+            IsRenderLoopRunning = needed;
             if (needed)
                 _presentationScheduler.Start(RenderLoop);
             else
@@ -417,7 +417,7 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
         lock (_renderLoopGate)
         {
             _isRenderingActive = false;
-            _isRenderLoopRunning = false;
+            IsRenderLoopRunning = false;
             _presentationScheduler.Stop();
         }
         if (_mediaEngine.State is MediaPlayerState.Stopped or MediaPlayerState.Null)

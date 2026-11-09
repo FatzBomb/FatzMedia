@@ -201,7 +201,6 @@ public sealed class SeekPumpTests
         readonly Queue<Action> _waitActions = new();
         readonly Queue<Action> _settleActions = new();
         readonly Queue<Action> _previewActions = new();
-        double _currentFrameTime = double.NaN;
 
         public FakeHost() => Pump = new SeekPump(this, "TestSeek", "SeekPumpTests");
 
@@ -214,7 +213,7 @@ public sealed class SeekPumpTests
         public bool RealWait { get; init; }
         public Action? OnSettle { get; set; }
 
-        public double CurrentFrameTime => _currentFrameTime;
+        public double CurrentFrameTime { get; private set; } = double.NaN;
 
         public void DuringNextWait(Action action) => _waitActions.Enqueue(action);
 
@@ -238,12 +237,12 @@ public sealed class SeekPumpTests
                     if (_previewActions.TryDequeue(out var previewAction))
                         previewAction();
                     if (PreviewPresents)
-                        _currentFrameTime = allowPreviewFallback ? target + ShownFrameOffset : target;
+                        CurrentFrameTime = allowPreviewFallback ? target + ShownFrameOffset : target;
                     return PreviewPresents;
                 }
 
                 Calls.Add($"settle {Format(target)}");
-                _currentFrameTime = target;
+                CurrentFrameTime = target;
                 if (_settleActions.TryDequeue(out var action))
                     action();
                 OnSettle?.Invoke();

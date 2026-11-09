@@ -274,18 +274,17 @@ sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDis
 
     sealed class Run(Action<CancellationToken> loop)
     {
-        readonly CancellationTokenSource _cancellation = new();
         int _completed;
 
         public Action<CancellationToken> Loop { get; } = loop;
-        public CancellationTokenSource Cancellation => _cancellation;
+        public CancellationTokenSource Cancellation { get; } = new();
         public ManualResetEventSlim Completed { get; } = new(false);
 
         public void Cancel()
         {
             try
             {
-                _cancellation.Cancel();
+                Cancellation.Cancel();
             }
             catch (ObjectDisposedException)
             {
@@ -299,7 +298,7 @@ sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDis
                 return;
 
             Completed.Set();
-            _cancellation.Dispose();
+            Cancellation.Dispose();
         }
     }
 }

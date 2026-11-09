@@ -15,13 +15,12 @@ public partial class PlayerCore
     static readonly TimeSpan FailedTransitionRestoreRamp = TimeSpan.FromMilliseconds(250);
 
     readonly AudioFadeRunner _fadeRunner = new();
-    AudioCrossfadeOptions _preparedNextTransitionFade = AudioCrossfadeOptions.Disabled;
 
     public AudioCrossfadeOptions PreparedNextTransitionFade
     {
-        get => Volatile.Read(ref _preparedNextTransitionFade);
-        set => Volatile.Write(ref _preparedNextTransitionFade, value ?? AudioCrossfadeOptions.Disabled);
-    }
+        get => Volatile.Read(ref field);
+        set => Volatile.Write(ref field, value ?? AudioCrossfadeOptions.Disabled);
+    } = AudioCrossfadeOptions.Disabled;
 
     public Task<bool> FadeOutAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default) =>
         RunFadeAsync(envelope ?? AudioFadeEnvelope.Outgoing, duration, startPosition: 0, cancellationToken);

@@ -25,7 +25,7 @@ sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDisplayInfo?> 
     DecisionInputs? _lastInputs;
     HdrOutputDecision _lastDecision;
     HdrOutputDecision? _lastScRgb;
-    HdrOutputDecision? _reported;
+
     // A primary whose switch back to SDR failed with its buffers still scRGB, at that size: not
     // retried every frame, only after a resize (or a re-created swap chain, which is SDR).
     (ID3D11PresentationBackend Backend, int Width, int Height)? _failedRevert;
@@ -33,7 +33,7 @@ sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDisplayInfo?> 
     public bool IsEnabled => enabled;
 
     /// <summary>The last decision reported (tests and diagnostics).</summary>
-    internal HdrOutputDecision? LastReported => _reported;
+    internal HdrOutputDecision? LastReported { get; private set; }
 
     /// <summary>Queries a newly attached primary window's monitor (on the host's thread), so frames never do.</summary>
     public void PrimeDisplay(nint hwnd) => _displays?.PrimeIfMissing(hwnd);
@@ -120,10 +120,10 @@ sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDisplayInfo?> 
 
     void Report(HdrOutputDecision decision, bool failed)
     {
-        if (_reported is { } previous && previous.Mode == decision.Mode && string.Equals(previous.Reason, decision.Reason, StringComparison.Ordinal))
+        if (LastReported is { } previous && previous.Mode == decision.Mode && string.Equals(previous.Reason, decision.Reason, StringComparison.Ordinal))
             return;
 
-        _reported = decision;
+        LastReported = decision;
         DiagnosticRouter.Raise(
             failed ? MediaDiagnosticLevel.Warning : MediaDiagnosticLevel.Info,
             "D3D11.HdrOutput",

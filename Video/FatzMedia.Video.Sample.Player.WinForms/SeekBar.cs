@@ -17,7 +17,6 @@ sealed class SeekBar : Control
 {
     // The WPF player's accent.
     static readonly Color Accent = Color.FromArgb(0x3E, 0xA6, 0xFF);
-    int _maximum = 1;
     int _value;
     bool _pressed;
     // Focus shows only after the keyboard is used (Tab or a key), never for a mouse press or drag.
@@ -45,15 +44,15 @@ sealed class SeekBar : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Maximum
     {
-        get => _maximum;
+        get;
         set
         {
-            _maximum = Math.Max(1, value);
-            if (_value > _maximum)
-                SetValue(_maximum);
+            field = Math.Max(1, value);
+            if (_value > field)
+                SetValue(field);
             Invalidate();
         }
-    }
+    } = 1;
 
     /// <summary>Gets or sets the thumb's position, 0 to <see cref="Maximum"/>.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -75,7 +74,7 @@ sealed class SeekBar : Control
 
     void SetValue(int value)
     {
-        value = Math.Clamp(value, 0, _maximum);
+        value = Math.Clamp(value, 0, Maximum);
         if (value == _value)
             return;
 
@@ -95,7 +94,7 @@ sealed class SeekBar : Control
         var left = radius;
         var width = Math.Max(1f, ClientSize.Width - (2 * radius));
         var centreY = ClientSize.Height / 2f;
-        var thumbX = left + (width * _value / _maximum);
+        var thumbX = left + (width * _value / Maximum);
         var fill = Enabled ? Accent : SystemColors.GrayText;
 
         using (var track = new SolidBrush(SystemColors.ControlDark))
@@ -165,7 +164,7 @@ sealed class SeekBar : Control
             Keys.PageDown => _value - LargeChange,
             Keys.PageUp => _value + LargeChange,
             Keys.Home => 0,
-            Keys.End => _maximum,
+            Keys.End => Maximum,
             _ => null,
         };
         if (target is { } value)
@@ -215,6 +214,6 @@ sealed class SeekBar : Control
         // The thumb's centre travels the bar minus a thumb radius at each end.
         var radius = ThumbRadius;
         var fraction = Math.Clamp((x - radius) / Math.Max(1f, ClientSize.Width - (2 * radius)), 0f, 1f);
-        SetValue((int)Math.Round(fraction * _maximum));
+        SetValue((int)Math.Round(fraction * Maximum));
     }
 }

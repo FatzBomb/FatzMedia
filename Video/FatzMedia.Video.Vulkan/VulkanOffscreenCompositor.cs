@@ -52,8 +52,8 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     uint _queueFamily;
     QueueFlags _queueFamilyFlags;
     uint _instanceApiVersion;
+
     // The device, shared with FFmpeg when it decodes on it (Stage 045A slice 2).
-    VulkanSharedDevice? _shared;
     CommandPool _commandPool;
     CommandBuffer _commandBuffer;
     Fence _fence;
@@ -594,9 +594,9 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             // A device the driver reported lost may never go idle (ENG-039), and destroying its
             // objects is allowed; one that only timed out is waited for (a slow GPU still uses them),
             // but only for this compositor's own submission and for a bounded time (ENG-050).
-            if (_device.Handle != 0 && _shared?.IsLossConfirmed != true)
+            if (_device.Handle != 0 && SharedDevice?.IsLossConfirmed != true)
             {
-                if (_shared?.IsLost == true)
+                if (SharedDevice?.IsLost == true)
                 {
                     WaitForPendingSubmissionBounded();
                 }
@@ -635,11 +635,11 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     _vk.DestroyCommandPool(_device, _commandPool, null);
             }
 
-            if (_shared is { } shared)
+            if (SharedDevice is { } shared)
             {
                 // The device, instance and loader go with the last reference: an FFmpeg decoder
                 // may still decode on them (Stage 045A slice 2).
-                _shared = null;
+                SharedDevice = null;
                 var start = Stopwatch.GetTimestamp();
                 shared.ReleaseFfmpegDeviceContext();
                 shared.Release();
@@ -727,7 +727,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         Queue queue;
         _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
         _queue = queue;
-        _shared = new VulkanSharedDevice(
+        SharedDevice = new VulkanSharedDevice(
             _vk,
             _instance,
             _physicalDevice,
@@ -1232,7 +1232,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     }
 
     /// <summary>The lock every submission to this device's queues takes (FFmpeg's too).</summary>
-    Lock QueueLock => _shared?.QueueLock ?? _sync;
+    Lock QueueLock => SharedDevice?.QueueLock ?? _sync;
 
     /// <summary>Submits to the graphics queue under <see cref="QueueLock"/>, signalling <see cref="_fence"/>.</summary>
     void Submit(SubmitInfo* submit)
@@ -1274,7 +1274,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         if (result == Result.Timeout)
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Vulkan", $"The last submission did not complete within {LostDeviceCloseWait.TotalSeconds:0} s more; the lost device is closed without waiting for it.");
         else if (result == Result.ErrorDeviceLost)
-            _shared?.MarkLost("vkWaitForFences reported VK_ERROR_DEVICE_LOST while closing");
+            SharedDevice?.MarkLost("vkWaitForFences reported VK_ERROR_DEVICE_LOST while closing");
         _submissionPending = false;
     }
 
@@ -1296,7 +1296,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             _submissionPending = false;
         if (result == Result.Timeout)
         {
-            _shared?.MarkLost($"{operation} did not complete within 2 s", confirmed: false);
+            SharedDevice?.MarkLost($"{operation} did not complete within 2 s", confirmed: false);
             throw new VulkanException($"{operation} (not completed within 2 s)", Result.ErrorDeviceLost);
         }
 
@@ -1317,7 +1317,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
         try
         {
-            if (_probeClosed || _shared is not { } shared)
+            if (_probeClosed || SharedDevice is not { } shared)
                 return false;
 
             if (OperatingSystem.IsWindows() && _d3d11Device != 0)

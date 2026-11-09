@@ -22,7 +22,6 @@ public sealed partial class MediaSurface : Grid
     IPlayerSession? _eventSession;
     Window? _ownerWindow;
     HwndSource? _ownerHwndSource;
-    bool _primaryAttached;
     string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
     MediaPresentationSurfaceRole _attachedRole = MediaPresentationSurfaceRole.Primary;
     bool _layoutRefreshQueued;
@@ -141,10 +140,10 @@ public sealed partial class MediaSurface : Grid
     public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
-    public bool IsSurfaceAttached => _primaryAttached;
+    public bool IsSurfaceAttached { get; private set; }
 
     /// <summary>Gets whether this surface is attached to a session as its primary surface.</summary>
-    public bool IsPrimarySurfaceAttached => _primaryAttached && _attachedRole == MediaPresentationSurfaceRole.Primary;
+    public bool IsPrimarySurfaceAttached => IsSurfaceAttached && _attachedRole == MediaPresentationSurfaceRole.Primary;
 
     public static readonly DependencyProperty PresentationModeProperty = DependencyProperty.Register(
         nameof(PresentationMode),
@@ -472,7 +471,7 @@ public sealed partial class MediaSurface : Grid
 
         var dpi = VisualTreeHelper.GetDpi(this);
 
-        if (_primaryAttached && ReferenceEquals(session, _attachedPrimarySession))
+        if (IsSurfaceAttached && ReferenceEquals(session, _attachedPrimarySession))
         {
             _ = session.ResizePresentationSurface(_attachedSurfaceId, pixelWidth, pixelHeight);
             ApplyPrimarySurfaceLiveResize(session);
@@ -482,7 +481,7 @@ public sealed partial class MediaSurface : Grid
         DetachPrimarySurface(_attachedPrimarySession);
         var surfaceId = EffectiveSurfaceId;
         var role = Role;
-        _primaryAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
+        IsSurfaceAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             surfaceId,
             role,
             nativeSurface,
@@ -490,28 +489,28 @@ public sealed partial class MediaSurface : Grid
             pixelHeight,
             dpi.DpiScaleX,
             dpi.DpiScaleY));
-        _attachedPrimarySession = _primaryAttached ? session : null;
-        if (_primaryAttached)
+        _attachedPrimarySession = IsSurfaceAttached ? session : null;
+        if (IsSurfaceAttached)
         {
             _attachedSurfaceId = surfaceId;
             _attachedRole = role;
             ApplyPrimarySurfaceLiveResize(session);
         }
 
-        ReportAttachResult(session, _primaryAttached);
+        ReportAttachResult(session, IsSurfaceAttached);
         UpdateNativeSurfaceVisibility();
     }
 
     void DetachPrimarySurface(IPlayerSession? session)
     {
-        if (!_primaryAttached || session == null)
+        if (!IsSurfaceAttached || session == null)
             return;
 
         if (_primarySurfaceLiveResize)
             _ = session.SetPresentationSurfaceLiveResize(_attachedSurfaceId, false);
 
         _ = session.DetachPresentationSurface(_attachedSurfaceId);
-        _primaryAttached = false;
+        IsSurfaceAttached = false;
         _attachedPrimarySession = null;
         SetPresentationPath(MediaSurfacePresentationPath.None, null, null);
         UpdateNativeSurfaceVisibility();
@@ -586,7 +585,7 @@ public sealed partial class MediaSurface : Grid
     void UpdateNativeSurfaceVisibility()
     {
         var session = Player;
-        var shouldShow = _primaryAttached
+        var shouldShow = IsSurfaceAttached
             && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
             && !_showPrimarySurfaceAfterPresentation
             && _contentTracker.ShowsContent;
@@ -723,7 +722,7 @@ public sealed partial class MediaSurface : Grid
             return;
 
         _primarySurfaceLiveResize = isResizing;
-        if (_primaryAttached && _attachedPrimarySession != null)
+        if (IsSurfaceAttached && _attachedPrimarySession != null)
         {
             _ = _attachedPrimarySession.SetPresentationSurfaceLiveResize(
                 _attachedSurfaceId,

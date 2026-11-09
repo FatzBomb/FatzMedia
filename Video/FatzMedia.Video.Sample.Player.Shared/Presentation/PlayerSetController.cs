@@ -30,7 +30,6 @@ public sealed class PlayerSetController<TSlot>
     bool _rebuildAgain;
     bool _firstBuild = true;
     bool _rendererFallbackRequested;
-    TSlot? _fullScreen;
 
     /// <param name="host">The window.</param>
     /// <param name="dispatcher">The window's UI thread; its timer runs the stats tick.</param>
@@ -58,7 +57,7 @@ public sealed class PlayerSetController<TSlot>
     public IReadOnlyList<TSlot> Slots => _slots;
 
     /// <summary>Gets the player shown alone full screen, or null.</summary>
-    public TSlot? FullScreenSlot => _fullScreen;
+    public TSlot? FullScreenSlot { get; private set; }
 
     /// <summary>Gets whether <see cref="StartAsync"/> ran: toolbar changes rebuild only from then on.</summary>
     public bool IsStarted { get; private set; }
@@ -148,7 +147,7 @@ public sealed class PlayerSetController<TSlot>
     public void ToggleFullScreen(TSlot slot)
     {
         ArgumentNullException.ThrowIfNull(slot);
-        if (ReferenceEquals(_fullScreen, slot))
+        if (ReferenceEquals(FullScreenSlot, slot))
             ExitFullScreen();
         else
             EnterFullScreen(slot);
@@ -162,7 +161,7 @@ public sealed class PlayerSetController<TSlot>
             return;
 
         ExitFullScreen();
-        _fullScreen = slot;
+        FullScreenSlot = slot;
         _host.Layout(_slots, slot);
         _host.SetWindowFullScreen(true);
         slot.SetFullScreen(true);
@@ -171,10 +170,10 @@ public sealed class PlayerSetController<TSlot>
     /// <summary>Leaves full screen, when on: the player, then the window, then the host's layout.</summary>
     public void ExitFullScreen()
     {
-        if (_fullScreen is not { } slot)
+        if (FullScreenSlot is not { } slot)
             return;
 
-        _fullScreen = null;
+        FullScreenSlot = null;
         slot.SetFullScreen(false);
         _host.SetWindowFullScreen(false);
         _host.Layout(_slots, null);
@@ -189,7 +188,7 @@ public sealed class PlayerSetController<TSlot>
         if (_slots.Count == 0 || IsShuttingDown)
             return false;
 
-        if (_fullScreen is not null)
+        if (FullScreenSlot is not null)
             ExitFullScreen();
         else
             EnterFullScreen(_slots.FirstOrDefault(static slot => slot.IsKeyboardFocusWithin) ?? _slots[0]);
@@ -203,14 +202,14 @@ public sealed class PlayerSetController<TSlot>
     /// </summary>
     public bool HandleEscapeKey()
     {
-        var target = _fullScreen
+        var target = FullScreenSlot
             ?? _slots.Where(static slot => slot.HasOpenFlyout)
                 .OrderByDescending(static slot => slot.IsKeyboardFocusWithin)
                 .FirstOrDefault();
         if (target?.CloseFlyout() == true)
             return true;
 
-        if (_fullScreen is null)
+        if (FullScreenSlot is null)
             return false;
 
         ExitFullScreen();

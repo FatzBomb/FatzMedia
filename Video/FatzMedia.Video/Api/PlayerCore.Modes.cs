@@ -17,7 +17,6 @@ public partial class PlayerCore
     MediaPlayerConfiguration _configuration;
     IReadOnlyList<string> _nativeLibraryPaths = [];
     bool? _autoBackground;
-    bool _transparentBackground;
 
     /// <summary>
     /// Raised on the control queue after <see cref="SetModeAsync"/> switched to another mode, after
@@ -90,13 +89,13 @@ public partial class PlayerCore
     /// </summary>
     public bool TransparentBackground
     {
-        get => _transparentBackground;
+        get;
         set
         {
-            if (_transparentBackground == value)
+            if (field == value)
                 return;
 
-            _transparentBackground = value;
+            field = value;
             if (_disposed)
                 return;
 
@@ -126,16 +125,16 @@ public partial class PlayerCore
     {
         if (_autoBackground is { } autoBackground)
             File.BackgroundAutoDetect = autoBackground;
-        if (_transparentBackground)
+        if (TransparentBackground)
             ApplyTransparentBackground();
         Controls.ForcesLoop = MediaPlayerModePolicy.ForcesLoop(Mode);
     }
 
     void ApplyTransparentBackground()
     {
-        CdgVisuals.ForceTransparentBackground = _transparentBackground;
+        CdgVisuals.ForceTransparentBackground = TransparentBackground;
         if (_presentationCoordinator is MediaPresentationCoordinator coordinator)
-            coordinator.TransparentBackground = _transparentBackground;
+            coordinator.TransparentBackground = TransparentBackground;
     }
 
     /// <summary>

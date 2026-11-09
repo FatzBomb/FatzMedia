@@ -50,8 +50,6 @@ public partial class PlayerCore : IPlayerSession
     readonly Lock _seekCompletionGate = new();
     readonly Lock _queuedSeekGate = new();
     QueuedSeek? _queuedSeek;
-    readonly ScrubAudioMuter _scrubAudio;
-    VideoFrameTiming _videoFrameTiming = VideoFrameTiming.SourceCadence;
     IAudioDeviceMonitor? _audioDeviceMonitor;
     IVideoEngine? _seekVideoEngine;
     ICdgEngine? _seekCdgEngine;
@@ -89,7 +87,7 @@ public partial class PlayerCore : IPlayerSession
         }
 
         // Reads Effects on every call: Reset replaces it.
-        _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
+        ScrubAudioMuter = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
         StartAudioDeviceMonitor();
     }
 
@@ -129,21 +127,21 @@ public partial class PlayerCore : IPlayerSession
 
     public MediaScrubAudio ScrubAudio
     {
-        get => _scrubAudio.Mode;
-        set => _scrubAudio.Mode = value;
+        get => ScrubAudioMuter.Mode;
+        set => ScrubAudioMuter.Mode = value;
     }
 
-    internal ScrubAudioMuter ScrubAudioMuter => _scrubAudio;
+    internal ScrubAudioMuter ScrubAudioMuter { get; }
 
     public VideoFrameTiming VideoFrameTiming
     {
-        get => _videoFrameTiming;
+        get;
         set
         {
-            _videoFrameTiming = value;
+            field = value;
             ApplyVideoFrameTiming();
         }
-    }
+    } = VideoFrameTiming.SourceCadence;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -380,7 +378,7 @@ public partial class PlayerCore : IPlayerSession
     public bool EndScrub() => ExecuteControlOperation(() =>
     {
         var ended = Controls.EndScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         return ended;
     });
 
@@ -527,7 +525,7 @@ public partial class PlayerCore : IPlayerSession
         // Silent scrubbing mutes before the seek moves the audio, so nothing of the new position
         // is heard while the drag keeps moving. A slow seek (a network stream) holds the unmute
         // until it returns, so the drag requests queued behind it are not heard either.
-        var trackedScrubSeek = Controls.IsScrubbing && _scrubAudio.OnScrubSeek();
+        var trackedScrubSeek = Controls.IsScrubbing && ScrubAudioMuter.OnScrubSeek();
         bool success;
         try
         {
@@ -536,7 +534,7 @@ public partial class PlayerCore : IPlayerSession
         finally
         {
             if (trackedScrubSeek)
-                _scrubAudio.OnScrubSeekFinished();
+                ScrubAudioMuter.OnScrubSeekFinished();
         }
 
         if (!success)
@@ -1007,7 +1005,7 @@ public partial class PlayerCore : IPlayerSession
             return;
 
         try { _fadeRunner.Cancel(); } catch { }
-        try { _scrubAudio.OnScrubEnded(); } catch { }
+        try { ScrubAudioMuter.OnScrubEnded(); } catch { }
         FreeSessionGraph(stopPlayback: false);
     }
 
@@ -1144,7 +1142,7 @@ void CreateSessionGraph(
     void ApplyVideoFrameTiming()
     {
         if (_mediaEngine is IVideoFrameTimingControl control)
-            control.FrameTiming = _videoFrameTiming;
+            control.FrameTiming = VideoFrameTiming;
     }
 
     /// <summary>
@@ -1272,7 +1270,7 @@ void CreateSessionGraph(
         catch { }
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
-        try { _scrubAudio.Dispose(); } catch { }
+        try { ScrubAudioMuter.Dispose(); } catch { }
         FreeSessionGraph(stopPlayback: true);
     }
 

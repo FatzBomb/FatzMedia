@@ -45,11 +45,10 @@ sealed class VsyncMediaClock(long stopwatchFrequency)
     bool _hasState;
     long _vsync;
     double _position;
-    double _rate = 1.0;
     long _samples;
 
     /// <summary>Gets the filtered playback rate (media seconds per wall second).</summary>
-    public double Rate => _rate;
+    public double Rate { get; private set; } = 1.0;
 
     /// <summary>Gets how many times the filter restarted (seek, loop, pause or a large jump).</summary>
     public long Restarts { get; private set; }
@@ -58,7 +57,7 @@ sealed class VsyncMediaClock(long stopwatchFrequency)
     public void Reset()
     {
         _hasState = false;
-        _rate = 1.0;
+        Rate = 1.0;
     }
 
     /// <summary>
@@ -84,7 +83,7 @@ sealed class VsyncMediaClock(long stopwatchFrequency)
         if (elapsed <= 0 || elapsed > MaxRefreshGapSeconds)
             return Restart(vsyncTimestamp, observedPosition);
 
-        var predicted = _position + (_rate * elapsed);
+        var predicted = _position + (Rate * elapsed);
         var error = observedPosition - predicted;
         if (Math.Abs(error) > JumpThresholdSeconds)
             return Restart(vsyncTimestamp, observedPosition);
@@ -99,7 +98,7 @@ sealed class VsyncMediaClock(long stopwatchFrequency)
 
         _vsync = vsyncTimestamp;
         _position = predicted + (positionGain * error);
-        _rate = Math.Clamp(_rate + (rateGain * error / elapsed), MinRate, MaxRate);
+        Rate = Math.Clamp(Rate + (rateGain * error / elapsed), MinRate, MaxRate);
         return _position;
     }
 
@@ -112,7 +111,7 @@ sealed class VsyncMediaClock(long stopwatchFrequency)
         // the warm-up gains. A restart straight after a restart means that guess was wrong (a
         // rate far off would otherwise restart the filter on every refresh): start from 1.
         if (_hasState && _samples <= 1)
-            _rate = 1.0;
+            Rate = 1.0;
 
         _hasState = true;
         _samples = 1;

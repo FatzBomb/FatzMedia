@@ -68,7 +68,6 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
     // the one the scRGB background was filled with; and the HDR video the background holds.
     float _sdrScale = 1f;
     float _backgroundSdrScale = 1f;
-    HdrToneMapRequest? _backgroundHdrContent;
     string? _lastLayerDiagnosticSummary;
     bool _pipelineFailed;
     int _compositionPasses;
@@ -89,7 +88,7 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
     /// frame, or null: what a retained refresh of that background shows, for the HDR output
     /// decision (Stage 042A slice 2).
     /// </summary>
-    public HdrToneMapRequest? BackgroundHdrContent => _backgroundHdrContent;
+    public HdrToneMapRequest? BackgroundHdrContent { get; private set; }
 
     /// <summary>Gets how many per-target post-process textures are kept (tests).</summary>
     internal int PostProcessTargetCount => _postProcessTargets.Count;
@@ -104,13 +103,13 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
         _targetRegistry.Reset();
         _scratchValidTargets.Clear();
         _scratchPresentationTargets.Clear();
-        _backgroundHdrContent = null;
+        BackgroundHdrContent = null;
         ReleaseResources();
     }
 
     public void ClearBackgroundFrame()
     {
-        _backgroundHdrContent = null;
+        BackgroundHdrContent = null;
         _layerCache.GetOrCreate(MediaCompositionLayerId.Background).Clear();
     }
 
@@ -179,13 +178,13 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
                     scRgb))
             {
                 backgroundLayer.Clear();
-                _backgroundHdrContent = null;
+                BackgroundHdrContent = null;
                 return false;
             }
 
             backgroundLayer.MarkUploaded(backgroundRevision);
             _hardwareBackgroundFailure.Reset();
-            _backgroundHdrContent = toneMap;
+            BackgroundHdrContent = toneMap;
             if (scRgb is { } output)
                 _backgroundSdrScale = (float)HdrOutputPolicy.SdrScale(output.SdrWhiteNits);
             return true;
@@ -499,7 +498,7 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
             if (backgroundLayer == null || descriptor == null)
                 return false;
 
-            _backgroundHdrContent = null;
+            BackgroundHdrContent = null;
 
             var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == backgroundLayer.UploadedRevision;
             var dimensionsMatch = backgroundLayer.HasTexture

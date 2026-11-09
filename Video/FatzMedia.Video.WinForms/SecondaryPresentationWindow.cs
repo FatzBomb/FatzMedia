@@ -22,7 +22,6 @@ public class SecondaryPresentationWindow : Form
     public static readonly Size DefaultClientSize = new(960, 540);
 
     readonly IPlayerSession _session;
-    bool _isFullScreen;
     bool _closed;
     FormBorderStyle _restoreBorderStyle;
     FormWindowState _restoreWindowState;
@@ -64,13 +63,13 @@ public class SecondaryPresentationWindow : Form
     [Browsable(false)]
     public bool IsFullScreen
     {
-        get => _isFullScreen;
+        get;
         set
         {
-            if (_isFullScreen == value)
+            if (field == value)
                 return;
 
-            _isFullScreen = value;
+            field = value;
             if (value)
             {
                 _restoreBorderStyle = FormBorderStyle;
@@ -119,7 +118,7 @@ public class SecondaryPresentationWindow : Form
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
         base.OnDpiChanged(e);
-        if (!_isFullScreen || WindowState != FormWindowState.Maximized)
+        if (!IsFullScreen || WindowState != FormWindowState.Maximized)
             return;
 
         // Windows applied its suggested bounds for the new scale: cover the screen again.

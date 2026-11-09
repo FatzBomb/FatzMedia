@@ -66,7 +66,6 @@ public class MediaSurface : Control
         AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
     readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
-    AvaloniaFrameSink? _sink;
     AvaloniaSharedImageSurface? _gpuSurface;
     IPlayerSession? _attachedSession;
     (int Width, int Height) _attachedPixelSize;
@@ -87,9 +86,7 @@ public class MediaSurface : Control
     string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
     readonly MediaSurfaceContentTracker _contentTracker = new();
     int _contentStateQueued;
-    bool _isPresentationSuspended;
     bool _contentShown;
-    bool _isContentVisible;
     int _firstFrameReadyLoad;
 
     static MediaSurface()
@@ -194,7 +191,7 @@ public class MediaSurface : Control
     }
 
     /// <summary>Gets whether auto-hide shows the content now (always false while <see cref="AutoHide"/> is off).</summary>
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     public bool IsSurfaceAttached => _attachedSession is not null;
@@ -209,7 +206,7 @@ public class MediaSurface : Control
     /// <see cref="IPlayerSession.HasPresentation"/>, Stage 046A). The last video frame is not
     /// left on screen; frames show again once the session leaves Audio mode.
     /// </summary>
-    public bool IsPresentationSuspended => _isPresentationSuspended;
+    public bool IsPresentationSuspended { get; private set; }
 
     /// <summary>Gets the pixel size last sent to the session.</summary>
     public PixelSize AttachedPixelSize => new(_attachedPixelSize.Width, _attachedPixelSize.Height);
@@ -220,7 +217,7 @@ public class MediaSurface : Control
     /// <summary>Gets why the current path was chosen (for example why the GPU path was not used).</summary>
     public string? PresentationPathReason => _bookkeeping.Reason;
 
-    internal AvaloniaFrameSink? FrameSink => _sink;
+    internal AvaloniaFrameSink? FrameSink { get; private set; }
 
     /// <summary>Test seam: how the compositor's GPU interop is obtained.</summary>
     internal Func<Compositor, ValueTask<GpuInteropCapabilities?>> GpuInteropProvider { get; set; } = GpuInteropCapabilities.QueryAsync;
@@ -237,7 +234,7 @@ public class MediaSurface : Control
         if (Background is { } background)
             context.FillRectangle(background, bounds);
 
-        if (_contentShown && _sink?.Bitmap is { } bitmap)
+        if (_contentShown && FrameSink?.Bitmap is { } bitmap)
         {
             // The renderer already composed for this pixel size (letterboxing included), so the
             // bitmap fills the surface. The shared-image path draws in a child composition visual.
@@ -249,7 +246,7 @@ public class MediaSurface : Control
     {
         base.OnAttachedToVisualTree(e);
         _isAttachedToTree = true;
-        _sink ??= new AvaloniaFrameSink(OnSinkFrameUpdated);
+        FrameSink ??= new AvaloniaFrameSink(OnSinkFrameUpdated);
 
         // Moving to a monitor with another scale keeps Bounds (DIPs) unchanged, so size changes
         // alone would miss the new pixel size.
@@ -270,8 +267,8 @@ public class MediaSurface : Control
 
         Detach();
         FollowSession(null);
-        _sink?.Dispose();
-        _sink = null;
+        FrameSink?.Dispose();
+        FrameSink = null;
         _compositor = null;
         _gpuInterop = null;
         _gpuInteropResolved = false;
@@ -420,7 +417,7 @@ public class MediaSurface : Control
     void AttachOrResize()
     {
         var session = Player;
-        if (!_isAttachedToTree || session is null || _sink is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+        if (!_isAttachedToTree || session is null || FrameSink is null || Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
         var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
@@ -446,7 +443,7 @@ public class MediaSurface : Control
                 return;
         }
 
-        var attached = session.AttachPresentationSurface(CreateDescriptor(_sink.CreateSurfaceDescriptor(), pixelSize, scaling));
+        var attached = session.AttachPresentationSurface(CreateDescriptor(FrameSink.CreateSurfaceDescriptor(), pixelSize, scaling));
         if (attached)
         {
             _attachedSession = session;
@@ -722,13 +719,13 @@ public class MediaSurface : Control
     {
         var session = _contentTracker.Session;
         var suspended = session is not null && !_contentTracker.HasPresentation;
-        if (suspended != _isPresentationSuspended)
+        if (suspended != IsPresentationSuspended)
         {
-            _isPresentationSuspended = suspended;
+            IsPresentationSuspended = suspended;
             if (suspended)
             {
                 // The renderer that drew the last frame is gone: show the background, not that frame.
-                _sink?.Clear();
+                FrameSink?.Clear();
                 DiagnosticRouter.Raise(
                     session,
                     MediaDiagnosticLevel.Info,
@@ -742,17 +739,17 @@ public class MediaSurface : Control
         if (wasShown && !_contentShown)
         {
             // Hidden content is dropped, so a later load shows its own first frame, not this one.
-            _sink?.Clear();
+            FrameSink?.Clear();
         }
 
         _gpuSurface?.SetVisible(_contentShown);
         InvalidateVisual();
 
         var isContentVisible = _contentTracker.IsContentVisible;
-        if (isContentVisible != _isContentVisible)
+        if (isContentVisible != IsContentVisible)
         {
-            var wasVisible = _isContentVisible;
-            _isContentVisible = isContentVisible;
+            var wasVisible = IsContentVisible;
+            IsContentVisible = isContentVisible;
             RaisePropertyChanged(IsContentVisibleProperty, wasVisible, isContentVisible);
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -773,14 +770,14 @@ public class MediaSurface : Control
         // Also reached from the sink's Clear (Audio mode, hidden content) before _contentShown is
         // updated: a cleared or suspended surface must not publish a frame back or signal.
         if (load == 0 || load == _firstFrameReadyLoad || _attachedSession is null || !_contentShown
-            || _isPresentationSuspended || !_contentTracker.ShowsContent)
+            || IsPresentationSuspended || !_contentTracker.ShowsContent)
             return;
 
         if (_gpuSurface is null)
         {
             // The renderer hands the frame to the sink before it announces it, so a frame still
             // waiting is at least as new as the announced one: publish it now, in this turn.
-            if (_sink is not { } sink)
+            if (FrameSink is not { } sink)
                 return;
 
             if (sink.PublishPending())
@@ -803,7 +800,7 @@ public class MediaSurface : Control
 
         _gpuSurface?.Dispose();
         _gpuSurface = null;
-        _sink?.Clear();
+        FrameSink?.Clear();
         SetPath(MediaSurfacePresentationPath.None, null);
     }
 }
