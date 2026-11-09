@@ -34,26 +34,26 @@ function Assert-Match {
     }
 }
 
-$mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
-$compositedSurface = Read-Text 'FatzBomb.MediaControl.Wpf/WpfCompositedSurfaceHost.cs'
-$secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
-$wpfAutoHide = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.AutoHide.cs'
-$wpfPath = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.PresentationPath.cs'
-$avaloniaSurface = Read-Text 'FatzBomb.MediaControl.Avalonia/MediaSurface.cs'
-$avaloniaSecondary = Read-Text 'FatzBomb.MediaControl.Avalonia/SecondaryPresentationWindow.cs'
-$winFormsSurface = Read-Text 'FatzBomb.MediaControl.WinForms/MediaSurface.cs'
-$winFormsSecondary = Read-Text 'FatzBomb.MediaControl.WinForms/SecondaryPresentationWindow.cs'
-$sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
-$coordinator = Read-Text 'FatzBomb.MediaControl/Controllers/MediaPresentationCoordinator.cs'
-$backendSet = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
-$surfaceController = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
-$presentationServices = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
-$compositionPresenter = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
-$targetRegistry = Read-Text 'FatzBomb.MediaControl/Core/Graphics/Composition/Planning/CompositionTargetRegistry.cs'
+$mediaSurface = Read-Text 'FatzMedia.Video.Wpf/MediaSurface.cs'
+$compositedSurface = Read-Text 'FatzMedia.Video.Wpf/WpfCompositedSurfaceHost.cs'
+$secondaryWindow = Read-Text 'FatzMedia.Video.Wpf/SecondaryPresentationWindow.cs'
+$wpfAutoHide = Read-Text 'FatzMedia.Video.Wpf/MediaSurface.AutoHide.cs'
+$wpfPath = Read-Text 'FatzMedia.Video.Wpf/MediaSurface.PresentationPath.cs'
+$avaloniaSurface = Read-Text 'FatzMedia.Video.Avalonia/MediaSurface.cs'
+$avaloniaSecondary = Read-Text 'FatzMedia.Video.Avalonia/SecondaryPresentationWindow.cs'
+$winFormsSurface = Read-Text 'FatzMedia.Video.WinForms/MediaSurface.cs'
+$winFormsSecondary = Read-Text 'FatzMedia.Video.WinForms/SecondaryPresentationWindow.cs'
+$sessionContract = Read-Text 'FatzMedia.Video/Api/IPlayerSession.cs'
+$coordinator = Read-Text 'FatzMedia.Video/Controllers/MediaPresentationCoordinator.cs'
+$backendSet = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
+$surfaceController = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
+$presentationServices = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
+$compositionPresenter = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
+$targetRegistry = Read-Text 'FatzMedia.Video/Core/Graphics/Composition/Planning/CompositionTargetRegistry.cs'
 
-Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IMediaControlSession must expose neutral presentation-surface attach.'
-Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IMediaControlSession must expose neutral presentation-surface resize.'
-Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+surfaceId\s*\)' 'IMediaControlSession must expose neutral presentation-surface detach.'
+Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IPlayerSession must expose neutral presentation-surface attach.'
+Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IPlayerSession must expose neutral presentation-surface resize.'
+Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+surfaceId\s*\)' 'IPlayerSession must expose neutral presentation-surface detach.'
 
 Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaSurface must keep a stable default secondary surface id.'
 Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*(Player|session),\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
@@ -101,9 +101,9 @@ foreach ($adapter in @(
 # lightweight player controller (the rules live in Core's LightweightPlayerPolicy), the same image
 # conversion helper, and a surface overlay; the WinForms surface falls back to a frame sink.
 foreach ($adapter in @(
-        @{ Name = 'WPF'; Folder = 'FatzBomb.MediaControl.Wpf'; Inputs = 'WpfMediaInputSources.cs'; InputMethod = 'FromImageSource' },
-        @{ Name = 'Avalonia'; Folder = 'FatzBomb.MediaControl.Avalonia'; Inputs = 'AvaloniaMediaInputSources.cs'; InputMethod = 'FromBitmap' },
-        @{ Name = 'WinForms'; Folder = 'FatzBomb.MediaControl.WinForms'; Inputs = 'WinFormsMediaInputSources.cs'; InputMethod = 'FromBitmap' })) {
+        @{ Name = 'WPF'; Folder = 'FatzMedia.Video.Wpf'; Inputs = 'WpfMediaInputSources.cs'; InputMethod = 'FromImageSource' },
+        @{ Name = 'Avalonia'; Folder = 'FatzMedia.Video.Avalonia'; Inputs = 'AvaloniaMediaInputSources.cs'; InputMethod = 'FromBitmap' },
+        @{ Name = 'WinForms'; Folder = 'FatzMedia.Video.WinForms'; Inputs = 'WinFormsMediaInputSources.cs'; InputMethod = 'FromBitmap' })) {
     $name = $adapter.Name
     $karaoke = Read-Text "$($adapter.Folder)/KaraokeSurface.cs"
     $background = Read-Text "$($adapter.Folder)/BackgroundSurface.cs"
@@ -123,7 +123,7 @@ foreach ($adapter in @(
         Assert-Match $control 'public\s+bool\s+AutoPlay' "$name lightweight controls must expose AutoPlay."
         Assert-Match $control 'public\s+bool\s+AutoHide' "$name lightweight controls must expose AutoHide."
         Assert-Match $control 'event\s+EventHandler\?\s+ContentVisibilityChanged' "$name lightweight controls must expose ContentVisibilityChanged."
-        Assert-Match $control 'public\s+IMediaControlPlatformFactory\?\s+PlatformFactory' "$name lightweight controls must expose PlatformFactory."
+        Assert-Match $control 'public\s+IPlatformFactory\?\s+PlatformFactory' "$name lightweight controls must expose PlatformFactory."
         Assert-Match $control 'public\s+IReadOnlyList<string>\?\s+NativeLibraryPaths' "$name lightweight controls must expose NativeLibraryPaths."
         Assert-Match $control 'public\s+Task<bool>\s+LoadAsync\s*\(\s*string\s+path\s*\)' "$name lightweight controls must load a path."
     }
@@ -141,16 +141,16 @@ Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurfac
 # Stage 046A slice 3: every adapter offers a Player facade with CreateAsync, and every test player
 # binds the helpers in Player.Shared (chrome rule, stats line, screen choice, renderer request,
 # --players) instead of its own copy.
-foreach ($adapter in @('FatzBomb.MediaControl.Wpf', 'FatzBomb.MediaControl.Avalonia', 'FatzBomb.MediaControl.WinForms')) {
+foreach ($adapter in @('FatzMedia.Video.Wpf', 'FatzMedia.Video.Avalonia', 'FatzMedia.Video.WinForms')) {
     $facade = Read-Text "$adapter/Player.cs"
-    Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*MediaControlPlayer' "$adapter must offer a Player facade over MediaControlPlayer."
-    Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IMediaControlPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
+    Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*PlayerCore' "$adapter must offer a Player facade over PlayerCore."
+    Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
 }
 
 foreach ($player in @(
-        @{ Name = 'WPF'; View = 'FatzBomb.MediaControl.Player/PlayerView.xaml.cs'; Window = 'FatzBomb.MediaControl.Player/MainWindow.xaml.cs'; Renderer = 'FatzBomb.MediaControl.Player/Configuration/PlayerRendererSelection.cs' },
-        @{ Name = 'Avalonia'; View = 'FatzBomb.MediaControl.Player.Avalonia/PlayerPanel.axaml.cs'; Window = 'FatzBomb.MediaControl.Player.Avalonia/MainWindow.axaml.cs'; Renderer = 'FatzBomb.MediaControl.Player.Avalonia/Renderers.cs' },
-        @{ Name = 'WinForms'; View = 'FatzBomb.MediaControl.Player.WinForms/PlayerPanel.cs'; Window = 'FatzBomb.MediaControl.Player.WinForms/MainForm.cs'; Renderer = 'FatzBomb.MediaControl.Player/Configuration/PlayerRendererSelection.cs' })) {
+        @{ Name = 'WPF'; View = 'FatzMedia.Video.Sample.Player/PlayerView.xaml.cs'; Window = 'FatzMedia.Video.Sample.Player/MainWindow.xaml.cs'; Renderer = 'FatzMedia.Video.Sample.Player/Configuration/PlayerRendererSelection.cs' },
+        @{ Name = 'Avalonia'; View = 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml.cs'; Window = 'FatzMedia.Video.Sample.Player.Avalonia/MainWindow.axaml.cs'; Renderer = 'FatzMedia.Video.Sample.Player.Avalonia/Renderers.cs' },
+        @{ Name = 'WinForms'; View = 'FatzMedia.Video.Sample.Player.WinForms/PlayerPanel.cs'; Window = 'FatzMedia.Video.Sample.Player.WinForms/MainForm.cs'; Renderer = 'FatzMedia.Video.Sample.Player/Configuration/PlayerRendererSelection.cs' })) {
     $name = $player.Name
     $view = Read-Text $player.View
     $window = Read-Text $player.Window

@@ -4,7 +4,7 @@ Video can be decoded on the GPU, which frees the CPU and makes high-resolution a
 
 ## Choosing a decoding method
 
-<xref:FatzBomb.MediaControl.Core.Configuration.VideoDecodingMethod> is part of the player's [configuration](../reference/configuration.md) and is fixed when the player is created.
+<xref:FatzMedia.Video.Core.Configuration.VideoDecodingMethod> is part of the player's [configuration](../reference/configuration.md) and is fixed when the player is created.
 
 | Value | Behavior |
 | --- | --- |
@@ -55,7 +55,7 @@ Decoding H264 High 8-bit 1920x1080 (yuv420p, ...), decoder h264 via d3d11va
 Decoding HEVC Main 10 10-bit 3840x2160 (yuv420p10le, ...), decoder hevc in software
 ```
 
-`via <method>` means hardware decoding with that API, `in software` means the CPU. A line such as `in software (d3d11va configured but not used)` means a hardware device was set up but the decoder did not use it. Subscribe to <xref:FatzBomb.MediaControl.MediaControlPlayer.MediaDiagnostic> and watch the `VideoDecoder` and `VideoPipeline` categories:
+`via <method>` means hardware decoding with that API, `in software` means the CPU. A line such as `in software (d3d11va configured but not used)` means a hardware device was set up but the decoder did not use it. Subscribe to <xref:FatzMedia.Video.PlayerCore.MediaDiagnostic> and watch the `VideoDecoder` and `VideoPipeline` categories:
 
 ```csharp
 player.MediaDiagnostic += (_, e) =>
@@ -69,7 +69,7 @@ The handler runs on a background thread. Marshal to the UI thread before touchin
 
 ### Asking what the machine supports
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer.VideoDecodeCapabilities> is a snapshot of the codecs and container extensions the platform found in the loaded FFmpeg, and which of them have a hardware decoder:
+<xref:FatzMedia.Video.PlayerCore.VideoDecodeCapabilities> is a snapshot of the codecs and container extensions the platform found in the loaded FFmpeg, and which of them have a hardware decoder:
 
 ```csharp
 VideoDecodeCapabilities caps = player.VideoDecodeCapabilities;

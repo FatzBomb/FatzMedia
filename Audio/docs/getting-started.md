@@ -15,10 +15,10 @@ Next: [Concepts](concepts.md), then [Common tasks in five minutes](common-tasks.
 
 ### .NET (NuGet)
 
-The package is `FatzAudio`, for `net8.0` and `net10.0`. CI publishes a prerelease of every `main` build to the repository owner's GitHub Packages feed; stable versions are published by hand. Setting up the feed (`nuget.config`, token, version pinning) is in [Building](building.md#nuget-package-and-versions).
+The package is `FatzMedia.Audio`, for `net8.0` and `net10.0`. CI publishes a prerelease of every `main` build to the repository owner's GitHub Packages feed; stable versions are published by hand. Setting up the feed (`nuget.config`, token, version pinning) is in [Building](building.md#nuget-package-and-versions).
 
 ```bash
-dotnet add package FatzAudio --version 1.0.0-rc.1
+dotnet add package FatzMedia.Audio --prerelease
 ```
 
 The package carries the native library for **Windows** (x64, arm64), **Linux** (x64, arm64), **macOS** (universal), **Android** (arm64, x64) and **iOS** (xcframework), in `runtimes/<rid>/native/`, and .NET finds it from there. For other Android ABIs build the library yourself ([Building](building.md)). Nothing else is needed: there are no add-on libraries and no runtime to install.
@@ -50,7 +50,7 @@ The library is written to `build/bin/<Config>/` (`fatzaudio.dll`, `libfatzaudio.
 A complete console program:
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 using var engine = AudioEngine.Create();
 using var output = engine.OpenOutput();               // the system default device
@@ -128,15 +128,15 @@ More in [devices](features/devices.md): a second output for headphone preview, w
 
 ## 4. Handle errors
 
-Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `FatzAudioException` with an `ErrorCode`. There is no "last error" to poll. The BASS error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
+Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `AudioException` with an `ErrorCode`. There is no "last error" to poll. The BASS error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
 
 ```csharp
 try { using var song = engine.OpenFile(path); /* ... */ }
-catch (FatzAudioException ex) when (ex.ErrorCode == ErrorCode.NoSoundFont)
+catch (AudioException ex) when (ex.ErrorCode == ErrorCode.NoSoundFont)
 {
     // a MIDI file and no soundfont set and no system bank: ask for one (engine.DefaultSoundFont)
 }
-catch (FatzAudioException ex)
+catch (AudioException ex)
 {
     Console.Error.WriteLine($"{ex.ErrorCode}: {ex.Message}");
 }
@@ -147,7 +147,7 @@ The errors you will meet first when opening:
 | Code | Usually means |
 |---|---|
 | `NotFound` | The path is wrong, or the file has no such track |
-| `UnsupportedFormat` | Not a format FatzAudio plays (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file |
+| `UnsupportedFormat` | Not a format FatzMedia.Audio plays (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file |
 | `NoSoundFont` | A MIDI file and no soundfont: set `engine.DefaultSoundFont` |
 | `ProtectedContent` | DRM-protected or encrypted media |
 | `Device` | The output device could not be opened (in use, unplugged, no permission) |
@@ -178,7 +178,7 @@ To read samples without playing at all, open a stream with `DecodeOnly` (`FA_OPE
 3. **Volume.** Check `song.Volume`, `output.Volume`, `song.Muted`, `output.Muted`, and the operating system's own volume and mute.
 4. **Right device?** Print `engine.OutputDevices`. The default may be a monitor or a virtual device. `NullOutput` plays nothing by design.
 5. **Is the stream at its end?** A stream that has ended is silent until you `Play()` it again. Check `song.State`.
-6. **MIDI is silent or fails?** MIDI needs a soundfont. Without one FatzAudio uses the operating system's bank (Windows `gm.dls`, macOS, a Linux `.sf2`); `NoSoundFont` means there is none ([MIDI](features/midi.md)).
+6. **MIDI is silent or fails?** MIDI needs a soundfont. Without one FatzMedia.Audio uses the operating system's bank (Windows `gm.dls`, macOS, a Linux `.sf2`); `NoSoundFont` means there is none ([MIDI](features/midi.md)).
 7. **Linux/macOS/Android/iOS: permissions and the library.** A missing native library is a `DllNotFoundException` (.NET) or a link error (C); a microphone needs the system's permission (`PermissionDenied`).
 8. **Web stream silent?** Check `NetworkStatus` and the `Network` error; Android below 12 needs `fa_android_set_java_vm` for HTTPS ([web streams](features/web-streams.md#android)).
 9. **Still nothing?** Open the file with `DecodeOnly`, read a few frames and look at `GetLevels`: if there is signal, the problem is the output, not the file.

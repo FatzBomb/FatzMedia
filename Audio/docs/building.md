@@ -1,4 +1,4 @@
-# Building FatzAudio
+# Building FatzMedia.Audio
 
 One source tree builds one library per platform. Nothing else ships with it: no
 add-on libraries, no C++ runtime library, and FFmpeg and LAME are only ever
@@ -33,7 +33,7 @@ C library (`libc`, `libm`), whatever GCC version built it. On Linux only the
 cannot clash with the app's. The `deps` test checks both on Windows and Linux.
 MinGW builds name the library `fatzaudio.dll`, like Visual Studio.
 
-On Linux, Release and MinSizeRel builds use link-time optimization across FatzAudio
+On Linux, Release and MinSizeRel builds use link-time optimization across FatzMedia.Audio
 and the codecs it carries (`FA_LTO`; `-DFA_LTO=OFF` turns it off, for example to
 profile). It is off by default elsewhere: on Windows it saved about 5% but made the
 build four times slower, and with Apple's and the Android NDK's Clang the libraries
@@ -43,12 +43,12 @@ fuzz builds, are unaffected.
 
 ## NuGet package and versions
 
-CI builds the NuGet package `FatzAudio` on every run, from the libraries its
+CI builds the NuGet package `FatzMedia.Audio` on every run, from the libraries its
 own build jobs just produced, and keeps it as the run's `nuget` artifact. It
 carries `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx` (one universal
 `libfatzaudio.dylib`, macOS 11 or later), `android-arm64`, `android-x64` and
 `ios` (`fatzaudio.xcframework`, linked into iOS projects by
-`build/FatzAudio.targets`). The Linux libraries are built on Ubuntu 22.04, so
+`build/FatzMedia.Audio.targets`). The Linux libraries are built on Ubuntu 22.04, so
 they run on any distribution with glibc 2.35 or newer (Debian 12, Ubuntu 22.04,
 Fedora 36 and later). win-arm64 and linux-arm64 are cross-compiled on x64
 runners (`cmake/toolchain-linux-arm64.cmake` for Linux); linux-arm64 runs a
@@ -79,7 +79,7 @@ personal access token with `read:packages`, even for your own packages:
 ```xml
 <configuration>
   <packageSources>
-    <add key="fatzaudio" value="https://nuget.pkg.github.com/FatzBomb75/index.json" />
+    <add key="fatzaudio" value="https://nuget.pkg.github.com/FatzBomb/index.json" />
   </packageSources>
   <packageSourceCredentials>
     <fatzaudio>
@@ -92,12 +92,12 @@ personal access token with `read:packages`, even for your own packages:
 
 Or download the `nuget` artifact of a CI run and point a local folder feed at it.
 Pin the version in `Directory.Packages.props` as usual:
-`<PackageVersion Include="FatzAudio" Version="1.0.0-rc.1" />`, or
+`<PackageVersion Include="FatzMedia.Audio" Version="1.0.0-rc.1" />`, or
 `Version="1.0.0-ci.*"` to follow `main`.
 
 To pack locally, put the libraries under
-`bindings/dotnet/src/FatzAudio/runtimes/<rid>/native/` and run
-`dotnet pack bindings/dotnet/src/FatzAudio -c Release`.
+`bindings/dotnet/src/FatzMedia.Audio/runtimes/<rid>/native/` and run
+`dotnet pack bindings/dotnet/src/FatzMedia.Audio -c Release`.
 
 ## Android
 
@@ -151,10 +151,10 @@ Put each ABI's library under the binding project's `runtimes` folder before
 packing, and the NuGet package carries them to Android apps:
 
 ```
-bindings/dotnet/src/FatzAudio/runtimes/android-arm64/native/libfatzaudio.so
-bindings/dotnet/src/FatzAudio/runtimes/android-x64/native/libfatzaudio.so
-bindings/dotnet/src/FatzAudio/runtimes/android-arm/native/libfatzaudio.so
-bindings/dotnet/src/FatzAudio/runtimes/android-x86/native/libfatzaudio.so
+bindings/dotnet/src/FatzMedia.Audio/runtimes/android-arm64/native/libfatzaudio.so
+bindings/dotnet/src/FatzMedia.Audio/runtimes/android-x64/native/libfatzaudio.so
+bindings/dotnet/src/FatzMedia.Audio/runtimes/android-arm/native/libfatzaudio.so
+bindings/dotnet/src/FatzMedia.Audio/runtimes/android-x86/native/libfatzaudio.so
 ```
 
 In an app that references the native library directly instead, add it as

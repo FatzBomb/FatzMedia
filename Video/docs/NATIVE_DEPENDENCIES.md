@@ -8,10 +8,10 @@ them, and it probes and decodes media in-process through the FFmpeg DLLs.
 
 ## Responsibility
 
-`FatzBomb.MediaControl` packages do not contain BASS or FFmpeg native binaries.
+`FatzMedia.Video` packages do not contain BASS or FFmpeg native binaries.
 The host developer is responsible for obtaining, licensing, validating, deploying,
 and updating the native DLLs used by their application. This is the same model used
-by `FatzBomb.MediaControl.Player`.
+by `FatzMedia.Video.Sample.Player`.
 
 The host may either:
 
@@ -19,23 +19,23 @@ The host may either:
    - `native`
    - `runtimes/win-x64/native`
 2. Pass one or more custom directories, in priority order, to the WPF `Player` or
-   Core `MediaControlPlayer` constructor.
+   Core `PlayerCore` constructor.
 
 Caller-supplied directories are searched first. Existing predefined directories are
 appended as fallbacks. Searches are recursive, so BASS and FFmpeg may use separate
-subdirectories beneath a supplied root. Paths passed through `MediaControlPlayer`
+subdirectories beneath a supplied root. Paths passed through `PlayerCore`
 must exist; a missing directory produces `DirectoryNotFoundException` before native
 initialization.
 
 ```csharp
-var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var platform = new WindowsDirect3D11PlatformFactory();
 IReadOnlyList<string> nativePaths =
 [
     @"C:\Program Files\MyHost\media-native\bass",
     @"C:\Program Files\MyHost\media-native\ffmpeg"
 ];
 
-var player = await FatzBomb.MediaControl.Wpf.Player.CreateAsync(
+var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
     configuration,
     nativePaths,
     platform);
@@ -55,7 +55,7 @@ Passing an empty list also allows the Windows loader to probe the predefined pat
 |---|---|---|
 | `win-x64` | Supported | Current Windows, Direct3D11, WPF, Player, and native smoke-test target. |
 | `win-arm64` | Not supported | Requires dedicated BASS/FFmpeg validation and package targeting. |
-| `linux-x64` | Preview (Stage 026B) | `FatzBomb.MediaControl.Linux`; FFmpeg load and software decode validated, BASS/player smoke pending. See Linux Native Target. |
+| `linux-x64` | Preview (Stage 026B) | `FatzMedia.Video.Linux`; FFmpeg load and software decode validated, BASS/player smoke pending. See Linux Native Target. |
 | `osx-*`, `android-*`, other `linux-*` | Not supported | Require platform packages and native policies of their own. |
 
 The managed Windows projects retain `net10.0-windows7.0` API compatibility, but the
@@ -64,7 +64,7 @@ stricter OS or UCRT requirements than the managed TFM.
 
 ## Linux Native Target (Stage 026B, pending manual smoke)
 
-`FatzBomb.MediaControl.Linux` follows the same host-owned policy: no binaries ship in
+`FatzMedia.Video.Linux` follows the same host-owned policy: no binaries ship in
 the package. The host supplies shared libraries in a host path (absolute or relative to
 the app), `native/`, or `runtimes/linux-<arch>/native/`. System library directories are
 not searched implicitly.
@@ -127,60 +127,46 @@ the control remains responsible for their own BASS rights and each add-on's term
 
 ## FatzAudio (opt-in audio engine, 037A slice 2)
 
-`FatzBomb.MediaControl.Audio.FatzAudio` plays audio files through FatzAudio when a player is
+`FatzMedia.Video.Audio` plays audio files through FatzAudio when a player is
 created with its `FatzAudioEngineFactory` (`MediaPlayerConfiguration.AudioEngineFactory`; the test
 players' `--audio=fatz`). BASS stays the default, and with FatzAudio selected BASS still plays
 video audio and network audio, so the BASS rules above still apply.
 
-- **Package:** `FatzAudio`, pinned to exactly `1.0.0-rc.1` (`Version="[1.0.0-rc.1]"`; the core
-  boundary script checks the exact pin). Unlike BASS and FFmpeg, its native library ships inside
-  the package (`runtimes/win-x64/native/fatzaudio.dll`, `runtimes/linux-x64/native/libfatzaudio.so`,
-  SONAME `libfatzaudio.so.1`) and is copied to the output by the build; nothing goes in `native/`.
-  The binding refuses a native library of another major.minor version (`InvalidOperationException`
-  at the first call); the player then warns and uses BASS.
-- **Linux:** the package's library is built on Ubuntu 22.04 and needs glibc 2.35 or later.
+- **Project:** `FatzMedia.Audio`, the .NET binding in `Audio\bindings\dotnet` of this repo, referenced
+  by project (no package, feed or token). Its native library (`fatzaudio.dll`, `libfatzaudio.so`) comes
+  from Audio's CMake build and is copied to the output by the build; nothing goes in `native/`. The
+  binding refuses a native library of another major.minor version (`InvalidOperationException` at the
+  first call); the player then warns and uses BASS.
 - **MIDI:** FatzAudio loads SF2, SF3 and DLS directly (no DLS-to-SF2 conversion). Without
   `MidiSoundfontPath` it uses the system bank (Windows `gm.dls`, an installed `.sf2` on Linux);
   with no bank at all a MIDI file does not open.
-- **Licence:** FatzAudio's own code is proprietary (all rights reserved, the package's `LICENSE`);
-  its third-party components keep their licences (`THIRD_PARTY_NOTICES.md` in FatzAudio).
+- **Licence:** FatzMedia's own code is proprietary (all rights reserved, the repo's `LICENSE`); the
+  audio engine's third-party components keep their licences (`Audio\THIRD_PARTY_NOTICES.md`).
 
-### Restoring the package
+### Building the native library
 
-The feed is GitHub Packages, `https://nuget.pkg.github.com/FatzBomb75/index.json`, which needs a
-token even to read. The repository's `nuget.config`:
-
-- maps only `FatzAudio` to that feed (`packageSourceMapping`); every other package comes from
-  nuget.org;
-- reads the password from the environment variable `FATZAUDIO_PACKAGES_TOKEN` (user name
-  `FatzBomb75`);
-- takes NuGet's vulnerability data from nuget.org only (`auditSources`), so projects that do not use
-  FatzAudio restore without the token.
-
-**CI:** the owner gave this repository Read under the package's "Manage Actions access", so
-`.github/workflows/ci.yml` declares `permissions: packages: read` and sets
-`FATZAUDIO_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. The Windows native smoke workflow packs only
-Core and the Windows packages, which do not use FatzAudio, so it needs no token.
-
-**Developers:** create a classic personal access token with only `read:packages` (fine-grained
-tokens cannot read GitHub Packages) and set it before restoring:
+Build Audio once, and again after a change under `Audio\src` or `Audio\include` (`Audio\docs\building.md`
+has the details; on Windows use the Visual Studio 18 2026 generator, never the VC98 `cl.exe`):
 
 ```powershell
-setx FATZAUDIO_PACKAGES_TOKEN <token>   # new terminals; or $env:FATZAUDIO_PACKAGES_TOKEN = '<token>' for this one
-dotnet restore FatzBomb.MediaControl.sln
+cd Audio
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+cmake --build build --config Release
 ```
 
 ```bash
-export FATZAUDIO_PACKAGES_TOKEN=<token>
-dotnet restore FatzBomb.MediaControl.sln
+cd Audio
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
 
-Without a token, the projects that reference the engine (the engine package, the three test
-players, `FatzBomb.MediaControl.Linux.Tests`, and so the whole solution) do not restore. A folder
-feed holding the exact `FatzAudio.1.0.0-rc.1.nupkg` (FatzAudio's CI `nuget` artifact, or a package
-packed from FatzAudio's source at 59741a5 as `docs/roadmap/updates/037A_2/StageUpdate.md` describes) works instead: pass a
-nuget.config of your own with that folder mapped to `FatzAudio` (`dotnet restore --configfile`).
-Never commit a token or a local feed path.
+The build looks for the library in `Audio\build\bin\Release` (Windows) or wherever
+`FatzAudioNativeDir` points (`-p:FatzAudioNativeDir=...` or an environment variable of that name; on
+Linux CI it is `Audio/build/bin`). Without it everything still builds and BASS keeps working; only
+the FatzAudio engine (`--audio=fatz`) and its native tests cannot load the library.
+
+**CI:** `video-ci.yml` builds the native library on Linux for `FatzMedia.Video.Linux.Tests`. The Windows
+native smoke workflow packs only Core and the Windows packages, which do not use FatzAudio.
 
 ## FFmpeg Policy
 
@@ -296,14 +282,14 @@ FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
    the FFmpeg libraries (both LGPL 2.1 and 3 require this).
 6. Ship the DLLs that match the control: FFmpeg 9.0.x for this binding. When an update
    moves the control to a new FFmpeg major, the same app update must carry the new DLLs.
-   `MediaControlPlayer.NativeDependencies` reports any missing or wrong-version file at
+   `PlayerCore.NativeDependencies` reports any missing or wrong-version file at
    startup, so a broken install is visible immediately.
 7. Codec patents (H.264, HEVC, AAC, and others) are a separate question from FFmpeg's
    copyright licence and depend on the country; review them before a commercial release.
 
 ## Startup Dependency Report
 
-`MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
+`PlayerCore.NativeDependencies` (and `IPlatformFactory.NativeDependencies`)
 returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
 with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
 (found, but its set is incomplete), or `FailedToLoad`, plus the search paths and

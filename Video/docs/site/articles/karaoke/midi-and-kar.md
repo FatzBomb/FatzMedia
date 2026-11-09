@@ -17,8 +17,8 @@ turn lyrics on and off, how to choose a soundfont and how to change the lyric st
 MIDI files are loaded like any other media:
 
 ```csharp
-MediaControlPlayer player = await Task.Run(() =>
-    new MediaControlPlayer(platformFactory, MediaPlayerConfiguration.Auto, nativeLibraryPaths));
+PlayerCore player = await Task.Run(() =>
+    new PlayerCore(platformFactory, MediaPlayerConfiguration.Auto, nativeLibraryPaths));
 
 await player.LoadAsync(@"C:\Karaoke\song.kar");
 await player.PlayAsync();
@@ -99,7 +99,7 @@ MediaPlayerConfiguration configuration = MediaPlayerConfiguration.Auto with
 
 ## Lyric style
 
-`MediaPlayerConfiguration.KaraokeStyle` takes a <xref:FatzBomb.MediaControl.Core.Configuration.KaraokeTextStyle>.
+`MediaPlayerConfiguration.KaraokeStyle` takes a <xref:FatzMedia.Video.Core.Configuration.KaraokeTextStyle>.
 It is fixed when the player is created; to change it, create a new player. Colours are ARGB
 values (`0xAARRGGBB`).
 
@@ -135,7 +135,7 @@ Values outside the limits are clamped. Video subtitles use the separate `Subtitl
 > [!NOTE]
 > `KaraokeSurface` creates its player itself and does not take a configuration, so it always uses
 > the default style and the automatically chosen soundfont. If you need to change either, use your
-> own <xref:FatzBomb.MediaControl.MediaControlPlayer> with a `MediaSurface`.
+> own <xref:FatzMedia.Video.PlayerCore> with a `MediaSurface`.
 
 ## Sync
 

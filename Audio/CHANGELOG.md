@@ -16,6 +16,16 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ## Unreleased
 
+### Breaking
+
+- .NET: FatzAudio is now FatzMedia.Audio, part of the FatzMedia family by FatzBomb Entertainment, in the
+  `FatzBomb/FatzMedia` repository. The NuGet id is `FatzMedia.Audio` (was `FatzAudio`), the namespaces are
+  `FatzMedia.Audio`, `FatzMedia.Audio.Archives` and `FatzMedia.Audio.Native` (were `FatzAudio.*`) and the assembly
+  is `FatzMedia.Audio.dll` (was `FatzAudio.Net.dll`). Replace `using FatzAudio;` with `using FatzMedia.Audio;`.
+  The native library (`fatzaudio.dll`, `libfatzaudio`), the C API (`fa_*`), the cache folder and the User-Agent
+  keep their names.
+- .NET: `FatzAudioException` is now `AudioException`.
+
 ### Fixed
 
 - Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.

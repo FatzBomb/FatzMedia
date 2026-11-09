@@ -1,6 +1,6 @@
 # Tags, cover art and file properties
 
-FatzAudio reads the title, artist, album and the rest of a file's tags, its embedded pictures, and its properties (duration, bitrate, channels, sample rate, bits per sample, file and audio size) in one call. No engine or device is needed, so a media library can scan thousands of files with it. It replaces `BASS_ChannelGetTags` and the tag readers of the BASS add-ons, and also covers what the Tags add-on was used for: the app gets every field ready to show and formats it however it likes.
+FatzMedia.Audio reads the title, artist, album and the rest of a file's tags, its embedded pictures, and its properties (duration, bitrate, channels, sample rate, bits per sample, file and audio size) in one call. No engine or device is needed, so a media library can scan thousands of files with it. It replaces `BASS_ChannelGetTags` and the tag readers of the BASS add-ons, and also covers what the Tags add-on was used for: the app gets every field ready to show and formats it however it likes.
 
 | Tag format | Files | Items | Pictures |
 |---|---|---|---|
@@ -114,7 +114,7 @@ fa_stream_get_tags(song, 0, &tags);
 ## C#
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 var tags = Tags.Read(@"C:\Music\track.flac");
 Console.WriteLine($"{tags.Artist} - {tags.Title} ({tags.Album}, track {tags.Track}/{tags.TrackTotal})");
@@ -168,7 +168,7 @@ bool sameAudio = AudioFingerprint.Compute(path) == before;
 string stored = before.ToString();                    // "00ab12...ef-4123456": key in hex, then the audio bytes
 ```
 
-For one entry of an archive, without unpacking the others, use `fa_fingerprint_archive_entry(archive_path, entry_name, &fp)` (.NET `AudioFingerprint.Compute(archivePath, entryName)`). The name is the entry's path as stored, `/`-separated, matched exactly. It gives the same fingerprint as the entry's bytes, so a song is recognised whether it is loose, in memory or in an archive. ZIP for now; other archive types join as FatzAudio learns to read them.
+For one entry of an archive, without unpacking the others, use `fa_fingerprint_archive_entry(archive_path, entry_name, &fp)` (.NET `AudioFingerprint.Compute(archivePath, entryName)`). The name is the entry's path as stored, `/`-separated, matched exactly. It gives the same fingerprint as the entry's bytes, so a song is recognised whether it is loose, in memory or in an archive. ZIP for now; other archive types join as FatzMedia.Audio learns to read them.
 
 ```csharp
 var inZip = AudioFingerprint.Compute("pack.zip", "Disc 1/Song.mp3");   // == AudioFingerprint.Compute(songBytes)
@@ -192,5 +192,5 @@ Reading is synchronous and does file I/O on the calling thread, so a media libra
 - MP4 atom keys start with the copyright sign, which is two bytes in UTF-8 (`"\xC2\xA9nam"`). Use `fa_tags_get` for the common fields instead of matching keys.
 - Encrypted ID3v2 frames are skipped. `SYLT` frames with times in MPEG frames are skipped.
 - Bitrate and `audio_bytes` for MP3, AAC, AC-3 and FLAC are measured between the tags (an MP3's Xing/LAME header frame is left out). MP4, WAV, AIFF and CD are exact.
-- FatzAudio reads tags; the one thing it writes is loudness (ReplayGain / R128), and only when you call `fa_tags_write_loudness` ([writing loudness tags](normalization.md#writing-loudness-tags)). Edit other tags with a tag library.
+- FatzMedia.Audio reads tags; the one thing it writes is loudness (ReplayGain / R128), and only when you call `fa_tags_write_loudness` ([writing loudness tags](normalization.md#writing-loudness-tags)). Edit other tags with a tag library.
 - The BASS `TAGS_Read` format strings (`%ARTI - %TITL`) have no equivalent: build the text from the fields.

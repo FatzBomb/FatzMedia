@@ -6,7 +6,7 @@ An encoder writes audio to a file, or to your own output (a network upload, a pi
 |---|---|---|---|
 | WAV | `FA_ENCODE_WAV` | `Wav` | 16 or 24-bit PCM, or 32-bit float. More than two channels use `WAVE_FORMAT_EXTENSIBLE` with the standard speaker layout; files past 4 GB become RF64 automatically |
 | FLAC | `FA_ENCODE_FLAC` | `Flac` | Lossless, 16 or 24 bit, up to 8 channels, with the MD5 of the audio and a SEEKTABLE. Built into the library (no libFLAC) |
-| MP3 | `FA_ENCODE_MP3` | `Mp3` | Through LAME, which your app ships and FatzAudio loads at runtime (see [MP3 and LAME](#mp3-and-lame)). VBR or CBR, with a LAME header for exact length and gapless playback |
+| MP3 | `FA_ENCODE_MP3` | `Mp3` | Through LAME, which your app ships and FatzMedia.Audio loads at runtime (see [MP3 and LAME](#mp3-and-lame)). VBR or CBR, with a LAME header for exact length and gapless playback |
 
 Each encoder takes its audio from one source:
 
@@ -96,7 +96,7 @@ using var rec = AudioEncoder.Create("friday.mp3", new EncoderOptions
 });
 rec.Record(output);
 // ...
-rec.Close();     // completes the file; throws FatzAudioException on errors (Dispose doesn't throw)
+rec.Close();     // completes the file; throws AudioException on errors (Dispose doesn't throw)
 
 // Record one deck
 using var deck = AudioEncoder.Create("deck-a.wav", new EncoderOptions { BitsPerSample = 24 });
@@ -150,17 +150,17 @@ Invalid values (FLAC at 32 bits, MP3 at 96 kHz, an unknown format) fail at creat
 - **The audio thread never waits for the encoder.** Recording a device or a stream only copies the audio into the encoder's queue. If the encoder falls more than `queue_ms` behind real time (a network output that stalls), what does not fit is dropped and counted in `dropped_frames`; the rest of the file stays valid. `fa_encoder_write` waits instead, so nothing is lost on that path.
 - **Pausing.** `fa_encoder_set_paused` (.NET `IsPaused`) skips the device's or stream's audio until resumed: the file just continues where it stopped, with no gap of silence.
 - **When the source goes away.** Closing the device or stream being recorded (or encoded) ends the input; the encoder stays open and its file is completed when you close it. A recorded stream moved to a device of another sample rate is not recorded while it plays there (the input format is fixed when the source is attached).
-- **Exact lengths.** Resampled output has exactly `input × out_rate / in_rate` frames (rounded), with the resampler's look-ahead flushed at the end. FLAC and WAV keep every frame; MP3 files carry LAME's delay and padding in the LAME header, so decoders that read it (FatzAudio, FFmpeg, most players) give back exactly the frames encoded.
+- **Exact lengths.** Resampled output has exactly `input × out_rate / in_rate` frames (rounded), with the resampler's look-ahead flushed at the end. FLAC and WAV keep every frame; MP3 files carry LAME's delay and padding in the LAME header, so decoders that read it (FatzMedia.Audio, FFmpeg, most players) give back exactly the frames encoded.
 - **FLAC seek table.** A FLAC file written to a seekable output has a SEEKTABLE with a point every 10 s (as `flac` makes by default); a file longer than about 42 minutes (256 points) gets one every 20 s, 30 s and so on, whatever fits. Room for the points is kept before the audio and filled in at the end; what is left over joins the padding block (4 KB plus 18 bytes per unused point) that tag editors use.
 - **Dither.** 16-bit output (WAV or FLAC) gets TPDF dither, except for samples that already are exact 16-bit values. So a 16-bit source played or converted at unity gain stays bit exact: WAV to FLAC is lossless, and so is FLAC to WAV. 24-bit output is rounded without dither.
-- **Outputs that cannot seek.** When `fa_encoder_output.seek` is NULL (or the .NET stream can't seek), the header can't be completed at the end. WAV keeps "length unknown" sizes and FLAC an unknown length, no MD5 and no SEEKTABLE (both decode fine, including with FatzAudio); MP3 is written without the LAME header.
+- **Outputs that cannot seek.** When `fa_encoder_output.seek` is NULL (or the .NET stream can't seek), the header can't be completed at the end. WAV keeps "length unknown" sizes and FLAC an unknown length, no MD5 and no SEEKTABLE (both decode fine, including with FatzMedia.Audio); MP3 is written without the LAME header.
 - **Threads.** One thread per encoder does the conversion, encoding and writing; your output callbacks run there. FLAC level 5 encodes 44.1 kHz stereo at about 400× real time on one x64 core (level 8: about 170×, level 0: about 650×), so recording costs almost nothing. The calls are thread-safe; `fa_encoder_write` calls must not overlap each other.
 
 ## FLAC compression
 
-FatzAudio's FLAC encoder is written from the format specification and tries, for every block and channel, a constant, raw samples, the fixed predictors and LPC of every order up to the level's maximum, plus the four stereo decorrelations, and keeps whichever is smallest. From level 3 on, the LPC candidates are first sized on short pieces of each block and only the most promising few are costed in full (files come out within 0.01% of trying them all, at a fraction of the time). Measured on 30 s of 16-bit stereo test music against the reference encoder (`flac` 1.4):
+FatzMedia.Audio's FLAC encoder is written from the format specification and tries, for every block and channel, a constant, raw samples, the fixed predictors and LPC of every order up to the level's maximum, plus the four stereo decorrelations, and keeps whichever is smallest. From level 3 on, the LPC candidates are first sized on short pieces of each block and only the most promising few are costed in full (files come out within 0.01% of trying them all, at a fraction of the time). Measured on 30 s of 16-bit stereo test music against the reference encoder (`flac` 1.4):
 
-| Level | FatzAudio | flac | 
+| Level | FatzMedia.Audio | flac | 
 |---|---|---|
 | 0 | 3.34 MB | 3.31 MB |
 | 5 (default) | 2.17 MB | 2.19 MB |
@@ -170,7 +170,7 @@ Every file it writes passes `flac -t` (CRCs and MD5), which the tests check when
 
 ## MP3 and LAME
 
-LAME is LGPL, so FatzAudio never links or bundles it (the same model as FFmpeg). Ship libmp3lame with your app and FatzAudio finds it:
+LAME is LGPL, so FatzMedia.Audio never links or bundles it (the same model as FFmpeg). Ship libmp3lame with your app and FatzMedia.Audio finds it:
 
 1. one already loaded in the process, else
 2. one the system loader finds: `libmp3lame.dll`, `libmp3lame-0.dll` or `lame_enc.dll` (Windows, for example next to the exe), `libmp3lame.0.dylib` (macOS, also in the Homebrew and MacPorts folders), `libmp3lame.so.0` (Linux, Android).

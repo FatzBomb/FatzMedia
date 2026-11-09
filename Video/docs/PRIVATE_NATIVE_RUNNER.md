@@ -13,7 +13,7 @@ FFmpeg binaries.
 - GitHub self-hosted runner service installed under a restricted service account.
 - Default labels `self-hosted`, `Windows`, and `X64`.
 - Custom label `fatzbomb-native`.
-- Access limited to the FatzBombMedia repository or a restricted runner group.
+- Access limited to the FatzMedia.Video repository or a restricted runner group.
 - Network access to GitHub and NuGet.org.
 - Enough temporary space for self-contained publish output and four local packages.
 

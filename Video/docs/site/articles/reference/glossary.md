@@ -25,7 +25,7 @@ Short definitions of terms used across this guide.
 ## Rendering and presentation
 
 **Player, session**
-: The object you load and control media with. `MediaControlPlayer` (or an adapter's `Player`, which derives from it) is the implementation; `IMediaControlSession` is the interface surfaces and your code can depend on. See [Player and session](../concepts/player-and-session.md).
+: The object you load and control media with. `PlayerCore` (or an adapter's `Player`, which derives from it) is the implementation; `IPlayerSession` is the interface surfaces and your code can depend on. See [Player and session](../concepts/player-and-session.md).
 
 **Control queue**
 : The per-player queue that runs load, transport, seek and mode calls one at a time, in order. See [Threading and events](../concepts/threading-and-events.md).
@@ -37,7 +37,7 @@ Short definitions of terms used across this guide.
 : The component that draws each composed frame: Direct3D11, Vulkan or Software.
 
 **Platform factory**
-: The object that combines operating-system services (native libraries, timers, audio device monitoring) with a renderer. For example `WindowsDirect3D11MediaControlPlatformFactory`.
+: The object that combines operating-system services (native libraries, timers, audio device monitoring) with a renderer. For example `WindowsDirect3D11PlatformFactory`.
 
 **Surface**
 : The UI control (`MediaSurface`) that the renderer draws into or that shows its frames.

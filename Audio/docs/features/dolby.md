@@ -1,13 +1,13 @@
 # Dolby Digital and Dolby Digital Plus
 
-FatzAudio decodes Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) itself, in every place audio comes from: `.ac3` and `.ec3` files, AC-3 and E-AC-3 tracks in MP4, MOV and Matroska video files, web streams and HLS, and packets pushed from your own FFmpeg demuxer. There's no add-on to load and no FFmpeg needed. It replaces bass_ac3.
+FatzMedia.Audio decodes Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) itself, in every place audio comes from: `.ac3` and `.ec3` files, AC-3 and E-AC-3 tracks in MP4, MOV and Matroska video files, web streams and HLS, and packets pushed from your own FFmpeg demuxer. There's no add-on to load and no FFmpeg needed. It replaces bass_ac3.
 
 | What | Supported |
 |---|---|
 | AC-3 (Dolby Digital) | Every mode: mono to 5.1, 32, 44.1 and 48 kHz, all bit rates |
 | E-AC-3 (Dolby Digital Plus) | Every coding tool: independent and dependent substreams (7.1), 1 to 6 blocks per frame, spectral extension, enhanced coupling, the adaptive hybrid transform, all bit allocation options. Transient pre-noise processing data is read and not applied, as in most decoders |
 | Atmos (Dolby Digital Plus with JOC) | The 5.1 or 7.1 bed plays; the height objects are not rendered |
-| Dolby TrueHD | Not supported. If you need it, we recommend decoding it with FFmpeg in your app and handing FatzAudio the audio ([FFmpeg hand-off](ffmpeg.md)) |
+| Dolby TrueHD | Not supported. If you need it, we recommend decoding it with FFmpeg in your app and handing FatzMedia.Audio the audio ([FFmpeg hand-off](ffmpeg.md)) |
 
 `fa_stream_get_info` reports codec `ac3` or `eac3`. The container is `ac3` or `ec3` for raw files, or the video file's (`mp4`, `matroska`, `hls`, ...).
 
@@ -32,14 +32,14 @@ A layout without its own count uses the next larger one with silent channels, so
 
 ## Stereo downmix
 
-A Dolby stream says how it should sound on two speakers: how loud the centre and the surrounds go into left and right, and which of two kinds of stereo the mastering engineer preferred. FatzAudio follows it, as ETSI TS 102 366 describes (clauses 6.8 and E.2.9, Annex D):
+A Dolby stream says how it should sound on two speakers: how loud the centre and the surrounds go into left and right, and which of two kinds of stereo the mastering engineer preferred. FatzMedia.Audio follows it, as ETSI TS 102 366 describes (clauses 6.8 and E.2.9, Annex D):
 
 | Mode | What you hear | Use it for |
 |---|---|---|
 | `FA_DOLBY_DOWNMIX_AUTO` (default) | The kind the stream prefers; Lo/Ro when it names none (most streams) | Everything |
 | `FA_DOLBY_DOWNMIX_LORO` | Lo/Ro, plain stereo: left gets L, the centre at its level and the left surround at the surround level; right the same | Headphones, speakers, a mono mix later |
 | `FA_DOLBY_DOWNMIX_LTRT` | Lt/Rt, matrix surround: the surrounds go into left out of phase and into right in phase, so a Dolby Pro Logic decoder downstream (an AV receiver on the analog or stereo output) can bring them back | Feeding a surround receiver from a stereo output |
-| `FA_DOLBY_DOWNMIX_ENGINE` | The engine's own downmix, as for every other format: centre and surrounds at -6 dB, no LFE, the stream's levels ignored | The downmix FatzAudio had before this setting |
+| `FA_DOLBY_DOWNMIX_ENGINE` | The engine's own downmix, as for every other format: centre and surrounds at -6 dB, no LFE, the stream's levels ignored | The downmix FatzMedia.Audio had before this setting |
 
 The levels come from the stream itself, frame by frame:
 
@@ -82,7 +82,7 @@ film.DolbyDownmix = DolbyDownmix.LoRo;
 
 ## Dialogue level (dialnorm)
 
-Every Dolby stream states its dialogue level, -1 to -31 dBFS, which broadcasters set to the programme's loudness (ATSC A/85). FatzAudio can use it for [normalization](normalization.md) instead of scanning: turn it on once with `fa_engine_set_dialnorm(engine, 1)` (.NET `engine.SetDialnorm(true)`). A file's dialnorm then counts as its loudness when there is no value from your app, no ReplayGain or R128 tag and no earlier scan in the cache, and it is final at once (`FA_LOUDNESS_DIALNORM`), so a two-hour film needs no scan.
+Every Dolby stream states its dialogue level, -1 to -31 dBFS, which broadcasters set to the programme's loudness (ATSC A/85). FatzMedia.Audio can use it for [normalization](normalization.md) instead of scanning: turn it on once with `fa_engine_set_dialnorm(engine, 1)` (.NET `engine.SetDialnorm(true)`). A file's dialnorm then counts as its loudness when there is no value from your app, no ReplayGain or R128 tag and no earlier scan in the cache, and it is final at once (`FA_LOUDNESS_DIALNORM`), so a two-hour film needs no scan.
 
 It is off by default because the value is only as good as whoever set it: -31, which encoders write when nobody chose a value, is never used, but a wrong value would be. Live streams and app I/O keep the running estimate.
 

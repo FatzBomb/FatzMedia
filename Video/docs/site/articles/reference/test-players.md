@@ -4,37 +4,37 @@ The repository contains three small player applications, one for each UI framewo
 
 | Player | Project | UI framework | Platforms |
 | --- | --- | --- | --- |
-| WPF | `FatzBomb.MediaControl.Player` | WPF | Windows x64 (`net10.0-windows7.0`) |
-| WinForms | `FatzBomb.MediaControl.Player.WinForms` | WinForms | Windows x64 (`net10.0-windows7.0`) |
-| Avalonia | `FatzBomb.MediaControl.Player.Avalonia` | Avalonia | Linux (`net10.0`) and Windows (`net10.0-windows7.0`) |
+| WPF | `FatzMedia.Video.Sample.Player` | WPF | Windows x64 (`net10.0-windows7.0`) |
+| WinForms | `FatzMedia.Video.Sample.Player.WinForms` | WinForms | Windows x64 (`net10.0-windows7.0`) |
+| Avalonia | `FatzMedia.Video.Sample.Player.Avalonia` | Avalonia | Linux (`net10.0`) and Windows (`net10.0-windows7.0`) |
 
-All three bind one shared view model, `PlayerViewModel` in the `FatzBomb.MediaControl.Player.Shared` project. It holds the player logic (creating the engine, transport, seeking, sync offsets, effects, equalizer, subtitles, visual transforms, prepared next item and fades, network sources, player modes, the diagnostics log). Each host supplies only its UI thread, dialogs, engine factory and surface. Use it as a model for an MVVM application.
+All three bind one shared view model, `PlayerViewModel` in the `FatzMedia.Video.Sample.Player.Shared` project. It holds the player logic (creating the engine, transport, seeking, sync offsets, effects, equalizer, subtitles, visual transforms, prepared next item and fades, network sources, player modes, the diagnostics log). Each host supplies only its UI thread, dialogs, engine factory and surface. Use it as a model for an MVVM application.
 
 ## Build and run
 
 You need the .NET 10 SDK and the native libraries (the repository does not contain BASS or FFmpeg binaries).
 
 1. Obtain the x64 BASS DLLs (`bass.dll`, `bass_fx.dll`, plus any add-ons you want, such as `bassmidi.dll`) and FFmpeg 9.0.x shared DLLs (`avcodec-63.dll` and the six others). On Linux use the matching shared libraries (`libbass.so`, `libbass_fx.so`, `libavcodec.so.63` and the rest).
-2. Put them in the player project's `native/` folder (for example `FatzBomb.MediaControl.Player/native/`). They are copied next to the application on build and publish. Alternatively pass `--native=<dir>` (repeatable, highest priority first).
+2. Put them in the player project's `native/` folder (for example `FatzMedia.Video.Sample.Player/native/`). They are copied next to the application on build and publish. Alternatively pass `--native=<dir>` (repeatable, highest priority first).
 3. Build and run.
 
 ```powershell
 # WPF
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- "C:\media\song.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- "C:\media\song.mp4"
 
 # WinForms
-dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- "C:\media\song.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player.WinForms -c Release -- "C:\media\song.mp4"
 
 # Avalonia on Windows
-dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 -- "C:\media\song.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0-windows7.0 -- "C:\media\song.mp4"
 ```
 
 ```bash
 # Avalonia on Linux
-dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0 -- ./song.mp4
+dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0 -- ./song.mp4
 
 # Headless Linux box
-xvfb-run -a dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
+xvfb-run -a dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0
 ```
 
 On Linux the Avalonia player also looks in the directories named by the environment variables `FATZBOMB_LINUX_FFMPEG_DIR` and `FATZBOMB_LINUX_BASS_DIR`. The repository script `scripts/setup-linux-native.sh` downloads FFmpeg 9.0 LGPL libraries and test media into `/opt/fatzbomb-native`. The Vulkan renderer on a machine without a GPU needs Mesa's lavapipe driver (`mesa-vulkan-drivers` on Debian and Ubuntu). BASS is not available from that script; without it the player starts and plays video without sound.
@@ -43,7 +43,7 @@ Without the native libraries the players still start, the panels stay disabled, 
 
 ## Command line
 
-Every player understands the same flags (parsed by `PlayerStartupOptions` in `FatzBomb.MediaControl.Player.Shared`). Flags with a value use `--name=value`. Names are case-insensitive. Unknown flags are ignored. An unknown value of `--renderer`, `--surface` or `--decoding` is logged as a warning and the default is used.
+Every player understands the same flags (parsed by `PlayerStartupOptions` in `FatzMedia.Video.Sample.Player.Shared`). Flags with a value use `--name=value`. Names are case-insensitive. Unknown flags are ignored. An unknown value of `--renderer`, `--surface` or `--decoding` is logged as a warning and the default is used.
 
 | Flag | Meaning |
 | --- | --- |
@@ -81,7 +81,7 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 - **Presentation paths.** The stats line under each player ends with the surface's size and path; for example `via shared GPU image` or `via frame sink`.
 - **Second screen.** A button opens a `SecondaryPresentationWindow` for each player. F11 or a double-click toggles full screen; Escape leaves it or closes the window.
 - **Several players.** `--players=4` is a measuring rig: per-player fps, process CPU and memory, per-player logs.
-- **Diagnostics.** A Log flyout lists every `MediaDiagnostic` and `MediaError` event, newest first, with level colors, Copy all and Open log file. Every diagnostic is also written to a file in `%TEMP%\FatzBombMedia` (`player-debug.log` for WPF, `player-winforms-debug.log`, `player-avalonia-debug.log`), overwritten at each start.
+- **Diagnostics.** A Log flyout lists every `MediaDiagnostic` and `MediaError` event, newest first, with level colors, Copy all and Open log file. Every diagnostic is also written to a file in `%TEMP%\FatzMedia.Video` (`player-debug.log` for WPF, `player-winforms-debug.log`, `player-avalonia-debug.log`), overwritten at each start.
 - **Playback features.** Transport, seek bar with scrubbing, volume, pitch, tempo, normalization, equalizer, sync offsets, subtitle picker, color transforms, display modes, display-locked timing, prepared next item with fades, network sources, player modes.
 - **Full screen.** F11 or a double-click shows one player full screen; the controls hide after 2.5 seconds without mouse movement; Escape closes an open flyout, then leaves full screen.
 - **Drag and drop.** Dropping a file on a player opens it there.

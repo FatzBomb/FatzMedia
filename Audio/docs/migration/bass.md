@@ -1,19 +1,19 @@
 # Migrating from BASS
 
-This guide maps the BASS 2.4.18 functions (all 110 exports of bass.dll, see [Appendix N](#appendix-n-functions-not-named-in-the-tables-above) for those not named in the tables), its constants ([appendices A to M](#6-appendices-constants-and-leftover-functions)), and every add-on in the legacy app (bass_aac, bass_ac3, bass_fx, bassalac, basscd, bassflac, bassmidi, bassopus, basswebm, basswma), plus BASSenc for recording and encoding, to FatzAudio. It's updated as each feature lands. Status symbols are explained in the [docs index](../README.md#status-legend).
+This guide maps the BASS 2.4.18 functions (all 110 exports of bass.dll, see [Appendix N](#appendix-n-functions-not-named-in-the-tables-above) for those not named in the tables), its constants ([appendices A to M](#6-appendices-constants-and-leftover-functions)), and every add-on in the legacy app (bass_aac, bass_ac3, bass_fx, bassalac, basscd, bassflac, bassmidi, bassopus, basswebm, basswma), plus BASSenc for recording and encoding, to FatzMedia.Audio. It's updated as each feature lands. Status symbols are explained in the [docs index](../README.md#status-legend).
 
 **Goal:** after migration the app ships one native library per platform (`fatzaudio.dll`/`.dylib`/`.so`) and none of the BASS DLLs.
 
-**Packaging:** the `FatzAudio` NuGet package carries the one native library for Windows (x64, arm64), Linux (x64, arm64), macOS (universal), Android (arm64, x64) and iOS (xcframework), so replacing the `bass*.dll` files needs no per-platform downloads.
+**Packaging:** the `FatzMedia.Audio` NuGet package carries the one native library for Windows (x64, arm64), Linux (x64, arm64), macOS (universal), Android (arm64, x64) and iOS (xcframework), so replacing the `bass*.dll` files needs no per-platform downloads.
 
-On Android and iOS BASS also comes as the core library plus one library per add-on (`libbass.so`, `libbass_fx.so` and so on in each Android ABI folder). FatzAudio replaces them all with one `libfatzaudio.so` per ABI and one `fatzaudio.xcframework` ([Building](../building.md)). Delete the add-on libraries and their `BASS_PluginLoad` calls there too.
+On Android and iOS BASS also comes as the core library plus one library per add-on (`libbass.so`, `libbass_fx.so` and so on in each Android ABI folder). FatzMedia.Audio replaces them all with one `libfatzaudio.so` per ABI and one `fatzaudio.xcframework` ([Building](../building.md)). Delete the add-on libraries and their `BASS_PluginLoad` calls there too.
 
 ## 1. What changes conceptually
 
-| BASS | FatzAudio | Why it matters when porting |
+| BASS | FatzMedia.Audio | Why it matters when porting |
 |---|---|---|
 | `BASS_Init` sets a per-thread "current device"; later calls act on it implicitly | You hold an `fa_device*` and pass it explicitly | Calls on another thread no longer silently target the wrong device. Remove all `BASS_SetDevice` juggling |
-| Functions return `FALSE`/`0`, then you call `BASS_ErrorGetCode()` | Every function returns an `fa_result` error code directly; .NET throws `FatzAudioException` | Replace every `if (!x) err = BASS_ErrorGetCode()` with a direct check |
+| Functions return `FALSE`/`0`, then you call `BASS_ErrorGetCode()` | Every function returns an `fa_result` error code directly; .NET throws `AudioException` | Replace every `if (!x) err = BASS_ErrorGetCode()` with a direct check |
 | `HSTREAM`/`HCHANNEL`/`HMUSIC`/`HRECORD` are all `DWORD` and interchangeable by accident | Typed handles (`fa_stream*`, `fa_device*`, `fa_bus*`) | The compiler catches wrong-handle bugs |
 | Each add-on has its own `BASS_XXX_StreamCreateFile` + `BASS_PluginLoad` | One `fa_stream_open_*` detects the format; no plugins | Delete all plugin loading and per-format create calls |
 | Flags are one big `DWORD` bitfield shared across unrelated functions | Small option structs per call (`fa_open_options`) | No more guessing which `BASS_SAMPLE_*`/`BASS_STREAM_*` flags apply |
@@ -30,10 +30,10 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Library and devices
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_GetVersion | `fa_version` | `AudioEngine.NativeVersion` (and `AudioEngine.BindingVersion`; `AudioEngine.Create` throws if their major.minor differ, see [CHANGELOG](../../CHANGELOG.md)) | ✅ |
-| BASS_ErrorGetCode | Return value of every call; `fa_result_string` | `FatzAudioException.ErrorCode` | ✅ |
+| BASS_ErrorGetCode | Return value of every call; `fa_result_string` | `AudioException.ErrorCode` | ✅ |
 | BASS_ERROR_WMA_LICENSE (protected WMA) | `FA_ERROR_PROTECTED_CONTENT`, also for encrypted MP4/MKV and SAMPLE-AES HLS | `ErrorCode.ProtectedContent` | ✅ |
 | BASS_Init | `fa_engine_create` + `fa_device_open` | `AudioEngine.Create()` + `engine.OpenOutput()` | ✅ |
 | BASS_Init with device 0 ("no sound") | `FA_ENGINE_NULL_OUTPUT` in `fa_engine_config.flags`: a silent output that still runs in real time ([devices](../features/devices.md#silent-output-for-tests-and-servers)) | `new AudioEngineOptions { NullOutput = true }` | ✅ |
@@ -46,7 +46,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_IsStarted | `fa_device_is_started` | `device.IsStarted` | ✅ |
 | BASS_SetVolume / BASS_GetVolume | `fa_device_set_volume` / `fa_device_get_volume` | `device.Volume` | ✅ |
 | Mute by saving the volume, setting BASS_ATTRIB_VOL (or BASS_SetVolume) to 0 and restoring it | `fa_stream_set_mute` / `fa_device_set_mute` (read with `fa_stream_get_mute` / `fa_device_get_mute`): the volume is kept, fades keep running, 5 ms glide | `stream.Muted`, `device.Muted` | ✅ |
-| BASS_SetConfig / GetConfig (+Ptr) | `fa_engine_config` fields at creation; per-stream options | `AudioEngineOptions` | ✅ for the settings FatzAudio has; each BASS_CONFIG_* is listed in [Appendix D](#appendix-d-configuration-bass_setconfig) |
+| BASS_SetConfig / GetConfig (+Ptr) | `fa_engine_config` fields at creation; per-stream options | `AudioEngineOptions` | ✅ for the settings FatzMedia.Audio has; each BASS_CONFIG_* is listed in [Appendix D](#appendix-d-configuration-bass_setconfig) |
 | BASS_CONFIG_BUFFER | `fa_open_options.buffer_ms` per stream, default 500 ms ([playback](../features/playback.md#buffer-length)) | `StreamOptions.BufferLength` | ✅ |
 | BASS_CONFIG_NET_TIMEOUT / NET_READTIMEOUT | `fa_net_options.timeout_ms` per stream: connecting, and the longest the server may stay silent ([web streams](../features/web-streams.md#connection-settings)) | `NetworkOptions.Timeout` | ✅ |
 | BASS_CONFIG_NET_BUFFER | Not needed: each web stream keeps up to 4 MB (a smaller file: its size plus 64 KB), at most 2 MB ahead of playback | — | ➖ (by design) |
@@ -67,7 +67,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Streams
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/MP2/MP1/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA, WavPack). Also Sun `.au`, which BASS does not read |
 | BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3-mp2-and-mp1)) | `new StreamOptions { Prescan = true }` | ✅ |
@@ -98,7 +98,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Channel control
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_ChannelPlay / BASS_ChannelStart | `fa_stream_attach` + `fa_stream_play` | `stream.PlayOn(device)` | ✅ |
 | BASS_ChannelPlay at a precise time | `fa_stream_play_at` on the device clock (`fa_device_get_time`) ([crossfade](../features/crossfade.md#the-device-clock)) | `stream.PlayAt(output.Time + delay)` | ✅ |
@@ -158,13 +158,13 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Device clock
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_ChannelGetPosition on a playing channel used as a timeline | `fa_device_get_time`: frames the device mixed since it opened, in ns; never jumps on seek or track change | `output.Time` | ✅ |
 
 ### Video sync
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_ChannelGetPosition minus the latency from BASS_GetInfo, converted with Bytes2Seconds, to find which video frame to show | `fa_stream_get_clock`: the time leaving the speaker, latency included, interpolated between callbacks; holds while paused, stalled or ended ([FFmpeg hand-off](../features/ffmpeg.md#following-the-clock-with-the-video)) | `stream.Clock` | ✅ |
 | BASS_ChannelGetPosition plus your own estimate of the time until the next vsync (BASS has no clock at a given time) | `fa_stream_get_clock_at(s, monotonic_ns, &pts)` with `fa_monotonic_time()` as the time base (QPC on Windows, `mach_absolute_time` on Apple, `CLOCK_MONOTONIC` on Linux/Android): the time heard at the moment the frame is shown; runs on past the mixed audio while playing ([clock at a given time](../features/playback.md#clock-at-a-given-time)) | `stream.GetClockAt(ns)`, `AudioEngine.MonotonicTime`, `AudioEngine.MonotonicTimeFromStopwatch` | ✅ |
@@ -175,7 +175,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Effects
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_ChannelSetFX(BASS_FX_DX8_PARAMEQ) per band, or bass_fx `BASS_FX_BFX_PEAKEQ` with `lBand` per band + BASS_FXSetParameters | `fa_stream_set_eq` with up to 16 peak or shelf bands; `fa_stream_set_eq_gain` for one slider. No FX handles: one equalizer per stream, before volume and normalization, gliding without clicks, free when flat ([equalizer](../features/equalizer.md)) | `stream.SetEqualizer(...)`, `SetEqualizerGain`, `EqualizerEnabled` | ✅ |
 | `BASS_BFX_PEAKEQ.fCenter` / `fBandwidth` (octaves) / `fQ` / `fGain` | `fa_eq_band.frequency_hz` / `q` (one octave = 1.41) / `gain_db` | `SetEqualizer(...)` bands | ✅ |
@@ -187,9 +187,9 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 ### Loudness and normalization
 
-BASS has no normalization: apps measure each file themselves with a decode pass and then set the volume. FatzAudio does it for every stream ([normalization](../features/normalization.md)).
+BASS has no normalization: apps measure each file themselves with a decode pass and then set the volume. FatzMedia.Audio does it for every stream ([normalization](../features/normalization.md)).
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | Your own analysis: decode stream (`BASS_STREAM_DECODE`) + `BASS_ChannelGetData`/`GetLevel` loop, compute a gain, then `BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, gain)` | `fa_engine_set_normalization(engine, FA_NORMALIZE_TRACK, -16)` once. Tags, cache and a parallel audio-only background scan; playback starts at once and glides to the exact gain | `engine.SetNormalization(NormalizeMode.Track, -16)` | ✅ |
 | Storing your analysis result and reapplying it next time | `fa_stream_set_loudness` (wins over everything); results cached automatically in `fa_engine_config.cache_directory` (optional: unset = the OS's per-user cache folder; `FA_ENGINE_NO_CACHE` = none; `fa_engine_get_cache_info` reports a folder that cannot be used): one file, 5 MB by default, songs used least recently dropped first, keyed by the audio so retagged files still hit ([the cache](../features/normalization.md#the-cache)) | `stream.SetLoudness(lufs)`, `AudioEngineOptions.CacheDirectory` (optional), `NoCache`, `GetCacheInfo()` | ✅ |
@@ -213,7 +213,7 @@ BASS has no normalization: apps measure each file themselves with a decode pass 
 
 A sound is loaded once and played as many overlapping voices as needed ([sounds](../features/sounds.md)).
 
-| BASS | FatzAudio | .NET | Status |
+| BASS | FatzMedia.Audio | .NET | Status |
 |---|---|---|---|
 | BASS_SampleLoad | `fa_sound_load_path`, `fa_sound_load_memory` (any format a stream opens) | `engine.LoadSound(path)`, `engine.LoadSound(bytes)` | ✅ |
 | BASS_SampleCreate + BASS_SampleSetData | `fa_sound_load_pcm` (any interleaved sample format, copied) | `engine.CreateSound(samples, rate, channels)` | ✅ |
@@ -230,7 +230,7 @@ A sound is loaded once and played as many overlapping voices as needed ([sounds]
 
 MOD, S3M, XM, IT, MPTM and many more play through the statically linked libopenmpt ([tracker modules](../features/trackers.md)). A module is an ordinary stream: it plays once, loops with the stream's loop toggle, and has no separate `HMUSIC` type. Where BASS offered a flag or attribute with no counterpart, the row says so.
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_MusicLoad / BASS_MusicFree (file, memory) | `fa_stream_open_path` / `_memory` / `_io`, `fa_stream_close`; detected from the content | `engine.OpenFile` / `OpenMemory` / `OpenStream`, `Dispose()` | ✅ |
 | BASS_MUSIC_RAMP / BASS_MUSIC_RAMPS (normal and sensitive ramping) | `fa_stream_set_tracker_param(FA_TRACKER_VOLUME_RAMPING, v)`: -1 default, 0 off, 1 to 10 (higher is softer), live | `TrackerVolumeRamping` | ✅ |
@@ -270,7 +270,7 @@ MOD, S3M, XM, IT, MPTM and many more play through the statically linked libopenm
 
 ### Recording
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_RecordGetDeviceInfo | `fa_device_count/get_info(FA_DEVICE_CAPTURE)` | — | ✅ (listing) |
 | BASS_RecordInit + BASS_RecordStart, the record channel played live through a mixer (a karaoke mic) | `fa_mixer_add_mic` on the [DJ mixer](../features/dj-mixer.md#microphones): one channel or all channels of a capture device, drift-corrected into the master, with low cut, gain, gate, EQ, mute and pan built in; `fa_mic_remove` frees it. | `mixer.AddMic(new MicOptions { Device = input, Channel = 0 })` | ✅ |
@@ -289,7 +289,7 @@ MOD, S3M, XM, IT, MPTM and many more play through the statically linked libopenm
 
 The legacy app ships no encoder DLLs; this is how BASSenc-style code maps. One encoder object replaces the encoder add-ons, and format conversion, threading and file headers are built in ([recording and encoding](../features/recording-encoding.md)).
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_Encode_Start / BASS_Encode_StartUser on a playing channel | `fa_encoder_create_path` / `fa_encoder_create_output` + `fa_encoder_attach_stream` | `AudioEncoder.Create(path or Stream)` + `Record(stream)` | ✅ |
 | BASS_Encode_Start on a decoding channel, then a `BASS_ChannelGetData` loop | `fa_encoder_encode_stream`: the encoder's thread reads the stream to its end; `fa_encoder_wait` | `Encode(stream)` + `Wait`, or `AudioEncoder.ConvertFile` | ✅ |
@@ -316,14 +316,14 @@ The legacy app ships no encoder DLLs; this is how BASSenc-style code maps. One e
 
 ### 3D and EAX
 
-| BASS | FatzAudio | Status |
+| BASS | FatzMedia.Audio | Status |
 |---|---|---|
 | BASS_Set3DFactors / Get3DFactors / Set3DPosition / Get3DPosition / Apply3D, BASS_ChannelSet3D* / Get3D* | Not built: possible future update, not required for release. Pan and the channel matrix cover stereo placement | 🗓️ |
 | BASS_ATTRIB_EAXMIX, BASS_ERROR_NOEAX (the 2.4 bass.h has no EAX functions any more, only these leftovers) | Not provided (hardware EAX no longer exists) | ➖ |
 
 ### Plugins
 
-| BASS | FatzAudio | Status |
+| BASS | FatzMedia.Audio | Status |
 |---|---|---|
 | BASS_PluginLoad / Free / Enable | Not needed: all formats are built in and detected from content | ➖ (by design) |
 | BASS_PluginGetInfo | `fa_format_count` + `fa_format_get_info`; .NET `AudioEngine.SupportedFormats` | ✅ |
@@ -332,7 +332,7 @@ The legacy app ships no encoder DLLs; this is how BASSenc-style code maps. One e
 
 The legacy app doesn't ship bassmix.dll, but mixer-style code built on `BASS_ChannelSetLink` and slides maps here too.
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_Mixer_StreamCreate + BASS_Mixer_StreamAddChannel | `fa_bus_create` + `fa_stream_attach(s, device, bus)`; no extra stream or buffer ([buses](../features/buses.md)) | `output.CreateBus()`, `stream.PlayOn(bus)` | ✅ |
 | BASS_Mixer_ChannelRemove | `fa_stream_attach(s, device, NULL)` (master mix) or `fa_stream_detach` | `PlayOn(output)`, `Detach()` | ✅ |
@@ -358,9 +358,9 @@ The legacy app doesn't ship bassmix.dll, but mixer-style code built on `BASS_Cha
 
 ### bass_aac (AAC)
 
-AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`.caf`) files, `.aac` (ADTS) files, AAC radio and HLS. FatzAudio's own decoder handles AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP, mono to 7.1, the same on every platform, with no FFmpeg and no system codec ([AAC](../features/streams.md#aac)). Only xHE-AAC goes to the system's decoder (Media Foundation, AudioToolbox, MediaCodec, where the system has one); without one it returns `FA_ERROR_UNSUPPORTED_FORMAT` (an app can still decode it with its own FFmpeg and push the frames). ALAC in M4A and Matroska is decoded by the library's own decoder on every platform, to the bit.
+AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`.caf`) files, `.aac` (ADTS) files, AAC radio and HLS. FatzMedia.Audio's own decoder handles AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP, mono to 7.1, the same on every platform, with no FFmpeg and no system codec ([AAC](../features/streams.md#aac)). Only xHE-AAC goes to the system's decoder (Media Foundation, AudioToolbox, MediaCodec, where the system has one); without one it returns `FA_ERROR_UNSUPPORTED_FORMAT` (an app can still decode it with its own FFmpeg and push the frames). ALAC in M4A and Matroska is decoded by the library's own decoder on every platform, to the bit.
 
-| bass_aac | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bass_aac | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_AAC_StreamCreateFile (also opens MP4 files, as `BASS_CTYPE_STREAM_MP4`) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_AAC_StreamCreateURL (also MP4) | `fa_stream_open_url` (AAC radio with song titles, `.aac` and MP4 over HTTP, AAC in HLS). Fragmented MP4 with a `sidx` or `mfra` index reads its fragments as playback reaches them; seeks are exact ([MP4 and Matroska files](../features/web-streams.md#mp4-and-matroska-files)) | `engine.OpenUrl` | ✅ |
@@ -375,7 +375,7 @@ AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`
 
 AC-3 and E-AC-3 are built-in formats: the ordinary open calls play them, in raw files, video files, web streams and HLS, with no plugin and no FFmpeg ([Dolby Digital](../features/dolby.md)).
 
-| bass_ac3 | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bass_ac3 | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_AC3_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_AC3_StreamCreateURL | `fa_stream_open_url` (raw AC-3/E-AC-3 over HTTP, and AC-3 in HLS) | `engine.OpenUrl` | ✅ |
@@ -383,7 +383,7 @@ AC-3 and E-AC-3 are built-in formats: the ordinary open calls play them, in raw 
 | BASS_PluginLoad("bass_ac3.dll") | Not needed: built in | — | ➖ (by design) |
 | BASS_CONFIG_AC3_DYNRNG / BASS_AC3_DYNAMIC_RANGE | `fa_open_options.dynamic_range` per stream (`FA_DYNAMIC_RANGE_FULL`, `NORMAL` or `NIGHT`), changeable while playing with `fa_stream_set_dynamic_range` | `StreamOptions.DynamicRange`, `stream.DynamicRange` | ✅ |
 | BASS_AC3_STEREO (downmatrix to stereo) | Stereo output is mixed down automatically with the stream's own centre and surround levels (`FA_DOLBY_DOWNMIX_AUTO`, Lo/Ro unless the stream prefers Lt/Rt); `FA_DOLBY_DOWNMIX_ENGINE` for the engine's generic downmix; `fa_stream_set_matrix` for your own. Four-channel output is not provided (the output is stereo) | `StreamOptions.DolbyDownmix`, `stream.DolbyDownmix`, `stream.SetMatrix` | ✅ stereo |
-| Lt/Rt (Pro Logic) downmix instead of Lo/Ro (bass_ac3.h 2.4 has only `BASS_AC3_STEREO`; this is a FatzAudio addition) | `fa_open_options.dolby_downmix = FA_DOLBY_DOWNMIX_LTRT` or `fa_stream_set_dolby_downmix`, with the stream's Lt/Rt levels ([stereo downmix](../features/dolby.md#stereo-downmix)) | `DolbyDownmix.LtRt` | ✅ |
+| Lt/Rt (Pro Logic) downmix instead of Lo/Ro (bass_ac3.h 2.4 has only `BASS_AC3_STEREO`; this is a FatzMedia.Audio addition) | `fa_open_options.dolby_downmix = FA_DOLBY_DOWNMIX_LTRT` or `fa_stream_set_dolby_downmix`, with the stream's Lt/Rt levels ([stereo downmix](../features/dolby.md#stereo-downmix)) | `DolbyDownmix.LtRt` | ✅ |
 | Dialogue level (dialnorm) for loudness | `fa_engine_set_dialnorm` lets a file's dialnorm stand in for a loudness scan (`FA_LOUDNESS_DIALNORM`) | `engine.SetDialnorm(true)` | ✅ |
 | E-AC-3 (Dolby Digital Plus), 7.1 | Built in with every coding tool (dependent substreams, spectral extension, enhanced coupling, the adaptive hybrid transform); Atmos streams play their bed | Built in | ✅ |
 | AC-3 packets from your own FFmpeg demuxer | `fa_stream_open_packets` with codec `ac3` / `eac3`, decoded natively | `engine.OpenPackets` | ✅ |
@@ -393,7 +393,7 @@ AC-3 and E-AC-3 are built-in formats: the ordinary open calls play them, in raw 
 
 Opus and Vorbis are built-in formats: `.opus` and `.ogg` files, chained files, Ogg web radio, and Opus or Vorbis tracks in WebM, Matroska and MP4 all open with the ordinary calls, with no plugin and no FFmpeg ([Ogg Opus and Ogg Vorbis](../features/streams.md#ogg-opus-and-ogg-vorbis)).
 
-| BASS / bassopus | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS / bassopus | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_StreamCreateFile on `.ogg` (built into bass.dll) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_OPUS_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
@@ -411,7 +411,7 @@ Opus and Vorbis are built-in formats: `.opus` and `.ogg` files, chained files, O
 
 FLAC is a built-in format wherever it appears: `.flac` files, Ogg FLAC, FLAC tracks in MP4 and Matroska, and FLAC frames your app pushes. One decoder (miniaudio's dr_flac) handles all of them, so a track decodes to the same samples whatever it is packed in ([streams](../features/streams.md)).
 
-| bassflac | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bassflac | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_FLAC_StreamCreateFile (`.flac` and Ogg FLAC) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_FLAC_StreamCreateURL | `fa_stream_open_url` (FLAC and Ogg FLAC streams, Ogg FLAC radio titles from the comment block) | `engine.OpenUrl` | ✅ |
@@ -427,9 +427,9 @@ FLAC is a built-in format wherever it appears: `.flac` files, Ogg FLAC, FLAC tra
 
 ### bassalac (Apple Lossless)
 
-ALAC is a built-in format: ALAC tracks in `.m4a`/`.mp4`/`.mov` and Matroska files open with the ordinary calls, decoded by FatzAudio's own decoder on every platform, bit exact, every bit depth and channel layouts up to 7.1, with no plugin, no system codec and no FFmpeg ([streams](../features/streams.md#video-files-and-audio-tracks)).
+ALAC is a built-in format: ALAC tracks in `.m4a`/`.mp4`/`.mov` and Matroska files open with the ordinary calls, decoded by FatzMedia.Audio's own decoder on every platform, bit exact, every bit depth and channel layouts up to 7.1, with no plugin, no system codec and no FFmpeg ([streams](../features/streams.md#video-files-and-audio-tracks)).
 
-| bassalac | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bassalac | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_ALAC_StreamCreateFile (ALAC in MP4/M4A) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_ALAC_StreamCreateURL | `fa_stream_open_url` (M4A over HTTP) | `engine.OpenUrl` | ✅ |
@@ -444,7 +444,7 @@ ALAC is a built-in format: ALAC tracks in `.m4a`/`.mp4`/`.mov` and Matroska file
 
 Monkey's Audio is a built-in format: `.ape` files open with the ordinary calls, decoded to the bit by the official Monkey's Audio SDK compiled into the library, every file version from 3.80, every compression level, 8 to 32-bit and float ([Monkey's Audio](../features/streams.md#monkeys-audio)).
 
-| bass_ape | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bass_ape | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_APE_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_APE_StreamCreateURL | `fa_stream_open_url` (the server must give the length and byte ranges: the seek table is at the start, the tags at the end) | `engine.OpenUrl` | ✅ |
@@ -458,7 +458,7 @@ Monkey's Audio is a built-in format: `.ape` files open with the ordinary calls, 
 
 WavPack is a built-in format: `.wv` files open with the ordinary calls, decoded by libwavpack compiled into the library ([WavPack](../features/streams.md#wavpack)).
 
-| basswv | FatzAudio (C) | FatzAudio (.NET) | Status |
+| basswv | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_WV_StreamCreateFile | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_WV_StreamCreateURL | `fa_stream_open_url` | `engine.OpenUrl` | ✅ |
@@ -473,7 +473,7 @@ WavPack is a built-in format: `.wv` files open with the ordinary calls, decoded 
 
 WMA plays through the ordinary open calls: a built-in ASF demuxer, decoded by Windows' own Media Foundation decoders. On macOS, iOS, Linux and Android WMA is not supported (`FA_ERROR_UNSUPPORTED_FORMAT`); an app that needs it there can decode it with its own FFmpeg and push the frames ([WMA](../features/streams.md#wma)). Only playback is replaced; basswma's encoder and its Windows Media server functions are not.
 
-| basswma | FatzAudio (C) | FatzAudio (.NET) | Status |
+| basswma | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_WMA_StreamCreateFile (file or memory) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ on Windows; ➖ elsewhere (unsupported) |
 | BASS_WMA_StreamCreateFileUser | `fa_stream_open_io` (forward-only when `seek` is NULL) | `engine.OpenStream` | ✅ |
@@ -485,7 +485,7 @@ WMA plays through the ordinary open calls: a built-in ASF demuxer, decoded by Wi
 | BASS_TAG_WMA / BASS_WMA_GetTags (title, author, attributes) | `fa_tags_read_path` / `fa_stream_get_tags`: Title, Author, Copyright, Description, Rating and every extended attribute (`WM/AlbumTitle`, ...) on every platform, plus `WM/Picture` covers ([tags](../features/tags.md)); ReplayGain and R128 attributes also feed normalization | `Tags.Read`, `GetTags()` | ✅ |
 | BASS_TAG_WMA_META, BASS_SYNC_WMA_META, BASS_SYNC_WMA_CHANGE (broadcast script commands and stream changes) | Not supported | — | ➖ (Windows Media broadcasts) |
 | BASS_WMA_GetWMObject | No Windows Media Format SDK reader is used | — | ➖ (by design) |
-| BASS_CONFIG_WMA_PRECHECK, BASS_CONFIG_WMA_BASSFILE, BASS_CONFIG_WMA_VIDEO, BASS_CONFIG_WMA_BUFTIME, BASS_CONFIG_WMA_SCRIPTRATE | Not needed: FatzAudio reads every file through its own reader, decodes on its worker threads, and never reads video | — | ➖ (by design) |
+| BASS_CONFIG_WMA_PRECHECK, BASS_CONFIG_WMA_BASSFILE, BASS_CONFIG_WMA_VIDEO, BASS_CONFIG_WMA_BUFTIME, BASS_CONFIG_WMA_SCRIPTRATE | Not needed: FatzMedia.Audio reads every file through its own reader, decodes on its worker threads, and never reads video | — | ➖ (by design) |
 | BASS_WMA_EncodeOpen, EncodeOpenFile, EncodeWrite, EncodeClose, EncodeGetRates, EncodeSetTag, EncodeSetNotify | Not provided | — | ➖ (playback only: WMA is a legacy format nobody needs to create) |
 | BASS_WMA_EncodeOpenNetwork(Multi), EncodeOpenPublish(Multi), EncodeGetPort, EncodeGetClients | Not provided | — | ➖ (Windows Media Services broadcasting is retired) |
 | BASS_PluginLoad("basswma.dll") | Not needed: built in | — | ➖ (by design) |
@@ -494,7 +494,7 @@ WMA plays through the ordinary open calls: a built-in ASF demuxer, decoded by Wi
 
 DSF and DSDIFF (`.dff`) files open with the ordinary calls and are converted to PCM as they decode, at 88.2 kHz and +6 dB by default, the same as bassdsd's defaults ([DSD](../features/streams.md#dsd-dsf-and-dsdiff)).
 
-| bassdsd | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bassdsd | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_DSD_StreamCreateFile (file or memory) | `fa_stream_open_path` / `fa_stream_open_memory` | `engine.OpenFile` / `engine.OpenMemory` | ✅ |
 | BASS_DSD_StreamCreateFileUser | `fa_stream_open_io` (forward-only when `seek` is NULL) | `engine.OpenStream` | ✅ |
@@ -510,9 +510,9 @@ DSF and DSDIFF (`.dff`) files open with the ordinary calls and are converted to 
 
 ### bass_fx tempo, pitch and rate
 
-bass_fx needs a decode stream wrapped in a separate tempo stream; FatzAudio puts three parameters on every stream ([tempo and pitch](../features/tempo-pitch.md)).
+bass_fx needs a decode stream wrapped in a separate tempo stream; FatzMedia.Audio puts three parameters on every stream ([tempo and pitch](../features/tempo-pitch.md)).
 
-| bass_fx | FatzAudio (C) | FatzAudio (.NET) | Status |
+| bass_fx | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_FX_TempoCreate(decode stream, BASS_FX_FREESOURCE) | Not needed: open the stream as usual and set the parameters on it | — | ➖ (by design) |
 | BASS_FX_TempoGetSource / BASS_FX_TempoGetRateRatio | Not needed: there is one stream; the speed heard is `TEMPO × RATE` | — | ➖ (by design) |
@@ -537,9 +537,9 @@ bass_fx needs a decode stream wrapped in a separate tempo stream; FatzAudio puts
 
 ### CD+G karaoke graphics
 
-BASS has no CD+G decoder: apps read the `.cdg` themselves, time it from `BASS_ChannelGetPosition` and draw it. basscd only gives raw subchannel data from discs (`BASS_CD_SUBCHANNEL`). FatzAudio decodes, times and draws CD+G itself ([CD+G](../features/cdg.md)).
+BASS has no CD+G decoder: apps read the `.cdg` themselves, time it from `BASS_ChannelGetPosition` and draw it. basscd only gives raw subchannel data from discs (`BASS_CD_SUBCHANNEL`). FatzMedia.Audio decodes, times and draws CD+G itself ([CD+G](../features/cdg.md)).
 
-| BASS / your app | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS / your app | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | Open the `.mp3` and the `.cdg` separately | `fa_stream_open_path` on the audio loads the `.cdg` with the same name | `engine.OpenFile("song.mp3")`, then `song.HasCdg` | ✅ |
 | Unzip a karaoke `.zip` to a temp folder first | `fa_stream_open_path` / `fa_stream_open_memory` / `fa_stream_open_io` on the `.zip`: stored songs play straight from it, compressed ones are unpacked into memory (up to `fa_engine_config.zip_memory_limit_mb`, 256 MB), bigger ones into a temp file automatically | `engine.OpenFile("song.zip")` | ✅ |
@@ -554,7 +554,7 @@ BASS has no CD+G decoder: apps read the `.cdg` themselves, time it from `BASS_Ch
 | A song or `.cdg` compressed alone (`song.mp3.gz`, `Song.cdg.xz`) | One entry, named from the gzip header or the file name; opens, tags and fingerprints like a loose file | `engine.OpenFile("song.mp3.gz")` | ✅ |
 | Checking that a song in a `.tar.*` is the one you already analysed (your own hash of the unpacked file) | `fa_fingerprint_archive_entry`: the same key as the loose file, in a `.zip` or in any tar form, so the loudness cache hits | `AudioFingerprint.Compute(archive, entry)` | ✅ |
 | Choosing which song and which `.cdg` of a karaoke zip to use | `fa_archive_pick`: same-name pairs first, then the lone song + lone `.cdg` case ([rules](../features/archives.md#which-entry-plays)) | `archive.Pick()` | ✅ |
-| Knowing which archive kind to ship karaoke songs in for the fastest start (your own timing of unzip and 7-Zip) | Measured through FatzAudio: stored zip or tar 0.4-0.7 ms to first audio, DEFLATE zip 36 ms, `.tar.gz` 45 ms, `.tar.bz2` 285 ms, `.tar.xz` 375 ms, 7z 330 ms for a 4-minute song (a solid 7z of many songs: the cost of the songs before it, once; in archive order only the song itself). `tools/archive-bench` reruns it ([speed](../features/archives.md#speed)) | `engine.OpenFile("song.zip")` | ✅ (new) |
+| Knowing which archive kind to ship karaoke songs in for the fastest start (your own timing of unzip and 7-Zip) | Measured through FatzMedia.Audio: stored zip or tar 0.4-0.7 ms to first audio, DEFLATE zip 36 ms, `.tar.gz` 45 ms, `.tar.bz2` 285 ms, `.tar.xz` 375 ms, 7z 330 ms for a 4-minute song (a solid 7z of many songs: the cost of the songs before it, once; in archive order only the song itself). `tools/archive-bench` reruns it ([speed](../features/archives.md#speed)) | `engine.OpenFile("song.zip")` | ✅ (new) |
 | Playing one named file from a zip | `fa_open_options.archive_entry`, or `fa_stream_open_archive` | `StreamOptions.ArchiveEntry`, `engine.OpenArchiveEntry` | ✅ |
 | Reading tags or taking a fingerprint of a file inside a zip | `fa_tags_read_archive_entry`, `fa_fingerprint_archive_entry` | `Tags.Read(archive, entry)`, `AudioFingerprint.Compute(archive, entry)` | ✅ |
 | Skipping the video or PDF bundled in a karaoke zip | Automatic: other entries are probed from their first 64 KB, so they cost a small read, not an unzip | `engine.OpenFile("song.zip")` | ✅ |
@@ -583,9 +583,9 @@ BASS has no CD+G decoder: apps read the `.cdg` themselves, time it from `BASS_Ch
 
 ### basscd (audio CDs)
 
-basscd is an add-on DLL; FatzAudio reads CDs and `.cue` images itself, with one API on Windows, macOS and Linux ([disc playback](../features/disc.md)). Drives are opened by id (`"D:"`, `"/dev/sr0"`, `"disk2"`) instead of a drive number, and a `fa_disc*` handle carries the drive.
+basscd is an add-on DLL; FatzMedia.Audio reads CDs and `.cue` images itself, with one API on Windows, macOS and Linux ([disc playback](../features/disc.md)). Drives are opened by id (`"D:"`, `"/dev/sr0"`, `"disk2"`) instead of a drive number, and a `fa_disc*` handle carries the drive.
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_CD_GetInfo (per drive number) | `fa_disc_drive_count` + `fa_disc_drive_get_info` (id, name, vendor, product, revision) | `Disc.Drives` | ✅ |
 | Drive number argument on every call | `fa_disc_open(id, options, &disc)` once, then the `fa_disc*` | `Disc.Open("D:")` | ✅ |
@@ -619,7 +619,7 @@ basscd is an add-on DLL; FatzAudio reads CDs and `.cue` images itself, with one 
 
 MIDI files are a built-in format: the ordinary open calls play them with a SoundFont 2 or DLS bank you load once, or with the OS's own bank (Windows `gm.dls`) when you load none ([MIDI](../features/midi.md#the-oss-instruments)). Several fonts play as one through a stack (`fa_soundfont_open_stack`), which stands in for BASSMIDI's per-stream font arrays and preset mapping; there is no sample loading on demand.
 
-| BASSMIDI | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASSMIDI | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_MIDI_StreamCreateFile / BASS_MIDI_StreamCreateFileUser | `fa_stream_open_path` / `fa_stream_open_memory` / `fa_stream_open_io` (`.mid`, `.kar`, `.rmi` detected from content) | `engine.OpenFile` / `engine.OpenMemory` / `engine.OpenStream` | ✅ |
 | BASS_MIDI_StreamCreateURL | `fa_stream_open_url` | `engine.OpenUrl` | ✅ |
@@ -713,7 +713,7 @@ if (!h) printf("error %d\n", BASS_ErrorGetCode());
 BASS_ChannelPlay(h, FALSE);
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_engine* e; fa_device* d; fa_stream* s;
 fa_engine_create(NULL, &e);
@@ -737,13 +737,13 @@ song.PlayOn(output);
 
 BASS: `BASS_StreamCreateFile(..., BASS_STREAM_DECODE | BASS_SAMPLE_FLOAT)` then loop `BASS_ChannelGetData(h, buf, len)`.
 
-FatzAudio: open with `FA_OPEN_DECODE_ONLY`, then loop `fa_stream_read(s, buf, frames, &got)` until it returns `FA_ERROR_END_OF_STREAM`. In .NET, `stream.Read(span)` until it returns 0.
+FatzMedia.Audio: open with `FA_OPEN_DECODE_ONLY`, then loop `fa_stream_read(s, buf, frames, &got)` until it returns `FA_ERROR_END_OF_STREAM`. In .NET, `stream.Read(span)` until it returns 0.
 
 ### Seek to 30 seconds
 
 BASS: `BASS_ChannelSetPosition(h, BASS_ChannelSeconds2Bytes(h, 30.0), BASS_POS_BYTE);`
 
-FatzAudio: `fa_stream_seek(s, 30 * info.format.sample_rate);` or in .NET `song.Position = TimeSpan.FromSeconds(30);`
+FatzMedia.Audio: `fa_stream_seek(s, 30 * info.format.sample_rate);` or in .NET `song.Position = TimeSpan.FromSeconds(30);`
 
 From a seek bar or a UI thread, use `fa_stream_seek_async` (.NET `song.RequestSeek(TimeSpan.FromSeconds(30))`): it returns at once, a worker seeks, and a drag collapses to the newest target ([what a seek costs](../features/playback.md#what-a-seek-costs)).
 
@@ -755,7 +755,7 @@ BASS_FILEPROCS procs = { MyClose, MyLen, MyRead, MySeek };
 HSTREAM h = BASS_StreamCreateFileUser(STREAMFILE_NOBUFFER, 0, &procs, user);
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_io_callbacks io = { my_read, my_seek, my_length, my_close };
 fa_stream* s;
@@ -764,7 +764,7 @@ if (fa_stream_open_io(engine, &io, user, NULL, &s) != FA_OK)
 /* ... later: fa_stream_close(s) calls my_close(user) exactly once */
 ```
 
-When porting, check your BASS error path: in FatzAudio a failed open never calls `close`, so the error path frees `user` itself.
+When porting, check your BASS error path: in FatzMedia.Audio a failed open never calls `close`, so the error path frees `user` itself.
 
 .NET: `engine.OpenStream(stream, leaveOpen: false)`.
 
@@ -772,7 +772,7 @@ When porting, check your BASS error path: in FatzAudio a failed open never calls
 
 BASS: `BASS_ChannelSetDevice(h, newDevice);` (both devices must be initialised, and you juggle `BASS_SetDevice` around it).
 
-FatzAudio: `fa_stream_attach(s, other_device, NULL);` keeps the position, and play/pause state carries on. In .NET: `song.PlayOn(otherDevice);`.
+FatzMedia.Audio: `fa_stream_attach(s, other_device, NULL);` keeps the position, and play/pause state carries on. In .NET: `song.PlayOn(otherDevice);`.
 
 ### Fade out, then stop
 
@@ -783,7 +783,7 @@ BASS_ChannelSetSync(h, BASS_SYNC_SLIDE | BASS_SYNC_ONETIME, 0, SlideDone, 0);
 /* SlideDone fires for any finished slide on the channel; check which attribute... */
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_ramp r = { FA_CURVE_EQUAL_POWER }; r.tag = 7;
 fa_stream_ramp_param(s, FA_PARAM_VOLUME, 0.0f, 3000000000LL, 0, &r);
@@ -800,7 +800,7 @@ song.Stop();
 
 BASS: `BASS_ChannelSetSync(h, BASS_SYNC_END, 0, EndProc, user);`. The SYNCPROC runs on BASS's update thread, and `BASS_SYNC_MIXTIME` variants run inside the mixer, where most BASS calls aren't allowed.
 
-FatzAudio: `fa_stream_set_event_callback(s, on_event, user);` and handle `FA_EVENT_ENDED`. The callback runs on the event thread, so it can start the next track, close the stream, or update state directly. .NET: `song.Ended += ...`.
+FatzMedia.Audio: `fa_stream_set_event_callback(s, on_event, user);` and handle `FA_EVENT_ENDED`. The callback runs on the event thread, so it can start the next track, close the stream, or update state directly. .NET: `song.Ended += ...`.
 
 ### Internet radio with song titles (BASS_StreamCreateURL + BASS_SYNC_META)
 
@@ -813,7 +813,7 @@ BASS_ChannelSetSync(h, BASS_SYNC_STALL, 0, StallSync, NULL);
 BASS_ChannelPlay(h, FALSE);
 ```
 
-FatzAudio ([web streams](../features/web-streams.md)):
+FatzMedia.Audio ([web streams](../features/web-streams.md)):
 ```c
 fa_stream* radio;
 fa_stream_open_url(engine, url, NULL, &radio);
@@ -846,7 +846,7 @@ BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, gain);
 BASS_ChannelPlay(h, FALSE);
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_engine_set_normalization(engine, FA_NORMALIZE_TRACK, -16.0);  /* once, at startup */
 fa_stream_open_path(engine, path, NULL, &s);                      /* analysis starts in the background */
@@ -876,7 +876,7 @@ BASS_ChannelSlideAttribute(cur, BASS_ATTRIB_VOL, -1, 5000);   /* -1 = stop when 
 /* ...and the user's volume setting is lost, because the fade used BASS_ATTRIB_VOL. */
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_stream_open_path(engine, path, NULL, &next);
 fa_crossfade(cur, next, 5000000000LL, NULL);   /* equal power; both start on the same frame */
@@ -897,7 +897,7 @@ When porting, delete the position sync and both slides. The volume the user set 
 
 BASS: a `BASS_SYNC_END | BASS_SYNC_MIXTIME` sync that creates and starts the next stream inside the mixer, with a small gap or overlap depending on the update period.
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_stream_set_next(cur, next, 0, NULL);               /* gapless, to the sample */
 fa_stream_set_next(cur, next, 6000000000LL, NULL);    /* or: 6 s crossfade before the end */
@@ -917,7 +917,7 @@ Per-track points from your database (where the intro starts, where the outro fad
 
 BASS: two channels and two `BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, ...)` calls from the slider, or a BASSmix mixer per deck.
 
-FatzAudio: the [DJ mixer](../features/dj-mixer.md) has the decks, the crossfader (constant power or linear), channel faders, an isolator EQ and a headphone cue built in. In .NET: `using var mixer = engine.CreateDjMixer(); mixer.Decks[0].Load(songA); mixer.Decks[1].Load(songB); mixer.Crossfader.Position = x;`.
+FatzMedia.Audio: the [DJ mixer](../features/dj-mixer.md) has the decks, the crossfader (constant power or linear), channel faders, an isolator EQ and a headphone cue built in. In .NET: `using var mixer = engine.CreateDjMixer(); mixer.Decks[0].Load(songA); mixer.Decks[1].Load(songB); mixer.Crossfader.Position = x;`.
 
 For a simple two-player fader without the rest, one bus per deck works too: the slider sets or ramps the bus volumes ([buses](../features/buses.md)), `deckA.Volume = MathF.Cos(x * MathF.PI / 2); deckB.Volume = MathF.Sin(x * MathF.PI / 2);`.
 
@@ -925,7 +925,7 @@ For a simple two-player fader without the rest, one bus per deck works too: the 
 
 BASS: decode every audio packet with libavcodec, convert it with swresample to the push stream's format, `BASS_StreamPutData` it, and on every video frame compute the audio time from `BASS_ChannelGetPosition`, the device latency and the first pts, then nudge the video when it drifts. After a seek you clear the push stream and recompute the offset.
 
-FatzAudio: push the packets and show the video frame for the clock ([FFmpeg hand-off](../features/ffmpeg.md)).
+FatzMedia.Audio: push the packets and show the video frame for the clock ([FFmpeg hand-off](../features/ffmpeg.md)).
 
 ```c
 fa_codec_params params;
@@ -962,7 +962,7 @@ audio.Flush();                                                            // aft
 
 BASS: open the audio with `BASS_StreamCreateFile`, read the `.cdg` (unzipping first if needed), and on a timer convert `BASS_ChannelGetPosition` to a pack index, decode up to it and repaint a bitmap.
 
-FatzAudio: open the audio (or the `.zip`); the graphics come with it. Create a surface once and call it from the render loop ([CD+G](../features/cdg.md)):
+FatzMedia.Audio: open the audio (or the `.zip`); the graphics come with it. Create a surface once and call it from the render loop ([CD+G](../features/cdg.md)):
 
 ```csharp
 using var song = engine.OpenFile(path);                   // song.mp3 (+ song.cdg) or song.zip
@@ -1006,7 +1006,7 @@ Poll `fa_disc_get_status` (`disc.Status`) to notice a new disc; a stream of a re
 
 BASS: `BASS_MIDI_FontInit` and `BASS_MIDI_StreamSetFonts`, `BASS_MIDI_StreamCreateFile`, then `BASS_MIDI_StreamGetMark(BASS_MIDI_MARK_LYRIC)` for the text and `BASS_SYNC_MIDI_LYRIC` to highlight it, stripping the `/` and `\` marks yourself; `MIDI_EVENT_TRANSPOSE` for the key.
 
-FatzAudio, the easy path: a [lyric surface](../features/lyrics.md) draws the karaoke screen (lines, pages, syllables coloured as they are sung, a countdown) into a buffer of yours:
+FatzMedia.Audio, the easy path: a [lyric surface](../features/lyrics.md) draws the karaoke screen (lines, pages, syllables coloured as they are sung, a countdown) into a buffer of yours:
 
 ```csharp
 using (var gm = SoundFont.FromFile("GeneralUser.sf2")) engine.DefaultSoundFont = gm;   // once
@@ -1041,7 +1041,7 @@ BASS_ChannelPlay(h, FALSE);
 /* positions: BASS_ChannelGetPosition(dec, ...) on the source, not h */
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_stream_open_path(engine, path, NULL, &s);
 fa_stream_set_param(s, FA_PARAM_TEMPO, 0.85f);              /* multiplier: 1 - 15 / 100 */
@@ -1071,7 +1071,7 @@ HENCODE enc = BASS_Encode_MP3_StartFile(mixer, "-V 2 --tt \"Live\"", BASS_ENCODE
 BASS_Encode_Stop(enc);
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```c
 fa_encoder_options o;
 fa_encoder_options_init(&o);
@@ -1094,7 +1094,7 @@ enc.Close();
 
 ### Convert a file (decoding channel + encoder)
 
-BASS needs a decoding channel, an encoder on it and a `BASS_ChannelGetData` loop to drive it. FatzAudio's encoder reads the stream itself on its own thread:
+BASS needs a decoding channel, an encoder on it and a `BASS_ChannelGetData` loop to drive it. FatzMedia.Audio's encoder reads the stream itself on its own thread:
 
 ```c
 fa_encoder_encode_stream(enc, decode_only_stream);
@@ -1110,13 +1110,13 @@ AudioEncoder.ConvertFile(engine, "in.mp3", "out.flac", new EncoderOptions { Form
 
 ## 5. Measured against BASS
 
-[tools/bass-compare](../../tools/bass-compare/README.md) decodes the same generated files through both libraries (BASS as a black box, through its public API) and scores them. The legacy `bass.dll` reports itself as 2.4.17.0 through `BASS_GetVersion`. Lossless formats (WAV, FLAC) are bit exact in both and AC-3 scores the same; FatzAudio's AAC follows the file's encoder delay where bass_aac does not, and it seeks AC-3 exactly where BASS lands about 20 ms off.
+[tools/bass-compare](../../tools/bass-compare/README.md) decodes the same generated files through both libraries (BASS as a black box, through its public API) and scores them. The legacy `bass.dll` reports itself as 2.4.17.0 through `BASS_GetVersion`. Lossless formats (WAV, FLAC) are bit exact in both and AC-3 scores the same; FatzMedia.Audio's AAC follows the file's encoder delay where bass_aac does not, and it seeks AC-3 exactly where BASS lands about 20 ms off.
 
 ### Positions that move when you port
 
 Stored positions (cue points, mix points, lyrics or CD+G offsets saved by your app) were measured on BASS's timeline. These formats start at a different frame, so shift stored positions by the amount below:
 
-| Format | BASS | FatzAudio | Shift a stored BASS position by |
+| Format | BASS | FatzMedia.Audio | Shift a stored BASS position by |
 |---|---|---|---|
 | AAC in MP4/M4A (and video files) | Plays the encoder's priming (1024 frames) and ignores the edit list, so it is 1024 frames long too | Starts on the first real sample, exact length | −1024 frames (about −23 ms at 44.1 kHz) |
 | WAV, FLAC, MP3 (with or without a LAME header), AC-3, AAC in `.aac` (ADTS) files and AAC radio | Same frame | Same frame | none |
@@ -1127,7 +1127,7 @@ With `--rec`, the harness also plays both libraries through the output device an
 
 - **Gapless:** `fa_stream_set_next` joins two files with no gap and no overlap. With plain BASS, starting the next stream from a `BASS_SYNC_END` sync leaves a gap of about 50 ms, and with `BASS_SYNC_MIXTIME` the next stream starts about 460 ms early, while the end of the first is still in BASS's playback buffer. Replace either with `fa_stream_set_next(current, next, 0, NULL)`.
 - **Crossfades:** both libraries follow the curve closely and start both fades together (within 1 ms). `fa_crossfade` also offers equal power (no dip in loudness); BASS slides are linear, which dips 3 dB in the middle.
-- **Latency:** in this run FatzAudio started a sound about 9 ms later than BASS (36.5 against 27.7 ms from the call to the sound) and a crossfade about 19 ms later (49.5 against 30.1 ms). The causes were its device buffer (three 10 ms periods, 32 ms, against BASS's 25 ms) and one extra period that `fa_crossfade` waited. Both are fixed since: the buffer on Windows is two periods, and a crossfade starts in the next callback, like a play. That should take about 10 ms off a start and about 20 ms off a crossfade; a new run will confirm it.
+- **Latency:** in this run FatzMedia.Audio started a sound about 9 ms later than BASS (36.5 against 27.7 ms from the call to the sound) and a crossfade about 19 ms later (49.5 against 30.1 ms). The causes were its device buffer (three 10 ms periods, 32 ms, against BASS's 25 ms) and one extra period that `fa_crossfade` waited. Both are fixed since: the buffer on Windows is two periods, and a crossfade starts in the next callback, like a play. That should take about 10 ms off a start and about 20 ms off a crossfade; a new run will confirm it.
 
 ### Where BASS is still ahead
 
@@ -1135,13 +1135,13 @@ The comparison report opens with every measurement where BASS won; the ones to f
 
 ## 6. Appendices: constants and leftover functions
 
-These tables map BASS's constants, which a ported app uses everywhere, to FatzAudio. They follow `bass.h` 2.4 and the add-on headers as published by Un4seen (names and values checked against the headers downloaded on 2026-11-02: bass.h dated 2025-11-28, bass_fx.h dated 2018-03-10, and the current bassmidi, basscd, bassflac, bass_aac, bass_ac3, bassalac, bassopus, basswma, basswebm and bassenc headers). A constant that appears in a function row above is only listed here when porting needs more than that row says.
+These tables map BASS's constants, which a ported app uses everywhere, to FatzMedia.Audio. They follow `bass.h` 2.4 and the add-on headers as published by Un4seen (names and values checked against the headers downloaded on 2026-11-02: bass.h dated 2025-11-28, bass_fx.h dated 2018-03-10, and the current bassmidi, basscd, bassflac, bass_aac, bass_ac3, bassalac, bassopus, basswma, basswebm and bassenc headers). A constant that appears in a function row above is only listed here when porting needs more than that row says.
 
 ### Appendix A: error codes
 
-FatzAudio returns the error directly from the call that failed, so there is no `BASS_ErrorGetCode()` to port: replace `if (!BASS_X(...)) code = BASS_ErrorGetCode();` with `r = fa_x(...); if (r != FA_OK) ...`. In .NET catch `FatzAudioException` and read `ErrorCode`. `fa_result_string(r)` gives a sentence for any code.
+FatzMedia.Audio returns the error directly from the call that failed, so there is no `BASS_ErrorGetCode()` to port: replace `if (!BASS_X(...)) code = BASS_ErrorGetCode();` with `r = fa_x(...); if (r != FA_OK) ...`. In .NET catch `AudioException` and read `ErrorCode`. `fa_result_string(r)` gives a sentence for any code.
 
-| BASS_ERROR_* | FatzAudio (C) | FatzAudio (.NET `ErrorCode`) | Notes |
+| BASS_ERROR_* | FatzMedia.Audio (C) | FatzMedia.Audio (.NET `ErrorCode`) | Notes |
 |---|---|---|---|
 | `OK` (0) | `FA_OK` (0) | `Ok` | |
 | `MEM` (1) | `FA_ERROR_OUT_OF_MEMORY` | `OutOfMemory` | |
@@ -1229,9 +1229,9 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 
 ### Appendix D: configuration (`BASS_SetConfig`)
 
-FatzAudio has no global option table. The few global settings are fields of `fa_engine_config` (set when the engine is created), and everything else is a per-stream or per-call option, which avoids one part of an app changing another's behaviour.
+FatzMedia.Audio has no global option table. The few global settings are fields of `fa_engine_config` (set when the engine is created), and everything else is a per-stream or per-call option, which avoids one part of an app changing another's behaviour.
 
-| BASS_CONFIG_* | FatzAudio | .NET | Status |
+| BASS_CONFIG_* | FatzMedia.Audio | .NET | Status |
 |---|---|---|---|
 | `BUFFER`, `UPDATEPERIOD`, `UPDATETHREADS`, `DEV_BUFFER`, `DEV_PERIOD`, `NET_*`, `SRC`, `SRC_SAMPLE` | see [Library and devices](#library-and-devices) | | ✅ |
 | `GVOL_SAMPLE` / `GVOL_STREAM` / `GVOL_MUSIC` (global volume per kind) | Put each kind on its own bus (`fa_bus_create`, `fa_stream_attach(s, device, bus)`) and set `fa_bus_set_param` | `bus.Volume` | ✅ |
@@ -1257,7 +1257,7 @@ FatzAudio has no global option table. The few global settings are fields of `fa_
 
 ### Appendix E: channel attributes (`BASS_ChannelSetAttribute`)
 
-| BASS_ATTRIB_* | FatzAudio | .NET | Status |
+| BASS_ATTRIB_* | FatzMedia.Audio | .NET | Status |
 |---|---|---|---|
 | `FREQ`, `VOL`, `PAN`, `BITRATE`, `TEMPO*`, `REVERSE_DIR`, `MUSIC_*`, `MIDI_*`, `OPUS_*` | see [Channel control](#channel-control), [bass_fx](#bass_fx-tempo-pitch-and-rate), [Tracker music](#tracker-music) and the add-on sections | | ✅ |
 | `EAXMIX` | EAX is not provided | | ➖ |
@@ -1301,7 +1301,7 @@ Every sync is an event on the stream's one event callback. In .NET each is a nor
 
 Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`fa_time`). There is no mode flag to choose.
 
-| BASS_POS_* | FatzAudio | Notes |
+| BASS_POS_* | FatzMedia.Audio | Notes |
 |---|---|---|
 | `BYTE` | frames; multiply by the frame size if you need bytes | `fa_stream_get_position`, `fa_stream_seek` |
 | `MUSIC_ORDER` | `fa_stream_seek_tracker`, `fa_stream_get_tracker_position` | [Tracker music](#tracker-music) |
@@ -1313,7 +1313,7 @@ Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`
 
 ### Appendix H: stream and sample flags (`BASS_STREAM_*`, `BASS_SAMPLE_*`, `BASS_MUSIC_*`)
 
-| Flag | FatzAudio | Notes |
+| Flag | FatzMedia.Audio | Notes |
 |---|---|---|
 | `BASS_SAMPLE_FLOAT` | always float internally | Pushed or decoded data can be any sample format |
 | `BASS_SAMPLE_8BITS`, `_MONO`, `_SOFTWARE`, `_NOREORDER`, `_FX`, `_3D`, `_MUTEMAX` | not needed | Format and mixing are the engine's |
@@ -1334,7 +1334,7 @@ Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`
 
 ### Appendix I: device flags (`BASS_Init`, `BASS_DEVICE_*`)
 
-| Flag | FatzAudio | Notes |
+| Flag | FatzMedia.Audio | Notes |
 |---|---|---|
 | `BASS_DEVICE_8BITS`, `_MONO`, `_STEREO`, `_3D`, `_LATENCY`, `_CPSPEAKERS`, `_SPEAKERS`, `_NOSPEAKER`, `_DMIX`, `_FREQ`, `_DSOUND`, `_SOFTWARE`, `_16BITS` | not needed | Output is float; the device's own rate and channels are used (`mix_sample_rate` overrides the rate) |
 | `BASS_DEVICE_REINIT` | automatic | A lost device is reopened on the default |
@@ -1345,7 +1345,7 @@ Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`
 
 ### Appendix J: tag types (`BASS_TAG_*`)
 
-| BASS_TAG_* | FatzAudio |
+| BASS_TAG_* | FatzMedia.Audio |
 |---|---|
 | `ID3`, `ID3V2`, `APE`, `MP4`, `RIFF_INFO`, `LYRICS3`, `OGG`, `VENDOR`, `FLAC_PICTURE`, `FLAC_CUE`, `MUSIC_*` | parsed for you into `fa_tags` (`FA_TAG_*` fields and every item with its format). See [Channel control](#channel-control), [bassflac](#bassflac) and [Tracker music](#tracker-music) |
 | `META`, `ICY`, `HTTP`, `LOCATION` | `fa_stream_get_metadata`, `fa_stream_get_http_header`, `fa_stream_get_net_status` |
@@ -1358,7 +1358,7 @@ Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`
 
 ### Appendix K: data and level flags (`BASS_ChannelGetData`, `GetLevelEx`)
 
-| Flag | FatzAudio |
+| Flag | FatzMedia.Audio |
 |---|---|
 | `BASS_DATA_AVAILABLE` | `fa_stream_get_buffered` (how much is queued or decoded ahead) |
 | `BASS_DATA_FLOAT` | `fa_stream_read` gives interleaved 32-bit float; convert it yourself for other sample formats |
@@ -1368,9 +1368,9 @@ Positions are frames (`fa_frames`), the same for every format, or nanoseconds (`
 
 ### Appendix L: the generic effect API
 
-BASS can attach any of its DX8 effects or a bass_fx effect to a channel with `BASS_ChannelSetFX`. FatzAudio has no effect chain of handles. What an app of this kind uses is built in as a feature of its own, and anything else is a DSP callback.
+BASS can attach any of its DX8 effects or a bass_fx effect to a channel with `BASS_ChannelSetFX`. FatzMedia.Audio has no effect chain of handles. What an app of this kind uses is built in as a feature of its own, and anything else is a DSP callback.
 
-| BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
+| BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | `BASS_ChannelSetFX`, `BASS_ChannelRemoveFX`, `BASS_FXFree` | No FX handles. The equalizer is `fa_stream_set_eq`; a DJ deck's isolator and the mic reverb and echo are part of the [DJ mixer](../features/dj-mixer.md); your own effect is `fa_stream_add_dsp` / `fa_stream_remove_dsp` | `SetEqualizer`, `AddDsp` | ✅ for those, ➖ for the rest |
 | `BASS_FXGetParameters`, `BASS_FXSetParameters` | The setter of the feature (`fa_stream_set_eq`, `fa_mixer_set_mic_effects`) and its getter | | ✅ |
@@ -1383,7 +1383,7 @@ BASS can attach any of its DX8 effects or a bass_fx effect to a channel with `BA
 
 ### Appendix M: bass_fx, bassmidi, bass_aac, basscd and basswebm leftovers
 
-| BASS / add-on | FatzAudio | Status |
+| BASS / add-on | FatzMedia.Audio | Status |
 |---|---|---|
 | bass_fx `BASS_FX_BPM_CallbackSet`, `BASS_FX_BPM_BeatCallbackSet`, `BASS_FX_BPM_CallbackReset`, `BASS_FX_BPM_BeatCallbackReset`, `BASS_FX_BPM_BeatSetParameters`, `BASS_FX_BPM_BeatGetParameters`, `BASS_FX_BPM_BeatFree` (real-time beat callbacks) | No live beat detection. Analyse the file with `fa_analyze_path` / `fa_analyze_stream` for the beat grid, then use position events or `fa_stream_get_clock` against the grid. A live stream cannot be analysed twice | ➖ (by design) |
 | bass_fx `BASS_FX_BPM_*` flags: `BASS_FX_BPM_BKGRND`, `BASS_FX_BPM_MULT2`, `BASS_FX_FREESOURCE` | `FA_ANALYZE_BEATS` runs in a worker; the grid's `bpm` can be halved or doubled with `fa_stream_set_beat_grid`; there is no source to free | ✅ / ➖ |
@@ -1404,7 +1404,7 @@ BASS can attach any of its DX8 effects or a bass_fx effect to a channel with `BA
 
 Every other export of bass.dll 2.4.18, so none is missing from this guide:
 
-| BASS function | FatzAudio | Status |
+| BASS function | FatzMedia.Audio | Status |
 |---|---|---|
 | `BASS_GetConfig`, `BASS_GetConfigPtr`, `BASS_SetConfigPtr` | [Appendix D](#appendix-d-configuration-bass_setconfig) | ➖ (by design) |
 | `BASS_ChannelGetAttributeEx`, `BASS_ChannelSetAttributeEx` | Typed getters instead: `fa_stream_get_param`, `fa_stream_get_tracker_info`, ... | ➖ (by design) |

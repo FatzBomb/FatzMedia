@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Portable (net10.0) test project. It links every Windows-independent test from
+		FatzMedia.Video.Tests so the portable Core/Software surface can be built and
+		run on non-Windows machines, and it hosts new tests for portable features. The
+		Windows-only tests (WPF, Direct3D11, Windows platform) stay in the Windows project.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<AssemblyName>FatzMedia.Video.Portable.Tests</AssemblyName>
+		<RootNamespace>FatzMedia.Video.Tests</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\FatzMedia.Video.Tests\*.cs"
+		         Exclude="..\FatzMedia.Video.Tests\D3D11*.cs;..\FatzMedia.Video.Tests\Direct3D11*.cs;..\FatzMedia.Video.Tests\DwmCompositionTimingTests.cs;..\FatzMedia.Video.Tests\MediaSurfacePresentationModeTests.cs;..\FatzMedia.Video.Tests\NativeVideoResourceTests.cs;..\FatzMedia.Video.Tests\PollingAudioDeviceMonitorTests.cs;..\FatzMedia.Video.Tests\WindowsPlatformFactoryTests.cs;..\FatzMedia.Video.Tests\WinFormsMediaSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsLightweightSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsSecondaryPresentationWindowTests.cs;..\FatzMedia.Video.Tests\WpfMediaSurfaceParityTests.cs;..\FatzMedia.Video.Tests\WpfCompositedSurfaceHostTests.cs;..\FatzMedia.Video.Tests\WpfFirstFrameReadyTests.cs"
+		         LinkBase="Shared" />
+	</ItemGroup>
+
+</Project>

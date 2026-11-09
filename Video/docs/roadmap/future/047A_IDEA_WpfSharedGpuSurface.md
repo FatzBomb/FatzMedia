@@ -74,7 +74,7 @@ WPF shows video in one of two modes (`WpfPresentationMode`):
   exact frame timing. Unchanged by this idea.
 - `WpfComposited`: WPF draws the video like any element, so WPF content, transforms, opacity
   and clipping work over it. Today the renderer reads each frame back to the CPU and the adapter
-  copies it into a `WriteableBitmap` (`FatzBomb.MediaControl.Wpf/WpfCompositedSurfaceHost.cs`).
+  copies it into a `WriteableBitmap` (`FatzMedia.Video.Wpf/WpfCompositedSurfaceHost.cs`).
   At 4K that is about 33 MB per frame, about 2 GB/s at 60 fps, read back and uploaded again.
 
 The idea: in `WpfComposited` with the Direct3D11 renderer, hand WPF the GPU texture through

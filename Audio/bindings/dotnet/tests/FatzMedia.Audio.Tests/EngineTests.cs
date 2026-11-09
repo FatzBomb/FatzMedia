@@ -1,0 +1,329 @@
+using FatzMedia.Audio;
+using Xunit;
+
+namespace FatzMedia.Audio.Tests;
+
+public static class TestAudio
+{
+    /// <summary>Polls a condition until it holds (10 ms steps, 10 s deadline) and then asserts it. Wait on real conditions,
+    /// never on a transient state: a loaded runner can stall the engine threads for a while.</summary>
+    public static async Task WaitFor(Func<bool> condition, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+        while (!condition() && DateTime.UtcNow < deadline) await Task.Delay(10);
+        Assert.True(condition());
+    }
+
+    /// <summary>A 32-bit float mono WAV file.</summary>
+    public static byte[] FloatWav(float[] samples, int rate)
+    {
+        int dataBytes = samples.Length * 4;
+        using var ms = new MemoryStream(44 + dataBytes);
+        using var w = new BinaryWriter(ms);
+        w.Write("RIFF"u8);
+        w.Write(36 + dataBytes);
+        w.Write("WAVE"u8);
+        w.Write("fmt "u8);
+        w.Write(16);
+        w.Write((short)3);          // IEEE float
+        w.Write((short)1);          // mono
+        w.Write(rate);
+        w.Write(rate * 4);          // byte rate
+        w.Write((short)4);          // block align
+        w.Write((short)32);
+        w.Write("data"u8);
+        w.Write(dataBytes);
+        foreach (float s in samples) w.Write(s);
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>Reads a stream to its end into one interleaved array (defaults to the stream's channel count).</summary>
+    public static float[] ReadAllSamples(AudioStream s, int? channels = null, int piece = 4096)
+    {
+        int ch = channels ?? s.Info.Format.Channels;
+        var all = new List<float>();
+        var buf = new float[piece * ch];
+        int frames;
+        while ((frames = s.Read(buf)) > 0) all.AddRange(buf.AsSpan(0, frames * ch).ToArray());
+        return [.. all];
+    }
+
+    /// <summary>Generates a 16-bit mono PCM WAV file with a sine tone.</summary>
+    public static byte[] SineWav(double seconds = 1.0, int sampleRate = 44100, double frequency = 440.0)
+    {
+        int frames = (int)(seconds * sampleRate);
+        int dataBytes = frames * 2;
+        using var ms = new MemoryStream(44 + dataBytes);
+        using var w = new BinaryWriter(ms);
+        w.Write("RIFF"u8);
+        w.Write(36 + dataBytes);
+        w.Write("WAVE"u8);
+        w.Write("fmt "u8);
+        w.Write(16);
+        w.Write((short)1);          // PCM
+        w.Write((short)1);          // mono
+        w.Write(sampleRate);
+        w.Write(sampleRate * 2);    // byte rate
+        w.Write((short)2);          // block align
+        w.Write((short)16);
+        w.Write("data"u8);
+        w.Write(dataBytes);
+        for (int i = 0; i < frames; i++)
+            w.Write((short)(Math.Sin(2 * Math.PI * frequency * i / sampleRate) * short.MaxValue * 0.5));
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    public static int ReadAll(AudioStream s)
+    {
+        var buf = new float[4096 * s.Info.Format.Channels];
+        int total = 0, n;
+        while ((n = s.Read(buf)) > 0) total += n;
+        return total;
+    }
+}
+
+public class EngineTests
+{
+    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+
+    [Fact]
+    public void Engine_CreateAndDispose()
+    {
+        var engine = AudioEngine.Create();
+        Assert.True(AudioEngine.NativeVersion >= new Version(0, 1, 0));
+        Assert.Equal(AudioEngine.BindingVersion.Major, AudioEngine.NativeVersion.Major);
+        Assert.Equal(AudioEngine.BindingVersion.Minor, AudioEngine.NativeVersion.Minor);
+        Assert.NotEqual(new Version(0, 0, 0), AudioEngine.BindingVersion);
+        engine.Dispose();
+        engine.Dispose(); // idempotent
+        Assert.Throws<ObjectDisposedException>(() => engine.OutputDevices);
+    }
+
+    [Fact]
+    public void Version_OnlyPatchMayDiffer()
+    {
+        Assert.Null(FatzMedia.Audio.Native.NativeLoader.VersionMismatch(new Version(0, 2, 7), new Version(0, 2, 0)));
+        Assert.Contains("0.1.4", FatzMedia.Audio.Native.NativeLoader.VersionMismatch(new Version(0, 1, 4), new Version(0, 2, 0)));
+        Assert.NotNull(FatzMedia.Audio.Native.NativeLoader.VersionMismatch(new Version(1, 2, 0), new Version(0, 2, 0)));
+        Assert.Equal(new Version(0, 2, 3), FatzMedia.Audio.Native.NativeLoader.Unpack(0x000203));
+    }
+
+    [Fact]
+    public void Engine_CreateWithOptions()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { WorkerThreads = 2 });
+        Assert.NotNull(engine.OutputDevices);
+    }
+
+    [Fact]
+    public void Devices_AreListed_DefaultPresentIfAny()
+    {
+        using var engine = AudioEngine.Create();
+        var outputs = engine.OutputDevices;
+        var inputs = engine.InputDevices;
+        Assert.True(outputs.Count >= 0);
+        Assert.True(inputs.Count >= 0);
+        Assert.All(outputs, d => Assert.Equal(DeviceKind.Playback, d.Kind));
+        Assert.All(inputs, d => Assert.Equal(DeviceKind.Capture, d.Kind));
+        // At most one default. Headless CI machines may list only placeholder
+        // devices (such as ALSA's "null" PCM) with no default at all.
+        Assert.True(outputs.Count(d => d.IsDefault) <= 1);
+    }
+
+    [Fact]
+    public void OpenOutput_Default_ControlsVolume()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+        using var output = engine.OpenOutput();
+        output.Volume = 0.5f;
+        Assert.Equal(0.5f, output.Volume, 3);
+        Assert.True(output.Latency >= TimeSpan.Zero);
+        Assert.Throws<ArgumentOutOfRangeException>(() => output.Volume = -1f);
+    }
+
+    [Fact]
+    public void OpenMemory_ReportsInfo()
+    {
+        using var engine = AudioEngine.Create();
+        using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        var info = s.Info;
+        Assert.Equal(44100, info.Format.SampleRate);
+        Assert.Equal(1, info.Format.Channels);
+        Assert.NotNull(info.Duration);
+        Assert.InRange(info.Duration!.Value.TotalSeconds, 0.99, 1.01);
+        Assert.Equal(44100, info.LengthFrames);
+        Assert.True(info.CanSeek);
+        Assert.False(info.HasCdg);
+    }
+
+    [Fact]
+    public void DecodeOnly_Read_ReturnsAllFrames()
+    {
+        using var engine = AudioEngine.Create();
+        using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        Assert.Equal(44100, TestAudio.ReadAll(s));
+    }
+
+    [Fact]
+    public void OpenStream_FromMemoryStream()
+    {
+        using var engine = AudioEngine.Create();
+        var source = new MemoryStream(TestAudio.SineWav());
+        using (var s = engine.OpenStream(source, DecodeOnly))
+        {
+            Assert.InRange(s.Info.Duration!.Value.TotalSeconds, 0.99, 1.01);
+            Assert.Equal(44100, TestAudio.ReadAll(s));
+            Assert.True(source.CanRead); // still open while the audio stream lives
+        }
+        Assert.False(source.CanRead);    // disposed with the audio stream (leaveOpen: false)
+    }
+
+    [Fact]
+    public void Position_Seek()
+    {
+        using var engine = AudioEngine.Create();
+        using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        Assert.Equal(TimeSpan.Zero, s.Position);
+        s.Position = TimeSpan.FromSeconds(0.5);
+        Assert.Equal(22050, s.PositionFrames);
+        Assert.InRange(s.Position.TotalSeconds, 0.499, 0.501);
+        Assert.Equal(22050, TestAudio.ReadAll(s));
+        s.PositionFrames = 0;
+        Assert.Equal(44100, TestAudio.ReadAll(s));
+        Assert.Throws<ArgumentOutOfRangeException>(() => s.Position = TimeSpan.FromSeconds(-1));
+    }
+
+    [Fact]
+    public void OpenFile_MissingFile_Throws()
+    {
+        using var engine = AudioEngine.Create();
+        var ex = Assert.Throws<AudioException>(() => engine.OpenFile(Path.Combine(Path.GetTempPath(), "does-not-exist-" + Guid.NewGuid() + ".wav")));
+        Assert.True(ex.ErrorCode < 0);
+        Assert.False(string.IsNullOrWhiteSpace(ex.Message));
+    }
+
+    [Fact]
+    public void Dispose_Works_InAnyOrder()
+    {
+        var engine = AudioEngine.Create();
+        var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        engine.Dispose();                 // engine first
+        Assert.Equal(44100, TestAudio.ReadAll(s)); // stream still fully usable
+        s.Dispose();
+        s.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => s.Info);
+        Assert.Throws<ObjectDisposedException>(() => engine.OpenMemory(TestAudio.SineWav()));
+    }
+
+    [Fact]
+    public void Info_IsCachedWhileUnchanged()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+        using var s = engine.OpenMemory(TestAudio.SineWav(1.0, 22050, 440.0), new StreamOptions { DecodeOnly = true });
+        var first = s.Info;
+        Assert.Same(first, s.Info);
+        Assert.Equal(22050, first.Format.SampleRate);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) _ = s.Info;
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1024);
+    }
+
+    [Fact]
+    public void LevelsAndSpectrum_FollowPlayback()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+        using var output = engine.OpenOutput();
+        using var s = engine.OpenMemory(TestAudio.SineWav(3.0, 48000, 1500.0));
+        Assert.Equal(0f, s.GetLevels().Peak[0]);            // not playing; starts recording
+        output.GetLevels();
+        s.PlayOn(output);
+        // The null output can stall and then catch up in a burst, so poll until the 100 ms window is full of tone.
+        var levels = s.GetLevels(TimeSpan.FromMilliseconds(100));
+        for (long deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && levels.Rms[0] < 0.30f; )
+        {
+            Thread.Sleep(50);
+            levels = s.GetLevels(TimeSpan.FromMilliseconds(100));
+        }
+        Assert.Single(levels.Peak);                          // a mono file
+        Assert.InRange(levels.Peak[0], 0.45f, 0.55f);
+        Assert.InRange(levels.Rms[0], 0.30f, 0.40f);
+        var spectrum = s.GetSpectrum(4096);
+        Assert.Equal(2048, spectrum.Magnitudes.Length);
+        Assert.True(spectrum.BinHz > 0);
+        int top = Array.IndexOf(spectrum.Magnitudes, spectrum.Magnitudes.Max());
+        Assert.InRange(top * spectrum.BinHz, 1500 - spectrum.BinHz, 1500 + spectrum.BinHz);
+        Assert.InRange(spectrum.Magnitudes[top], 0.35f, 0.55f);
+        Assert.InRange(output.GetLevels().Peak[0], 0.3f, 0.6f);
+        Span<float> bins = stackalloc float[1024];
+        Assert.True(output.GetSpectrum(bins, SpectrumOptions.Left) > 0);
+        // The span overloads: same values, no allocation.
+        Span<float> peak = stackalloc float[2], rms = stackalloc float[2];
+        Assert.Equal(1, s.GetLevels(peak, rms, TimeSpan.FromMilliseconds(100)));   // a mono file
+        for (long deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && rms[0] < 0.30f; )
+        {
+            Thread.Sleep(50);
+            s.GetLevels(peak, rms, TimeSpan.FromMilliseconds(100));
+        }
+        Assert.InRange(peak[0], 0.45f, 0.55f);
+        Assert.InRange(rms[0], 0.30f, 0.40f);
+        output.GetLevels(peak, rms);
+        Assert.InRange(peak[0], 0.3f, 0.6f);
+        Assert.Throws<ArgumentException>(() => output.GetLevels(new float[1], new float[2]));
+        Assert.Throws<ArgumentException>(() => s.GetLevels(Span<float>.Empty, Span<float>.Empty));
+        Assert.False(s.HasCdg);
+        Assert.Throws<AudioException>(() => s.GetSpectrum(1000));
+        Assert.Throws<AudioException>(() => s.GetSpectrum(4097));
+        // The span overload of a stream matches the array version and does not allocate.
+        Span<float> sbins = stackalloc float[2048];
+        float hz = s.GetSpectrum(sbins);
+        Assert.Equal(spectrum.BinHz, hz);
+        Assert.Throws<AudioException>(() => s.GetSpectrum(new float[1000]));
+        // Warm up (JIT, tiering) so only steady-state allocations are counted; take the best of a few runs.
+        for (int i = 0; i < 50; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
+        long fewest = long.MaxValue;
+        for (int run = 0; run < 3; run++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
+            fewest = Math.Min(fewest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        Assert.True(fewest < 1024);
+        s.Pause();
+        Assert.Equal(0f, s.GetLevels().Peak[0]);
+    }
+
+    [Fact]
+    public void Volume_RoundTrips_OnAttachedStream()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+        using var output = engine.OpenOutput();
+        using var s = engine.OpenMemory(TestAudio.SineWav());
+        s.PlayOn(output);
+        s.Pause();
+        s.Volume = 0.25f;
+        Assert.Equal(0.25f, s.Volume, 3);
+        Assert.Equal(StreamState.Paused, s.State);
+        s.Stop();
+        Assert.Same(output, s.Device);
+    }
+
+    [Fact]
+    public void FailedCall_ThrowsWithErrorCode()
+    {
+        using var engine = AudioEngine.Create();
+        using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        var ex = Assert.Throws<AudioException>(() => s.AddPositionEvent(TimeSpan.FromSeconds(5)));   // past the end
+        Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
+        Assert.Contains("invalid", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Curve_Bezier_ValidatesControlPoints()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => Curve.Bezier(2f, 0f, 0.5f, 1f));
+        Assert.Equal(Curve.Bezier(0.25f, 0.1f, 0.25f, 1f), Curve.Bezier(0.25f, 0.1f, 0.25f, 1f));
+        Assert.NotEqual(Curve.Linear, Curve.EqualPower);
+    }
+}

@@ -1,0 +1,112 @@
+using System.Runtime.InteropServices;
+using FatzMedia.Audio.Native;
+
+namespace FatzMedia.Audio;
+
+/// <summary>Error codes returned by the native FatzMedia.Audio library (<c>FA_ERROR_*</c>).</summary>
+public enum ErrorCode
+{
+    /// <summary>Success (never carried by an exception).</summary>
+    Ok = 0,
+    /// <summary>Unspecified failure.</summary>
+    Generic = -1,
+    /// <summary>An argument was invalid (null, out of range, wrong state for the call).</summary>
+    InvalidArgument = -2,
+    /// <summary>The native library ran out of memory.</summary>
+    OutOfMemory = -3,
+    /// <summary>A file, device or other resource was not found.</summary>
+    NotFound = -4,
+    /// <summary>The audio data is in a format that cannot be decoded.</summary>
+    UnsupportedFormat = -5,
+    /// <summary>The audio device reported an error.</summary>
+    Device = -6,
+    /// <summary>An I/O error occurred while reading the source.</summary>
+    Io = -7,
+    /// <summary>A network error occurred.</summary>
+    Network = -8,
+    /// <summary>The operation needs a seekable source.</summary>
+    NotSeekable = -9,
+    /// <summary>The object is busy (for example a stream that is already attached to a device).</summary>
+    Busy = -10,
+    /// <summary>The end of the stream was reached.</summary>
+    EndOfStream = -11,
+    /// <summary>The native library does not implement this function yet.</summary>
+    NotImplemented = -12,
+    /// <summary>An optional provider (LAME for MP3 encoding, libcurl for HTTPS on Linux) could not be found at runtime.</summary>
+    ProviderMissing = -13,
+    /// <summary>The CD drive has no disc, its tray is open, or the disc was changed under an open stream.</summary>
+    NoDisc = -14,
+    /// <summary>A MIDI file was opened with no soundfont: set <see cref="AudioEngine.DefaultSoundFont"/> or <see cref="StreamOptions.SoundFont"/>.</summary>
+    NoSoundFont = -15,
+    /// <summary>The file or stream is DRM-protected or encrypted (protected WMA, FairPlay or Common Encryption MP4, encrypted Matroska, SAMPLE-AES HLS) and cannot be played.</summary>
+    ProtectedContent = -16,
+    /// <summary>
+    /// A compressed song in a ZIP archive is bigger than <see cref="AudioEngineOptions.ZipMemoryLimitMb"/> and
+    /// <see cref="AudioEngineOptions.NoTempFiles"/> forbids a temp file (or it unpacks to over 4 GB): extract it first.
+    /// </summary>
+    TooLarge = -17,
+    /// <summary>The buffer passed to <see cref="IKaraokeSurface.UpdateInto(nint, int, int, int, ulong, TimeSpan?)"/> is
+    /// not the size <see cref="IKaraokeSurface.GetLayout"/> reports.</summary>
+    SizeMismatch = -18,
+    /// <summary>The device does not have that channel: the headphone cue's (<see cref="CueOutput.Channels34"/> on a
+    /// stereo device) or a mic's (<see cref="MicOptions.Channel"/>).</summary>
+    NotEnoughChannels = -19,
+    /// <summary>The app has no microphone permission (<see cref="DjMixer.AddMic"/>): ask for it first (Android
+    /// manifest and prompt, macOS and iOS usage strings).</summary>
+    PermissionDenied = -20,
+    /// <summary><see cref="DjDeck.SyncTo"/>: the tempo it needs is outside the deck's <see cref="DjDeck.SyncRange"/>,
+    /// also at half or double time.</summary>
+    OutOfRange = -21,
+    /// <summary>An open was stopped by <see cref="StreamOptions.CancellationToken"/> (unpacking a ZIP song).</summary>
+    Cancelled = -22,
+    /// <summary>A ZIP song needs a temp file and the disk has too little free space for it; nothing was written.</summary>
+    DiskFull = -23,
+}
+
+/// <summary>
+/// Thrown when a native FatzMedia.Audio call fails. The error is always taken from the call's own return
+/// value; there is no "last error" state to poll.
+/// </summary>
+/// <example>
+/// <code>
+/// try { stream.Ramp(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(2)); }
+/// catch (AudioException ex) when (ex.ErrorCode == ErrorCode.NotImplemented) { /* not available yet */ }
+/// </code>
+/// </example>
+public class AudioException : Exception
+{
+    /// <summary>Creates an exception for a native error code.</summary>
+    /// <param name="errorCode">The native error code.</param>
+    /// <param name="message">Optional message; defaults to the text from <c>fa_result_string</c>.</param>
+    public AudioException(ErrorCode errorCode, string? message = null)
+        : base(message ?? DescribeNative(errorCode))
+    {
+        ErrorCode = errorCode;
+        HResult = (int)errorCode;
+    }
+
+    /// <summary>The native error code that caused this exception.</summary>
+    public ErrorCode ErrorCode { get; }
+
+    private static string DescribeNative(ErrorCode code)
+    {
+        try
+        {
+            NativeLoader.EnsureLoaded();
+            var p = NativeMethods.fa_result_string((int)code);
+            var s = NativeText.ReadOrNull(p);
+            if (!string.IsNullOrEmpty(s)) return $"{s} ({code})";
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            // fall through to the managed description
+        }
+        return code.ToString();
+    }
+
+    /// <summary>Throws <see cref="AudioException"/> if <paramref name="result"/> is negative.</summary>
+    internal static void ThrowIfFailed(int result)
+    {
+        if (result < 0) throw new AudioException((ErrorCode)result);
+    }
+}

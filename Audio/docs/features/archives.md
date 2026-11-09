@@ -1,6 +1,6 @@
 # Archives
 
-FatzAudio reads these archives without an engine and without unpacking what you do not ask for:
+FatzMedia.Audio reads these archives without an engine and without unpacking what you do not ask for:
 
 | File | Format (`fa_archive_get_format`) | Filter (`fa_archive_get_filter`) |
 |---|---|---|
@@ -137,7 +137,7 @@ for each other.
 ## Speed
 
 Time from `fa_stream_open_path` to the first decoded audio of one 4-minute song (a 192 kbps MP3, 5.8 MB, with its
-1.7 MB `.cdg`) on a 4-core 2.1 GHz cloud Xeon, medians of 5 opens, measured through FatzAudio itself with
+1.7 MB `.cdg`) on a 4-core 2.1 GHz cloud Xeon, medians of 5 opens, measured through FatzMedia.Audio itself with
 [`tools/archive-bench`](../../tools/archive-bench/README.md). A current desktop is about 1.7-2x faster; a 320 kbps
 song is 1.7x the bytes. "Again" is the same song opened again after it closed, within the 30 seconds of the
 recently-unpacked cache.

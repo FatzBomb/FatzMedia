@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Checks that the committed SPIR-V in FatzBomb.MediaControl.Rendering.Vulkan/Shaders matches its
+# Checks that the committed SPIR-V in FatzMedia.Video.Vulkan/Shaders matches its
 # GLSL source (ENG-014). Compiles every Shaders/*.vert and *.frag the way
 # compile-vulkan-shaders.sh does and compares the result with the committed .spv. The
 # SPIR-V header's generator word (bytes 8-11, the compiler and its version) is ignored, so a
@@ -7,7 +7,7 @@
 # Requires glslangValidator (Debian/Ubuntu: apt-get install glslang-tools).
 set -eu
 
-shader_dir="$(cd "$(dirname "$0")/../FatzBomb.MediaControl.Rendering.Vulkan/Shaders" && pwd)"
+shader_dir="$(cd "$(dirname "$0")/../FatzMedia.Video.Vulkan/Shaders" && pwd)"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 

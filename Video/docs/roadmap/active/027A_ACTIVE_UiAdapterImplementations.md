@@ -25,7 +25,7 @@ instructions.
 
 ## Slices
 
-- **Slice 1 - Avalonia (implemented):** `FatzBomb.MediaControl.Avalonia` (net10.0,
+- **Slice 1 - Avalonia (implemented):** `FatzMedia.Video.Avalonia` (net10.0,
   Avalonia 12.1.4, Core only): composited `MediaSurface` over the managed frame-sink
   contract and `AvaloniaMediaInputSources.FromBitmap`. Works with any platform factory
   (Windows, Linux) and any frame-sink renderer (software, Vulkan preview).
@@ -69,7 +69,7 @@ instructions.
   swapchain renderers. A native child window inside Avalonia has the same airspace
   limitation as WPF's `NativeHwndOverlay`, so overlays would need a separate window there
   too. The compositor import avoids that.
-- **Slice 3 - WinForms (implemented):** `FatzBomb.MediaControl.WinForms` HWND
+- **Slice 3 - WinForms (implemented):** `FatzMedia.Video.WinForms` HWND
   `MediaSurface` (Core only; pairs with Windows + Direct3D11).
 - **Slice 5 - Avalonia second-screen output (implemented 2026-10-24, pending manual smoke;
   `updates/027A_5`):** one player on two screens (karaoke singer or projector screen).

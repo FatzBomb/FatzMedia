@@ -6,7 +6,7 @@ Your application owns the queue. Typically you call `PrepareNextAsync` for the n
 
 ## The slot
 
-The slot holds at most one item. `player.PreparedNext` is a <xref:FatzBomb.MediaControl.PreparedNextInfo> snapshot with a `State`, the `Source` and the `Analysis` (when there is one).
+The slot holds at most one item. `player.PreparedNext` is a <xref:FatzMedia.Video.PreparedNextInfo> snapshot with a `State`, the `Source` and the `Analysis` (when there is one).
 
 | `PreparedNextState` | Meaning |
 |---|---|
@@ -25,11 +25,11 @@ player.PreparedNextTransitioned += (_, e) =>
     Console.WriteLine($"Now playing {e.Source.DisplayName} (automatic: {e.IsAutomatic})");
 ```
 
-`PrepareNextAsync` accepts a path or a <xref:FatzBomb.MediaControl.MediaInputSource>. It returns `false` when the file does not exist, when the source is a network address, or when the preparation was cleared, replaced or cancelled before it finished. Preparing a new item replaces the old one; `ClearPreparedNext()` empties the slot and cancels any analysis.
+`PrepareNextAsync` accepts a path or a <xref:FatzMedia.Video.MediaInputSource>. It returns `false` when the file does not exist, when the source is a network address, or when the preparation was cleared, replaced or cancelled before it finished. Preparing a new item replaces the old one; `ClearPreparedNext()` empties the slot and cancels any analysis.
 
 What preparation does depends on the item:
 
-- **Plain audio files** are analysed: loudness for [normalization](../audio/normalization.md) and silence at the start and end for [trimming](../audio/normalization.md#silence-trimming). The result is cached, so the later load applies it without scanning again. `PreparedNext.Analysis` returns the <xref:FatzBomb.MediaControl.MediaAnalysisResult>.
+- **Plain audio files** are analysed: loudness for [normalization](../audio/normalization.md) and silence at the start and end for [trimming](../audio/normalization.md#silence-trimming). The result is cached, so the later load applies it without scanning again. `PreparedNext.Analysis` returns the <xref:FatzMedia.Video.MediaAnalysisResult>.
 - **Audio the FFmpeg fallback plays** is converted ahead of time, so the switch does not wait for the conversion.
 - **Video, archives, images, CD+G and tracker modules** are accepted without analysis (`Analysis` is `null`) and load normally at the transition.
 
@@ -110,7 +110,7 @@ With the fade enabled:
 
 ### Envelopes
 
-Each fade follows an <xref:FatzBomb.MediaControl.AudioFadeEnvelope>: a list of <xref:FatzBomb.MediaControl.AudioFadePoint> values (position `0..1` across the fade, gain `0..1`) with linear interpolation. The defaults are straight ramps: `AudioFadeEnvelope.Outgoing` (full to silent) and `AudioFadeEnvelope.Incoming` (silent to full). Envelopes are immutable; `WithPoint`, `WithPoints`, `CreateOutgoing` and `CreateIncoming` return new ones with points added over the defaults. A point at an existing position replaces it.
+Each fade follows an <xref:FatzMedia.Video.AudioFadeEnvelope>: a list of <xref:FatzMedia.Video.AudioFadePoint> values (position `0..1` across the fade, gain `0..1`) with linear interpolation. The defaults are straight ramps: `AudioFadeEnvelope.Outgoing` (full to silent) and `AudioFadeEnvelope.Incoming` (silent to full). Envelopes are immutable; `WithPoint`, `WithPoints`, `CreateOutgoing` and `CreateIncoming` return new ones with points added over the defaults. A point at an existing position replaces it.
 
 ```csharp
 // The new song stays quiet for the first half of the fade, then comes up.

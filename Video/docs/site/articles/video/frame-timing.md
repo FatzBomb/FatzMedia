@@ -4,7 +4,7 @@ Video looks smooth when each decoded frame stays on screen for the same number o
 
 ## Timing modes
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer.VideoFrameTiming> chooses how the presentation loop decides when to show each frame. It is a runtime property.
+<xref:FatzMedia.Video.PlayerCore.VideoFrameTiming> chooses how the presentation loop decides when to show each frame. It is a runtime property.
 
 | Mode | Behavior |
 | --- | --- |
@@ -30,7 +30,7 @@ Other reasons it reports are `the video's frame rate is unknown` and `the displa
 
 The loop needs the refresh rate of the monitor that shows the video. It uses, in this order:
 
-1. A rate supplied by the host. On Linux this is <xref:FatzBomb.MediaControl.Linux.LinuxPlatformOptions.DisplayRefreshRateHz>, because Linux has no compositor-neutral way to ask.
+1. A rate supplied by the host. On Linux this is <xref:FatzMedia.Video.Linux.LinuxPlatformOptions.DisplayRefreshRateHz>, because Linux has no compositor-neutral way to ask.
 2. The rate the renderer reports for the monitor showing the primary surface.
 3. The platform's own detection (on Windows, the desktop compositor's rate), and 60 Hz when nothing is known.
 
@@ -38,7 +38,7 @@ A rate from the platform that falls outside 23 to 600 Hz is replaced by the 60 H
 
 ```csharp
 // Linux: tell the engine the real refresh rate (default 60, clamped to 24..360)
-var platform = new LinuxMediaControlPlatformFactory(
+var platform = new LinuxPlatformFactory(
     new SoftwarePresentationCoordinatorFactory(),
     new LinuxPlatformOptions { DisplayRefreshRateHz = 144 });
 ```

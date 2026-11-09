@@ -104,7 +104,7 @@ using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true
 
 ## When the device changes or goes away
 
-| What happens | What FatzAudio does |
+| What happens | What FatzMedia.Audio does |
 |---|---|
 | The system default changes (a headset plugged in) and the device was opened as the default (`device_id` NULL, .NET `OpenOutput()`) | Windows (WASAPI) and macOS/iOS (Core Audio) move the output to the new default by themselves; every stream on it gets `FA_EVENT_DEVICE_CHANGED` with value 0 (.NET `DeviceChanged`). On Linux, PulseAudio and PipeWire move the stream themselves without telling apps, so no event; plain ALSA doesn't follow |
 | The device is unplugged or disabled while started (a chosen USB interface, or the default on a system that doesn't reroute) | The engine reopens the output on the system default at the same mix rate. Streams stay attached and play on from where they were, the device clock keeps counting, and every stream gets `FA_EVENT_DEVICE_CHANGED` with value 1. The `fa_device*` stays valid: from then on it is the default device, with the master volume you set (`fa_device_set_volume`). The system gets about 0.3 s to reroute a default device itself first, so a default output is never reopened twice |

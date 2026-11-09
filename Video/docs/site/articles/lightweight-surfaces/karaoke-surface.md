@@ -6,13 +6,13 @@ You give it a platform factory and a file; there is no player, no `MediaSurface`
 wiring to write. It exists in the WPF, Avalonia and WinForms adapters with the same behaviour
 and nearly the same properties. Use it to put karaoke in part of a window. If you need full
 control (a custom lyric style, a soundfont, a second screen, backgrounds), use your own
-<xref:FatzBomb.MediaControl.MediaControlPlayer> with a `MediaSurface`.
+<xref:FatzMedia.Video.PlayerCore> with a `MediaSurface`.
 
 | Adapter | Class |
 | --- | --- |
-| WPF | <xref:FatzBomb.MediaControl.Wpf.KaraokeSurface> |
-| Avalonia | <xref:FatzBomb.MediaControl.Avalonia.KaraokeSurface> |
-| WinForms | <xref:FatzBomb.MediaControl.WinForms.KaraokeSurface> |
+| WPF | <xref:FatzMedia.Video.Wpf.KaraokeSurface> |
+| Avalonia | <xref:FatzMedia.Video.Avalonia.KaraokeSurface> |
+| WinForms | <xref:FatzMedia.Video.WinForms.KaraokeSurface> |
 
 ## What it plays
 
@@ -35,15 +35,15 @@ it. Put a [Background surface](background-surface.md) beside the karaoke control
 ## Quick start
 
 Set the platform factory in code before the first load, and give the control a file in `Source`.
-The factory is the same one you would give a `MediaControlPlayer`: on Windows
-`WindowsDirect3D11MediaControlPlatformFactory`.
+The factory is the same one you would give a `PlayerCore`: on Windows
+`WindowsDirect3D11PlatformFactory`.
 
 # [WPF](#tab/wpf)
 
 ```xaml
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Wpf;assembly=FatzBomb.MediaControl.Wpf"
+        xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"
         x:Class="MyApp.MainWindow">
     <fbm:KaraokeSurface x:Name="Karaoke"
                         Source="C:\Karaoke\song.zip"
@@ -57,7 +57,7 @@ The factory is the same one you would give a `MediaControlPlayer`: on Windows
 public MainWindow()
 {
     InitializeComponent();
-    Karaoke.PlatformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
+    Karaoke.PlatformFactory = new WindowsDirect3D11PlatformFactory();
     Karaoke.NativeLibraryPaths = [Path.Combine(AppContext.BaseDirectory, "native")];
 }
 
@@ -73,7 +73,7 @@ protected override void OnClosed(EventArgs e)
 ```xml
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"
+        xmlns:fbm="using:FatzMedia.Video.Avalonia"
         x:Class="MyApp.MainWindow">
     <fbm:KaraokeSurface x:Name="Karaoke"
                         Source="/karaoke/song.zip"
@@ -87,8 +87,8 @@ protected override void OnClosed(EventArgs e)
 public MainWindow()
 {
     InitializeComponent();
-    // Any IMediaControlPlatformFactory: for example the Linux factory with the software renderer.
-    Karaoke.PlatformFactory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
+    // Any IPlatformFactory: for example the Linux factory with the software renderer.
+    Karaoke.PlatformFactory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 }
 
 protected override void OnClosed(EventArgs e)
@@ -103,7 +103,7 @@ You can also bind it: `PlatformFactory="{Binding Platform}"`.
 # [WinForms](#tab/winforms)
 
 ```csharp
-var karaoke = new KaraokeSurface(new WindowsDirect3D11MediaControlPlatformFactory())
+var karaoke = new KaraokeSurface(new WindowsDirect3D11PlatformFactory())
 {
     Dock = DockStyle.Fill,
     CanvasColor = Color.Black,
@@ -136,7 +136,7 @@ The constructor overload that takes the platform factory does the same as settin
 | `AutoHide` | `true` | Hide the video surface until the first frame is drawn and again after stop, close, an error or the end of the song, so the canvas colour shows meanwhile. |
 | `IsContentVisible` | | Read-only. `true` while the song is drawn. `ContentVisibilityChanged` is raised when it changes. |
 | `CanvasColor` | black | The opaque colour around the 4:3 area. The alpha value is ignored. |
-| `Session` | `null` | The control's player as an `IMediaControlSession`, once it exists. Use it to read state, change sync offsets or subscribe to events. |
+| `Session` | `null` | The control's player as an `IPlayerSession`, once it exists. Use it to read state, change sync offsets or subscribe to events. |
 
 Adapter-specific properties:
 
@@ -167,7 +167,7 @@ Use `Session` for everything else. It is created on the first load, and a new on
 when the control returns to the screen.
 
 ```csharp
-private IMediaControlSession? _subscribed;
+private IPlayerSession? _subscribed;
 
 private async Task PlayNextAsync()
 {

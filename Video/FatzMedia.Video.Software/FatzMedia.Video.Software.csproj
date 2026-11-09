@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Software</PackageId>
+    <AssemblyName>FatzMedia.Video.Software</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Software</RootNamespace>
+    <Description>Portable deterministic software renderer for FatzMedia.Video composition frames.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Text\FatzMedia.Video.Text.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzMedia.Video.Tests" />
+    <InternalsVisibleTo Include="FatzMedia.Video.Portable.Tests" />
+  </ItemGroup>
+
+</Project>

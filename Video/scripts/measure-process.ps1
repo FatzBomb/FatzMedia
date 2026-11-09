@@ -17,7 +17,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name TriviaBomb -Seconds 60 -Label trivia-1080p
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name FatzBomb.MediaControl.Player -Seconds 60 -Label player-1080p
+    powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name FatzMedia.Video.Sample.Player -Seconds 60 -Label player-1080p
 #>
 param(
     [string]$Name,
@@ -44,7 +44,7 @@ if ($Id -gt 0) {
 
 $pidText = $proc.Id
 $cores = [Environment]::ProcessorCount
-$desktop = Join-Path $PSScriptRoot '..\..\work\fatzvideo\test-results'
+$desktop = Join-Path $PSScriptRoot '..\..\..\work\fatzvideo\test-results'
 New-Item -ItemType Directory -Force -Path $desktop | Out-Null
 if (-not $desktop) { $desktop = [IO.Path]::GetTempPath() }
 $outDir = Join-Path $desktop ("FatzBomb-measure-{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmm'))

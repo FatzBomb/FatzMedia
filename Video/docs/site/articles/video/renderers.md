@@ -6,7 +6,7 @@ A renderer is the component that draws each composed frame (video, images, CD+G 
 
 | | Direct3D11 | Vulkan | Software |
 | --- | --- | --- | --- |
-| Package | `FatzBomb.MediaControl.Rendering.Direct3D11` | `FatzBomb.MediaControl.Rendering.Vulkan` | `FatzBomb.MediaControl.Rendering.Software` |
+| Package | `FatzMedia.Video.Direct3D11` | `FatzMedia.Video.Vulkan` | `FatzMedia.Video.Software` |
 | Platforms | Windows x64 (`net10.0-windows7.0`) | Linux and Windows (`net10.0`), needs a Vulkan loader and driver | Any (`net10.0`) |
 | Status | Full | Preview | Full, CPU only |
 | Draws into | Native window swap chains, managed frame sinks, shared GPU images | Managed frame sinks, shared GPU images (never native windows) | Managed frame sinks |
@@ -16,24 +16,24 @@ A renderer is the component that draws each composed frame (video, images, CD+G 
 | HDR tone mapping | GPU for hardware-decoded frames, CPU otherwise | GPU for Vulkan Video frames, CPU otherwise | CPU |
 | HDR output on an HDR display | Optional | No | No |
 
-Text subtitles and lyrics are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, a port of the DirectWrite one with the same layout, styles, karaoke wipe, countdown and title cards. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
+Text subtitles and lyrics are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzMedia.Video.Text`, a port of the DirectWrite one with the same layout, styles, karaoke wipe, countdown and title cards. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
 
 > [!NOTE]
-> With the Vulkan renderer, a frame that carries a non-identity <xref:FatzBomb.MediaControl.BaseVisualTransform> is refused. The player raises one warning in the `Vulkan` category (`Vulkan preview slice cannot draw this frame yet (...)`) and keeps the last picture.
+> With the Vulkan renderer, a frame that carries a non-identity <xref:FatzMedia.Video.BaseVisualTransform> is refused. The player raises one warning in the `Vulkan` category (`Vulkan preview slice cannot draw this frame yet (...)`) and keeps the last picture.
 
 ## How a host chooses a renderer
 
-A renderer is exposed as an `IMediaPresentationCoordinatorFactory`: <xref:FatzBomb.MediaControl.Rendering.Direct3D11.Direct3D11PresentationCoordinatorFactory>, <xref:FatzBomb.MediaControl.Rendering.Vulkan.VulkanPresentationCoordinatorFactory> or <xref:FatzBomb.MediaControl.Rendering.Software.SoftwarePresentationCoordinatorFactory>. A platform factory combines that with the operating-system services (native library loading, audio device monitoring, timers):
+A renderer is exposed as an `IMediaPresentationCoordinatorFactory`: <xref:FatzMedia.Video.Direct3D11.Direct3D11PresentationCoordinatorFactory>, <xref:FatzMedia.Video.Vulkan.VulkanPresentationCoordinatorFactory> or <xref:FatzMedia.Video.Software.SoftwarePresentationCoordinatorFactory>. A platform factory combines that with the operating-system services (native library loading, audio device monitoring, timers):
 
 | Platform | Factory |
 | --- | --- |
-| Windows with Direct3D11 | <xref:FatzBomb.MediaControl.WindowsDirect3D11MediaControlPlatformFactory> (one package for both) |
-| Windows with another renderer | `new` <xref:FatzBomb.MediaControl.WindowsMediaControlPlatformFactory>`(rendererFactory)` |
-| Linux | `new` <xref:FatzBomb.MediaControl.Linux.LinuxMediaControlPlatformFactory>`(rendererFactory, options)` |
+| Windows with Direct3D11 | <xref:FatzMedia.Video.WindowsDirect3D11PlatformFactory> (one package for both) |
+| Windows with another renderer | `new` <xref:FatzMedia.Video.WindowsPlatformFactory>`(rendererFactory)` |
+| Linux | `new` <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>`(rendererFactory, options)` |
 
 ```csharp
 // Windows, Direct3D11 on the GPU (falls back to WARP when there is no GPU device)
-var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var platform = new WindowsDirect3D11PlatformFactory();
 var player = await Player.CreateAsync(MediaPlayerConfiguration.Auto, nativePaths, platform);
 ```
 
@@ -42,8 +42,8 @@ var player = await Player.CreateAsync(MediaPlayerConfiguration.Auto, nativePaths
 if (!VulkanPresentationCoordinatorFactory.IsSupported(out string? reason))
     throw new InvalidOperationException($"No Vulkan: {reason}");
 
-var platform = new LinuxMediaControlPlatformFactory(new VulkanPresentationCoordinatorFactory());
-var player = new MediaControlPlayer(platform, MediaPlayerConfiguration.Auto, [nativeDir]);
+var platform = new LinuxPlatformFactory(new VulkanPresentationCoordinatorFactory());
+var player = new PlayerCore(platform, MediaPlayerConfiguration.Auto, [nativeDir]);
 ```
 
 The renderer does not change after the player is built. To switch, dispose the player and create another.
@@ -53,11 +53,11 @@ The renderer does not change after the player is built. To switch, dispose the p
 
 ## Picking the first usable renderer
 
-<xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory> takes an ordered list and uses the first renderer whose availability probe succeeds. The choice is made once, on first use, and the factory records what each probe found.
+<xref:FatzMedia.Video.Controllers.FallbackPresentationCoordinatorFactory> takes an ordered list and uses the first renderer whose availability probe succeeds. The choice is made once, on first use, and the factory records what each probe found.
 
 ```csharp
 var chain = new FallbackPresentationCoordinatorFactory(
-    WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions()),
+    WindowsDirect3D11PlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions()),
     new SoftwarePresentationCoordinatorFactory());
 
 foreach (MediaPresentationCandidateResult candidate in chain.Selection)
@@ -71,10 +71,10 @@ Surface.PresentationMode = chosen.RequiresFrameSinkSurface
     ? WpfPresentationMode.WpfComposited
     : WpfPresentationMode.NativeHwndOverlay;
 
-var player = await Player.CreateAsync(configuration, nativePaths, new WindowsMediaControlPlatformFactory(chain));
+var player = await Player.CreateAsync(configuration, nativePaths, new WindowsPlatformFactory(chain));
 ```
 
-The probe result (<xref:FatzBomb.MediaControl.Controllers.MediaPresentationAvailability>) tells the host how to build the rest:
+The probe result (<xref:FatzMedia.Video.Controllers.MediaPresentationAvailability>) tells the host how to build the rest:
 
 | Property | Meaning |
 | --- | --- |
@@ -91,7 +91,7 @@ If no candidate is usable, the last one is used anyway so the player still start
 
 The default choice on Windows. It presents through DXGI swap chains in a native window, which gives the best video performance, and it draws hardware-decoded (D3D11VA) frames on the GPU into every target kind: swap chains, the managed frame sink (one GPU readback) and the shared textures an Avalonia compositor imports (no readback).
 
-Options live in <xref:FatzBomb.MediaControl.Rendering.Direct3D11.Direct3D11PresentationOptions>, passed to the factory when you create it:
+Options live in <xref:FatzMedia.Video.Direct3D11.Direct3D11PresentationOptions>, passed to the factory when you create it:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -101,7 +101,7 @@ Options live in <xref:FatzBomb.MediaControl.Rendering.Direct3D11.Direct3D11Prese
 
 ```csharp
 var options = new Direct3D11PresentationOptions { DeviceSelection = Direct3D11DeviceSelection.Hardware };
-var platform = new WindowsDirect3D11MediaControlPlatformFactory(options);
+var platform = new WindowsDirect3D11PlatformFactory(options);
 ```
 
 On first use the renderer logs the device it got in the `D3D11` category: `Direct3D11 device: <description>.`
@@ -121,7 +121,7 @@ Pair WARP with software decoding. A hardware decoder brings its own GPU device, 
 ```csharp
 var options = new Direct3D11PresentationOptions { DeviceSelection = Direct3D11DeviceSelection.Warp };
 var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software);
-var player = await Player.CreateAsync(configuration, nativePaths, new WindowsDirect3D11MediaControlPlatformFactory(options));
+var player = await Player.CreateAsync(configuration, nativePaths, new WindowsDirect3D11PlatformFactory(options));
 ```
 
 If hardware-decoded video does bring a GPU device while the renderer is on WARP, the player logs `Hardware-decoded video brought its GPU device; presenting on it instead of the software rasterizer. Use software decoding to stay on it.`

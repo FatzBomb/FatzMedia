@@ -2,7 +2,7 @@
 
 # MIDI/.kar Karaoke Lyric Display: Design Specification
 
-Reference document for the lyric surface ([lyrics.md](../features/lyrics.md)). It records how the original app drew MIDI/.kar karaoke lyrics, so FatzAudio's surface could match it. The abbreviations used for source locations below (STR, SC, MLE, MME, KTS, MPC) name the original app's source files, which are not part of this repository:
+Reference document for the lyric surface ([lyrics.md](../features/lyrics.md)). It records how the original app drew MIDI/.kar karaoke lyrics, so FatzMedia.Audio's surface could match it. The abbreviations used for source locations below (STR, SC, MLE, MME, KTS, MPC) name the original app's source files, which are not part of this repository:
 
 - STR = the Direct3D 11 subtitle text renderer
 - SC  = the karaoke cue timing types (`KaraokeCueTiming`, `KaraokeLineTiming`, `KaraokeTextSegment`, `KaraokeCountdownState`)

@@ -21,7 +21,7 @@ HTTP, HTTPS and HLS work with the same call. Reconnects, buffering and the conne
 using var rec = AudioEncoder.Create("radio.flac", new EncoderOptions { Format = EncodeFormat.Flac });
 rec.Record(radio);                       // the stream as heard: only what it plays
 // ... later
-rec.Close();                             // completes the file; throws FatzAudioException on errors
+rec.Close();                             // completes the file; throws AudioException on errors
 ```
 
 `EncodeFormat.Mp3` works if your app ships LAME (`ProviderMissing` otherwise). To record the whole output mix instead, pass the output: `rec.Record(output)`. A progress display reads `rec.Status` (`Duration`, `Bytes`, `DroppedFrames`).

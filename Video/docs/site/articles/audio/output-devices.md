@@ -4,16 +4,16 @@ The player plays through BASS on one output device, chosen when the player is cr
 
 ## Listing devices
 
-<xref:FatzBomb.MediaControl.AudioOutputDevices> (in the Windows package) lists the usable output devices. The first entry is always the synthetic "Primary (device default)" entry.
+<xref:FatzMedia.Video.AudioOutputDevices> (in the Windows package) lists the usable output devices. The first entry is always the synthetic "Primary (device default)" entry.
 
 ```csharp
 foreach (AudioOutputDeviceInfo device in AudioOutputDevices.Enumerate())
     Console.WriteLine($"{device.DeviceIndex}: {device.DisplayName} (primary: {device.IsPrimary})");
 ```
 
-Each <xref:FatzBomb.MediaControl.AudioOutputDeviceInfo> has a `DeviceIndex`, `Name`, `Driver`, `IsPrimary`, `IsEnabled` and `IsInitialized`. `DisplayName` is the text for a selector. Disabled devices are left out.
+Each <xref:FatzMedia.Video.AudioOutputDeviceInfo> has a `DeviceIndex`, `Name`, `Driver`, `IsPrimary`, `IsEnabled` and `IsInitialized`. `DisplayName` is the text for a selector. Disabled devices are left out.
 
-`Enumerate()` uses the native-library paths configured in `DLLPath`; `Enumerate(nativeLibraryPaths)` takes your own list, the same one you pass when creating a player. When the BASS libraries are not loaded the list is empty. On Linux, the BASS device list is available from `BassAudioOutputDevices.Enumerate()` in `FatzBomb.MediaControl.Core.Audio`.
+`Enumerate()` uses the native-library paths configured in `DLLPath`; `Enumerate(nativeLibraryPaths)` takes your own list, the same one you pass when creating a player. When the BASS libraries are not loaded the list is empty. On Linux, the BASS device list is available from `BassAudioOutputDevices.Enumerate()` in `FatzMedia.Video.Core.Audio`.
 
 ## Selecting a device
 
@@ -59,7 +59,7 @@ player.AudioDeviceChanged += (_, e) =>
     });
 ```
 
-<xref:FatzBomb.MediaControl.AudioDeviceChangedEventArgs> carries:
+<xref:FatzMedia.Video.AudioDeviceChangedEventArgs> carries:
 
 | Member | Meaning |
 |---|---|

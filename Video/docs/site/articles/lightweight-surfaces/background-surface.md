@@ -8,9 +8,9 @@ to a karaoke player, or the stage behind a singer.
 
 | Adapter | Class |
 | --- | --- |
-| WPF | <xref:FatzBomb.MediaControl.Wpf.BackgroundSurface> |
-| Avalonia | <xref:FatzBomb.MediaControl.Avalonia.BackgroundSurface> |
-| WinForms | <xref:FatzBomb.MediaControl.WinForms.BackgroundSurface> |
+| WPF | <xref:FatzMedia.Video.Wpf.BackgroundSurface> |
+| Avalonia | <xref:FatzMedia.Video.Avalonia.BackgroundSurface> |
+| WinForms | <xref:FatzMedia.Video.WinForms.BackgroundSurface> |
 
 ## What it shows
 
@@ -30,8 +30,8 @@ returns `false` from `LoadAsync`. Use [Karaoke surface](karaoke-surface.md) for 
 
 ## Quick start
 
-The platform factory is the same one you would give a `MediaControlPlayer`; on Windows
-`WindowsDirect3D11MediaControlPlatformFactory`. Set it before the first load.
+The platform factory is the same one you would give a `PlayerCore`; on Windows
+`WindowsDirect3D11PlatformFactory`. Set it before the first load.
 
 # [WPF](#tab/wpf)
 
@@ -45,14 +45,14 @@ The platform factory is the same one you would give a `MediaControlPlayer`; on W
 </fbm:BackgroundSurface>
 ```
 
-with `xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Wpf;assembly=FatzBomb.MediaControl.Wpf"` on the
+with `xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"` on the
 root element.
 
 ```csharp
 public MainWindow()
 {
     InitializeComponent();
-    Backdrop.PlatformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
+    Backdrop.PlatformFactory = new WindowsDirect3D11PlatformFactory();
 }
 
 protected override void OnClosed(EventArgs e)
@@ -74,15 +74,15 @@ protected override void OnClosed(EventArgs e)
 </fbm:BackgroundSurface>
 ```
 
-with `xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"`
+with `xmlns:fbm="using:FatzMedia.Video.Avalonia"`
 on the root element.
 
 ```csharp
 public MainWindow()
 {
     InitializeComponent();
-    // Any IMediaControlPlatformFactory: for example the Linux factory with the software renderer.
-    Backdrop.PlatformFactory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
+    // Any IPlatformFactory: for example the Linux factory with the software renderer.
+    Backdrop.PlatformFactory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 }
 
 protected override void OnClosed(EventArgs e)
@@ -95,7 +95,7 @@ protected override void OnClosed(EventArgs e)
 # [WinForms](#tab/winforms)
 
 ```csharp
-var backdrop = new BackgroundSurface(new WindowsDirect3D11MediaControlPlatformFactory())
+var backdrop = new BackgroundSurface(new WindowsDirect3D11PlatformFactory())
 {
     Dock = DockStyle.Fill,
     BackgroundColor = Color.FromArgb(16, 24, 32),
@@ -129,7 +129,7 @@ Controls.Add(backdrop);
 | `IsContentVisible` | | Read-only. `true` while media is drawn. `ContentVisibilityChanged` is raised when it changes. |
 | `OverlayContent` | `null` | Your content, drawn above the background. |
 | `OverlayHitTestVisible` | `false` | Whether the overlay takes mouse input. While it is `false`, clicks go through to what is behind. |
-| `Session` | `null` | The control's player as an `IMediaControlSession`, once it exists. |
+| `Session` | `null` | The control's player as an `IPlayerSession`, once it exists. |
 
 Adapter-specific properties:
 
@@ -184,4 +184,4 @@ Backdrop.SetColor(Colors.DarkSlateBlue);   // WPF; Color.DarkSlateBlue on WinFor
 
 - [Karaoke surface](karaoke-surface.md)
 - [Backgrounds behind karaoke](../karaoke/backgrounds.md): sidecar pictures and videos for a
-  `MediaControlPlayer`.
+  `PlayerCore`.

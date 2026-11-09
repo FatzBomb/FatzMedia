@@ -2,28 +2,28 @@
 
 ## Projects
 
-- `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
-- `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
-- `FatzBomb.MediaControl.Rendering.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
-- `FatzBomb.MediaControl.Rendering.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
-- `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
-- `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
-- `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
-- `FatzBomb.MediaControl.Audio.FatzAudio`: opt-in FatzAudio audio engine for files and archive
+- `FatzMedia.Video`: OS- and UI-agnostic Core media-control engine (`net10.0`).
+- `FatzMedia.Video.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
+- `FatzMedia.Video.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
+- `FatzMedia.Video.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
+- `FatzMedia.Video.Windows`: Windows platform composition, native integration, and hardware-decode policy.
+- `FatzMedia.Video.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
+- `FatzMedia.Video.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
+- `FatzMedia.Video.Audio`: opt-in FatzAudio audio engine for files and archive
   entries (`net10.0`, Core and the exact-pinned `FatzAudio` 1.0.0-rc.1 package; 037A slice 2).
-- `FatzBomb.MediaControl.Player`: WPF validation host. The Avalonia and WinForms test players
+- `FatzMedia.Video.Sample.Player`: WPF validation host. The Avalonia and WinForms test players
   (`.Player.Avalonia`, `.Player.WinForms`) bind the same view model,
-  `FatzBomb.MediaControl.Player.Shared` (`net10.0`, Core only; Stage 044A).
+  `FatzMedia.Video.Sample.Player.Shared` (`net10.0`, Core only; Stage 044A).
 
 UI adapters, renderer backends, and platform services are separate projects using the same
 package pattern. Status as of 2026-10-16:
 
-- UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
-  `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
-- Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
+- UI adapters: `FatzMedia.Video.Avalonia` (composited frame-sink, preview) and
+  `FatzMedia.Video.WinForms` (HWND) implemented; `FatzMedia.Video.WinUI` planned.
+- Renderer backends: `FatzMedia.Video.Vulkan` (headless offscreen preview,
   frame-sink and shared-image surfaces, any number of them) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
-- Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
-  `FatzBomb.MediaControl.MacOS` planned.
+- Platform services: `FatzMedia.Video.Linux` (baseline) implemented;
+  `FatzMedia.Video.MacOS` planned.
 
 See
 `roadmap/complete/024A_COMPLETED_SoftwareRenderer.md`,
@@ -33,17 +33,17 @@ See
 
 ## Platform Composition
 
-`MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which selects the
+`PlayerCore` receives an `IPlatformFactory`, which selects the
 native media-engine services for the current operating system. Core owns session
-lifecycle and Core-service composition through `MediaControlServiceProvider`; an OS
+lifecycle and Core-service composition through `PlayerServiceProvider`; an OS
 package owns native-library loading, platform-specific registrations through
-`IMediaControlPlatformServices`, and the concrete factory.
-`WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`.
+`IPlatformServices`, and the concrete factory.
+`WindowsPlatformFactory` now lives in `FatzMedia.Video.Windows`.
 Windows accesses Core only through public platform contracts.
 
 Renderer selection is independent of operating-system selection. The Player host
-currently injects `WindowsDirect3D11MediaControlPlatformFactory` from the thin
-Windows+Direct3D11 integration bundle. `FatzBomb.MediaControl.Windows` references
+currently injects `WindowsDirect3D11PlatformFactory` from the thin
+Windows+Direct3D11 integration bundle. `FatzMedia.Video.Windows` references
 Core only, and the WPF adapter contains no renderer types. Hosts can inject another
 `IMediaPresentationCoordinatorFactory` — including the portable software renderer's
 `SoftwarePresentationCoordinatorFactory` — without changing WPF, Core playback, or the
@@ -55,17 +55,17 @@ Windows native-service layer.
 a concrete rendering backend and contains no DXGI swap-chain mode. The host selects a
 renderer by injecting its factory. Direct3D11-specific creation policy lives in
 `Direct3D11PresentationOptions`, supplied to `Direct3D11PresentationCoordinatorFactory`
-or the `WindowsDirect3D11MediaControlPlatformFactory` convenience bundle. Its native
+or the `WindowsDirect3D11PlatformFactory` convenience bundle. Its native
 swap-chain present mode defaults to VSync; Immediate remains an explicit diagnostic mode.
 
 ### Software Renderer (Stage 024A)
 
-`FatzBomb.MediaControl.Rendering.Software` is a portable, deterministic renderer
-package (`net10.0`) that references Core and `FatzBomb.MediaControl.Rendering.Text` and implements the same public
+`FatzMedia.Video.Software` is a portable, deterministic renderer
+package (`net10.0`) that references Core and `FatzMedia.Video.Text` and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
-`SkiaSubtitleRasterizer` (`FatzBomb.MediaControl.Rendering.Text`, also used by Vulkan) styled by
+`SkiaSubtitleRasterizer` (`FatzMedia.Video.Text`, also used by Vulkan) styled by
 the configuration's `SubtitleStyle` and `KaraokeStyle`, and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
@@ -145,7 +145,7 @@ platform factory; no native media or window handle is required.
 
 `BackgroundSurface` and `KaraokeSurface` live in every UI adapter (WPF, Avalonia and WinForms
 since Stage 046A slice 2) and own their sessions after the host supplies an
-`IMediaControlPlatformFactory`, matching the existing WPF `Player` construction contract. The
+`IPlatformFactory`, matching the existing WPF `Player` construction contract. The
 former is restricted to color/image/silent looping video backgrounds (a `MediaPlayerMode.Background`
 player, no audio engine); the latter is restricted to CDG and MIDI/KAR on an opaque 4:3 canvas.
 Their rules are Core's `LightweightPlayerPolicy` and `LightweightPlayerController` (see
@@ -276,7 +276,7 @@ named `window` handle.
 - When the tracks arrive they join `SubtitleTracks`. The first embedded track is selected, taking
   precedence over an auto-selected sidecar as before, unless the host already chose a track (or
   none) with `SelectSubtitleTrack`. The engine raises `ISubtitleTrackSource.SubtitleTracksChanged`;
-  the player forwards it as the public `IMediaControlSession.SubtitleTracksChanged` (with the
+  the player forwards it as the public `IPlayerSession.SubtitleTracksChanged` (with the
   current tracks and selection) through the control queue, after `MediaLoaded` and on a
   background thread, and not after a close. `PlayerViewModel` refreshes its subtitle picker on it.
 - Network video and archive video have no embedded-subtitle scan.
@@ -289,7 +289,7 @@ named `window` handle.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
-- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession` and `MediaControlPlayer`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
+- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IPlayerSession` and `PlayerCore`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
 - MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style
@@ -389,7 +389,7 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 ## Audio Device Hotplug Monitoring (Stage 006B)
 
 - `IAudioDeviceMonitor` / `PollingAudioDeviceMonitor`: 1-second poll of BASS state and Windows default endpoint via `CoreAudioDefaultEndpointReader`.
-- `AudioDeviceChanged` event on `IMediaControlSession` with `AudioDeviceChangedEventArgs`.
+- `AudioDeviceChanged` event on `IPlayerSession` with `AudioDeviceChangedEventArgs`.
 - `BASS_CONFIG_DEV_NONSTOP` enabled at BASS init to keep the device buffer alive during transient loss.
 - Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by device-change notifications. BASS/Windows handle active-stream migration; Core only raises diagnostics and the public event.
 - Lost BASS output (ENG-032): `BassOutputWatchdog` (Core, BASS only, platform neutral) is one process-wide 1-second timer that runs while any `AudioEngine`/`VideoAudioEngine` is playing. When BASS stops the output or parks a playing channel as `BASS_ACTIVE_PAUSED_DEVICE` (another application holding the device exclusively, a USB device unplugged), it raises one unowned `AudioOutput` warning and `AudioDeviceChanged` (`DeviceRemoved`) on every player, retries `BASS_Start` / `BASS_Init(BASS_DEVICE_REINIT)` once a second per device, resumes only the channels whose engine is still `Playing`, then raises an Info and `AudioDeviceChanged` (`DeviceAdded`). The decisions live in the pure `AudioOutputRecoveryTracker`. A `Play` whose `BASS_ChannelPlay` fails restarts the output once (same rate limit) and reports an Error naming the unavailable output if it still fails.
@@ -419,7 +419,7 @@ binary compatibility hold for existing construction sites. The
 (source-compatible; binary/ABI-relevant pre-1.0 because the struct layout grows).
 
 Stage 030A (2026-08-10) additionally exposed both options as runtime
-`IMediaControlSession` properties — `MediaControlPlayer.LoadBehavior.cs` (new
+`IPlayerSession` properties — `PlayerCore.LoadBehavior.cs` (new
 partial) forwards them to mutable `MediaFile.ResetPitchOnMediaLoad` /
 `ResetTempoOnMediaLoad` options applied by `MediaFile.LoadCore` at each load —
 so hosts can toggle the resets live; the config flags seed the initial values.
@@ -432,7 +432,7 @@ Core pitch/tempo reset to 0/100 and both WPF sliders visibly synchronized). See
 ## Control And Completion Serialization
 
 Public load, play, pause, stop, seek, close, and reset operations are admitted through
-one `MediaControlOperationQueue`. Natural-end handling uses that same queue rather
+one `PlayerOperationQueue`. Natural-end handling uses that same queue rather
 than restarting the engine directly from a BASS/pipeline callback: end detection is
 queued first, host `MediaEnded` delivery is ordered next, and loop completion is
 queued afterward. `MediaControls` carries a transport-generation token so a Play,
@@ -471,13 +471,13 @@ pending completion state so stale signals cannot complete an obsolete request.
 ## Diagnostic Ownership (ENG-025, ENG-036)
 
 Components raise host-routable diagnostics through `DiagnosticRouter`; each
-`MediaControlPlayer` reports a diagnostic on `MediaDiagnostic` only if it owns it or if it
+`PlayerCore` reports a diagnostic on `MediaDiagnostic` only if it owns it or if it
 is process-wide (no owner). Engine code is owned implicitly: a player enters
 `DiagnosticRouter.EnterOwner(this)` (an `AsyncLocal`) while it builds and drives its engine, so
 the owner flows to the threads and tasks it starts; work that drops the execution context
 re-enters the owner it captured. Adapter and host code raises outside the engine (on a UI
 thread, with no owner), so it names the session instead with
-`DiagnosticRouter.Raise(IMediaControlSession? owner, ...)`; the Avalonia `MediaSurface` and its
+`DiagnosticRouter.Raise(IPlayerSession? owner, ...)`; the Avalonia `MediaSurface` and its
 shared-image path do this for the session they are attached to. Native loading and other
 process-wide work raise without an owner and reach every player. Diagnostics are delivered on
 each player's serial host-event dispatcher.
@@ -495,10 +495,10 @@ Stage 029C gives the Stage 028A WPF surfaces an event-driven visibility policy
 decided by the Stage 029A session lifecycle plus `PresentationFramePresented` as
 the positive proof of visual output — never file extensions or content flags:
 
-- Additive Core capability: `IMediaControlSession.HasVisualContent` — true when
+- Additive Core capability: `IPlayerSession.HasVisualContent` — true when
   the loaded media's content role includes a visual main (`Video`, `Cdg`,
   `Image`, or `Subtitle`) or when a resolved composition background is present
-  (`MediaControlPlayer`: content flags OR `_mediaEngine.Background != null`).
+  (`PlayerCore`: content flags OR `_mediaEngine.Background != null`).
   It arms hidden targets so presentation can restart; it never makes a show
   decision by itself.
 - `MediaSurface.AutoHide` dependency property, default `true` (standard media-player behavior).
@@ -511,7 +511,7 @@ the positive proof of visual output — never file extensions or content flags:
   surface for their inner media layer; their solid-color / canvas fallbacks are
   independent of inner-media AutoHide.
 - Internal pure `SurfaceAutoHidePolicy` (`Idle → PendingShow → Shown → Hidden`),
-  since Stage 046A in Core (`FatzBomb.MediaControl/Api/SurfaceAutoHidePolicy.cs`) behind the
+  since Stage 046A in Core (`FatzMedia.Video/Api/SurfaceAutoHidePolicy.cs`) behind the
   public `MediaSurfaceContentTracker` that every adapter uses (see "Adapter Parity" below);
   originally consumed by the WPF `MediaSurface` (the `MediaSurface.AutoHide.cs` partial) with marshaled,
   coalesced dispatcher transitions. Load only arms `PendingShow`; the surface
@@ -535,7 +535,7 @@ the positive proof of visual output — never file extensions or content flags:
   replaced item (visual-capability flag 0 or old generation) cannot reveal a new
   audio-only session.
 - The Wpf project exposes the internal policy via
-  `InternalsVisibleTo("FatzBomb.MediaControl.Tests")`; the Tests project added a
+  `InternalsVisibleTo("FatzMedia.Video.Tests")`; the Tests project added a
   Wpf reference and `SurfaceAutoHidePolicyTests` covers the policy
   deterministically. The `scripts/check-core-boundary.ps1` allow-list was updated
   for the new references. The Player host enables AutoHide by default and exposes
@@ -546,8 +546,8 @@ the positive proof of visual output — never file extensions or content flags:
 Owner direction (2026-10-26): no feature solo for one player or adapter. Logic two adapters
 would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters bind to it:
 
-- `IMediaControlSession.HasPresentation` / `HasPresentationChanged` (default members; false in
-  Audio mode, raised by `MediaControlPlayer` on the control queue after the `ModeChanged` of a
+- `IPlayerSession.HasPresentation` / `HasPresentationChanged` (default members; false in
+  Audio mode, raised by `PlayerCore` on the control queue after the `ModeChanged` of a
   switch into or out of Audio mode). A surface shows its background instead of the last frame
   while it is false (`IsPresentationSuspended` on every `MediaSurface`).
 - `MediaSurfaceContentTracker`: the 029C auto-hide rules (latch replay, stale-frame filter
@@ -615,7 +615,7 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 
 Slice 3 (`updates/046A_3`):
 
-- The test players share their view helpers in `FatzBomb.MediaControl.Player.Shared`
+- The test players share their view helpers in `FatzMedia.Video.Sample.Player.Shared`
   (`Presentation/`): the full-screen chrome controller (2.5 s auto-hide of bars and cursor), the
   process sampler, frame counter and stats line, and the second-screen screen rule over screen
   rectangles; plus the neutral renderer request (`PlayerRendererRequest`) with the GPU-first
@@ -627,7 +627,7 @@ Slice 3 (`updates/046A_3`):
   ENG-039 R1 one `PlayerSetController<TSlot>` (Player.Shared) rebuilds them on toolbar changes,
   runs full screen, F11/Escape and the stats tick, and disposes them before the window closes;
   the windows keep only creation, layout and window state.
-- The Avalonia and WinForms adapters have a thin `Player : MediaControlPlayer` facade like the WPF
+- The Avalonia and WinForms adapters have a thin `Player : PlayerCore` facade like the WPF
   one (`CreateAsync` with a platform factory, `Bitmap` load overloads); only the WPF facade has a
   default platform (Windows).
 - `scripts/check-presentation-parity.ps1` pins the facades and the shared helpers in every player.
@@ -651,7 +651,7 @@ and both-renderer smoke. The completed specification lives at
 `roadmap/complete/030A_COMPLETED_VisualTransforms.md`; the fixed operation order and
 pinned coefficients below are the exact reference implemented by every path.
 
-`IMediaControlSession` (and `MediaControlPlayer`) exposes
+`IPlayerSession` (and `PlayerCore`) exposes
 `BaseVisualTransform { get; set; }` plus a change-only `BaseVisualTransformChanged`
 event carrying previous/current `MediaValueChangedEventArgs<BaseVisualTransform>`
 (raised through `HostEventDispatcher`). `BaseVisualTransform` is a public
@@ -693,7 +693,7 @@ the base visual with identity and apply the transform exactly once to the final
 buffer, never double-applying it. `IncludeOverlays = true` with all-neutral
 color math stays byte-identical (identity bypass, no extra pass).
 
-**Software exact reference** — `FatzBomb.MediaControl.Rendering.Software`'s
+**Software exact reference** — `FatzMedia.Video.Software`'s
 `SoftwareBaseVisualTransform` mirrors the Core reference math exactly
 (unpremultiply to straight sRGB → YIQ hue rotation → Rec.709 saturation →
 TV-style contrast gain (`rgb *= Contrast`, black stays black) → brightness
@@ -768,8 +768,8 @@ straight into the session property (change-only, render-without-upload), and a
 Reset Visual command restores identity (gains `1/1/1`, hue/brightness `0`,
 contrast/saturation `1`, Include Overlays unchecked). The **Audio flyout** has
 pitch/tempo/normalize and runtime Reset Pitch on Load / Reset Tempo on Load
-checkboxes backed by additive `IMediaControlSession.ResetPitchOnMediaLoad` /
-`ResetTempoOnMediaLoad` properties (`MediaControlPlayer.LoadBehavior.cs` partial
+checkboxes backed by additive `IPlayerSession.ResetPitchOnMediaLoad` /
+`ResetTempoOnMediaLoad` properties (`PlayerCore.LoadBehavior.cs` partial
 → mutable `MediaFile` options applied per load), so the Stage 029B config flags
 are now also live session toggles. The **A/V flyout** carries Auto Play, Auto
 Hide (Stage 029C runtime toggle), the secondary/projector window toggle, video
@@ -815,7 +815,7 @@ single-analyzer-version, 256-entry bounded LRU `MediaAnalysisCache`
 (`System.Threading.Lock`, usage-ordered eviction) that treats version mismatches
 and invalid records as misses. The shared process-lifetime instance
 (`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
-container (`MediaControlServiceProvider`) and therefore survives player `Reset`.
+container (`PlayerServiceProvider`) and therefore survives player `Reset`.
 The pinned contract lives at
 `roadmap/complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md`.
 
@@ -860,7 +860,7 @@ Stage 031A's prepared-next analysis supplies first-play cache.
 ## Prepared-Next Slot (Stage 031A, implemented — pending manual smoke)
 
 Core owns a depth-one prepared-next slot; hosts own playlists and queues.
-`IMediaControlSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
+`IPlayerSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
 `AnalyzeAsync`, `PrepareNextAsync`, `ClearPreparedNext`,
 `TransitionToPreparedNextAsync`, `AutoTransitionToPreparedNext` (default off), and the
 `PreparedNextChanged` / `PreparedNextTransitioned` events. The internal
@@ -887,7 +887,7 @@ linear interpolation, `AudibleStart` for the leading zero plateau), and
 `AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The BASS
 `AudioEngine` implements the target with a dedicated `BASS_FX_VOLUME` stage, so final
 gain = envelope x channel volume attribute (user volume) x normalization gain FX.
-Fade sessions end on Open/Close/Stop (Stop restores unity). `MediaControlPlayer`
+Fade sessions end on Open/Close/Stop (Stop restores unity). `PlayerCore`
 exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
 which turns 031A transitions into fade-through transitions; waits run off the control
 queue. Overlapping two-handle crossfades are deferred. See
@@ -900,7 +900,7 @@ queue. Overlapping two-handle crossfades are deferred. See
 the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
 NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
 `IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
-`MediaControlPlayer.CurrentSourceCapabilities` expose the row. Plain http audio opens through
+`PlayerCore.CurrentSourceCapabilities` expose the row. Plain http audio opens through
 the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
 normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
@@ -913,7 +913,7 @@ decoded sound), with `NetworkTlsPolicy`, the read-ahead's buffering and the row 
 `NetworkAudioPolicy.Resolve` (014A's metadata rule). ICY titles (FFmpeg's `icy_metadata_packet`)
 and Ogg comment updates are read on the reading thread after each packet, recorded with that
 packet's time, and raised when the played position reaches them
-(`INetworkMediaControl.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
+(`INetworkPlayer.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
 https audio is refused like http audio. An `.m3u8` with no playable video plays as audio in Full
 mode. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
@@ -942,7 +942,7 @@ and the paused render (`NoWait`); a seek's waits give up when a newer seek, Paus
 queued; the soundtrack pump's waits end with its cancellation. A lone network seek settles on its
 exact preview instead of seeking again. `PipelineMediaEngine` runs the
 attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
-`INetworkMediaControl`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
+`INetworkPlayer`: `PlayerCore.Close`/`Dispose` call `CancelPendingNetworkOpen`
 before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
 from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
 whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
@@ -974,8 +974,8 @@ See `roadmap/complete/039A_COMPLETED_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 
-`FatzBomb.MediaControl.Linux` (net10.0, references Core only) supplies
-`LinuxMediaControlPlatformFactory` and the `IMediaControlPlatformServices`
+`FatzMedia.Video.Linux` (net10.0, references Core only) supplies
+`LinuxPlatformFactory` and the `IPlatformServices`
 registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
 ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
 dependency order), a kernel-wait-plus-spin precision waiter, host-configured refresh
@@ -987,7 +987,7 @@ systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 
 ## Vulkan Renderer Preview (Stage 026A, slice 1)
 
-`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core and Rendering.Text, Silk.NET.Vulkan) offers
+`FatzMedia.Video.Vulkan` (net10.0, Core and Rendering.Text, Silk.NET.Vulkan) offers
 `VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
 1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
 blit using the software renderer's placement rules, and readback. Transform and
@@ -1001,9 +1001,9 @@ See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 
 ## Avalonia Adapter (Stage 027A, slice 1)
 
-`FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
+`FatzMedia.Video.Avalonia` (net10.0, Core only) provides a composited
 `MediaSurface` that attaches one managed frame-sink surface to any
-`IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
+`IPlayerSession`, resizes it with layout bounds x render scaling, and draws the
 final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
 Since slice 5 its `Role` and `SurfaceId` let a second `MediaSurface` (or the
 `SecondaryPresentationWindow` helper, placed full screen on a chosen screen) show the same
@@ -1046,7 +1046,7 @@ The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalizati
 `AudioFilterStage`, bypass = no native stage, lifecycle per stream) are hosted by the
 `AudioEngine` through `IAudioFilterHost`. The only filter is a BASS_FX PEAKEQ
 equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
-`IMediaControlSession.Equalizer`, `EqualizerChanged`). See
+`IPlayerSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
 ## Audio Engine Seams (Stage 037A, slice 1, pending manual smoke)
@@ -1070,14 +1070,14 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
 ## FatzAudio Engine (Stage 037A, slice 2, pending manual smoke)
 
 - **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory` in
-  Core). `null`, the default, is the BASS `AudioEngine`. `MediaControlServiceProvider` always creates
+  Core). `null`, the default, is the BASS `AudioEngine`. `PlayerServiceProvider` always creates
   the BASS engine first (it initializes BASS on the configured device, which video audio and the
   soundtrack engine still need), then asks the factory; it disposes the BASS file engine (BASS stays
   initialized) and uses the factory's engine, or warns (`Bootstrap`) and keeps BASS when the factory
   throws. Audio availability is still BASS's (`IsAudioAvailable`): without BASS the player has no
   audio, whichever engine is configured. The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
   to `FatzAudioEngineFactory` in their host engine factories.
-- **Package:** `FatzBomb.MediaControl.Audio.FatzAudio` references Core and the `FatzAudio`
+- **Package:** `FatzMedia.Video.Audio` references Core and the `FatzAudio`
   package only. It implements Core's internal seams, so it is Core's one non-test
   `InternalsVisibleTo` friend (lockstep versioning); `check-core-boundary.ps1` pins that, the
   project's place in the DAG, the exact package pin, and that Core never references FatzAudio.
@@ -1122,22 +1122,22 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 ## Session Reset
 
-- `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
+- `IPlayerSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
 - Hosts call this instead of creating a new control instance when changing devices or fallback policy.
 
 ## Sidecar and Archive Background Policy
 
 - Automatic image/video sidecar backgrounds apply to every non-video, non-image playable main: audio (MP3, FLAC, etc.), MIDI/KAR/MID with or without lyrics, MOD/tracker, CDG, audio+CDG pairs, and future non-visual content.
 - Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
-- `ignoreSidecar: true` or `MediaControlPlayer.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
+- `ignoreSidecar: true` or `PlayerCore.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
 - Image main files never auto-detect a background. Their background must be explicitly supplied through a load overload.
 - Video mains reject backgrounds entirely (both auto and explicit).
 - Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, image/video entries become automatic background candidates rather than taking the main role.
 - Supported automatic archive backgrounds include MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, and standalone CDG+image/video.
 - Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
-`FatzBomb.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.
+`FatzMedia.Video.Wpf.Player` derives from Core `PlayerCore`.
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 
-`MediaSurface` accepts an `IMediaControlSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.
+`MediaSurface` accepts an `IPlayerSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.

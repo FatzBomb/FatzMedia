@@ -4,7 +4,7 @@ Owner decision 2026-11-05, from the test-player audit (what the players do by ha
 would have to repeat). Queue: after 055A unless moved.
 
 1. **`BeginScrubAsync` / `EndScrubAsync`.** `BeginScrub` and `EndScrub` are synchronous and wait for the
-   control queue (`MediaControlPlayer.cs`), against the rule that UI code uses async control APIs. The
+   control queue (`PlayerCore.cs`), against the rule that UI code uses async control APIs. The
    shared view model builds its own ordered task chain with a newest-wins target for them
    (`Player.Shared/ViewModels/PlayerViewModel.Seek.cs`, the scrub lane, about 80 lines). Core keeps begin,
    the drag seeks and end in order on the control queue; the lane goes.

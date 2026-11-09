@@ -29,7 +29,7 @@ There is **no hidden state**: every call names the object it acts on. Unlike BAS
 
 Every function returns `fa_result`. `FA_OK` (0) means success, negative values are errors. `fa_result_string()` gives a readable message. Decoding problems inside a playing stream don't fail calls; they raise an `FA_EVENT_DECODE_ERROR` event and playback continues past the bad data.
 
-In .NET, errors become a `FatzAudioException` with an `ErrorCode`.
+In .NET, errors become a `AudioException` with an `ErrorCode`.
 
 ## Versioned structs
 
@@ -72,7 +72,7 @@ In .NET none of this shows: the binding sets the sizes.
 - The **audio thread** only mixes buffers that are already prepared. It never decodes, waits for locks, allocates or does I/O.
 - **Worker threads** decode, stretch and resample each stream ahead of time into a ring buffer (about 500 ms by default), and keep a running loudness estimate of what they decode.
 - **Scan threads** (one per core, minus one) measure files' loudness in the background, in parallel chunks, for [normalization](features/normalization.md). They start on first use.
-- Event callbacks run on the engine's **event thread**, never on the audio thread, so they may call any FatzAudio function. DSP callbacks (`fa_stream_add_dsp`) run where the stream is decoded, normally an engine worker, never on the audio thread.
+- Event callbacks run on the engine's **event thread**, never on the audio thread, so they may call any FatzMedia.Audio function. DSP callbacks (`fa_stream_add_dsp`) run where the stream is decoded, normally an engine worker, never on the audio thread.
 - All API functions are thread-safe unless their documentation says otherwise.
 
 Details, including the buffer length option and transport timing: [playback.md](features/playback.md). Event delivery: [events.md](features/events.md). Loudness scans: [normalization.md](features/normalization.md).

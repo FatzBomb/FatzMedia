@@ -2,7 +2,7 @@
 
 Every player reports what it is doing and what went wrong through one event, `MediaDiagnostic`. It carries a severity level, a category that names the subsystem, a message, and optionally a source path and an exception. This page explains what is reported, how to log it, and how reports are attributed when you run several players in one process.
 
-Use diagnostics to find out why a file did not play, which decoder path was chosen, which native library is missing, or why a device was lost. Use <xref:FatzBomb.MediaControl.MediaControlPlayer.MediaError> when you need to react in your UI to a failure; it carries a typed error code.
+Use diagnostics to find out why a file did not play, which decoder path was chosen, which native library is missing, or why a device was lost. Use <xref:FatzMedia.Video.PlayerCore.MediaError> when you need to react in your UI to a failure; it carries a typed error code.
 
 ## The event
 
@@ -11,11 +11,11 @@ player.MediaDiagnostic += (_, e) =>
     Console.WriteLine($"[{e.Level}] {e.Category}: {e.Message}");
 ```
 
-<xref:FatzBomb.MediaControl.MediaDiagnosticEventArgs> has these properties:
+<xref:FatzMedia.Video.MediaDiagnosticEventArgs> has these properties:
 
 | Property | Meaning |
 | --- | --- |
-| `Level` | A <xref:FatzBomb.MediaControl.MediaDiagnosticLevel>: `Info`, `Warning` or `Error`. |
+| `Level` | A <xref:FatzMedia.Video.MediaDiagnosticLevel>: `Info`, `Warning` or `Error`. |
 | `Category` | The subsystem that produced it, as a string such as `FFmpeg` or `Composition`. See [Categories](#categories). |
 | `Message` | A readable description. |
 | `SourcePath` | The file or identifier concerned, when there is one. |
@@ -29,7 +29,7 @@ player.MediaDiagnostic += (_, e) =>
 | `Warning` | A non-fatal problem that may reduce quality or completeness. | A missing optional BASS add-on, a failed equalizer update, a device change, a handler that threw. |
 | `Error` | A subsystem could not do what was asked. | A file that failed to load, a missing required FFmpeg library, a renderer that could not start. |
 
-Diagnostics are raised in Debug and Release builds. They are always on: the `EnableLogging`, `EnablePerformanceLogging` and `EnableVerboseLogging` switches in <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration> add extra trace output for debugging and measurements, but do not turn the event on or off.
+Diagnostics are raised in Debug and Release builds. They are always on: the `EnableLogging`, `EnablePerformanceLogging` and `EnableVerboseLogging` switches in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration> add extra trace output for debugging and measurements, but do not turn the event on or off.
 
 ### Threads
 
@@ -46,11 +46,11 @@ public sealed class PlayerLog : IDisposable
 {
     private readonly object _gate = new();
     private readonly StreamWriter _writer;
-    private readonly MediaControlPlayer _player;
+    private readonly PlayerCore _player;
     private readonly string _name;
     private readonly MediaDiagnosticLevel _minimum;
 
-    public PlayerLog(MediaControlPlayer player, string name, string path,
+    public PlayerLog(PlayerCore player, string name, string path,
         MediaDiagnosticLevel minimum = MediaDiagnosticLevel.Info)
     {
         _player = player;
@@ -101,7 +101,7 @@ The category is a free-form string, and new ones appear as the engine grows, so 
 | Network | `Network` | Waiting for the network, audio that did not open, retries. |
 | Compositing and rendering | `Composition`, `Presentation`, `D3D11`, `D3D11.DeviceLost`, `D3D11.Hdr`, `D3D11.HdrOutput`, `Vulkan`, `Subtitle`, `CdgEngine` | Device creation, present failures, HDR output, subtitle rasterization. |
 | GPU device loss | `DeviceRecovery`, `D3D11.DeviceLost`, `Vulkan.DeviceLost`, `Software.DeviceLost`, `Decoder.DeviceLost` | Device loss and recovery. See [GPU device loss](../presentation/gpu-device-loss.md). |
-| Session | `MediaFile`, `MediaControls`, `MediaControlPlayer`, `MediaControlOperationQueue`, `PreparedNext`, `PipelineMediaEngine` | Load failures, reset and dispose problems, prepared-next analysis and transitions. |
+| Session | `MediaFile`, `MediaControls`, `PlayerCore`, `PlayerOperationQueue`, `PreparedNext`, `PipelineMediaEngine` | Load failures, reset and dispose problems, prepared-next analysis and transitions. |
 | Host events | `HostEvent` | One of your event handlers threw. |
 | Adapter surfaces | `Wpf.MediaSurface`, `Avalonia.MediaSurface`, `WinForms.MediaSurface` | Which presentation path a surface uses, and a Warning when the player refuses a surface. |
 
@@ -129,7 +129,7 @@ DiagnosticRouter.Raise(
     sourcePath: @"C:\music\bad.mp3");
 ```
 
-The overload without a player, `DiagnosticRouter.Raise(level, category, message)`, raises a process-wide diagnostic that every player reports. <xref:FatzBomb.MediaControl.DiagnosticRouter> is static and has no event of its own. Subscribe to `MediaDiagnostic` on each player.
+The overload without a player, `DiagnosticRouter.Raise(level, category, message)`, raises a process-wide diagnostic that every player reports. <xref:FatzMedia.Video.DiagnosticRouter> is static and has no event of its own. Subscribe to `MediaDiagnostic` on each player.
 
 Use a distinctive category (for example your application's name) so you can filter your messages from the engine's.
 
@@ -139,7 +139,7 @@ Use a distinctive category (for example your application's name) so you can filt
 | --- | --- | --- |
 | Purpose | A log stream | Reacting to a failure |
 | Volume | Many messages, including informational ones | Few: high-value failures |
-| Type | Level, category string, message | A typed <xref:FatzBomb.MediaControl.MediaErrorCode> (`FileNotFound`, `NativeLibraryMissing`, `UnsupportedFormat`, `OpenFailed`, `DecodeFailed` and others) |
+| Type | Level, category string, message | A typed <xref:FatzMedia.Video.MediaErrorCode> (`FileNotFound`, `NativeLibraryMissing`, `UnsupportedFormat`, `OpenFailed`, `DecodeFailed` and others) |
 | Thread | The player's diagnostic thread | The control queue |
 
 A load that fails often produces both: a `MediaFile` Error diagnostic that names the file, and a `MediaError` with a code. Show the user the `MediaError` message and write the diagnostics to your log.

@@ -9,7 +9,7 @@ Checklists to get sound out of an app on a phone. The library is tested in an An
 3. Manifest: `INTERNET` for web streams, `RECORD_AUDIO` for recording, and request the microphone permission at run time before opening input.
 4. Android 7 to 11 and `https://`: Java and Kotlin apps call `fa_android_set_java_vm` once ([web streams](../features/web-streams.md#android)).
 5. MIDI: ship a soundfont (the system has none) and set it on the engine ([MIDI](../features/midi.md)).
-6. Play a file from the app's own storage with the ordinary open calls; use a content URI by opening it in your app and handing FatzAudio read callbacks (`fa_stream_open_io`).
+6. Play a file from the app's own storage with the ordinary open calls; use a content URI by opening it in your app and handing FatzMedia.Audio read callbacks (`fa_stream_open_io`).
 
 Minimum Android is 7.0 (API 24).
 

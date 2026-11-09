@@ -4,7 +4,7 @@ Volume, pitch and tempo are live controls on the player's effects object. They a
 
 ## The effects object
 
-`player.Effects` is a <xref:FatzBomb.MediaControl.Controllers.MediaEffects>:
+`player.Effects` is a <xref:FatzMedia.Video.Controllers.MediaEffects>:
 
 | Property | Type | Range | Default | Meaning |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Setters take effect immediately and do not queue behind other control calls, so 
 There is no separate mute property. Set `Volume` to 0 and remember the previous value in your own code:
 
 ```csharp
-public sealed class MuteButton(MediaControlPlayer player)
+public sealed class MuteButton(PlayerCore player)
 {
     private double _volumeBeforeMute = 1.0;
 

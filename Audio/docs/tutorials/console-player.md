@@ -7,7 +7,7 @@ You will play any file from the command line, show the position, and exit when t
 ```bash
 dotnet new console -o PlayFile
 cd PlayFile
-dotnet add package FatzAudio
+dotnet add package FatzMedia.Audio
 ```
 
 See [Getting started](../getting-started.md) for the NuGet feed.
@@ -15,7 +15,7 @@ See [Getting started](../getting-started.md) for the NuGet feed.
 ## 2. Play
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 using var engine = AudioEngine.Create();          // one engine per app
 using var output = engine.OpenOutput();           // the system default device, followed when the user changes it
@@ -44,7 +44,7 @@ while (!ended.Wait(250))
     Console.Write($"\r{song.Position:mm\\:ss\\.f} / {info.Duration:mm\\:ss\\.f}   ");
 ```
 
-Wrap the whole thing in `try { ... } catch (FatzAudioException ex) { ... }` and print `ex.ErrorCode`. A missing file is `NotFound`; a file FatzAudio cannot play is `UnsupportedFormat` ([troubleshooting](../troubleshooting.md)).
+Wrap the whole thing in `try { ... } catch (AudioException ex) { ... }` and print `ex.ErrorCode`. A missing file is `NotFound`; a file FatzMedia.Audio cannot play is `UnsupportedFormat` ([troubleshooting](../troubleshooting.md)).
 
 ## 5. Try it without sound hardware
 

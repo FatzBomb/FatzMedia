@@ -1,6 +1,6 @@
 # Equalizer
 
-The player has a built-in parametric equalizer. You describe it with an <xref:FatzBomb.MediaControl.AudioEqualizerSettings> value (on or off, plus up to 16 bands) and assign it to `player.Equalizer`. It applies live to the playing audio (local files and network streams), to the soundtrack of video files, and to every item loaded afterwards. A ready-made 10-band graphic equalizer is one method call.
+The player has a built-in parametric equalizer. You describe it with an <xref:FatzMedia.Video.AudioEqualizerSettings> value (on or off, plus up to 16 bands) and assign it to `player.Equalizer`. It applies live to the playing audio (local files and network streams), to the soundtrack of video files, and to every item loaded afterwards. A ready-made 10-band graphic equalizer is one method call.
 
 The equalizer is off by default. While it is off, or while every band is at 0 dB, no audio filter is attached and the output is bit-identical to having no equalizer.
 
@@ -20,7 +20,7 @@ The center frequencies are available as `AudioEqualizerSettings.Graphic10BandCen
 
 ## Custom bands
 
-For a parametric setup, create <xref:FatzBomb.MediaControl.AudioEqualizerBand> values yourself:
+For a parametric setup, create <xref:FatzMedia.Video.AudioEqualizerBand> values yourself:
 
 ```csharp
 player.Equalizer = new AudioEqualizerSettings

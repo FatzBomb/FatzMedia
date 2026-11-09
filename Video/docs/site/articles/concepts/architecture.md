@@ -1,6 +1,6 @@
 # Architecture
 
-FatzBomb.MediaControl is split into four kinds of package: a UI-independent Core, renderers, platform packages and UI adapters. Your application picks one of each (apart from Core) and wires them together at start-up. This page explains who owns what, so you know which package to look in for a feature and which choices you have.
+FatzMedia.Video is split into four kinds of package: a UI-independent Core, renderers, platform packages and UI adapters. Your application picks one of each (apart from Core) and wires them together at start-up. This page explains who owns what, so you know which package to look in for a feature and which choices you have.
 
 ```mermaid
 flowchart TB
@@ -13,8 +13,8 @@ flowchart TB
         AdapterPlayer["Player"]
     end
 
-    subgraph Core["FatzBomb.MediaControl (Core)"]
-        Player["MediaControlPlayer<br/>IMediaControlSession"]
+    subgraph Core["FatzMedia.Video (Core)"]
+        Player["PlayerCore<br/>IPlayerSession"]
         Engine["Playback, timing, CD+G,<br/>subtitles, backgrounds, modes"]
         Compose["Composition and<br/>target fan-out"]
     end
@@ -28,7 +28,7 @@ flowchart TB
     AdapterPlayer --> Player
     Surface -- "attaches surface" --> Player
     Player --> Engine --> Compose
-    Platform -. "IMediaControlPlatformFactory" .-> Player
+    Platform -. "IPlatformFactory" .-> Player
     Renderer -. "IMediaPresentationCoordinatorFactory" .-> Platform
     Platform --> Native
     Compose --> Renderer
@@ -39,7 +39,7 @@ flowchart TB
 
 ### Core: the engine
 
-`FatzBomb.MediaControl` owns everything that is the same on every platform and UI:
+`FatzMedia.Video` owns everything that is the same on every platform and UI:
 
 - playback, the playback clock and A/V synchronization,
 - the player state machine and the control queue that serializes your calls,
@@ -49,7 +49,7 @@ flowchart TB
 - fan-out of the composed picture to every attached surface (a main window and a second screen),
 - the contracts that renderers and platforms implement.
 
-Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzBomb.MediaControl.MediaControlPlayer>, which implements <xref:FatzBomb.MediaControl.IMediaControlSession>.
+Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzMedia.Video.PlayerCore>, which implements <xref:FatzMedia.Video.IPlayerSession>.
 
 ### Renderers: the final picture
 
@@ -57,31 +57,31 @@ A renderer takes the composed frame description from Core and turns it into pixe
 
 | Renderer | Package | Output | Notes |
 | --- | --- | --- | --- |
-| Direct3D11 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Swap chain in a native window, exported GPU images, or frames for a frame sink | Subtitle and lyric text through DirectWrite. Hardware decoding with D3D11VA. HDR output. Windows only. |
-| Vulkan | `FatzBomb.MediaControl.Rendering.Vulkan` | Frames for a frame sink, or exported GPU images | GPU decoding through Vulkan Video where the driver supports it. Subtitle and lyric text through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`). Windows and Linux. Preview. |
-| Software | `FatzBomb.MediaControl.Rendering.Software` | Frames for a frame sink | CPU composition, deterministic output, no GPU or window. Subtitle and lyric text through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`). Any platform. |
+| Direct3D11 | `FatzMedia.Video.Direct3D11` | Swap chain in a native window, exported GPU images, or frames for a frame sink | Subtitle and lyric text through DirectWrite. Hardware decoding with D3D11VA. HDR output. Windows only. |
+| Vulkan | `FatzMedia.Video.Vulkan` | Frames for a frame sink, or exported GPU images | GPU decoding through Vulkan Video where the driver supports it. Subtitle and lyric text through SkiaSharp (`FatzMedia.Video.Text`). Windows and Linux. Preview. |
+| Software | `FatzMedia.Video.Software` | Frames for a frame sink | CPU composition, deterministic output, no GPU or window. Subtitle and lyric text through SkiaSharp (`FatzMedia.Video.Text`). Any platform. |
 
-You select a renderer by passing its factory (an <xref:FatzBomb.MediaControl.Controllers.IMediaPresentationCoordinatorFactory>) to the platform factory. <xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory> takes several candidates and uses the first that reports itself available, for example Direct3D11, then Software.
+You select a renderer by passing its factory (an <xref:FatzMedia.Video.Controllers.IMediaPresentationCoordinatorFactory>) to the platform factory. <xref:FatzMedia.Video.Controllers.FallbackPresentationCoordinatorFactory> takes several candidates and uses the first that reports itself available, for example Direct3D11, then Software.
 
 ### Platform packages: the operating system
 
-`FatzBomb.MediaControl.Windows` and `FatzBomb.MediaControl.Linux` own what depends on the OS: finding and loading the BASS and FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzBomb.MediaControl.IMediaControlPlatformFactory> implementation (<xref:FatzBomb.MediaControl.WindowsMediaControlPlatformFactory>, <xref:FatzBomb.MediaControl.Linux.LinuxMediaControlPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
+`FatzMedia.Video.Windows` and `FatzMedia.Video.Linux` own what depends on the OS: finding and loading the BASS and FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzMedia.Video.IPlatformFactory> implementation (<xref:FatzMedia.Video.WindowsPlatformFactory>, <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
 
 ```csharp
-var platform = new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
+var platform = new WindowsPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 ```
 
-`FatzBomb.MediaControl.Windows.Direct3D11` is a convenience: <xref:FatzBomb.MediaControl.WindowsDirect3D11MediaControlPlatformFactory> is a Windows platform factory that already contains the Direct3D11 renderer.
+`FatzMedia.Video.Windows.Direct3D11` is a convenience: <xref:FatzMedia.Video.WindowsDirect3D11PlatformFactory> is a Windows platform factory that already contains the Direct3D11 renderer.
 
 ### Adapters: your UI framework
 
 The WPF, WinForms and Avalonia adapters connect Core to a UI framework. They own the surface control (`MediaSurface`: size, DPI, window handle or bitmap, input), the second-screen window, the ready-made `KaraokeSurface` and `BackgroundSurface` controls, and conversion of framework images to engine images. They own no media logic, no renderer policy and no timing.
 
-Each adapter also has a `Player` class that derives from `MediaControlPlayer`. It adds only an asynchronous factory (`Player.CreateAsync`) and `Load` overloads that accept the framework's image type (`ImageSource` for WPF, `Bitmap` for Avalonia and WinForms). Everything else is the Core API. See [Player and session](player-and-session.md).
+Each adapter also has a `Player` class that derives from `PlayerCore`. It adds only an asynchronous factory (`Player.CreateAsync`) and `Load` overloads that accept the framework's image type (`ImageSource` for WPF, `Bitmap` for Avalonia and WinForms). Everything else is the Core API. See [Player and session](player-and-session.md).
 
 ## How frames reach the screen
 
-Core composes; the renderer renders; the adapter's surface shows. There are three ways a rendered frame reaches the screen, and a surface reports which one it uses through `MediaSurface.PresentationPath` (<xref:FatzBomb.MediaControl.MediaSurfacePresentationPath>):
+Core composes; the renderer renders; the adapter's surface shows. There are three ways a rendered frame reaches the screen, and a surface reports which one it uses through `MediaSurface.PresentationPath` (<xref:FatzMedia.Video.MediaSurfacePresentationPath>):
 
 | Path | What happens | Used by |
 | --- | --- | --- |
@@ -99,13 +99,13 @@ One player can feed several surfaces: the control in your main window and, for e
 
 | Package | Depends on |
 | --- | --- |
-| `FatzBomb.MediaControl.Windows` | Core |
-| `FatzBomb.MediaControl.Linux` | Core |
-| `FatzBomb.MediaControl.Rendering.Direct3D11`, `.Text` | Core |
-| `FatzBomb.MediaControl.Rendering.Software`, `.Vulkan` | Core, Rendering.Text |
-| `FatzBomb.MediaControl.Windows.Direct3D11` | Windows, Rendering.Direct3D11 |
-| `FatzBomb.MediaControl.Wpf` | Windows (and through it, Core) |
-| `FatzBomb.MediaControl.WinForms`, `.Avalonia` | Core |
+| `FatzMedia.Video.Windows` | Core |
+| `FatzMedia.Video.Linux` | Core |
+| `FatzMedia.Video.Direct3D11`, `.Text` | Core |
+| `FatzMedia.Video.Software`, `.Vulkan` | Core, Rendering.Text |
+| `FatzMedia.Video.Windows.Direct3D11` | Windows, Rendering.Direct3D11 |
+| `FatzMedia.Video.Wpf` | Windows (and through it, Core) |
+| `FatzMedia.Video.WinForms`, `.Avalonia` | Core |
 
 Adapters never reference renderers, and renderers never reference adapters or platform packages. The only package that combines two others is `Windows.Direct3D11`. This is why the host chooses the combination: the adapter does not know which renderer you use, and a renderer does not know which UI shows its frames.
 
@@ -118,7 +118,7 @@ The consequences for you:
 
 ## Audio
 
-Audio output uses BASS behind an engine interface (<xref:FatzBomb.MediaControl.Core.Abstractions.IAudioEngine>). Audio formats BASS has no add-on for fall back to FFmpeg decoding, which is played through the same BASS chain. Treat BASS as an implementation detail of the audio engine: the player API does not expose BASS types.
+Audio output uses BASS behind an engine interface (<xref:FatzMedia.Video.Core.Abstractions.IAudioEngine>). Audio formats BASS has no add-on for fall back to FFmpeg decoding, which is played through the same BASS chain. Treat BASS as an implementation detail of the audio engine: the player API does not expose BASS types.
 
 ## What is not in scope
 

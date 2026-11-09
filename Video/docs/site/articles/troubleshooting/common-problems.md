@@ -63,7 +63,7 @@ Audio is unavailable: the BASS libraries did not load. Video plays without sound
 Typical causes:
 
 - **The files are not in a searched folder.** The player searches the folders you pass, then the defaults (`native` and `runtimes/win-x64/native` under the application folder). On Windows the search includes subfolders. On Linux it searches your paths, then the application folder, `native/` and `runtimes/linux-<arch>/native/`, without subfolders. `NativeDependencies.SearchPaths` shows exactly where it looked.
-- **A path you passed does not exist.** The `Bootstrap` category reports `Specified path does not exist: '<path>'`, and a missing directory passed to `MediaControlPlayer` raises `DirectoryNotFoundException` before native initialization.
+- **A path you passed does not exist.** The `Bootstrap` category reports `Specified path does not exist: '<path>'`, and a missing directory passed to `PlayerCore` raises `DirectoryNotFoundException` before native initialization.
 - **A different FFmpeg version.** The library needs FFmpeg 9.0.x shared libraries: `avcodec-63.dll`, `avdevice-63.dll`, `avfilter-12.dll`, `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll` and `swscale-10.dll`. Older DLLs do not load. Static executables are not enough.
 - **The FFmpeg files are split across folders.** The log says `FFmpeg DLLs are split across folders; all seven must be in one folder.`
 - **Wrong architecture.** The Windows build is x64. A 32-bit DLL, or a build for another CPU, fails to load.

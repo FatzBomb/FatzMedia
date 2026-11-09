@@ -20,7 +20,7 @@ There are two ways to make a control call:
 
 | Call | Blocks? |
 | --- | --- |
-| `new Player(...)` / `new MediaControlPlayer(...)` | Yes: loads the native libraries. Use `Player.CreateAsync` in UI code. |
+| `new Player(...)` / `new PlayerCore(...)` | Yes: loads the native libraries. Use `Player.CreateAsync` in UI code. |
 | `Dispose()` | Yes: cancels loads, waits up to about 2 s for queued operations, then frees the engine. Run it off the UI thread. |
 | `Reset(configuration, paths)` | Yes: waits up to 5 s; returns `false` (nothing changed) if the player was too busy. |
 | `Load`, `Play`, `Pause`, `Stop`, `Seek`, `Close`, `BeginScrub`, `EndScrub` | Yes, until their turn on the queue and while they run. |

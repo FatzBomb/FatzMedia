@@ -1,7 +1,7 @@
 ---
 _layout: landing
 ---
-# FatzBomb.MediaControl
+# FatzMedia.Video
 
 A .NET 10 media engine for karaoke and video players: audio, video, CD+G and MIDI karaoke,
 subtitles and multi-screen output, with ready-made surfaces for WPF, Avalonia and WinForms.
@@ -14,4 +14,4 @@ subtitles and multi-screen output, with ready-made surfaces for WPF, Avalonia an
 | [Concepts](articles/concepts/architecture.md) | How the player, renderers, platforms and surfaces fit together. |
 | [Karaoke](articles/karaoke/overview.md) | CD+G, MIDI/KAR lyrics, backgrounds and the karaoke surfaces. |
 | [Troubleshooting](articles/troubleshooting/common-problems.md) | Black video, no sound, missing libraries and other common problems. |
-| [API reference](api/FatzBomb.MediaControl.yml) | Every public type, generated from the source. |
+| [API reference](api/FatzMedia.Video.yml) | Every public type, generated from the source. |

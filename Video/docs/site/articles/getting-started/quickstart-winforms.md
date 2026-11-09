@@ -1,6 +1,6 @@
 # Quickstart for WinForms
 
-This quickstart builds a small WinForms window that plays a file: it creates the player without blocking the UI, shows the picture in a <xref:FatzBomb.MediaControl.WinForms.MediaSurface>, loads and plays a file you choose, and disposes everything when the form closes. It uses the Direct3D11 renderer.
+This quickstart builds a small WinForms window that plays a file: it creates the player without blocking the UI, shows the picture in a <xref:FatzMedia.Video.WinForms.MediaSurface>, loads and plays a file you choose, and disposes everything when the form closes. It uses the Direct3D11 renderer.
 
 ## 1. Create the project
 
@@ -15,8 +15,8 @@ Create a WinForms app targeting `net10.0-windows7.0` and x64, and add the packag
 </PropertyGroup>
 
 <ItemGroup>
-  <PackageReference Include="FatzBomb.MediaControl.WinForms" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.WinForms" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup>
@@ -45,9 +45,9 @@ internal static class Program
 ## 3. The form
 
 ```csharp
-using FatzBomb.MediaControl;
-using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.WinForms;
+using FatzMedia.Video;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.WinForms;
 
 namespace Quickstart;
 
@@ -87,7 +87,7 @@ public sealed class MainForm : Form
             _player = await Player.CreateAsync(
                 MediaPlayerConfiguration.Auto,
                 WindowsNativeLibraryPaths.GetDefaultSearchPaths(),
-                new WindowsDirect3D11MediaControlPlatformFactory());
+                new WindowsDirect3D11PlatformFactory());
         }
         catch (Exception ex)
         {
@@ -145,7 +145,7 @@ public sealed class MainForm : Form
 
 ## What the code does
 
-- **Create.** <xref:FatzBomb.MediaControl.WinForms.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. The WinForms adapter has no default platform factory, so you pass one: here the Windows services paired with the Direct3D11 renderer.
+- **Create.** <xref:FatzMedia.Video.WinForms.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. The WinForms adapter has no default platform factory, so you pass one: here the Windows services paired with the Direct3D11 renderer.
 - **Attach.** Setting `_surface.Player` attaches the surface. Its default is a native child window that the renderer draws into. If the renderer cannot present into a window (the Software renderer, for example), the surface switches to a frame sink and draws the frames itself. `PresentationPath` reports which one is in use.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads, so the handlers use `BeginInvoke`. See [Threading and events](../concepts/threading-and-events.md).
 - **Load and play.** `LoadAsync` returns `false` if the file could not be opened. `OpenFileDialogFilter` is an Open dialog filter built from the formats the loaded libraries support.
@@ -156,6 +156,6 @@ public sealed class MainForm : Form
 
 ## Next
 
-- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzBomb.MediaControl.WinForms.SecondaryPresentationWindow>.
+- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzMedia.Video.WinForms.SecondaryPresentationWindow>.
 - Ready-made karaoke and background controls: [Karaoke surface](../lightweight-surfaces/karaoke-surface.md) and [Background surface](../lightweight-surfaces/background-surface.md).
 - The player and its session: [Player and session](../concepts/player-and-session.md).

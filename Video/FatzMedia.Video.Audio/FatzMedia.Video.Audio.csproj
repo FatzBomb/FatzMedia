@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <!-- NuGet metadata. Pack explicitly at release time (dotnet pack -c Release). -->
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Audio</PackageId>
+    <AssemblyName>FatzMedia.Video.Audio</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Audio</RootNamespace>
+    <Description>Opt-in FatzAudio audio engine for FatzMedia.Video (stage 037A): plays audio files and archive entries through FatzAudio instead of BASS, selected with MediaPlayerConfiguration.AudioEngineFactory.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+    <!-- FatzMedia.Audio from Audio\ in this repo (packs as a dependency on the same-version package).
+         Its native library comes from Audio's CMake build: FatzAudioNativeDir, default
+         Audio\build\bin\Release (docs/NATIVE_DEPENDENCIES.md). -->
+    <ProjectReference Include="..\..\Audio\bindings\dotnet\src\FatzMedia.Audio\FatzMedia.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzMedia.Video.Linux.Tests" />
+  </ItemGroup>
+
+</Project>

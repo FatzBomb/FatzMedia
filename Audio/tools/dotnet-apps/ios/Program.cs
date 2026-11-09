@@ -1,4 +1,4 @@
-using FatzAudio.AppChecks;
+using FatzMedia.Audio.AppChecks;
 using Foundation;
 using UIKit;
 

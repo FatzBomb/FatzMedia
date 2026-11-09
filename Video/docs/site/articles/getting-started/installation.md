@@ -27,23 +27,23 @@ The packages are built in lock step, so use the same version for all of them. Th
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="FatzBomb.MediaControl.Wpf" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Wpf" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 ```
 
-`FatzBomb.MediaControl.Wpf` brings in the Windows package and Core. It does not choose a renderer. `FatzBomb.MediaControl.Windows.Direct3D11` adds the Direct3D11 renderer and the factory that combines it with the Windows services.
+`FatzMedia.Video.Wpf` brings in the Windows package and Core. It does not choose a renderer. `FatzMedia.Video.Windows.Direct3D11` adds the Direct3D11 renderer and the factory that combines it with the Windows services.
 
 ### WinForms
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="FatzBomb.MediaControl.WinForms" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.WinForms" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 ```
 
-`FatzBomb.MediaControl.WinForms` depends on Core only, so the Windows platform package comes from the second reference.
+`FatzMedia.Video.WinForms` depends on Core only, so the Windows platform package comes from the second reference.
 
 ### Avalonia
 
@@ -52,27 +52,27 @@ Avalonia hosts pick the platform package and the renderer themselves:
 ```xml
 <ItemGroup>
   <PackageReference Include="Avalonia" Version="12.1.4" />
-  <PackageReference Include="FatzBomb.MediaControl.Avalonia" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Rendering.Software" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Avalonia" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Software" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' == 'windows'">
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
-  <PackageReference Include="FatzBomb.MediaControl.Linux" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Linux" Version="0.1.0-alpha" />
 </ItemGroup>
 ```
 
-Add `FatzBomb.MediaControl.Rendering.Vulkan` if you want the Vulkan renderer. The Software and Vulkan renderers bring `FatzBomb.MediaControl.Rendering.Text` (their subtitle and lyric text rasterizer) and SkiaSharp 3.119.4, the version Avalonia 12.1.4 uses, with its native library; you do not reference them yourself. The Windows bundle depends on `FatzBomb.MediaControl.Windows`, so you do not list it separately. For a Windows build that uses only the Software or Vulkan renderer, reference `FatzBomb.MediaControl.Windows` instead and skip the Direct3D11 renderer.
+Add `FatzMedia.Video.Vulkan` if you want the Vulkan renderer. The Software and Vulkan renderers bring `FatzMedia.Video.Text` (their subtitle and lyric text rasterizer) and SkiaSharp 3.119.4, the version Avalonia 12.1.4 uses, with its native library; you do not reference them yourself. The Windows bundle depends on `FatzMedia.Video.Windows`, so you do not list it separately. For a Windows build that uses only the Software or Vulkan renderer, reference `FatzMedia.Video.Windows` instead and skip the Direct3D11 renderer.
 
 > [!NOTE]
 > The Avalonia adapter targets `net10.0` and references Avalonia 12. Your application must use a compatible Avalonia version.
 
 ### Core only
 
-A host without a UI (an audio-only service, a test) references `FatzBomb.MediaControl` and one platform package (`FatzBomb.MediaControl.Windows` or `FatzBomb.MediaControl.Linux`) and creates <xref:FatzBomb.MediaControl.MediaControlPlayer> directly. A player in <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> `Audio` needs no renderer at all, but the platform factory constructors still take one, so pass the Software renderer's factory.
+A host without a UI (an audio-only service, a test) references `FatzMedia.Video` and one platform package (`FatzMedia.Video.Windows` or `FatzMedia.Video.Linux`) and creates <xref:FatzMedia.Video.PlayerCore> directly. A player in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> `Audio` needs no renderer at all, but the platform factory constructors still take one, so pass the Software renderer's factory.
 
 ## Project references instead of packages
 
@@ -93,6 +93,6 @@ On Linux use `native\**\*.so*` for the shared libraries. SkiaSharp's native libr
 
 ## Check that it works
 
-After the first player is created, read <xref:FatzBomb.MediaControl.MediaControlPlayer.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a missing BASS library only disables audio. See [Native dependencies](native-dependencies.md#startup-report).
+After the first player is created, read <xref:FatzMedia.Video.PlayerCore.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a missing BASS library only disables audio. See [Native dependencies](native-dependencies.md#startup-report).
 
 Then follow a quickstart: [WPF](quickstart-wpf.md), [Avalonia](quickstart-avalonia.md) or [WinForms](quickstart-winforms.md).

@@ -12,11 +12,11 @@ foreach (var path in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDir
         var tags = Tags.Read(path, TagReadOptions.NoPictures);   // no engine needed; NoPictures skips cover art
         Console.WriteLine($"{tags.Artist} - {tags.Title} ({tags.Album}), {tags.Duration}");
     }
-    catch (FatzAudioException ex) { Console.Error.WriteLine($"{path}: {ex.ErrorCode}"); }
+    catch (AudioException ex) { Console.Error.WriteLine($"{path}: {ex.ErrorCode}"); }
 }
 ```
 
-Anything FatzAudio cannot read as audio throws `UnsupportedFormat`; skip it. Details: [tags](../features/tags.md).
+Anything FatzMedia.Audio cannot read as audio throws `UnsupportedFormat`; skip it. Details: [tags](../features/tags.md).
 
 ## 2. Loudness for normalization
 

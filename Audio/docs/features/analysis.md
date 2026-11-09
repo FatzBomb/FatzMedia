@@ -366,7 +366,7 @@ When halving, the first beat may now sit between two beats: add one beat of the 
 
 ## Exact grids from MIDI files and tracker modules
 
-A MIDI file holds its tempo changes and time signature, and a tracker module holds its speed, tempo and rows per beat. For both, FatzAudio reads the grid from the file instead of listening for it. It is flagged `FA_GRID_EXACT`, has confidence 1, and is never folded into the preferred tempo range.
+A MIDI file holds its tempo changes and time signature, and a tracker module holds its speed, tempo and rows per beat. For both, FatzMedia.Audio reads the grid from the file instead of listening for it. It is flagged `FA_GRID_EXACT`, has confidence 1, and is never folded into the preferred tempo range.
 
 - **Tempo changes are segments.** A song that changes tempo gets one segment per tempo; `bpm` is the one that lasts longest, and beat numbers carry on across the changes.
 - **Bars** are known for MIDI files with one time signature (`FA_GRID_BARS`, with `beats_per_bar` from the signature and `bar_offset` 0). Modules have no time signature, so their grids say 4 and 0 without the flag.
@@ -439,7 +439,7 @@ Without a cache directory every call measures again. For a library, set one: a r
 
 ## How it works
 
-All of it is written for FatzAudio from published methods; no analysis library is built in.
+All of it is written for FatzMedia.Audio from published methods; no analysis library is built in.
 
 **Tempo and beats** (`src/beat.c`):
 

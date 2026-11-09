@@ -1,13 +1,13 @@
 using Android.App;
 using Android.OS;
 using Android.Util;
-using FatzAudio.AppChecks;
+using FatzMedia.Audio.AppChecks;
 
-namespace FatzAudio.AndroidApp;
+namespace FatzMedia.Audio.AndroidApp;
 
 // Runs the checks on a worker thread when started (am start --es file ... --es url ...) and logs the
 // result to logcat under "FatzAudioApp".
-[Activity(Name = "net.fatzaudio.ciapp.MainActivity", Label = "FatzAudio CI", MainLauncher = true, Exported = true)]
+[Activity(Name = "net.fatzaudio.ciapp.MainActivity", Label = "FatzMedia.Audio CI", MainLauncher = true, Exported = true)]
 public class MainActivity : Activity
 {
     private const string Tag = "FatzAudioApp";

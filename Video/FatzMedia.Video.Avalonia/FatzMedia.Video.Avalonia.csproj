@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Avalonia</PackageId>
+    <AssemblyName>FatzMedia.Video.Avalonia</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Avalonia</RootNamespace>
+    <Description>Avalonia adapter for FatzMedia.Video: a composited MediaSurface over the neutral frame-sink contract, a second-screen window, the karaoke and background controls, and Avalonia bitmap conversions. Owns no rendering or media logic.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzMedia.Video.Avalonia.Tests" />
+  </ItemGroup>
+
+</Project>

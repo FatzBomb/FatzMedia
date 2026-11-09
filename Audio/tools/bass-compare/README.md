@@ -37,7 +37,7 @@ cmake -S . -B build
 cmake --build build --config Release
 pip install numpy scipy
 python tools\bass-compare\run.py --fa build\bin\Release\fa_bench.exe ^
-    --bass build\bin\Release\bass_bench.exe --bass-dir D:\development\FatzBomb\FatzAudio\legacy --out bass-results
+    --bass build\bin\Release\bass_bench.exe --bass-dir D:\development\FatzBomb\FatzMedia\Audio\legacy --out bass-results
 ```
 
 `ffmpeg.exe` must be on `PATH` (or pass `--ffmpeg`) to make the test files; that is the only thing the harness itself uses FFmpeg for.
@@ -74,7 +74,7 @@ With `--rec`, both libraries also play through the default output device while `
 
 ```bat
 python tools\bass-compare\run.py --device-only --fa build\bin\Release\fa_bench.exe ^
-    --bass build\bin\Release\bass_bench.exe --bass-dir D:\development\FatzBomb\FatzAudio\legacy ^
+    --bass build\bin\Release\bass_bench.exe --bass-dir D:\development\FatzBomb\FatzMedia\Audio\legacy ^
     --rec build\bin\Release\loop_rec.exe --out device-results
 ```
 

@@ -37,7 +37,7 @@ Batches:
    a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
    failures and the startup delay; karaoke `Source = null` releases the player.
 2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
-3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
+3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `PlayerCore.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
 4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c **implemented, pending manual smoke** (`updates/ENG-039/Batch4c.md`): adapter, renderer and audio duplicates moved into shared helpers.
 5. **Performance: implemented, pending manual smoke** (`updates/ENG-039/Batch5.md`): KAR raster
    caching and pooled subtitle buffers, embedded subtitles scanned after the open
@@ -116,7 +116,7 @@ Avalonia `FilePickerFileType` helper).
 
 ### ENG-055 - A missing native library folder throws
 
-Reported: 2026-11-05 (audit). `MediaControlPlayer.ResolveNativeLibraryPaths` throws
+Reported: 2026-11-05 (audit). `PlayerCore.ResolveNativeLibraryPaths` throws
 `DirectoryNotFoundException` for a folder that does not exist, so each player filters its list first
 (`Player/Configuration/PlayerNativeLibraries.cs`, `Player.Avalonia/NativePaths.cs`,
 `Player.Shared/Hosting/PlayerNativePaths.cs`), while the Windows bootstrap and `LinuxNativeLibraryLocator`
@@ -212,7 +212,7 @@ ours to cut. ENG-050 is closed apart from that. The failure message now counts t
 
 Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a
 new run scanned again. FatzAudio creates only the last level of `cache_directory`; our default
-`%LOCALAPPDATA%\FatzBomb.MediaControl\AudioCache` needs two. Fixed: `FatzAudioEngine` creates the folder
+`%LOCALAPPDATA%\FatzMedia.Video\AudioCache` needs two. Fixed: `FatzAudioEngine` creates the folder
 (a warning and no cache when it cannot). The engine test uses a two-level folder (fails without the fix).
 
 ### ENG-047 - Clicks and pops on loop wraps and seeks
@@ -300,7 +300,7 @@ the current behaviour.
 **Behaviour a buyer will hit:**
 - ~~**Text only on Direct3D11.**~~ Resolved 2026-11-01, pending Windows smoke: the Software
   and Vulkan renderers draw subtitles, MIDI/KAR lyrics, countdowns and title cards with
-  `SkiaSubtitleRasterizer` (new package `FatzBomb.MediaControl.Rendering.Text`, SkiaSharp
+  `SkiaSubtitleRasterizer` (new package `FatzMedia.Video.Text`, SkiaSharp
   3.119.4); Vulkan gained a subtitle overlay pipeline. Linux verified with lavapipe and the
   software renderer; Windows Software/Vulkan hosts (libSkiaSharp.dll loading, Segoe UI) still to
   smoke. Known differences from DirectWrite: no shaping (ligatures, complex scripts), system
@@ -329,7 +329,7 @@ the current behaviour.
 
 **Missing public API:** no stream/byte-array `MediaInputSource` (planned: 053A, owner 2026-11-05); no mute; no equalizer presets;
 no `DisposeAsync`; CD+G background override colour (`ICdgEngine.BackgroundOverrideArgb`) and
-`CdgVisuals` not on `IMediaControlSession`; no display refresh-rate override on the player
+`CdgVisuals` not on `IPlayerSession`; no display refresh-rate override on the player
 (`IMediaEngine.SetDisplayRefreshRate` only; Linux has `LinuxPlatformOptions`); `DeviceRecovered`
 not on the player (hosts see recovery only in diagnostics); `AcceptedMediaTypes` unused publicly.
 
@@ -346,7 +346,7 @@ Linux READMEs are stale (subtitle frames "rejected", hardware decode "a later sl
 
 **Found in the review:** `default(MediaPlayerConfiguration)` zeroes every field
 (`AudioOutputDeviceIndex = 0` is BASS's no-sound device, presentation lead 0);
-`VideoDecodingMethod.Hardware` behaves like `Auto`; `IMediaControlSession` has the volume, pitch,
+`VideoDecodingMethod.Hardware` behaves like `Auto`; `IPlayerSession` has the volume, pitch,
 tempo and normalization change events but not the members, so interface-only hosts (e.g. via
 `KaraokeSurface.Session`) cannot set them; value-changed events fire on the setter's thread while
 the rest come from engine threads.
@@ -464,7 +464,7 @@ end one sample earlier (the file's authored loop end). So the SF2 is not the cau
 MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
 flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
 but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
-the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
+the sizes in `%LOCALAPPDATA%\FatzMedia.Video\soundfonts`. Workaround: rename the old
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.
 
@@ -767,7 +767,7 @@ Extended (owner 2026-11-06): the background is independent of the media's whole 
 It loops from the moment it is shown (before Play), and through the song's pause, stop, end and loop.
 `MediaPlayerConfiguration.BackgroundFollowsMedia = true` gives the previous behaviour exactly (waits for
 Play, pauses with the song, rewinds on Stop and at the end, restarts with the song's loop).
-`MediaControlPlayer.PauseBackground[Async]` / `ResumeBackground[Async]` / `IsBackgroundPaused` pause it
+`PlayerCore.PauseBackground[Async]` / `ResumeBackground[Async]` / `IsBackgroundPaused` pause it
 explicitly in either mode; the pause holds across loads and mode switches (`RestoreSettings` applies it to
 the rebuilt engine). Test players: `--background-follows-media` and a background pause button (WPF "BG",
 Avalonia and WinForms "BG pause"). Tests: `LinuxBackgroundLoopNativeTests` (moves before Play and while
@@ -874,7 +874,7 @@ P2's `Surface #3 'second-screen-2'` lines). The Avalonia `MediaSurface` raised i
 so the diagnostic was unowned and every player's `MediaDiagnostic` reported it (ENG-025).
 
 Fix:
-- New public overload `DiagnosticRouter.Raise(IMediaControlSession? owner, level, category,
+- New public overload `DiagnosticRouter.Raise(IPlayerSession? owner, level, category,
   message, sourcePath, innerException)`: the diagnostic belongs to `owner` (only that player's
   `MediaDiagnostic` reports it; an explicit owner wins over an ambient one); a null owner raises a
   process-wide diagnostic. Additive; the engine's ambient ownership is unchanged. An adapter knows
@@ -973,7 +973,7 @@ Tests (opt-in native, `LinuxNetworkVideoNativeTests.Seeks.cs`; a UI thread polls
 `_ioGate` split is not exercised here (no BASS): it is verified by reading and by the smoke below.
 
 Windows smoke (Avalonia test player, BASS and FFmpeg 9 in `native/`):
-1. `dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 --
+1. `dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0-windows7.0 --
    --renderer=direct3d11 --url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`. Sound plays.
 2. Seek about ten times by clicking and by dragging the seek bar: forward, back, twice in quick
    succession, and once more before the previous seek has shown its frame. The window must stay
@@ -1130,9 +1130,9 @@ Fix:
   (new, `init`, default true) is false and `Describe()` adds "Audio is unavailable: the BASS
   libraries did not load. Video plays without sound; audio media will not open." Hosts that log
   required problems as Errors and the rest as Warnings now show BASS as Warnings.
-- **Core contract:** `IMediaControlPlatformServices.IsAudioAvailable` (new, default `true`, so
+- **Core contract:** `IPlatformServices.IsAudioAvailable` (new, default `true`, so
   existing implementations compile). Core reads it after `EnsureNativeLibrariesLoaded`; Core
-  still has no native loading. Without audio, `MediaControlServiceProvider` uses
+  still has no native loading. Without audio, `PlayerServiceProvider` uses
   `SilentAudioEngine` in every mode (so no `AudioEngine.Init`, MIDI soundfont or DLS cache, and
   `BassOutputWatchdog` never gets a client) and raises one Warning per graph in Full and Audio
   mode.
@@ -1157,7 +1157,7 @@ and Full play the H.264 clip; Audio mode logs the Error and `MediaError` above.
 
 Manual smoke (Windows):
 1. Rename `bass.dll` and `bass_fx.dll` (and the plugins) in the host's `native/` folder, for
-   example to `bass.dll.off`, for `FatzBomb.MediaControl.Player` and `.Player.Avalonia`.
+   example to `bass.dll.off`, for `FatzMedia.Video.Sample.Player` and `.Player.Avalonia`.
 2. Start the WPF player: it opens with no startup error; the log shows the BASS files as
    Warnings and "Audio is unavailable: the BASS libraries did not load...". Load a video: the
    picture plays without sound. Load an MP3: it fails with an Error "Audio engine unavailable:
@@ -1193,7 +1193,7 @@ unusable; two players created together get an empty `Bootstrap` message (Windows
 Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
 - **Admission (fixed).** `_operationAdmissionGate` is held only to check the lifecycle and take a
   place in the queue. A sync call takes its exclusive turn under the gate
-  (`MediaControlOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
+  (`PlayerOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
   `Async` methods never wait for a long sync call. `Reset` and `Dispose` are serialized by a
   separate `_lifecycleGate` and also hold the admission gate only to take their turn; calls made
   meanwhile fail at once (`InvalidOperationException`, as before) instead of blocking.
@@ -1210,7 +1210,7 @@ Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
   `LoadAsync(string, CancellationToken)`, `LoadAsync(string, bool, CancellationToken)`,
   `LoadAsync(string, string?, bool, CancellationToken)`, `LoadAsync(MediaInputSource,
   CancellationToken)`, `LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)`;
-  the first and last are also on `IMediaControlSession` with default implementations. Cancelled
+  the first and last are also on `IPlayerSession` with default implementations. Cancelled
   while queued: skipped, nothing changes. Cancelled during the open: the player ends closed.
   Either way the task is cancelled. Cancelled after `MediaLoaded`: the load stands and only the
   PlayOnLoad start is skipped.
@@ -1251,7 +1251,7 @@ Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
 - **Concurrent player creation (already fixed by ENG-020).** `Bootstrap` loads under a lock with
   a double-checked flag, so the loser waits and reuses the result.
 
-Documented as the contract (XML docs on `IMediaControlSession`, `Reset`, `Dispose`, `LoadAsync`):
+Documented as the contract (XML docs on `IPlayerSession`, `Reset`, `Dispose`, `LoadAsync`):
 - The sync methods block the caller until their turn and the operation finish, without a bound;
   UI threads should use the `Async` methods (as AGENTS.md says).
 - `Reset` and `Dispose` still throw `InvalidOperationException` from inside a control operation
@@ -1270,8 +1270,8 @@ bound, refuses calls, releases the surfaces and tears down when the open ends; `
 cancelled while queued, during the open, and with an already-cancelled token; Reset giving up
 after its bound; a failed Reset is clearly faulted, then rebuildable or disposable; Reset change
 events; surface calls racing mode switches and Resets; Dispose from a task a handler started;
-handler exceptions. `MediaControlOperationQueueTests` (+5): scope ends with the operation, other
-threads are outside, handler scopes, abandoned turns, cancellation. Two `MediaControlPlayerTests`
+handler exceptions. `PlayerOperationQueueTests` (+5): scope ends with the operation, other
+threads are outside, handler scopes, abandoned turns, cancellation. Two `PlayerCoreTests`
 now expect the load that Reset/Dispose waited for to report `false` (cancelled). The new
 concurrency tests passed 20 runs in a row.
 
@@ -1304,7 +1304,7 @@ Fix:
 - `DiagnosticRouter` keeps an `AsyncLocal` owner. A player enters itself as owner in its
   constructor and around surface attach/resize/detach/live-resize, so the threads and tasks
   it starts inherit it; `MediaDiagnosticInfo.Owner` carries it and `IsFor(owner)` is true for
-  the owner and for unowned (process-wide) diagnostics. `MediaControlPlayer.MediaDiagnostic`
+  the owner and for unowned (process-wide) diagnostics. `PlayerCore.MediaDiagnostic`
   and the coordinator's device-lost recovery ignore other owners' diagnostics.
 - Paths that drop the execution context re-enter the owner: `AudioEngine`'s BASS end-sync
   callback (native thread) and the faded prepared-next transition (`SuppressFlow`).
@@ -1315,7 +1315,7 @@ Fix:
   player loads media, and re-adding an existing extension does not mutate a `HashSet`, so
   concurrent readers never see a write in progress.
 
-Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
+Tests: `DiagnosticOwnershipTests`, `PlayerCoreTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
 `MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
 
 Known limits (code review 2026-10-23, not fixed):
@@ -1763,7 +1763,7 @@ metadata.
 
 Resolved: 2026-08-17
 
-Public control admissions now share a lifecycle gate with `MediaControlPlayer.Reset`.
+Public control admissions now share a lifecycle gate with `PlayerCore.Reset`.
 Reset waits behind already-admitted work, rejects new work while teardown is active,
 rebuilds the player, and disposes the old operation queue only after the exclusive
 turn completes. Caller-thread nested queue execution now runs inline instead of
@@ -1847,7 +1847,7 @@ latest-wins, and terminal clearing.
 
 Resolved: 2026-08-17
 
-`MediaControlPlayer.Dispose` now waits behind admitted work and shares the reset
+`PlayerCore.Dispose` now waits behind admitted work and shares the reset
 admission gate. Teardown runs in an exclusive queue turn, terminal event deliveries
 drain before the queue closes, and the disposed flag is published afterward. Tests
 cover an admitted load, concurrent reset followed by disposal of the rebuilt engine,

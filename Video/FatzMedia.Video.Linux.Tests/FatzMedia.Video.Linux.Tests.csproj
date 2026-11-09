@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<AssemblyName>FatzMedia.Video.Linux.Tests</AssemblyName>
+		<RootNamespace>FatzMedia.Video.Linux.Tests</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
+	</ItemGroup>
+
+</Project>

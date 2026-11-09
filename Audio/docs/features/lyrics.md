@@ -12,7 +12,7 @@ A lyric surface draws the lyrics of a MIDI or `.kar` song as a karaoke screen, s
 - An [intro page](#intro-and-ending-pages) with the song's title and credits before the lyrics, and an ending card after them.
 - An optional rounded panel behind each line, and the [surface effects](#effects) (outline, shadow, bevel).
 
-Text is drawn with FatzAudio's own font reader and rasterizer, not the system's text engine, so the picture is the same on every platform. Pixels are premultiplied BGRA against a transparent background: draw the surface over your video or background.
+Text is drawn with FatzMedia.Audio's own font reader and rasterizer, not the system's text engine, so the picture is the same on every platform. Pixels are premultiplied BGRA against a transparent background: draw the surface over your video or background.
 
 The intro and ending pages follow the design reference ([sections 4.3 and 4.4](../reference/karaoke-lyric-display.md)). A song without lyrics draws nothing.
 
@@ -276,11 +276,11 @@ Lyric times follow the stream's clock (`FA_SURFACE_NOW` is `fa_stream_get_clock`
 
 The font is chosen in this order: `font_data`, `font_path`, `font_family` (found like `fa_font_find`), and the system's UI font when none is given or the family is not installed. `fa_surface_layout.font_used` (.NET `SurfaceLayout.FontUsed`) names the family that was drawn with.
 
-A song whose text the chosen font mostly cannot show is drawn with the system's font for its script instead, unless `font_explicit` is 1: for a Japanese, Korean or Chinese `.kar` from FatzAudio's own list of each system's fonts for the language, for any other script (Arabic, Hebrew, Thai, Devanagari and the other Indic scripts, Armenian, Georgian, Ethiopic, ...) the font the system itself falls back to for those characters (Core Text on macOS and iOS, DirectWrite on Windows, fontconfig on Linux, the platform's font list on Android 12 and later). A family without a face as heavy as `font_weight` gets a synthetic bold.
+A song whose text the chosen font mostly cannot show is drawn with the system's font for its script instead, unless `font_explicit` is 1: for a Japanese, Korean or Chinese `.kar` from FatzMedia.Audio's own list of each system's fonts for the language, for any other script (Arabic, Hebrew, Thai, Devanagari and the other Indic scripts, Armenian, Georgian, Ethiopic, ...) the font the system itself falls back to for those characters (Core Text on macOS and iOS, DirectWrite on Windows, fontconfig on Linux, the platform's font list on Android 12 and later). A family without a face as heavy as `font_weight` gets a synthetic bold.
 
 ### Text shaping: Arabic, Hebrew, Indic and every other script
 
-Lines that need shaping are laid out by the operating system's own text shaper, so letters join, ligatures form, marks sit on their letters, Indic vowel signs reorder, and right-to-left text reads right to left. Nothing is bundled: FatzAudio uses what the system has.
+Lines that need shaping are laid out by the operating system's own text shaper, so letters join, ligatures form, marks sit on their letters, Indic vowel signs reorder, and right-to-left text reads right to left. Nothing is bundled: FatzMedia.Audio uses what the system has.
 
 | Platform | Shaper | Needs |
 |---|---|---|
@@ -289,12 +289,12 @@ Lines that need shaping are laid out by the operating system's own text shaper, 
 | Linux | HarfBuzz and FriBidi, loaded at run time | `libharfbuzz.so.0` and `libfribidi.so.0` (any desktop with GTK has both) |
 | Android | `TextRunShaper` and `java.text.Bidi`, through the app's Java VM | Android 12 (API 31) or later, in an app |
 
-- The glyphs still come from the lyric font and are drawn by FatzAudio, so a line looks the same on every platform; the system only decides which glyphs and where.
+- The glyphs still come from the lyric font and are drawn by FatzMedia.Audio, so a line looks the same on every platform; the system only decides which glyphs and where.
 - The direction of a line is its first strong character's (Unicode bidi): an Arabic or Hebrew line reads right to left with Latin words and numbers inside it kept left to right, and the other way round.
 - The wipe follows the reading direction: a sweep runs from the right edge of a right-to-left syllable to its left, and the syllables of a right-to-left line are sung from the right. A syllable inside a ligature (an Arabic lam-alef split across two syllables) is wiped across its share of the ligature.
-- Text that needs no shaping (Latin, Greek, Cyrillic, Chinese, Japanese, Korean, symbols and emoji without joiners) is laid out exactly as before, by FatzAudio's own font reader.
+- Text that needs no shaping (Latin, Greek, Cyrillic, Chinese, Japanese, Korean, symbols and emoji without joiners) is laid out exactly as before, by FatzMedia.Audio's own font reader.
 - `fa_surface_layout.text_shaper` (.NET `SurfaceLayout.TextShaper`) names the shaper in use: `"DirectWrite"`, `"Core Text"`, `"HarfBuzz"` or `"TextRunShaper"`, or `""` when the system has none.
-- **Fallback.** Without a shaper (Linux without HarfBuzz or FriBidi, Android before 12 or outside an app, Windows before 1703) every line is laid out by FatzAudio's own reader: one glyph per character, left to right. Arabic then shows unjoined letters in typing order, Hebrew reversed, and Indic scripts without reordering; the wipe runs left to right. Check `text_shaper` and tell the user, or ship the shaping libraries on Linux.
+- **Fallback.** Without a shaper (Linux without HarfBuzz or FriBidi, Android before 12 or outside an app, Windows before 1703) every line is laid out by FatzMedia.Audio's own reader: one glyph per character, left to right. Arabic then shows unjoined letters in typing order, Hebrew reversed, and Indic scripts without reordering; the wipe runs left to right. Check `text_shaper` and tell the user, or ship the shaping libraries on Linux.
 - Synthetic bold adds no extra spacing between the letters of shaped text (it would break joined scripts apart).
 
 Creating a surface fails with `FA_ERROR_NOT_FOUND` when no font could be opened (a `font_path` that is missing, or no system font at all) and with `FA_ERROR_UNSUPPORTED_FORMAT` when `font_data` or `font_path` is not a font. `fa_lyric_surface_set_style` returns the same errors and keeps the old style. A new style with the same font fields (`font_data` of the same bytes, `font_path`, `font_family`, `font_face`, `font_weight`, `font_explicit`) keeps the font open, so changing colours or placement does not read the font again. A font whose line height is outside 0.5-3 em, or ascender outside 0-2.5 em (a damaged file), is laid out with a 0.9 em ascender and a 1.2 em line instead; a line that cannot be drawn is left out until the next layout.
@@ -351,7 +351,7 @@ surface.RenderAhead = true;   // check SurfaceUpdate.Behind on each frame
 
 ## Lyrics without a soundfont
 
-When another engine plays the song (the app's own player, a video, a DJ deck) and FatzAudio only draws the lyrics, open the
+When another engine plays the song (the app's own player, a video, a DJ deck) and FatzMedia.Audio only draws the lyrics, open the
 file with `FA_OPEN_MIDI_LYRICS_ONLY`. The file is parsed for its lyrics, texts, marks, credits and length, but no
 soundfont is needed (and none is looked up, not even the OS's) and there is no synth, so opening costs a parse and nothing
 runs on the workers.

@@ -1,6 +1,6 @@
 # Tutorial: a WPF player
 
-A window with Play/Pause, a seek bar, a volume slider, the song's title and artist, and a level meter. The pattern is the same for Avalonia, WinUI or MAUI: FatzAudio does the sound on its own threads and you update the UI on yours.
+A window with Play/Pause, a seek bar, a volume slider, the song's title and artist, and a level meter. The pattern is the same for Avalonia, WinUI or MAUI: FatzMedia.Audio does the sound on its own threads and you update the UI on yours.
 
 ## 1. The engine lives as long as the app
 

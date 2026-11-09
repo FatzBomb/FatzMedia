@@ -83,12 +83,12 @@ engine.SetNormalizationStartWait(TimeSpan.FromMilliseconds(200), maxProvisionalB
 
 ### Streams you feed: packets and decoded frames
 
-A [packet or push stream](ffmpeg.md) (video audio that your app demuxes, a codec you decode yourself) has no file for FatzAudio to read a second time, so it is not scanned by itself and uses the running estimate. Two additions give it the same treatment as a file:
+A [packet or push stream](ffmpeg.md) (video audio that your app demuxes, a codec you decode yourself) has no file for FatzMedia.Audio to read a second time, so it is not scanned by itself and uses the running estimate. Two additions give it the same treatment as a file:
 
-1. **Feed a scan.** Read the track once more in the background, faster than real time, and push it into a `fa_scan_feed`. FatzAudio measures it with the same meter as a scan by path and stores the result in the [cache](#the-cache).
+1. **Feed a scan.** Read the track once more in the background, faster than real time, and push it into a `fa_scan_feed`. FatzMedia.Audio measures it with the same meter as a scan by path and stores the result in the [cache](#the-cache).
 2. **Name the song on the stream.** Open the playing stream with `fa_open_options.source_identity` (.NET `StreamOptions.SourceIdentity`). Normalization then looks the song up in the cache, and takes part in a feed of the same song while it runs: the [start wait](#when-playback-starts) and the provisional value work as for a file.
 
-The identity of a song is the `fa_fingerprint` of the **original file** (`fa_fingerprint_path`, .NET `AudioFingerprint.Compute`) plus the audio track in it (`fa_open_options.audio_track` on the stream, `fa_scan_options.audio_track` on the feed; `-1` = the file's default track). Use `-1` when FatzAudio could also open the same file itself: a scan by path and a fed scan then share one cache entry.
+The identity of a song is the `fa_fingerprint` of the **original file** (`fa_fingerprint_path`, .NET `AudioFingerprint.Compute`) plus the audio track in it (`fa_open_options.audio_track` on the stream, `fa_scan_options.audio_track` on the feed; `-1` = the file's default track). Use `-1` when FatzMedia.Audio could also open the same file itself: a scan by path and a fed scan then share one cache entry.
 
 C:
 ```c
@@ -125,7 +125,7 @@ using (var scan = engine.OpenLoudnessScan(parameters, id, new LoudnessScanOption
 using var audio = engine.OpenPackets(parameters, new StreamOptions { SourceIdentity = id });
 ```
 
-- **Where it runs.** On the thread that feeds it: each push decodes and measures at once (far faster than real time: 180 s of PCM measure in 0.15 s on one core, plus the codec's decode time). FatzAudio starts no thread and buffers nothing for it. Feed the track from its start, in order, once; different feeds may run on different threads. Calls on one feed must not overlap.
+- **Where it runs.** On the thread that feeds it: each push decodes and measures at once (far faster than real time: 180 s of PCM measure in 0.15 s on one core, plus the codec's decode time). FatzMedia.Audio starts no thread and buffers nothing for it. Feed the track from its start, in order, once; different feeds may run on different threads. Calls on one feed must not overlap.
 - **Skip what is known.** `fa_scan_wants_more` is 0 when the result is known before any audio: the song is in the cache, or (`fa_engine_set_dialnorm` on) the first unit of a Dolby stream gave its dialogue level. Check it after opening and now and then while feeding, and skip the rest of the file. `fa_scan_finish` still gives the result.
 - **The same numbers.** Packets or decoded frames of the same audio give the same result to the last digit, and within 0.02 LU of a scan by path (which cuts the file into chunks). A packet that cannot be decoded returns its error and is skipped; keep feeding.
 - **Start it before playback.** A scan that starts when the song starts playing only helps if it is already well on its way when the wait runs out; a 4-minute song takes a fraction of a second of CPU, a film takes minutes and a second read of the file. For long files prefer tags, the cache or the Dolby dialogue level.
@@ -140,7 +140,7 @@ Streams that can't be read a second time (`fa_stream_open_io` and [web streams](
 
 Each song is measured once, ever. Songs with ReplayGain or R128 tags never use the cache: tags are read first.
 
-- **Where.** You do not have to set anything: with `fa_engine_config.cache_directory` NULL (.NET `AudioEngineOptions.CacheDirectory` null) FatzAudio uses the OS's per-user cache folder plus `FatzAudio`: Windows `%LOCALAPPDATA%\FatzAudio`, Linux `$XDG_CACHE_HOME` or `~/.cache`, macOS and iOS `~/Library/Caches`, Android the app's cache folder. A folder you set always wins (for example your app's own `AudioCache`). It is created with all its parents. `FA_ENGINE_NO_CACHE` (.NET `NoCache = true`) turns the cache off: nothing is kept or written.
+- **Where.** You do not have to set anything: with `fa_engine_config.cache_directory` NULL (.NET `AudioEngineOptions.CacheDirectory` null) FatzMedia.Audio uses the OS's per-user cache folder plus `FatzAudio`: Windows `%LOCALAPPDATA%\FatzAudio`, Linux `$XDG_CACHE_HOME` or `~/.cache`, macOS and iOS `~/Library/Caches`, Android the app's cache folder. A folder you set always wins (for example your app's own `AudioCache`). It is created with all its parents. `FA_ENGINE_NO_CACHE` (.NET `NoCache = true`) turns the cache off: nothing is kept or written.
 - **When it cannot be used.** The cache is only an optimisation, so a folder that cannot be made, or a file that cannot be written (read-only, disk full, no permission), never fails the engine or a scan; songs are just measured again. `fa_engine_get_cache_info` (.NET `engine.GetCacheInfo()`) tells you: `status` is `FA_OK`, `FA_ERROR_IO` (folder or file unusable, also after a later failed write) or `FA_ERROR_NOT_FOUND` (no cache). Check it once after creating the engine and log it:
 
 ```c
@@ -151,9 +151,9 @@ if (ci.status != FA_OK) log("loudness cache off: %d (%s)", ci.status, ci.directo
 
 - **One file.** `loudness.fac` holds 48 bytes per song. It is read into memory once, on the first lookup, on a scan thread (never the audio thread): a full 5 MB file (109,000 songs) takes about 16 ms, and each lookup after that takes microseconds. New results are appended.
 - **Size limit.** 5 MB by default; change it with `fa_engine_set_cache_size(engine, bytes)` (.NET `SetCacheSize`, or `AudioEngineOptions.CacheMaxBytes`), at least 16 KB. When the file outgrows the limit it is rewritten, keeping the songs **used** most recently within 3/4 of it. Used means found by a lookup or measured by a scan, not when the entry was written, so a song played often is never the one dropped. A hit updates the time in memory at once, and in the file at most once a day per song (and in full at every rewrite).
-- **Clear.** `fa_engine_clear_cache` (.NET `ClearCache()`) deletes the cached loudness and the cached [track analysis](analysis.md) (FatzAudio's own files in the folder only). Songs are measured again as they are played.
+- **Clear.** `fa_engine_clear_cache` (.NET `ClearCache()`) deletes the cached loudness and the cached [track analysis](analysis.md) (FatzMedia.Audio's own files in the folder only). Songs are measured again as they are played.
 - **Shared.** Engines in one process that use the same folder share one cache in memory, so four players cost one copy and one file read. Between processes (two apps on one folder), every read and write of the file happens under a lock on `loudness.fac.lock` beside it, and each result is appended in one write, so no app loses another's results; when one app rewrites the file it first merges what the others appended. The size limit and `fa_engine_clear_cache` apply to every engine sharing the cache. After a clear, another app that is running keeps its copy in memory and may write it back.
-- **Never trusted.** A file of another version, or with a damaged header, is dropped and written again. Each record carries a marker and a checksum: one cut short by a crash, or damaged, is skipped and the file is rewritten clean. Rewrites go to a temporary file that replaces the old one by rename, so a crash leaves one whole file or the other. If the lock can't be had within 2 seconds (a stuck app), FatzAudio writes anyway: the worst case is a song measured again.
+- **Never trusted.** A file of another version, or with a damaged header, is dropped and written again. Each record carries a marker and a checksum: one cut short by a crash, or damaged, is skipped and the file is rewritten clean. Rewrites go to a temporary file that replaces the old one by rename, so a crash leaves one whole file or the other. If the lock can't be had within 2 seconds (a stuck app), FatzMedia.Audio writes anyway: the worst case is a song measured again.
 - **The fingerprint** covers the audio data only, not the file's name or its tags:
 
 | Format | What is fingerprinted |
@@ -250,7 +250,7 @@ Values that aren't known are `NAN` (.NET: `double.NaN`), for example the range a
 
 ## Writing loudness tags
 
-To store the loudness in the files themselves, so other players (and FatzAudio on another machine) know it without a scan, call `fa_tags_write_loudness`. It is never automatic: nothing writes to your files unless you call it. It always measures (old loudness tags and the cache are ignored, and the cache is neither read nor written), then writes:
+To store the loudness in the files themselves, so other players (and FatzMedia.Audio on another machine) know it without a scan, call `fa_tags_write_loudness`. It is never automatic: nothing writes to your files unless you call it. It always measures (old loudness tags and the cache are ignored, and the cache is neither read nor written), then writes:
 
 | Format | Tags written |
 |---|---|
@@ -261,7 +261,7 @@ To store the loudness in the files themselves, so other players (and FatzAudio o
 | Monkey's Audio, WavPack, Musepack, TTA | APEv2 |
 | WAV, AIFF, CAF, WMA, Matroska, MIDI, trackers, ZIP entries | not written: `FA_ERROR_UNSUPPORTED_FORMAT`, the file is left alone |
 
-All but Opus get ReplayGain 2: `REPLAYGAIN_TRACK_GAIN` (`"-7.89 dB"`, to -18 LUFS) and `REPLAYGAIN_TRACK_PEAK` (linear; FatzAudio writes the true peak, which is never below the sample peak, so a player's clipping guard stays safe), plus the album pair with `FA_TAGS_WRITE_ALBUM`. Older loudness tags of the kinds written are replaced in both spellings (a stale `R128_TRACK_GAIN` in a FLAC file cannot win over the new ReplayGain value); every other tag, picture and the audio stay byte for byte. A track-only write keeps album tags that are already there.
+All but Opus get ReplayGain 2: `REPLAYGAIN_TRACK_GAIN` (`"-7.89 dB"`, to -18 LUFS) and `REPLAYGAIN_TRACK_PEAK` (linear; FatzMedia.Audio writes the true peak, which is never below the sample peak, so a player's clipping guard stays safe), plus the album pair with `FA_TAGS_WRITE_ALBUM`. Older loudness tags of the kinds written are replaced in both spellings (a stale `R128_TRACK_GAIN` in a FLAC file cannot win over the new ReplayGain value); every other tag, picture and the audio stay byte for byte. A track-only write keeps album tags that are already there.
 
 C:
 ```c
@@ -279,10 +279,10 @@ var results = await Task.Run(() => engine.WriteLoudnessTags(albumFiles, album: t
 foreach (var r in results.Where(r => !r.Written))
     Console.WriteLine($"{r.Path}: {r.Error}");
 
-engine.WriteLoudnessTags("single.mp3");   // one file; throws FatzAudioException if it was not written
+engine.WriteLoudnessTags("single.mp3");   // one file; throws AudioException if it was not written
 ```
 
-**Safety.** Each file is written to a new file next to it (`<name>.fatzaudio-N.tmp`), flushed to the disk, and checked: its loudness tags must read back as written, and its first and middle audio must decode to exactly the same samples as the original's. Only then is it renamed over the original, so a failure, a crash or a power cut leaves the original as it was (at worst a stray `.tmp` file next to it). The original must not change while it is measured and written (`FA_ERROR_BUSY` if it did). On POSIX the new file gets the original's permissions and a symbolic link is followed (the file it points to is rewritten). On Windows the rename fails with `FA_ERROR_IO` while the file is open in another program, or in a playing stream, since FatzAudio opens files without delete sharing; close it first.
+**Safety.** Each file is written to a new file next to it (`<name>.fatzaudio-N.tmp`), flushed to the disk, and checked: its loudness tags must read back as written, and its first and middle audio must decode to exactly the same samples as the original's. Only then is it renamed over the original, so a failure, a crash or a power cut leaves the original as it was (at worst a stray `.tmp` file next to it). The original must not change while it is measured and written (`FA_ERROR_BUSY` if it did). On POSIX the new file gets the original's permissions and a symbolic link is followed (the file it points to is rewritten). On Windows the rename fails with `FA_ERROR_IO` while the file is open in another program, or in a playing stream, since FatzMedia.Audio opens files without delete sharing; close it first.
 
 **Album.** With `FA_TAGS_WRITE_ALBUM` the files are one programme: the album loudness is measured over all of their audio together (EBU R128 gating over the whole album), the album peak is the highest true peak. If any file cannot be measured, nothing is written: that file reports its error and the others `FA_ERROR_CANCELLED`.
 

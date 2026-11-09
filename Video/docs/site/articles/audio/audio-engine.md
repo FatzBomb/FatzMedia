@@ -6,12 +6,12 @@ time, and everything else stays as it is.
 
 ## Choosing FatzAudio
 
-Reference the `FatzBomb.MediaControl.Audio.FatzAudio` package and set
-<xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration.AudioEngineFactory> to its
+Reference the `FatzMedia.Video.Audio` package and set
+<xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration.AudioEngineFactory> to its
 factory when you create the player:
 
 ```csharp
-using FatzBomb.MediaControl.Audio.FatzAudio;
+using FatzMedia.Video.Audio;
 
 var configuration = new MediaPlayerConfiguration
 {
@@ -46,9 +46,8 @@ The player's API is the same with either engine. With FatzAudio:
 Video audio, the soundtrack of a video in Audio mode and network audio still play through BASS,
 so the BASS libraries are still needed and BASS is still initialized on the configured device.
 
-## The package and its native library
+## The engine and its native library
 
-The `FatzAudio` NuGet package carries its native library for Windows x64 and Linux x64 (glibc 2.35
-or later), next to the managed binding; there is nothing to copy into `native/`. The package is on
-GitHub Packages: see `docs/NATIVE_DEPENDENCIES.md` in the repository for the
-token it needs to restore.
+`FatzMedia.Audio` comes from `Audio\` in the FatzMedia repository, by project reference. Its native
+library is built from the same folder with CMake and copied next to the app by the build; there is
+nothing to copy into `native/`. See `docs/NATIVE_DEPENDENCIES.md` in the repository.

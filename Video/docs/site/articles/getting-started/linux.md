@@ -6,10 +6,10 @@ The library runs on Linux x64 with the Avalonia adapter, the Linux platform pack
 
 | Package | Role |
 | --- | --- |
-| `FatzBomb.MediaControl` | Core engine |
-| `FatzBomb.MediaControl.Linux` | Platform services: library loading, timing, audio device monitoring |
-| `FatzBomb.MediaControl.Avalonia` | The UI adapter |
-| `FatzBomb.MediaControl.Rendering.Vulkan` and/or `FatzBomb.MediaControl.Rendering.Software` | The renderer |
+| `FatzMedia.Video` | Core engine |
+| `FatzMedia.Video.Linux` | Platform services: library loading, timing, audio device monitoring |
+| `FatzMedia.Video.Avalonia` | The UI adapter |
+| `FatzMedia.Video.Vulkan` and/or `FatzMedia.Video.Software` | The renderer |
 
 For a complete window, follow [Quickstart for Avalonia](quickstart-avalonia.md). The `net10.0` build of that project is the Linux build.
 
@@ -20,34 +20,34 @@ Linux has no Direct3D11, so the choices are Vulkan and Software:
 - **Software** (`SoftwarePresentationCoordinatorFactory`) composes on the CPU. It works everywhere, including machines with no GPU or driver. It presents CPU frames only and always decodes video in software; create the player with `new MediaPlayerConfiguration(VideoDecodingMethod.Software)` to make that explicit.
 - **Vulkan** (`VulkanPresentationCoordinatorFactory`) composes on the GPU and hands frames to Avalonia as a shared GPU image when the compositor supports it, or through a frame sink otherwise. It decodes on the GPU through Vulkan Video when the driver has a decode queue and FFmpeg is built with Vulkan; otherwise it asks for software decoding.
 
-Probe before you choose. `VulkanPresentationCoordinatorFactory.IsSupported` tells you whether a usable device exists; `ProbeAvailability()` also reports whether it will decode in hardware. A fallback chain (<xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory>) takes the first candidate that is available.
+Probe before you choose. `VulkanPresentationCoordinatorFactory.IsSupported` tells you whether a usable device exists; `ProbeAvailability()` also reports whether it will decode in hardware. A fallback chain (<xref:FatzMedia.Video.Controllers.FallbackPresentationCoordinatorFactory>) takes the first candidate that is available.
 
 ```csharp
-using FatzBomb.MediaControl;
-using FatzBomb.MediaControl.Controllers;
-using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Linux;
-using FatzBomb.MediaControl.Rendering.Software;
-using FatzBomb.MediaControl.Rendering.Vulkan;
+using FatzMedia.Video;
+using FatzMedia.Video.Controllers;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Linux;
+using FatzMedia.Video.Software;
+using FatzMedia.Video.Vulkan;
 
 IMediaPresentationCoordinatorFactory renderer =
     VulkanPresentationCoordinatorFactory.IsSupported(out _)
         ? new VulkanPresentationCoordinatorFactory()
         : new SoftwarePresentationCoordinatorFactory();
 
-var platform = new LinuxMediaControlPlatformFactory(
+var platform = new LinuxPlatformFactory(
     renderer,
     new LinuxPlatformOptions { DisplayRefreshRateHz = 144 });
 
-// In an Avalonia app, pass `platform` to FatzBomb.MediaControl.Avalonia.Player.CreateAsync.
+// In an Avalonia app, pass `platform` to FatzMedia.Video.Avalonia.Player.CreateAsync.
 // Here, a UI-free audio-only player from Core:
 var configuration = MediaPlayerConfiguration.Auto with { Mode = MediaPlayerMode.Audio };
-using var player = new MediaControlPlayer(platform, configuration, []);
+using var player = new PlayerCore(platform, configuration, []);
 ```
 
 ## Platform options
 
-<xref:FatzBomb.MediaControl.Linux.LinuxPlatformOptions> has two settings:
+<xref:FatzMedia.Video.Linux.LinuxPlatformOptions> has two settings:
 
 | Option | Default | Range | Meaning |
 | --- | --- | --- | --- |
@@ -60,7 +60,7 @@ The packages contain no binaries. You supply Linux x64 builds of BASS and FFmpeg
 
 The engine searches your paths first, then the application folder, `native`, and `runtimes/linux-x64/native` beneath it. It does not search system library directories on its own, and it does not search subfolders. Put FFmpeg's libraries in one directory. A path you pass to the player must exist, or the constructor throws.
 
-Check what loaded with <xref:FatzBomb.MediaControl.MediaControlPlayer.NativeDependencies>; its `Describe()` text names missing and wrong-version files (for example `libavcodec.so.62` found where `libavcodec.so.63` is needed).
+Check what loaded with <xref:FatzMedia.Video.PlayerCore.NativeDependencies>; its `Describe()` text names missing and wrong-version files (for example `libavcodec.so.62` found where `libavcodec.so.63` is needed).
 
 Notes:
 
@@ -81,4 +81,4 @@ Notes:
 | WPF and WinForms | Windows only. Use Avalonia. |
 
 > [!TIP]
-> The repository's Avalonia test player, `FatzBomb.MediaControl.Player.Avalonia`, is a complete Linux example with a renderer picker, up to four players side by side, and status lines. Run it with `dotnet run -f net10.0` after placing the libraries in its `native` folder.
+> The repository's Avalonia test player, `FatzMedia.Video.Sample.Player.Avalonia`, is a complete Linux example with a renderer picker, up to four players side by side, and status lines. Run it with `dotnet run -f net10.0` after placing the libraries in its `native` folder.

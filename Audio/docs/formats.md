@@ -1,6 +1,6 @@
 # Formats and codecs
 
-What FatzAudio can open, decode and write. The full detail, with how detection works, is in [Opening and decoding streams](features/streams.md); this page is the overview.
+What FatzMedia.Audio can open, decode and write. The full detail, with how detection works, is in [Opening and decoding streams](features/streams.md); this page is the overview.
 
 ## Playing and decoding
 
@@ -40,7 +40,7 @@ You can ask the library at run time: `fa_format_count` and `fa_format_get_info` 
 |---|---|---|
 | WAV | 16 or 24-bit PCM or 32-bit float; RF64 past 4 GB | [recording and encoding](features/recording-encoding.md) |
 | FLAC | Lossless, 16 or 24 bit, up to 8 channels | [recording and encoding](features/recording-encoding.md) |
-| MP3 | Through LAME, which your app ships; FatzAudio loads it at run time | [recording and encoding](features/recording-encoding.md#mp3-and-lame) |
+| MP3 | Through LAME, which your app ships; FatzMedia.Audio loads it at run time | [recording and encoding](features/recording-encoding.md#mp3-and-lame) |
 
 Opus and AAC encoders are not planned.
 

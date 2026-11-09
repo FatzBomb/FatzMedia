@@ -8,6 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="__PACKAGE_VERSION__" />
+    <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="__PACKAGE_VERSION__" />
   </ItemGroup>
 </Project>

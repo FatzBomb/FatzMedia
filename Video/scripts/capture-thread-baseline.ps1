@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Captures a thread-model baseline (stage 022A) from a running FatzBombMedia host.
+    Captures a thread-model baseline (stage 022A) from a running FatzMedia.Video host.
 
 .DESCRIPTION
     Attaches dotnet-counters (runtime thread pool, lock contention, CPU, GC) and dotnet-trace
@@ -14,7 +14,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ProcessName = 'FatzBomb.MediaControl.Player',
+    [string]$ProcessName = 'FatzMedia.Video.Sample.Player',
     [int]$ProcessId = 0,
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[A-Za-z0-9._-]+$')]

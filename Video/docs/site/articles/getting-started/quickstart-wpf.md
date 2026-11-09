@@ -1,6 +1,6 @@
 # Quickstart for WPF
 
-This quickstart builds a small WPF window that plays a file: it creates the player without blocking the UI, shows the picture in a <xref:FatzBomb.MediaControl.Wpf.MediaSurface>, loads and plays a file you choose, and disposes everything when the window closes. It uses the Direct3D11 renderer.
+This quickstart builds a small WPF window that plays a file: it creates the player without blocking the UI, shows the picture in a <xref:FatzMedia.Video.Wpf.MediaSurface>, loads and plays a file you choose, and disposes everything when the window closes. It uses the Direct3D11 renderer.
 
 ## 1. Create the project
 
@@ -15,8 +15,8 @@ Create a WPF app targeting `net10.0-windows7.0` and x64, and add the packages (s
 </PropertyGroup>
 
 <ItemGroup>
-  <PackageReference Include="FatzBomb.MediaControl.Wpf" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Wpf" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup>
@@ -34,7 +34,7 @@ The `MediaSurface` goes where the picture should appear. It does nothing until y
 <Window x:Class="Quickstart.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Wpf;assembly=FatzBomb.MediaControl.Wpf"
+        xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"
         Title="Quickstart" Width="960" Height="600"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <Grid>
@@ -60,9 +60,9 @@ The `MediaSurface` goes where the picture should appear. It does nothing until y
 ```csharp
 using System.ComponentModel;
 using System.Windows;
-using FatzBomb.MediaControl;
-using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Wpf;
+using FatzMedia.Video;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Wpf;
 using Microsoft.Win32;
 
 namespace Quickstart;
@@ -82,7 +82,7 @@ public partial class MainWindow : Window
             _player = await Player.CreateAsync(
                 MediaPlayerConfiguration.Auto,
                 WindowsNativeLibraryPaths.GetDefaultSearchPaths(),
-                new WindowsDirect3D11MediaControlPlatformFactory());
+                new WindowsDirect3D11PlatformFactory());
         }
         catch (Exception ex)
         {
@@ -157,7 +157,7 @@ public partial class MainWindow : Window
 
 ## What the code does
 
-- **Create.** <xref:FatzBomb.MediaControl.Wpf.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. `new Player(...)` would freeze the window. `WindowsNativeLibraryPaths.GetDefaultSearchPaths()` returns the existing `native` and `runtimes/win-x64/native` folders under the application folder. The platform factory pairs the Windows services with the Direct3D11 renderer.
+- **Create.** <xref:FatzMedia.Video.Wpf.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. `new Player(...)` would freeze the window. `WindowsNativeLibraryPaths.GetDefaultSearchPaths()` returns the existing `native` and `runtimes/win-x64/native` folders under the application folder. The platform factory pairs the Windows services with the Direct3D11 renderer.
 - **Attach.** Setting `Surface.Player` attaches the surface to the player. The surface sizes itself to its layout and detaches when you set `Player` to `null`.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads. Anything that touches the UI goes through `Dispatcher`. See [Threading and events](../concepts/threading-and-events.md).
 - **Load and play.** `LoadAsync` returns `false` if the file could not be opened (the `MediaDiagnostic` and `MediaError` events say why). `OpenFileDialogFilter` is an Open dialog filter built from the formats the loaded libraries support. You can also set `PlayOnLoad = true` and skip the `PlayAsync` call.
@@ -168,10 +168,10 @@ public partial class MainWindow : Window
 
 ## Software renderer or Vulkan
 
-To use the software renderer, create the player with `new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())` (package `FatzBomb.MediaControl.Rendering.Software`) and a configuration of `new MediaPlayerConfiguration(VideoDecodingMethod.Software)`. That renderer presents CPU frames only and decodes video in software whatever the configuration says; the configuration makes that explicit. Set `PresentationMode="WpfComposited"` on the `MediaSurface`, because the renderer hands finished frames to the control instead of drawing into a window. The Vulkan renderer needs the same `PresentationMode`, and it keeps `MediaPlayerConfiguration.Auto` so it can decode on the GPU. Both renderers draw subtitle and lyric text (with SkiaSharp instead of DirectWrite).
+To use the software renderer, create the player with `new WindowsPlatformFactory(new SoftwarePresentationCoordinatorFactory())` (package `FatzMedia.Video.Software`) and a configuration of `new MediaPlayerConfiguration(VideoDecodingMethod.Software)`. That renderer presents CPU frames only and decodes video in software whatever the configuration says; the configuration makes that explicit. Set `PresentationMode="WpfComposited"` on the `MediaSurface`, because the renderer hands finished frames to the control instead of drawing into a window. The Vulkan renderer needs the same `PresentationMode`, and it keeps `MediaPlayerConfiguration.Auto` so it can decode on the GPU. Both renderers draw subtitle and lyric text (with SkiaSharp instead of DirectWrite).
 
 ## Next
 
-- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzBomb.MediaControl.Wpf.SecondaryPresentationWindow>.
+- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzMedia.Video.Wpf.SecondaryPresentationWindow>.
 - Ready-made karaoke and background controls: [Karaoke surface](../lightweight-surfaces/karaoke-surface.md) and [Background surface](../lightweight-surfaces/background-surface.md).
 - The player and its session: [Player and session](../concepts/player-and-session.md).

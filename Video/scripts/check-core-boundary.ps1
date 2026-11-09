@@ -1,125 +1,126 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$coreProject = Join-Path $root 'FatzBomb.MediaControl'
+$coreProject = Join-Path $root 'FatzMedia.Video'
 # Keep the approved reference DAG explicit so intentional project-reference changes require review here.
 $projectReferences = @{
-    'FatzBomb.MediaControl\FatzBomb.MediaControl.csproj' = @()
-    'FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video\FatzMedia.Video.csproj' = @()
+    'FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
     # SkiaSharp subtitle and karaoke rasterizer for the software and Vulkan renderers (the
     # Direct3D11 renderer keeps DirectWrite).
-    'FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.Text\FatzMedia.Video.Text.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
-    'FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj'
+    'FatzMedia.Video.Software\FatzMedia.Video.Software.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Text\FatzMedia.Video.Text.csproj'
     )
-    # 037A slice 2: the opt-in FatzAudio audio engine. Core only (and the FatzAudio NuGet package);
-    # it implements Core's internal audio seams, so it is Core's one non-test friend assembly.
-    'FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    # 037A slice 2: the opt-in FatzAudio audio engine. Core and the FatzMedia.Audio binding (Audio\ in
+    # this repo); it implements Core's internal audio seams, so it is Core's one non-test friend assembly.
+    'FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\..\Audio\bindings\dotnet\src\FatzMedia.Audio\FatzMedia.Audio.csproj'
     )
-    'FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
-    'FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj' = @(
-        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
+    'FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj' = @(
+        '..\FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj',
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj'
     )
-    'FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj' = @(
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
+    'FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj' = @(
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj'
     )
-    'FatzBomb.MediaControl.Player\FatzBomb.MediaControl.Player.csproj' = @(
-        '..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj',
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
-        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-        '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
+    'FatzMedia.Video.Sample.Player\FatzMedia.Video.Sample.Player.csproj' = @(
+        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
+        '..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj',
+        '..\FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj',
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
+        '..\FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj'
     )
-    'FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj'
+    'FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Text\FatzMedia.Video.Text.csproj'
     )
-    'FatzBomb.MediaControl.Rendering.Vulkan.Tests\FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
+    'FatzMedia.Video.Vulkan.Tests\FatzMedia.Video.Vulkan.Tests.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj'
     )
-    'FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.Avalonia\FatzMedia.Video.Avalonia.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
-    'FatzBomb.MediaControl.Avalonia.Tests\FatzBomb.MediaControl.Avalonia.Tests.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj'
+    'FatzMedia.Video.Avalonia.Tests\FatzMedia.Video.Avalonia.Tests.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Avalonia\FatzMedia.Video.Avalonia.csproj'
     )
-    'FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
-    'FatzBomb.MediaControl.Linux.Tests\FatzBomb.MediaControl.Linux.Tests.csproj' = @(
-        '..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj',
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
+    'FatzMedia.Video.Linux.Tests\FatzMedia.Video.Linux.Tests.csproj' = @(
+        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj'
     )
-    'FatzBomb.MediaControl.Portable.Tests\FatzBomb.MediaControl.Portable.Tests.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
+    'FatzMedia.Video.Portable.Tests\FatzMedia.Video.Portable.Tests.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj'
     )
-    'FatzBomb.MediaControl.Tests\FatzBomb.MediaControl.Tests.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
-        '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj'
+    'FatzMedia.Video.Tests\FatzMedia.Video.Tests.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
+        '..\FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
+        '..\FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj',
+        '..\FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj'
     )
-    'FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
     # The test players' shared view model (Stage 044A): Core only, no UI, adapter, platform or
     # renderer; each player supplies those through its Hosting/ abstractions.
-    'FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    'FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
     # Test players (hosts): public API, adapters, platform and renderer packages only.
     # The Avalonia player multi-targets and references Windows and Windows.Direct3D11
     # (net10.0-windows7.0 only; Direct3D11 feeds the shared GPU image path, Stage 027A slice 2) and
     # Linux (net10.0 only) conditionally; all appear here because the script reads every item group.
-    'FatzBomb.MediaControl.Player.Avalonia\FatzBomb.MediaControl.Player.Avalonia.csproj' = @(
-        '..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj',
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj',
-        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-        '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj',
-        '..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj'
+    'FatzMedia.Video.Sample.Player.Avalonia\FatzMedia.Video.Sample.Player.Avalonia.csproj' = @(
+        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Avalonia\FatzMedia.Video.Avalonia.csproj',
+        '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
+        '..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj',
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
+        '..\FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj',
+        '..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj'
     )
     # Stage 046A slice 2: the software renderer, shown through the WinForms surface's frame sink.
     # Stage 046A slice 3: the Vulkan renderer (--renderer=vulkan) in the WPF and WinForms players too.
-    'FatzBomb.MediaControl.Player.WinForms\FatzBomb.MediaControl.Player.WinForms.csproj' = @(
-        '..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj',
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
-        '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-        '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
+    'FatzMedia.Video.Sample.Player.WinForms\FatzMedia.Video.Sample.Player.WinForms.csproj' = @(
+        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
+        '..\FatzMedia.Video\FatzMedia.Video.csproj',
+        '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
+        '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
+        '..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj',
+        '..\FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj',
+        '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
+        '..\FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj'
     )
 }
 
 if (-not (Test-Path $coreProject)) {
-    throw 'Core boundary check failed: FatzBomb.MediaControl project folder was not found.'
+    throw 'Core boundary check failed: FatzMedia.Video project folder was not found.'
 }
 
 function Get-ProjectIncludes {
@@ -145,7 +146,7 @@ foreach ($relativeProjectPath in $projectReferences.Keys) {
     }
 }
 
-[xml] $coreProjectFile = Get-Content -Raw -Path (Join-Path $coreProject 'FatzBomb.MediaControl.csproj')
+[xml] $coreProjectFile = Get-Content -Raw -Path (Join-Path $coreProject 'FatzMedia.Video.csproj')
 if ($coreProjectFile.Project.PropertyGroup.TargetFramework -ne 'net10.0') {
     throw 'Core boundary check failed: Core must target net10.0.'
 }
@@ -155,41 +156,36 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
     throw 'Core boundary check failed: Core must not reference Vortice packages.'
 }
 
-# 037A: FatzAudio stays out of Core; only the FatzAudio engine package references it, pinned exactly.
-if ($corePackageReferences | Where-Object { $_ -eq 'FatzAudio' }) {
-    throw 'Core boundary check failed: Core must not reference the FatzAudio package.'
-}
-
-[xml] $fatzAudioProjectFile = Get-Content -Raw -Path (Join-Path $root 'FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj')
-$fatzAudioReference = @($fatzAudioProjectFile.Project.ItemGroup.PackageReference | Where-Object { $_.Include -eq 'FatzAudio' })
-if ($fatzAudioReference.Count -ne 1 -or $fatzAudioReference[0].Version -notmatch '^\[[^\],*]+\]$') {
-    throw 'Core boundary check failed: FatzBomb.MediaControl.Audio.FatzAudio must pin the FatzAudio package to one exact version ([x.y.z]).'
+# 037A: FatzMedia.Audio stays out of Core; only the FatzAudio engine project references it (by project,
+# from Audio\ in this repo; the project-reference map above pins that).
+if ($corePackageReferences | Where-Object { $_ -in @('FatzAudio', 'FatzMedia.Audio') }) {
+    throw 'Core boundary check failed: Core must not reference the FatzMedia.Audio package.'
 }
 
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
-if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests', 'FatzBomb.MediaControl.Linux.Tests', 'FatzBomb.MediaControl.Avalonia.Tests', 'FatzBomb.MediaControl.Audio.FatzAudio') }) {
+if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzMedia.Video.Tests', 'FatzMedia.Video.Portable.Tests', 'FatzMedia.Video.Linux.Tests', 'FatzMedia.Video.Avalonia.Tests', 'FatzMedia.Video.Audio') }) {
     throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects (the FatzAudio audio engine is the one approved exception, 037A slice 2).'
 }
 
 # The shared player view model stays UI-agnostic: portable TFM, the MVVM toolkit as its only
 # package, and no UI-framework or Windows namespaces in its sources.
-$sharedPlayerProject = Join-Path $root 'FatzBomb.MediaControl.Player.Shared'
-[xml] $sharedPlayerProjectFile = Get-Content -Raw -Path (Join-Path $sharedPlayerProject 'FatzBomb.MediaControl.Player.Shared.csproj')
+$sharedPlayerProject = Join-Path $root 'FatzMedia.Video.Sample.Player.Shared'
+[xml] $sharedPlayerProjectFile = Get-Content -Raw -Path (Join-Path $sharedPlayerProject 'FatzMedia.Video.Sample.Player.Shared.csproj')
 if ($sharedPlayerProjectFile.Project.PropertyGroup.TargetFramework -ne 'net10.0') {
-    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared must target net10.0.'
+    throw 'Core boundary check failed: FatzMedia.Video.Sample.Player.Shared must target net10.0.'
 }
 
 $sharedPlayerPackages = @($sharedPlayerProjectFile.Project.ItemGroup.PackageReference | ForEach-Object Include | Where-Object { $_ })
 if ($sharedPlayerPackages | Where-Object { $_ -ne 'CommunityToolkit.Mvvm' }) {
-    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared may reference only the CommunityToolkit.Mvvm package.'
+    throw 'Core boundary check failed: FatzMedia.Video.Sample.Player.Shared may reference only the CommunityToolkit.Mvvm package.'
 }
 
 $sharedPlayerViolations = @(Get-ChildItem -Path $sharedPlayerProject -Recurse -Filter '*.cs' |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
-    Select-String -Pattern 'using (System\.Windows|Avalonia|Microsoft\.Win32)|FatzBomb\.MediaControl\.(Wpf|Avalonia|WinForms|Windows|Linux|Rendering)')
+    Select-String -Pattern 'using (System\.Windows|Avalonia|Microsoft\.Win32)|FatzMedia\.Video\.(Wpf|Avalonia|WinForms|Windows|Linux|Direct3D11|Vulkan|Software|Text)\b')
 if ($sharedPlayerViolations.Count -gt 0) {
     $sharedPlayerViolations | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
-    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared contains UI-framework, adapter, platform or renderer references.'
+    throw 'Core boundary check failed: FatzMedia.Video.Sample.Player.Shared contains UI-framework, adapter, platform or renderer references.'
 }
 
 $forbiddenPatterns = @(
@@ -197,8 +193,8 @@ $forbiddenPatterns = @(
     '\[DllImport',
     '\bVortice\b',
     'using System\.Windows',
-    'FatzBomb\.MediaControl\.(Windows|Rendering|Audio\.FatzAudio)',
-    '\busing\s+(global::)?FatzAudio\b',
+    'FatzMedia\.Video\.(Windows|Direct3D11|Vulkan|Software|Text|Audio)\b',
+    '\busing\s+(global::)?FatzMedia\.Audio\b',
     '\bRenderingMethod\b',
     '\bNativeSwapChainPresentMode\b'
 )

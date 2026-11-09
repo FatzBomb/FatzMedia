@@ -1,6 +1,6 @@
 # Multiple players
 
-You can run several players in one process: two preview panes, a karaoke player plus a background-loop player, or a wall of videos. Each <xref:FatzBomb.MediaControl.MediaControlPlayer> is independent. This article explains what is separate, what is shared, and how to create and watch several players safely.
+You can run several players in one process: two preview panes, a karaoke player plus a background-loop player, or a wall of videos. Each <xref:FatzMedia.Video.PlayerCore> is independent. This article explains what is separate, what is shared, and how to create and watch several players safely.
 
 ## What each player owns
 
@@ -32,7 +32,7 @@ static async Task<Player[]> CreatePlayers(string[] nativePaths, int count)
     for (int i = 0; i < count; i++)
     {
         int index = i;
-        var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+        var platform = new WindowsDirect3D11PlatformFactory();
         players[i] = await Player.CreateAsync(MediaPlayerConfiguration.Auto, nativePaths, platform);
         players[i].MediaDiagnostic += (_, e) =>
             Console.WriteLine($"player {index}: [{e.Level}] {e.Category}: {e.Message}");
@@ -65,7 +65,7 @@ Several players multiply the load. Watch these when you size a layout:
 | Audio | Each player plays through its own audio stream. Players that should be silent (a background loop) can use `MediaPlayerMode.Background`, which never starts the audio engine, or `Audio` mode for sound only with no renderer. |
 | Memory | Each player buffers decoded frames and, for network sources, read-ahead data. |
 
-Use <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> to build only what a player needs (see [Player modes](../playback/player-modes.md)):
+Use <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> to build only what a player needs (see [Player modes](../playback/player-modes.md)):
 
 | Mode | Builds |
 | --- | --- |

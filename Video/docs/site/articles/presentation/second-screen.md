@@ -13,11 +13,11 @@ The player has one primary surface (the control your main window shows) and any 
 
 ## SecondaryPresentationWindow
 
-Each adapter has a window that holds a projector `MediaSurface`: <xref:FatzBomb.MediaControl.Wpf.SecondaryPresentationWindow>, <xref:FatzBomb.MediaControl.Avalonia.SecondaryPresentationWindow> and <xref:FatzBomb.MediaControl.WinForms.SecondaryPresentationWindow>. They share the same shape:
+Each adapter has a window that holds a projector `MediaSurface`: <xref:FatzMedia.Video.Wpf.SecondaryPresentationWindow>, <xref:FatzMedia.Video.Avalonia.SecondaryPresentationWindow> and <xref:FatzMedia.Video.WinForms.SecondaryPresentationWindow>. They share the same shape:
 
 | Member | Meaning |
 | --- | --- |
-| Constructor | `(IMediaControlSession session, string? surfaceId = null)`. The WPF constructor takes `string surfaceId` plus optional `MediaPresentationSurfaceRole role` and `WpfPresentationMode presentationMode`. |
+| Constructor | `(IPlayerSession session, string? surfaceId = null)`. The WPF constructor takes `string surfaceId` plus optional `MediaPresentationSurfaceRole role` and `WpfPresentationMode presentationMode`. |
 | `Surface` | The window's projector `MediaSurface`. It takes the session when the window is shown, so a window that is never shown does not follow the player. |
 | `ShowOnScreen(screen, fullScreen, owner)` | Places the window on `screen` and shows it. Call it instead of `Show`. With `fullScreen` the window covers the screen; otherwise it is centered in the screen's working area. A `null` screen keeps the default start position. |
 | `IsFullScreen` | Gets or sets full screen (borderless, covering the screen). |
@@ -35,7 +35,7 @@ var singer = new SecondaryPresentationWindow(player, "singer");
 singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
 ```
 
-<xref:FatzBomb.MediaControl.Wpf.PresentationScreen> describes a monitor. WPF has no screen type of its own, so the adapter enumerates the monitors:
+<xref:FatzMedia.Video.Wpf.PresentationScreen> describes a monitor. WPF has no screen type of its own, so the adapter enumerates the monitors:
 
 | Member | Meaning |
 | --- | --- |

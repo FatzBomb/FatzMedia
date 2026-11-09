@@ -2,7 +2,7 @@
 
 Updated: 2026-08-22
 
-This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
+This checklist is for validating `FatzMedia.Video` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
 Use the **Routine Validation** sections after normal code changes. Use the **Extended Validation** sections after renderer/presentation/timing/threading/state changes or before merging a major roadmap stage.
 
@@ -37,7 +37,7 @@ are not Stage 028A blockers.
 On 2026-08-07, Stage 024A was completed. Automated validation passed: Debug and Release
 builds with zero warnings, 370 automated tests (including the new software-renderer
 exact-pixel and backend suites), `dotnet format` verification, Core/WPF/presentation-parity
-gates, and `FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack. The final
+gates, and `FatzMedia.Video.Software` nupkg and snupkg pack. The final
 manual Direct3D11 Player regression smoke passed on 2026-08-07: the Release
 `NativeHwndOverlay` Player was verified for normal video/CDG play, seek, stop, and replay
 with no observed regressions, closing the stage.
@@ -88,7 +88,7 @@ is pending; the checklist is in the Stage 030A section below.
 On 2026-08-10, Stage 030A added the Player advanced validation controls: a
 collapsed `ADVANCED VALIDATION` expander with a live Auto Hide checkbox, runtime
 Reset Pitch on Load / Reset Tempo on Load checkboxes (additive
-`IMediaControlSession` properties via `MediaControlPlayer.LoadBehavior.cs` and
+`IPlayerSession` properties via `PlayerCore.LoadBehavior.cs` and
 mutable `MediaFile` options), RED GAIN / GREEN GAIN / BLUE GAIN (0–2), HUE,
 BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), and SATURATION (0–2) sliders (no
 Lightness), an IDENTITY/ACTIVE indicator, and a Reset Visual command. The
@@ -246,9 +246,9 @@ the stage stays active. See the Stage 030B smoke section below.
 Run from the repository root.
 
 ```powershell
-dotnet restore FatzBomb.MediaControl.sln
-dotnet build FatzBomb.MediaControl.sln --no-restore
-dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
+dotnet restore FatzMedia.Video.sln
+dotnet build FatzMedia.Video.sln --no-restore
+dotnet build -c Release FatzMedia.Video.sln --no-restore
 .\scripts\check-core-boundary.ps1
 .\scripts\check-wpf-boundary.ps1
 .\scripts\check-presentation-parity.ps1
@@ -275,7 +275,7 @@ Windows x64 with a host-owned native directory:
 
 ```powershell
 .\scripts\test-windows-native-publish.ps1 `
-  -NativeLibraryPath ".\FatzBomb.MediaControl.Player\native"
+  -NativeLibraryPath ".\FatzMedia.Video.Sample.Player\native"
 ```
 
 The default is a self-contained `win-x64` publish. The script packs the four managed
@@ -287,10 +287,10 @@ again without explicit paths. Use
 `-FrameworkDependent` only when intentionally testing a machine with the .NET 10
 Windows Desktop runtime installed. Artifacts are written beneath `artifacts/native-smoke/`.
 
-`FatzBomb.MediaControl.Wpf` is also packable (six packable packages in total — Core,
+`FatzMedia.Video.Wpf` is also packable (six packable packages in total — Core,
 Windows, Rendering.Direct3D11, Rendering.Software, the Windows.Direct3D11 bundle, and
 Wpf) but is not part of the native smoke pack set. The leaf x64 packages
-`FatzBomb.MediaControl.Windows` and `FatzBomb.MediaControl.Rendering.Direct3D11` ship
+`FatzMedia.Video.Windows` and `FatzMedia.Video.Direct3D11` ship
 `buildTransitive` guards in their nupkgs, so a consumer that explicitly targets a
 non-x64 `RuntimeIdentifier` fails the build with an MSBuild error.
 
@@ -347,17 +347,17 @@ software renderer, software video decoding, and the required `WpfComposited`
 presentation mode:
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software "D:\path\to\media.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software "D:\path\to\media.mp4"
 ```
 
 The independent Stage 029B startup flags validate per-load pitch/tempo resets (closed
 2026-08-08, including the manual smoke with both flags):
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-pitch-on-load
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-tempo-on-load
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-pitch-on-load --reset-tempo-on-load
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --reset-pitch-on-load
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --reset-tempo-on-load
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --reset-pitch-on-load --reset-tempo-on-load
 ```
 
 Stage 029C AutoHide is enabled by default on the Player host (closed 2026-08-08,
@@ -365,10 +365,10 @@ including the manual smoke). Use `--no-auto-hide` for opt-out validation,
 or combine the default with `--software` for composited validation:
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- "D:\path\to\media.mp4"
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --no-auto-hide
+dotnet run --project FatzMedia.Video.Sample.Player -c Release
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- "D:\path\to\media.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --no-auto-hide
 ```
 
 Stage 030A (base-visual transform pipeline) is complete; its final manual smoke
@@ -395,9 +395,9 @@ their corresponding controls; exercise them on both renderer paths
 (`NativeHwndOverlay` D3D11 and `--software` `WpfComposited`):
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo "D:\path\to\media.mp4"
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --visual-transform-demo
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --visual-transform-demo
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --visual-transform-demo "D:\path\to\media.mp4"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software --visual-transform-demo
 ```
 
 Record:
@@ -424,10 +424,10 @@ Exercise the flyout controls directly (no startup flags required); the flags
 seed the same controls for compatibility. Run both renderer paths:
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --visual-transform-demo
+dotnet run --project FatzMedia.Video.Sample.Player -c Release
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --visual-transform-demo
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software --visual-transform-demo
 ```
 
 Expected on both paths:
@@ -556,8 +556,8 @@ and the status line reports `Silence trim=True`. The native-file smoke has not
 been run yet and remains pending:
 
 ```powershell
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --trim-silence "D:\path\to\audio.mp3"
-dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --trim-silence "D:\path\to\audio.mp3"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --trim-silence "D:\path\to\audio.mp3"
+dotnet run --project FatzMedia.Video.Sample.Player -c Release -- --software --trim-silence "D:\path\to\audio.mp3"
 ```
 
 Procedure and expected:
@@ -633,7 +633,7 @@ Procedure and expected:
 39. ZIP archive with video only opens as video main.
 40. Audio-only media auto-detects matching image and video sidecars.
 41. MIDI with no karaoke lyrics auto-detects matching image and video sidecars.
-42. `ignoreSidecar: true` and `MediaControlPlayer.AutoBackground = false` each disable automatic sidecar loading.
+42. `ignoreSidecar: true` and `PlayerCore.AutoBackground = false` each disable automatic sidecar loading.
 43. An image main ignores matching sidecars but accepts an explicitly supplied background.
 44. A video main does not load a matching video sidecar or explicit background.
 45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.
@@ -912,7 +912,7 @@ Expected:
 
 Use after changes to:
 
-- `MediaControlOperationQueue`
+- `PlayerOperationQueue`
 - `MediaState`
 - `PlaybackCoordinator`
 - `MediaSession`

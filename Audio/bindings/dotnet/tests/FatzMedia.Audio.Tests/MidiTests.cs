@@ -1,0 +1,474 @@
+using System.Text;
+using FatzMedia.Audio;
+using Xunit;
+
+namespace FatzMedia.Audio.Tests;
+
+/// <summary>MIDI files with a soundfont built in code (decode-only, no audio hardware needed).</summary>
+public class MidiTests
+{
+    private const int Rate = 44100;
+    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
+
+    // ---- a one-instrument SoundFont: a looped 440 Hz sine on bank 0 and bank 128 ----
+
+    private static void Chunk(BinaryWriter w, string id, byte[] body)
+    {
+        w.Write(Encoding.ASCII.GetBytes(id));
+        w.Write(body.Length);
+        w.Write(body);
+        if ((body.Length & 1) != 0) w.Write((byte)0);
+    }
+
+    private static byte[] Build(Action<BinaryWriter> write)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms)) write(w);
+        return ms.ToArray();
+    }
+
+    private static void Name(BinaryWriter w, string s, int n)
+    {
+        var b = new byte[n];
+        Encoding.ASCII.GetBytes(s).CopyTo(b, 0);
+        w.Write(b);
+    }
+
+    internal static byte[] SineSoundFont()
+    {
+        const int len = 4410; // 100 periods of 440 Hz
+        var info = Build(w =>
+        {
+            w.Write("INFO"u8);
+            Chunk(w, "ifil", Build(c => { c.Write((ushort)2); c.Write((ushort)1); }));
+            Chunk(w, "INAM", Build(c => Name(c, "Test Sine", 10)));
+        });
+        var sdta = Build(w =>
+        {
+            w.Write("sdta"u8);
+            Chunk(w, "smpl", Build(c =>
+            {
+                for (int i = 0; i < len; i++) c.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000));
+                for (int i = 0; i < 46; i++) c.Write((short)0);
+            }));
+        });
+        var pdta = Build(w =>
+        {
+            w.Write("pdta"u8);
+            Chunk(w, "phdr", Build(c =>
+            {
+                void P(string n, ushort bank, ushort bag) { Name(c, n, 20); c.Write((ushort)0); c.Write(bank); c.Write(bag); c.Write(0); c.Write(0); c.Write(0); }
+                P("Sine", 0, 0); P("Kit", 128, 1); P("EOP", 0, 2);
+            }));
+            Chunk(w, "pbag", Build(c => { foreach (var v in new ushort[] { 0, 0, 1, 0, 2, 0 }) c.Write(v); }));
+            Chunk(w, "pmod", new byte[10]);
+            Chunk(w, "pgen", Build(c => { c.Write((ushort)41); c.Write((ushort)0); c.Write((ushort)41); c.Write((ushort)1); c.Write(0); }));
+            Chunk(w, "inst", Build(c => { Name(c, "SineInst", 20); c.Write((ushort)0); Name(c, "KitInst", 20); c.Write((ushort)1); Name(c, "EOI", 20); c.Write((ushort)2); }));
+            Chunk(w, "ibag", Build(c => { foreach (var v in new ushort[] { 0, 0, 3, 0, 6, 0 }) c.Write(v); }));
+            Chunk(w, "imod", new byte[10]);
+            Chunk(w, "igen", Build(c =>
+            {
+                for (int k = 0; k < 2; k++)
+                {
+                    c.Write((ushort)54); c.Write((ushort)1);       // sampleModes: loop
+                    c.Write((ushort)38); c.Write((short)-3600);    // releaseVolEnv: 125 ms
+                    c.Write((ushort)53); c.Write((ushort)0);       // sampleID
+                }
+                c.Write(0);
+            }));
+            Chunk(w, "shdr", Build(c =>
+            {
+                Name(c, "Sine", 20); c.Write(0); c.Write(len); c.Write(0); c.Write(len); c.Write(Rate);
+                c.Write((byte)69); c.Write((byte)0); c.Write((ushort)0); c.Write((ushort)1);
+                Name(c, "EOS", 46);
+            }));
+        });
+        var riff = Build(w =>
+        {
+            w.Write("sfbk"u8);
+            Chunk(w, "LIST", info);
+            Chunk(w, "LIST", sdta);
+            Chunk(w, "LIST", pdta);
+        });
+        return Build(w => Chunk(w, "RIFF", riff));
+    }
+
+    // ---- a format 0 song: note 69 for 0.5 s, silence, note 69 from 1.5 s to 2 s; three lyrics ----
+
+    private static void VarLen(List<byte> t, int v)
+    {
+        var tmp = new Stack<byte>();
+        tmp.Push((byte)(v & 0x7F));
+        while ((v >>= 7) != 0) tmp.Push((byte)(0x80 | (v & 0x7F)));
+        t.AddRange(tmp);
+    }
+
+    private static void Meta(List<byte> t, int delta, byte type, string text)
+    {
+        var b = Encoding.ASCII.GetBytes(text);
+        VarLen(t, delta); t.Add(0xFF); t.Add(type); VarLen(t, b.Length); t.AddRange(b);
+    }
+
+    private static void Ev(List<byte> t, int delta, params byte[] e) { VarLen(t, delta); t.AddRange(e); }
+
+    internal static byte[] Song()
+    {
+        var t = new List<byte>();
+        Meta(t, 0, 0x03, "Test Song");
+        Ev(t, 0, 0x90, 69, 127);
+        Meta(t, 0, 0x05, "Hel");
+        Meta(t, 240, 0x05, "lo ");
+        Ev(t, 240, 0x80, 69, 0);
+        Meta(t, 960, 0x05, "\rworld");
+        Ev(t, 0, 0x90, 69, 100);
+        Ev(t, 480, 0x80, 69, 0);
+        Ev(t, 960, 0xFF, 0x2F, 0); // the end of the track at 3 s, after the reverb has died away
+        var f = new List<byte>();
+        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MTrk"u8.ToArray());
+        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange(t);
+        return f.ToArray();
+    }
+
+    private static float[] ReadAll(AudioStream s, long frames)
+    {
+        var all = new float[frames * 2];
+        int at = 0, n;
+        while (at < all.Length && (n = s.Read(all.AsSpan(at, Math.Min(4096, all.Length - at)))) > 0) at += n * 2;
+        return all;
+    }
+
+    private static double Rms(float[] x, int from, int to)
+    {
+        double sum = 0;
+        for (int i = from * 2; i < to * 2; i++) sum += x[i] * (double)x[i];
+        return Math.Sqrt(sum / ((to - from) * 2));
+    }
+
+    [Fact]
+    public void Song_PlaysWithTheEngineSoundFont()
+    {
+        using var engine = CreateHeadless();
+        using (var font = SoundFont.FromMemory(SineSoundFont()))
+        {
+            Assert.Equal("Test Sine", font.Info.Name);
+            Assert.Equal(2, font.Info.PresetCount);
+            engine.DefaultSoundFont = font;
+        }
+        // The engine keeps its own reference after the SoundFont object was disposed.
+        using var s = engine.OpenMemory(Song(), DecodeOnly);
+        var info = s.Info;
+        Assert.Equal("midi", info.Codec);
+        Assert.Equal(Rate, info.Format.SampleRate);
+        Assert.Equal(2, info.Format.Channels);
+        Assert.Equal(3L * Rate, info.LengthFrames); // the end of the track: the sound died away before it
+        s.MidiEffects = false; // dry: silence in the gap, and a seek clears the reverb tail
+        var all = ReadAll(s, 3L * Rate);
+        Assert.True(Rms(all, 1000, 20000) > 0.1);
+        Assert.True(Rms(all, 30000, 65000) < 1e-6);
+
+        // Seeking is exact: the second note, read again, is the same audio.
+        s.PositionFrames = 66150;
+        var again = ReadAll(s, 3L * Rate - 66150);
+        Assert.True(all.AsSpan(66150 * 2).SequenceEqual(again));
+    }
+
+    [Fact]
+    public void Stack_MapsPresetsAndKeepsItsFonts()
+    {
+        using var engine = CreateHeadless();
+        SoundFont stack;
+        using (var a = SoundFont.FromMemory(SineSoundFont()))
+        using (var b = SoundFont.FromMemory(SineSoundFont()))
+        {
+            Assert.Equal(new[] { (0, 0), (128, 0) }, a.Presets.Select(p => (p.Bank, p.Program)));
+            Assert.Equal("Sine", a.Presets[0].Name);
+            stack = SoundFont.Stack(
+                new SoundFontStackEntry(a) { Bank = 0, Program = 0, ToProgram = 5, Volume = 0.5f },
+                new SoundFontStackEntry(b));
+            Assert.Throws<AudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Bank = 9 }));
+            var bad = Assert.Throws<AudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Program = 200 }));
+            Assert.Equal(ErrorCode.InvalidArgument, bad.ErrorCode);
+        }
+        // The members were disposed: the stack keeps them.
+        using (stack)
+        {
+            Assert.Equal(new[] { (0, 0), (0, 5), (128, 0) }, stack.Presets.Select(p => (p.Bank, p.Program)));
+            Assert.Equal(2 * 2 * (4410 + 46), stack.Info.SampleMemory);
+            using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = stack });
+            s.MidiEffects = false;
+            var x = ReadAll(s, Rate / 2);
+            Assert.True(Rms(x, 1000, 20000) > 0.1);
+        }
+        Assert.Throws<ArgumentException>(() => SoundFont.Stack());
+    }
+
+    [Fact]
+    public void Lyrics_AndInfo()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        var mi = s.MidiInfo;
+        Assert.NotNull(mi);
+        Assert.Equal("Test Song", mi!.Title);
+        Assert.Equal(0, mi.Format);
+        Assert.Equal(3, mi.LyricCount);
+        var lyrics = s.MidiTexts.Where(t => t.Type == MidiTextType.Lyric).ToList();
+        Assert.Equal(new[] { "Hel", "lo ", "world" }, lyrics.Select(l => l.Text));
+        Assert.Equal(MidiTextFlags.NewLine, lyrics[2].Flags);
+        Assert.Equal(66150, lyrics[2].Frame);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), lyrics[2].Position);
+    }
+
+    private static byte[] OneTrack(List<byte> t)
+    {
+        Ev(t, 0, 0xFF, 0x2F, 0);
+        var f = new List<byte>();
+        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MTrk"u8.ToArray());
+        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange(t);
+        return f.ToArray();
+    }
+
+    private static void MetaBytes(List<byte> t, int delta, byte type, byte[] b)
+    {
+        VarLen(t, delta); t.Add(0xFF); t.Add(type); VarLen(t, b.Length); t.AddRange(b);
+    }
+
+    [Fact]
+    public void ShiftJisLyrics_AreDetectedOrForced()
+    {
+        var t = new List<byte>();
+        MetaBytes(t, 0, 0x05, [0x82, 0xB3, 0x82, 0xAD, 0x82, 0xE7]);   // さくら
+        MetaBytes(t, 240, 0x05, [0x83, 0x5C, 0x95, 0x5C]);              // ソ表 (trail bytes 0x5C are not "\" marks)
+        var song = OneTrack(t);
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using (var s = engine.OpenMemory(song, DecodeOnly with { SoundFont = font }))
+        {
+            Assert.Equal(new[] { "さくら", "ソ表" }, s.MidiTexts.Where(x => x.Type == MidiTextType.Lyric).Select(x => x.Text));
+            Assert.Equal(TextCodePage.ShiftJis, s.MidiCredits!.CodePage);
+        }
+        using (var s = engine.OpenMemory(song, DecodeOnly with { SoundFont = font, TextCodePage = TextCodePage.Windows1252 }))
+        {
+            Assert.Equal(TextCodePage.Windows1252, s.MidiCredits!.CodePage);
+            Assert.StartsWith("\u201A\u00B3", s.MidiTexts.First(x => x.Type == MidiTextType.Lyric).Text);
+        }
+    }
+
+    [Fact]
+    public void Credits_FromKaraokeHeaderLines()
+    {
+        var t = new List<byte>();
+        Meta(t, 0, 0x01, "@KMIDI KARAOKE FILE");
+        Meta(t, 0, 0x01, "@TThe Title");
+        Meta(t, 0, 0x01, "@TThe Artist");
+        Meta(t, 0, 0x01, "@IWritten by: Ann Writer");
+        Meta(t, 0, 0x01, "@I1987");
+        Meta(t, 0, 0x01, "@IArranged for karaoke");
+        Ev(t, 0, 0xFF, 0x51, 3, 0x07, 0xA1, 0x20);
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var s = engine.OpenMemory(OneTrack(t), DecodeOnly with { SoundFont = font });
+        var c = s.MidiCredits!;
+        Assert.Equal("The Title", c.Title);
+        Assert.Equal("The Artist", c.Artist);
+        Assert.Equal("Ann Writer", c.Writer);
+        Assert.Equal("1987", c.Year);
+        Assert.Equal("120 bpm", c.Tempo);
+        Assert.Equal(new[] { "Arranged for karaoke" }, c.Other);
+        Assert.Equal(TextCodePage.Utf8, c.CodePage);
+    }
+
+    [Fact]
+    public void TempoAndSignatures_AreListedWithTheirNumbers()
+    {
+        var t = new List<byte> { 0, 0xFF, 0x51, 3, 0x07, 0xA1, 0x20 };      // 500000 us: 120 bpm
+        t.AddRange(new byte[] { 0, 0xFF, 0x58, 4, 6, 3, 24, 8 });            // 6/8
+        t.AddRange(new byte[] { 0, 0xFF, 0x59, 2, 3, 1 });                   // 3 sharps, minor: F# minor
+        Ev(t, 0, 0x90, 69, 127);
+        Ev(t, 480, 0x80, 69, 0);
+        Ev(t, 0, 0xFF, 0x2F, 0);
+        var f = new List<byte>();
+        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MTrk"u8.ToArray());
+        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange(t);
+
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var s = engine.OpenMemory(f.ToArray(), DecodeOnly with { SoundFont = font });
+        Assert.Empty(s.MidiTexts);
+        var marks = s.MidiMarks;
+        Assert.Equal(3, marks.Count);
+        Assert.Equal((MidiMarkType.Tempo, 500000, "120 bpm"), (marks[0].Type, marks[0].Value, marks[0].Text));
+        Assert.Equal((MidiMarkType.TimeSignature, 6, 8, "6/8"), (marks[1].Type, marks[1].Value, marks[1].Value2, marks[1].Text));
+        Assert.Equal((MidiMarkType.KeySignature, 3, 1, "F# minor"), (marks[2].Type, marks[2].Value, marks[2].Value2, marks[2].Text));
+        Assert.Equal(TimeSpan.Zero, marks[2].Position);
+    }
+
+    [Fact]
+    public void LiveControls()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        s.MidiTranspose = -12;
+        Assert.Equal(-12, s.MidiTranspose);
+        Assert.Throws<ArgumentOutOfRangeException>(() => s.MidiTranspose = 49);
+        Assert.True(s.MidiEffects);
+        s.MidiEffects = false;
+        Assert.False(s.MidiEffects);
+        s.SetMidiChannelMuted(0, true);
+        Assert.True(s.IsMidiChannelMuted(0));
+        Assert.False(s.IsMidiChannelMuted(1));
+        var all = ReadAll(s, Rate);
+        Assert.True(Rms(all, 0, Rate) < 1e-6);
+        Assert.Throws<ArgumentOutOfRangeException>(() => s.SetMidiChannelMuted(16, true));
+    }
+
+    [Fact]
+    public void SetSoundFont_ChangesThePlayingStream()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var dls = SoundFont.FromMemory(SineDls());
+        // Silent, and told apart from `font` by its sample memory (both members count).
+        using var silent = SoundFont.Stack(new SoundFontStackEntry(font) { Volume = 0 }, new SoundFontStackEntry(dls) { Volume = 0 });
+        Assert.NotEqual(font.Info.SampleMemory, silent.Info.SampleMemory);
+        using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        s.MidiEffects = false;
+        var before = ReadAll(s, 5000);
+        Assert.True(Rms(before, 1000, 5000) > 0.1);
+        s.SetSoundFont(silent);
+        using (var now = s.GetSoundFont()) Assert.Equal(silent.Info.SampleMemory, now.Info.SampleMemory);
+        var after = ReadAll(s, 15000);
+        Assert.True(Rms(after, 1000, 15000) < 1e-6); // the held note goes on with the silent instruments
+        engine.DefaultSoundFont = font;
+        s.SetSoundFont(null); // the engine's
+        using (var now = s.GetSoundFont()) Assert.Equal(font.Info.SampleMemory, now.Info.SampleMemory);
+    }
+
+    [Fact]
+    public void NoSoundFont_Throws()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
+        Assert.Equal(ErrorCode.NoSoundFont, ex.ErrorCode);
+    }
+
+    [Fact]
+    public void NoNotes_OpensSilentWithoutSoundFont()
+    {
+        // One lyric at 1 s and the end of track at 2 s: nothing to sound, so no soundfont is needed.
+        byte[] song =
+        {
+            (byte)'M', (byte)'T', (byte)'h', (byte)'d', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0,
+            (byte)'M', (byte)'T', (byte)'r', (byte)'k', 0, 0, 0, 12,
+            0x87, 0x40, 0xFF, 0x05, 0x02, (byte)'A', (byte)'B',
+            0x87, 0x40, 0xFF, 0x2F, 0x00,
+        };
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var s = engine.OpenMemory(song, DecodeOnly);
+        Assert.False(s.MidiInfo!.HasNotes);
+        Assert.Equal(1, s.MidiInfo.LyricCount);
+        Assert.Equal(TimeSpan.FromSeconds(2), s.Info.Duration);
+        using var withNotes = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var played = withNotes.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        Assert.True(played.MidiInfo!.HasNotes);
+    }
+
+    [Fact]
+    public void SystemSoundFont_IsTheFallback()
+    {
+        // Whatever this machine has: CI images usually have no OS bank.
+        using var system = SoundFont.FromSystem();
+        using var engine = CreateHeadless();
+        if (system is null)
+        {
+            var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
+            Assert.Equal(ErrorCode.NoSoundFont, ex.ErrorCode);
+            return;
+        }
+        Assert.True(system.Info.PresetCount > 0);
+        using var s = engine.OpenMemory(Song(), DecodeOnly);
+        Assert.Equal("midi", s.Info.Codec);
+    }
+
+    // ---- a DLS bank: one instrument, one region, the same looped 440 Hz sine ----
+
+    private static byte[] List(string type, byte[] body) => Build(w => Chunk(w, "LIST", Build(b => { b.Write(Encoding.ASCII.GetBytes(type)); b.Write(body); })));
+
+    private static byte[] SineDls()
+    {
+        var wave = List("wave", Build(w =>
+        {
+            Chunk(w, "fmt ", Build(b => { b.Write((short)1); b.Write((short)1); b.Write(Rate); b.Write(Rate * 2); b.Write((short)2); b.Write((short)16); }));
+            // wsmp: unity note 69, a forward loop over the whole wave.
+            Chunk(w, "wsmp", Build(b => { b.Write(20); b.Write((short)69); b.Write((short)0); b.Write(0); b.Write(0); b.Write(1); b.Write(16); b.Write(0); b.Write(0); b.Write(4410); }));
+            Chunk(w, "data", Build(b => { for (int i = 0; i < 4410; i++) b.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000)); }));
+        }));
+        var region = List("rgn ", Build(w =>
+        {
+            Chunk(w, "rgnh", Build(b => { b.Write((short)0); b.Write((short)127); b.Write((short)0); b.Write((short)127); b.Write((short)0); b.Write((short)0); }));
+            Chunk(w, "wlnk", Build(b => { b.Write((short)0); b.Write((short)0); b.Write(1); b.Write(0); }));
+        }));
+        var ins = List("ins ", Build(w =>
+        {
+            Chunk(w, "insh", Build(b => { b.Write(1); b.Write(0); b.Write(0); }));
+            w.Write(List("lrgn", region));
+        }));
+        var riff = Build(w =>
+        {
+            w.Write(Encoding.ASCII.GetBytes("DLS "));
+            Chunk(w, "colh", BitConverter.GetBytes(1));
+            w.Write(List("lins", ins));
+            Chunk(w, "ptbl", Build(b => { b.Write(8); b.Write(1); b.Write(0); }));
+            w.Write(List("wvpl", wave));
+            w.Write(List("INFO", Build(b => Chunk(b, "INAM", Encoding.ASCII.GetBytes("Test DLS\0")))));
+        });
+        return Build(w => Chunk(w, "RIFF", riff));
+    }
+
+    [Fact]
+    public void DlsBank_Plays()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineDls());
+        Assert.Equal("Test DLS", font.Info.Name);
+        Assert.Equal(1, font.Info.PresetCount);
+        using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        s.MidiEffects = false;
+        var all = ReadAll(s, 3L * Rate);
+        Assert.True(Rms(all, 1000, 20000) > 0.1);
+        Assert.True(Rms(all, 30000, 65000) < 1e-3);
+    }
+
+    [Fact]
+    public void NotMidi_HasNoMidiInfo()
+    {
+        using var engine = CreateHeadless();
+        using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        Assert.Null(s.MidiInfo);
+        Assert.Null(s.MidiCredits);
+        Assert.Empty(s.MidiTexts);
+        var ex = Assert.Throws<AudioException>(() => s.MidiTranspose = 2);
+        Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<AudioException>(() => s.GetSoundFont()).ErrorCode);
+    }
+
+    [Fact]
+    public void BadSoundFont_Throws()
+    {
+        var ex = Assert.Throws<AudioException>(() => SoundFont.FromMemory(Encoding.ASCII.GetBytes("RIFF....sfbkLIST")));
+        Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
+        var missing = Assert.Throws<AudioException>(() => SoundFont.FromFile("/nonexistent/none.sf2"));
+        Assert.Equal(ErrorCode.NotFound, missing.ErrorCode);
+    }
+}

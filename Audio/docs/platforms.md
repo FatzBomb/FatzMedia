@@ -32,13 +32,13 @@ Details: [streams](features/streams.md) (formats), [MIDI](features/midi.md), [di
 
 ## .NET package
 
-The `FatzAudio` NuGet package targets .NET 8 and .NET 10 and carries these libraries under `runtimes/<rid>/native/`: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64` (glibc 2.35 or later), `osx` (one universal arm64 and x86_64 `libfatzaudio.dylib`), `android-arm64`, `android-x64` and `ios` (`fatzaudio.xcframework`). Other Android ABIs (arm, x86) can be staged in the same layout ([Building](building.md#nuget-package-and-versions)). `win-arm64` and `linux-arm64` are cross-compiled in CI; linux-arm64 runs a smoke subset of the tests under qemu, win-arm64 has not run on a device yet.
+The `FatzMedia.Audio` NuGet package targets .NET 8 and .NET 10 and carries these libraries under `runtimes/<rid>/native/`: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64` (glibc 2.35 or later), `osx` (one universal arm64 and x86_64 `libfatzaudio.dylib`), `android-arm64`, `android-x64` and `ios` (`fatzaudio.xcframework`). Other Android ABIs (arm, x86) can be staged in the same layout ([Building](building.md#nuget-package-and-versions)). `win-arm64` and `linux-arm64` are cross-compiled in CI; linux-arm64 runs a smoke subset of the tests under qemu, win-arm64 has not run on a device yet.
 
 | Target | How |
 |---|---|
 | Windows (x64, arm64), Linux desktop (x64, arm64), macOS (Apple silicon and Intel) | The package alone |
 | .NET for Android (arm64, x64) | The package alone; other ABIs: see [Building](building.md#use-it-from-net-for-android) |
-| .NET for iOS | The package alone: it adds the xcframework as a `NativeReference` for iOS projects (`build/FatzAudio.targets`); not yet tried in an app from the package ([engineering notes](engineering-notes.md)) |
+| .NET for iOS | The package alone: it adds the xcframework as a `NativeReference` for iOS projects (`build/FatzMedia.Audio.targets`); not yet tried in an app from the package ([engineering notes](engineering-notes.md)) |
 
 The binding checks the native library's major.minor version on first use and refuses a mismatch with `InvalidOperationException`. Update the package and the native library together.
 

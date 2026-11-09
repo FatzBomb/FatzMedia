@@ -79,7 +79,7 @@ HTTP and HTTPS streams: audio over BASS (plain `http`) or FFmpeg (`https` and HL
 
 ### Extension checks
 
-The static class <xref:FatzBomb.MediaControl.Core.Files.FileTypes> holds the registered sets. They are filled when the first player loads the native libraries, so read them after creating a player.
+The static class <xref:FatzMedia.Video.Core.Files.FileTypes> holds the registered sets. They are filled when the first player loads the native libraries, so read them after creating a player.
 
 ```csharp
 string filter = player.OpenFileDialogFilter;
@@ -114,7 +114,7 @@ bool hevcInHardware = caps.IsHardwareDecodeAvailable("hevc");
 ContainerCapability? mkv = caps.ForExtension(".mkv");
 ```
 
-<xref:FatzBomb.MediaControl.VideoDecodeCapabilities> also offers `SoftwareOnlyCodecNames`, `Codecs` and `Containers`. Each <xref:FatzBomb.MediaControl.CodecCapability> says whether software and hardware decoding are available and by which method.
+<xref:FatzMedia.Video.VideoDecodeCapabilities> also offers `SoftwareOnlyCodecNames`, `Codecs` and `Containers`. Each <xref:FatzMedia.Video.CodecCapability> says whether software and hardware decoding are available and by which method.
 
 ### Which native libraries loaded
 
@@ -126,10 +126,10 @@ if (!report.IsAudioAvailable)
     Console.WriteLine("BASS is missing: audio will not play.");
 ```
 
-<xref:FatzBomb.MediaControl.NativeDependencyReport> lists every library with its status and the folder it came from. Show the `Describe()` lines in your about box or support log; it is the quickest way to diagnose a customer machine where "MP3 does not play".
+<xref:FatzMedia.Video.NativeDependencyReport> lists every library with its status and the folder it came from. Show the `Describe()` lines in your about box or support log; it is the quickest way to diagnose a customer machine where "MP3 does not play".
 
 ## Things to watch
 
 - Format support differs between machines because it depends on the DLLs deployed next to the application. Build your file picker from `OpenFileDialogFilter` instead of a hard-coded list.
 - Extension matching is case-insensitive and decides how a file is treated. A mis-named file fails with `UnsupportedFormat` or `OpenFailed`.
-- A <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> other than `Full` accepts only some kinds. See [Player modes](player-modes.md).
+- A <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> other than `Full` accepts only some kinds. See [Player modes](player-modes.md).

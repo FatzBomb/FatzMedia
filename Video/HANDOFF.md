@@ -114,13 +114,13 @@ Linux sandbox (FatzAudio is a token-gated package: build its rc.1 from source an
 in `updates/037A_2`, then restore with a `nuget.config` outside the repo mapping `FatzAudio` to it):
 
 ```bash
-EnableWindowsTargeting=true dotnet build FatzBomb.MediaControl.sln -c Release
-dotnet test FatzBomb.MediaControl.Portable.Tests -c Release --no-build
+EnableWindowsTargeting=true dotnet build FatzMedia.Video.sln -c Release
+dotnet test FatzMedia.Video.Portable.Tests -c Release --no-build
 FATZBOMB_LINUX_FFMPEG_DIR=/opt/fatzbomb-native/ffmpeg/lib FATZBOMB_LINUX_SAMPLE_VIDEO=/opt/fatzbomb-native/media/h264_1080p.mp4 \
-  dotnet test FatzBomb.MediaControl.Linux.Tests -c Release --no-build
-dotnet test FatzBomb.MediaControl.Rendering.Vulkan.Tests -c Release --no-build
-dotnet test FatzBomb.MediaControl.Avalonia.Tests -c Release --no-build
-EnableWindowsTargeting=true dotnet format FatzBomb.MediaControl.sln --verify-no-changes
+  dotnet test FatzMedia.Video.Linux.Tests -c Release --no-build
+dotnet test FatzMedia.Video.Vulkan.Tests -c Release --no-build
+dotnet test FatzMedia.Video.Avalonia.Tests -c Release --no-build
+EnableWindowsTargeting=true dotnet format FatzMedia.Video.sln --verify-no-changes
 for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-presentation-parity; do
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
@@ -139,7 +139,7 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   restore keeps the old package contents).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
-Windows (owner): repo at `D:\development\FatzBomb\FatzVideo`, media in `C:\media`, RTX 5090, three
+Windows (owner): repo at `D:\development\FatzBomb\FatzMedia\Video`, media in `C:\media`, RTX 5090, three
 monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI. **Owner preference (2026-11-06):** full commands for every smoke step, and a `.ps1` script (on `scripts/smoke-common.ps1`, like `smoke-backlog.ps1` and `smoke-051A.ps1`) whenever there are many steps or they can be automated; the owner is still learning git and PowerShell, so scripts do the git steps too.
 
 ## Next steps

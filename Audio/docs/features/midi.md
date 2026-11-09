@@ -1,6 +1,6 @@
 # MIDI and karaoke files
 
-FatzAudio plays MIDI files itself, with a built-in SoundFont 2 synthesizer. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream. It replaces bassmidi.
+FatzMedia.Audio plays MIDI files itself, with a built-in SoundFont 2 synthesizer. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream. It replaces bassmidi.
 
 | What | Supported |
 |---|---|
@@ -170,7 +170,7 @@ A few more clean-ups make old karaoke files display well:
 
 ### Text encoding
 
-MIDI files don't say which character set their text uses. FatzAudio picks one per file: UTF-8 when all the text is valid UTF-8 (a byte-order mark is removed); Shift-JIS (code page 932, Japanese) when every non-ASCII byte forms a valid Shift-JIS pair and enough of them are kana or Japanese punctuation; otherwise Windows-1252 (Latin-1), which is what most older Western files use. All text comes out as UTF-8 either way. Files of mixed origin are common, so with UTF-8 (detected or forced) and with detected Windows-1252, each event that is valid UTF-8 is kept as UTF-8 and the others are read as Windows-1252; forced Windows-1252 and Shift-JIS read every event that way. When the guess is wrong, force the code page with `fa_open_options.text_code_page` (`StreamOptions.TextCodePage`): `FA_CODE_PAGE_UTF8`, `FA_CODE_PAGE_WINDOWS_1252` or `FA_CODE_PAGE_SHIFT_JIS`; 0 (the default) detects. Shift-JIS characters with no Unicode mapping (such as user-defined ones) come out as U+FFFD. The code page used is reported in `fa_midi_credits.code_page`.
+MIDI files don't say which character set their text uses. FatzMedia.Audio picks one per file: UTF-8 when all the text is valid UTF-8 (a byte-order mark is removed); Shift-JIS (code page 932, Japanese) when every non-ASCII byte forms a valid Shift-JIS pair and enough of them are kana or Japanese punctuation; otherwise Windows-1252 (Latin-1), which is what most older Western files use. All text comes out as UTF-8 either way. Files of mixed origin are common, so with UTF-8 (detected or forced) and with detected Windows-1252, each event that is valid UTF-8 is kept as UTF-8 and the others are read as Windows-1252; forced Windows-1252 and Shift-JIS read every event that way. When the guess is wrong, force the code page with `fa_open_options.text_code_page` (`StreamOptions.TextCodePage`): `FA_CODE_PAGE_UTF8`, `FA_CODE_PAGE_WINDOWS_1252` or `FA_CODE_PAGE_SHIFT_JIS`; 0 (the default) detects. Shift-JIS characters with no Unicode mapping (such as user-defined ones) come out as U+FFFD. The code page used is reported in `fa_midi_credits.code_page`.
 
 ```c
 fa_open_options o = { sizeof(o) };
@@ -381,7 +381,7 @@ Reverb and chorus are built in and on by default, as in BASSMIDI. Each voice sen
 
 The reverb is a Schroeder-Moorer design of comb and allpass filters that dies away in about 1.3 seconds (to -60 dB). The chorus is two delay taps per channel, modulated at 0.4 Hz between 10 and 16 ms. That is how they sound unless the file says otherwise, and again after every GM, GS or XG reset; it is close to a GS module's default Hall 2 reverb and Chorus 3.
 
-GS and XG files can set the effects with SysEx, and FatzAudio follows them (many karaoke files do this):
+GS and XG files can set the effects with SysEx, and FatzMedia.Audio follows them (many karaoke files do this):
 
 | Setting | GS (`40 01 xx`) | XG (`02 01 xx`) | What it does here |
 |---|---|---|---|
@@ -444,7 +444,7 @@ The MU100's additions (pitch change, aural exciter, touch wah, compressor, noise
 
 ### Insertion effects (XG insertion and GS EFX)
 
-An insertion effect takes the whole sound of the parts assigned to it, as the variation does in insertion mode. FatzAudio has the MU100's two XG insertion blocks and the SC-88 Pro's EFX. Which ones play follows the standard of the last reset or insertion SysEx: after an XG reset the XG insertions, after a GS reset the EFX, after a GM reset neither. After an XG reset both insertion blocks are Distortion with no part; after a GS reset the EFX is Thru and no part is switched to it. So nothing changes until a file assigns a part.
+An insertion effect takes the whole sound of the parts assigned to it, as the variation does in insertion mode. FatzMedia.Audio has the MU100's two XG insertion blocks and the SC-88 Pro's EFX. Which ones play follows the standard of the last reset or insertion SysEx: after an XG reset the XG insertions, after a GS reset the EFX, after a GM reset neither. After an XG reset both insertion blocks are Distortion with no part; after a GS reset the EFX is Thru and no part is switched to it. So nothing changes until a file assigns a part.
 
 A part can go through several blocks, always in this order: XG insertion 1, insertion 2, the XG variation (insertion mode), the GS EFX. Several parts on one block are summed into it. After the last block the sound goes on to the reverb and chorus: XG at the part's own sends (CC91, CC93, and CC94 when the variation is in system mode); GS at the EFX's own send levels (`17`-`19`), which stand in for those of the parts on it, as on the SC-88 Pro.
 

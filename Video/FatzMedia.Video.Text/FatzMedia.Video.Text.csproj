@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Text</PackageId>
+    <AssemblyName>FatzMedia.Video.Text</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Text</RootNamespace>
+    <Description>SkiaSharp subtitle and karaoke text rasterizer for the FatzMedia.Video software and Vulkan renderers.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+  </ItemGroup>
+
+  <!-- The version Avalonia 12.1.4 brings in (Avalonia.Skia), so Avalonia hosts resolve one
+       SkiaSharp. SkiaSharp carries the Windows and macOS native libraries; Linux needs its own. -->
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+</Project>

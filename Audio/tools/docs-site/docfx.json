@@ -3,9 +3,9 @@
     {
       "src": [
         {
-          "src": "../../bindings/dotnet/src/FatzAudio",
+          "src": "../../bindings/dotnet/src/FatzMedia.Audio",
           "files": [
-            "FatzAudio.csproj"
+            "FatzMedia.Audio.csproj"
           ]
         }
       ],

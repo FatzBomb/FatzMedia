@@ -1,6 +1,6 @@
 # CD+G karaoke graphics
 
-CD+G songs pair an audio track with a stream of graphics that draws the lyrics, 300 small "packs" per second. FatzAudio plays the graphics as a side stream of the audio: you open the song as usual, ask a **surface** for the picture from your render loop, and copy its pixels to whatever you draw with. The picture always matches what is heard, so pausing, seeking, looping, crossfades and tempo changes need no sync code in the app.
+CD+G songs pair an audio track with a stream of graphics that draws the lyrics, 300 small "packs" per second. FatzMedia.Audio plays the graphics as a side stream of the audio: you open the song as usual, ask a **surface** for the picture from your render loop, and copy its pixels to whatever you draw with. The picture always matches what is heard, so pausing, seeking, looping, crossfades and tempo changes need no sync code in the app.
 
 | Where the graphics come from | What to do |
 |---|---|
@@ -85,7 +85,7 @@ fa_stream_load_cdg_path(song, NULL);                      /* removes the graphic
 
 ### Audio and graphics from your own archive
 
-Apps that open archives FatzAudio doesn't (7z, RAR, tar, gzip, ...) unpack the audio and the `.cdg` themselves and pass both blocks: open the audio from memory, then attach the graphics before playing. Everything works as with an MP3+G pair found on disk: surfaces, timing, change events, checkpoints, the offset, the lyric range in analysis and silent-karaoke detection.
+Apps that open archives FatzMedia.Audio doesn't (7z, RAR, tar, gzip, ...) unpack the audio and the `.cdg` themselves and pass both blocks: open the audio from memory, then attach the graphics before playing. Everything works as with an MP3+G pair found on disk: surfaces, timing, change events, checkpoints, the offset, the lyric range in analysis and silent-karaoke detection.
 
 ```c
 fa_stream* song;
@@ -241,7 +241,7 @@ revisions[b] = update.Revision;
 foreach (var r in update.Dirty) Upload(buffers[b], r);   // PixelRect
 ```
 
-`UpdateInto` also takes a pointer (`nint`) for mapped memory; a buffer of the wrong size throws `FatzAudioException` with `ErrorCode.SizeMismatch`.
+`UpdateInto` also takes a pointer (`nint`) for mapped memory; a buffer of the wrong size throws `AudioException` with `ErrorCode.SizeMismatch`.
 
 ### Presentation options (`fa_cdg_surface_set_presentation`)
 
@@ -388,7 +388,7 @@ The graphics carry checkpoints, the decoder state every 10 s of packs, shared by
 
 ## ZIP archives
 
-`fa_stream_open_path`, `fa_stream_open_memory` and `fa_stream_open_io` recognise a ZIP by its content. Inside, the first `.cdg` is the graphics, and the audio is the entry with the same name (`Song.mp3` next to `Song.cdg`), else the first other entry FatzAudio can decode. Stored and deflate-compressed entries are read (the decompressor is built in). A damaged `.cdg` entry leaves a playable song without graphics. ZIP64 archives (larger than 4 GB, entries or offsets past 4 GB, or more than 65,535 entries) open the same way; the directory may be up to 16 MB. Encrypted entries are skipped and multi-part archives are not supported (`FA_ERROR_UNSUPPORTED_FORMAT`).
+`fa_stream_open_path`, `fa_stream_open_memory` and `fa_stream_open_io` recognise a ZIP by its content. Inside, the first `.cdg` is the graphics, and the audio is the entry with the same name (`Song.mp3` next to `Song.cdg`), else the first other entry FatzMedia.Audio can decode. Stored and deflate-compressed entries are read (the decompressor is built in). A damaged `.cdg` entry leaves a playable song without graphics. ZIP64 archives (larger than 4 GB, entries or offsets past 4 GB, or more than 65,535 entries) open the same way; the directory may be up to 16 MB. Encrypted entries are skipped and multi-part archives are not supported (`FA_ERROR_UNSUPPORTED_FORMAT`).
 
 Only what is needed is read: the archive's directory at the end of the file, then the entries used. The whole file is never loaded.
 
@@ -401,7 +401,7 @@ Only what is needed is read: the archive's directory at the end of the file, the
 
 The `.cdg` is always unpacked into memory (a song's graphics are a few MB). An archive with no audio at all plays its `.cdg` as a silent stream ([graphics with no audio](#graphics-with-no-audio)).
 
-**Other files in the archive** (a bundled video, a PDF, a text file) are told from the audio by their first 64 KB: for a compressed entry bigger than that, FatzAudio unpacks 64 KB and runs the same content probes the decoders use, and only unpacks the whole entry when one of them claims it. A 200 MB video in a karaoke ZIP costs a 64 KB read, whether the song is opened, tagged (`fa_tags_read_path`) or probed for a `.cdg`.
+**Other files in the archive** (a bundled video, a PDF, a text file) are told from the audio by their first 64 KB: for a compressed entry bigger than that, FatzMedia.Audio unpacks 64 KB and runs the same content probes the decoders use, and only unpacks the whole entry when one of them claims it. A 200 MB video in a karaoke ZIP costs a 64 KB read, whether the song is opened, tagged (`fa_tags_read_path`) or probed for a `.cdg`.
 
 **Damaged and hostile archives.** Entries whose data overlaps an earlier entry's are left out (only the first, in file order, is listed), and at most 4 compressed entries over 64 KB that look like audio are unpacked in full per open or tags read. A real karaoke ZIP never comes near either limit, but without them a small hostile archive could have the same bytes unpacked once per entry, or many entries that look like audio unpacked one after another. When the limit is reached, the open fails with `FA_ERROR_UNSUPPORTED_FORMAT`, as if no entry were audio.
 
@@ -418,12 +418,12 @@ fa_result r = fa_stream_open_path(engine, "Big Song.zip", &o, &stream);   /* FA_
 ```csharp
 using var cts = new CancellationTokenSource();
 var stream = engine.OpenFile("Big Song.zip", new StreamOptions { CancellationToken = cts.Token });   // on a worker thread
-cts.Cancel();   // from the UI: the open throws FatzAudioException (ErrorCode.Cancelled)
+cts.Cancel();   // from the UI: the open throws AudioException (ErrorCode.Cancelled)
 ```
 
 A stored entry played in place is not CRC checked at open, since that would read the whole song first. Instead the engine's decode worker checks it in the background, 256 KB at a time, while the stream is attached to a device (decode-only streams, and archives opened with `fa_stream_open_io`, whose callbacks cannot be read twice, are not checked). A mismatch is reported once as `FA_EVENT_DECODE_ERROR` (value `FA_ERROR_UNSUPPORTED_FORMAT`; .NET `AudioStream.DecodeError`) and playback goes on: a damaged byte plays like a damaged byte in an unzipped MP3, a short glitch, never a crash. The check ends within a second or two on a normal song, so set the event callback right after the open. Compressed entries are always checked while they are unpacked, and a bad one fails the open.
 
-You do not need to set anything: a song too big for memory is unpacked into the OS temp directory (Windows: the user's temp path; Linux, macOS, iOS and Android: `TMPDIR`, which iOS and the .NET Android runtime set to the app's own sandbox, else `/tmp`, on Android `/data/local/tmp`). Set `temp_directory` only to choose another drive; it always wins. Either way FatzAudio works in a `fatzaudio-tmp` folder inside it (`fatzaudio-tmp-<uid>` in the OS directory off Windows, since `/tmp` is shared; created only when a song needs it) and never touches anything else there. A `temp_directory` and that folder are created if missing (not the directory's parents); if they cannot be written when a song needs them, the open fails with `FA_ERROR_IO`. Before unpacking, the free space of that drive is checked: the song's size plus 64 MB must be free, else the open fails at once with `FA_ERROR_DISK_FULL` (.NET `ErrorCode.DiskFull`) and nothing is written. Each unpacked song is deleted when its stream closes, and also if the app crashes: Windows opens the file with delete-on-close, and Linux, macOS, iOS and Android remove its name as soon as it exists. Files left by a power cut are deleted the next time an engine is created. Apps that do not want the OS directory used set `FA_ENGINE_NO_TEMP_FILES` (.NET `NoTempFiles`) and get `FA_ERROR_TOO_LARGE` instead (a `temp_directory` they set still works).
+You do not need to set anything: a song too big for memory is unpacked into the OS temp directory (Windows: the user's temp path; Linux, macOS, iOS and Android: `TMPDIR`, which iOS and the .NET Android runtime set to the app's own sandbox, else `/tmp`, on Android `/data/local/tmp`). Set `temp_directory` only to choose another drive; it always wins. Either way FatzMedia.Audio works in a `fatzaudio-tmp` folder inside it (`fatzaudio-tmp-<uid>` in the OS directory off Windows, since `/tmp` is shared; created only when a song needs it) and never touches anything else there. A `temp_directory` and that folder are created if missing (not the directory's parents); if they cannot be written when a song needs them, the open fails with `FA_ERROR_IO`. Before unpacking, the free space of that drive is checked: the song's size plus 64 MB must be free, else the open fails at once with `FA_ERROR_DISK_FULL` (.NET `ErrorCode.DiskFull`) and nothing is written. Each unpacked song is deleted when its stream closes, and also if the app crashes: Windows opens the file with delete-on-close, and Linux, macOS, iOS and Android remove its name as soon as it exists. Files left by a power cut are deleted the next time an engine is created. Apps that do not want the OS directory used set `FA_ENGINE_NO_TEMP_FILES` (.NET `NoTempFiles`) and get `FA_ERROR_TOO_LARGE` instead (a `temp_directory` they set still works).
 
 ```c
 fa_engine_config cfg;

@@ -10,7 +10,7 @@ real Linux hardware with BASS. macOS and Linux hardware decode are later slices.
 | Registration / concern | Windows | Linux (this slice) | Classification |
 |---|---|---|---|
 | Native library loading | `Bootstrap` (LoadLibraryW, `*.dll`) | `LinuxNativeLibraryBootstrapper` (dlopen, `lib*.so`, DllImport resolver, FFmpeg dependency-order preload) | OS-specific |
-| `IMidiLyricProvider` | Core `BassMidiLyricProvider` (registered by `MediaControlServiceProvider`) | same | shared Core default; no per-platform copy |
+| `IMidiLyricProvider` | Core `BassMidiLyricProvider` (registered by `PlayerServiceProvider`) | same | shared Core default; no per-platform copy |
 | `IPrecisionWaiterFactory` | Win32 high-resolution waitable timer | kernel wait + 1 ms spin | OS-specific |
 | `IVideoPipelinePlatformServices` | DWM refresh interval | host option (`LinuxPlatformOptions.DisplayRefreshRateHz`, default 60) | OS-specific |
 | `IVideoHardwareAccelerationServices` | D3D11VA/DXVA | `SoftwareOnlyVideoHardwareAccelerationServices` | portable fallback; VA-API later |
@@ -20,7 +20,7 @@ real Linux hardware with BASS. macOS and Linux hardware decode are later slices.
 
 ## Pinned Decisions
 
-1. `FatzBomb.MediaControl.Linux` targets `net10.0`, references Core only, and has no
+1. `FatzMedia.Video.Linux` targets `net10.0`, references Core only, and has no
    runtime OS branches; it shares no base class with the Windows package.
 2. Hosts own binaries. Search: host paths, then app folder, `native/`,
    `runtimes/linux-<arch>/native/`. No implicit system-directory search.
