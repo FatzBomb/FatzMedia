@@ -160,9 +160,9 @@ public sealed class BaseVisualTransformTests
     [Fact]
     public void PremultipliedIdentityIsByteIdentical()
     {
-        const uint pixel = 0x7F123456;
+        const uint Pixel = 0x7F123456;
 
-        Assert.Equal(pixel, BaseVisualTransformMath.ApplyPremultipliedBgra(pixel, default));
+        Assert.Equal(Pixel, BaseVisualTransformMath.ApplyPremultipliedBgra(Pixel, default));
     }
 
     [Fact]
@@ -227,8 +227,8 @@ public sealed class BaseVisualTransformTests
             Brightness = 0.05f,
             IncludeOverlays = true
         };
-        const uint pixel = 0x80604020;
-        var expected = BaseVisualTransformMath.ApplyPremultipliedBgra(pixel, transform);
+        const uint Pixel = 0x80604020;
+        var expected = BaseVisualTransformMath.ApplyPremultipliedBgra(Pixel, transform);
 
         (var blue, var green, var red, var alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
             blue: 0x20,

@@ -106,7 +106,7 @@ static partial class CoreAudioDefaultEndpointReader
     [ComImport]
     [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDeviceEnumerator
+    interface IMMDeviceEnumerator
     {
         [PreserveSig]
         int EnumAudioEndpoints(EDataFlow dataFlow, uint stateMask, out IntPtr devices);
@@ -127,7 +127,7 @@ interface IMMDeviceEnumerator
     [ComImport]
     [Guid("D666063F-1587-4E43-81F1-B948E807363F")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDevice
+    interface IMMDevice
     {
         [PreserveSig]
         int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, out IntPtr interfacePointer);
@@ -145,7 +145,7 @@ interface IMMDevice
     [ComImport]
     [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IPropertyStore
+    interface IPropertyStore
     {
         [PreserveSig]
         int GetCount(out uint propertyCount);
@@ -166,14 +166,14 @@ interface IPropertyStore
 #pragma warning restore SYSLIB1096
 
     [StructLayout(LayoutKind.Sequential)]
-readonly struct PropertyKey(Guid formatId, int propertyId)
+    readonly struct PropertyKey(Guid formatId, int propertyId)
     {
         public readonly Guid FormatId = formatId;
         public readonly int PropertyId = propertyId;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-struct PropVariant
+    struct PropVariant
     {
         public ushort VariantType;
         public ushort Reserved1;

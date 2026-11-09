@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Windows.Video;
 /// </summary>
 static partial class DwmCompositionTiming
 {
-    static int s_failureReported;
+    static int _failureReported;
 
     /// <summary>The size DWM expects in <c>DWM_TIMING_INFO.cbSize</c>: the packed native layout.</summary>
     internal static int TimingInfoSize => Marshal.SizeOf<DwmTimingInfo>();
@@ -49,7 +49,7 @@ static partial class DwmCompositionTiming
     /// </summary>
     static void ReportFailureOnce(string detail)
     {
-        if (Interlocked.Exchange(ref s_failureReported, 1) != 0)
+        if (Interlocked.Exchange(ref _failureReported, 1) != 0)
             return;
 
         DiagnosticRouter.Raise(
@@ -60,7 +60,7 @@ static partial class DwmCompositionTiming
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-struct UnsignedRatio
+    struct UnsignedRatio
     {
         public uint Numerator;
         public uint Denominator;
@@ -69,7 +69,7 @@ struct UnsignedRatio
     // DWM_TIMING_INFO is declared under #pragma pack(1) (dwmapi.h): 292 bytes. The default layout
     // (320 bytes) made every call fail with E_INVALIDARG (ENG-039 G2).
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-struct DwmTimingInfo
+    struct DwmTimingInfo
     {
         public uint Size;
         public UnsignedRatio RefreshRate;

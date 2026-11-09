@@ -154,10 +154,10 @@ public sealed class FfmpegAudioReaderNativeTests
 
     static void WriteStereoTone(string path, int sampleRate, int seconds, double amplitude, int burstAtSeconds, double burstAmplitude)
     {
-        const short channels = 2;
-        const short bitsPerSample = 16;
+        const short Channels = 2;
+        const short BitsPerSample = 16;
         var frames = sampleRate * seconds;
-        var dataBytes = frames * channels * (bitsPerSample / 8);
+        var dataBytes = frames * Channels * (BitsPerSample / 8);
 
         using var writer = new BinaryWriter(File.Create(path));
         writer.Write("RIFF"u8);
@@ -165,11 +165,11 @@ public sealed class FfmpegAudioReaderNativeTests
         writer.Write("WAVEfmt "u8);
         writer.Write(16);
         writer.Write((short)1);
-        writer.Write(channels);
+        writer.Write(Channels);
         writer.Write(sampleRate);
-        writer.Write(sampleRate * channels * (bitsPerSample / 8));
-        writer.Write((short)(channels * (bitsPerSample / 8)));
-        writer.Write(bitsPerSample);
+        writer.Write(sampleRate * Channels * (BitsPerSample / 8));
+        writer.Write((short)(Channels * (BitsPerSample / 8)));
+        writer.Write(BitsPerSample);
         writer.Write("data"u8);
         writer.Write(dataBytes);
 

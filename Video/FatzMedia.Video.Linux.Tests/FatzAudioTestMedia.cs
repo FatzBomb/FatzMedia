@@ -54,11 +54,11 @@ static class FatzAudioTestMedia
     public static string WriteSoundFont(string directory)
     {
         var path = Path.Combine(directory, "test.sf2");
-        const int sampleCount = 4400; // 44 whole cycles of 441 Hz at 44.1 kHz, so the loop is seamless
+        const int SampleCount = 4400; // 44 whole cycles of 441 Hz at 44.1 kHz, so the loop is seamless
         var smpl = new MemoryStream();
         using (var w = new BinaryWriter(smpl, Encoding.ASCII, leaveOpen: true))
         {
-            for (var i = 0; i < sampleCount; i++)
+            for (var i = 0; i < SampleCount; i++)
                 w.Write((short)Math.Round(0.5 * short.MaxValue * Math.Sin(2 * Math.PI * 441 * i / SampleRate)));
             for (var i = 0; i < 46; i++)
                 w.Write((short)0); // the zero guard the spec asks for after each sample
@@ -92,9 +92,9 @@ static class FatzAudioTestMedia
             {
                 w.Write(Ascii("Sine", 20));
                 w.Write(0u);
-                w.Write((uint)sampleCount);
+                w.Write((uint)SampleCount);
                 w.Write(0u);
-                w.Write((uint)sampleCount);
+                w.Write((uint)SampleCount);
                 w.Write((uint)SampleRate);
                 w.Write((byte)69);
                 w.Write((sbyte)0);
@@ -153,8 +153,8 @@ static class FatzAudioTestMedia
             ("/Sec", 3), ("ond ", 4), ("line", 5),
             ("\\Third ", 6), ("page", 7),
         ];
-        const int division = 480;
-        const int start = 4 * division;
+        const int Division = 480;
+        const int Start = 4 * Division;
 
         var conductor = Track(
             Meta(0, 0x03, Encoding.ASCII.GetBytes("Test Song")),
@@ -172,7 +172,7 @@ static class FatzAudioTestMedia
         var previous = 0;
         foreach ((var text, var index) in words)
         {
-            var tick = start + (index * division);
+            var tick = Start + (index * Division);
             wordEvents.Add(Meta(tick - previous, 0x01, Encoding.ASCII.GetBytes(text)));
             previous = tick;
         }
@@ -181,10 +181,10 @@ static class FatzAudioTestMedia
         previous = 0;
         for (var i = 0; i < words.Length; i++)
         {
-            var on = start + (i * division);
+            var on = Start + (i * Division);
             noteEvents.Add(Event(on - previous, 0x90, 60 + i, 100));
-            noteEvents.Add(Event(division / 2, 0x80, 60 + i, 0));
-            previous = on + (division / 2);
+            noteEvents.Add(Event(Division / 2, 0x80, 60 + i, 0));
+            previous = on + (Division / 2);
         }
 
         using var file = new BinaryWriter(File.Create(path));
@@ -192,7 +192,7 @@ static class FatzAudioTestMedia
         WriteBigEndian(file, 6);
         WriteBigEndian16(file, 1);
         WriteBigEndian16(file, 3);
-        WriteBigEndian16(file, division);
+        WriteBigEndian16(file, Division);
         file.Write(conductor);
         file.Write(Track([.. wordEvents]));
         file.Write(Track([.. noteEvents]));

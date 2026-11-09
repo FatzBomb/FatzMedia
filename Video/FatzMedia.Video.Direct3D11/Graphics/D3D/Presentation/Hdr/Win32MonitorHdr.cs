@@ -17,7 +17,7 @@ static unsafe class Win32MonitorHdr
 {
     const uint DisplayConfigDeviceInfoGetSdrWhiteLevel = 11;
     static readonly Lock FactoryGate = new();
-    static IDXGIFactory1? s_factory;
+    static IDXGIFactory1? _factory;
 
     /// <summary>The HDR state of the monitor showing <paramref name="hwnd"/>, or null when Windows cannot tell.</summary>
     public static HdrDisplayInfo? TryGet(nint hwnd)
@@ -41,13 +41,13 @@ static unsafe class Win32MonitorHdr
         description = default;
         lock (FactoryGate)
         {
-            if (s_factory == null || !s_factory.IsCurrent)
+            if (_factory == null || !_factory.IsCurrent)
             {
-                s_factory?.Dispose();
-                s_factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+                _factory?.Dispose();
+                _factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
             }
 
-            for (uint adapterIndex = 0; s_factory.EnumAdapters1(adapterIndex, out var adapter).Success; adapterIndex++)
+            for (uint adapterIndex = 0; _factory.EnumAdapters1(adapterIndex, out var adapter).Success; adapterIndex++)
             {
                 using (adapter)
                 {

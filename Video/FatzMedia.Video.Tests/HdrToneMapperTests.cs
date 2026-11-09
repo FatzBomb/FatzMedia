@@ -94,28 +94,28 @@ public sealed class HdrToneMapperTests
     public void AnImage_ConvertsEveryRowWithItsStrides()
     {
         var mapper = new HdrToneMapper(1000, Reference);
-        const int width = 3, height = 40, sourceStride = (width * 6) + 4, destinationStride = (width * 4) + 8;
-        var source = new byte[sourceStride * height];
+        const int Width = 3, Height = 40, SourceStride = (Width * 6) + 4, DestinationStride = (Width * 4) + 8;
+        var source = new byte[SourceStride * Height];
         var code = Code(Reference);
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            for (var x = 0; x < width * 3; x++)
-                BitConverter.TryWriteBytes(source.AsSpan((y * sourceStride) + (x * 2), 2), code);
+            for (var x = 0; x < Width * 3; x++)
+                BitConverter.TryWriteBytes(source.AsSpan((y * SourceStride) + (x * 2), 2), code);
         }
 
-        var destination = new byte[destinationStride * height];
-        mapper.Convert(source, sourceStride, destination, destinationStride, width, height);
+        var destination = new byte[DestinationStride * Height];
+        mapper.Convert(source, SourceStride, destination, DestinationStride, Width, Height);
 
         var expected = Convert(mapper, code, code, code)[0];
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            for (var x = 0; x < width; x++)
+            for (var x = 0; x < Width; x++)
             {
-                var offset = (y * destinationStride) + (x * 4);
+                var offset = (y * DestinationStride) + (x * 4);
                 Assert.Equal([expected, expected, expected, (byte)255], destination.AsSpan(offset, 4).ToArray());
             }
 
-            Assert.Equal(0, destination[(y * destinationStride) + (width * 4)]);
+            Assert.Equal(0, destination[(y * DestinationStride) + (Width * 4)]);
         }
     }
 

@@ -21,7 +21,7 @@ static class Program
         RendererSelection = PlayerRendererSelection.ResolveInBackground(options, request);
 
     [STAThread]
-static void Main(string[] args)
+    static void Main(string[] args)
     {
         // The flags every test player shares (see PlayerStartupOptions); this player has none of its own.
         var options = PlayerStartupOptions.Parse(args);

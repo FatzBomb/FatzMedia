@@ -513,13 +513,13 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
 
         public static (byte R, byte G, byte B) ToSdr(int luma, int cb, int cr, HdrToneMapRequest request)
         {
-            const double kr = 0.2627;
-            const double kb = 0.0593;
-            const double kg = 1 - kr - kb;
+            const double Kr = 0.2627;
+            const double Kb = 0.0593;
+            const double Kg = 1 - Kr - Kb;
             var y = (luma - 64) / 876.0;
             var u = (cb - 512) / 896.0;
             var v = (cr - 512) / 896.0;
-            double[] signal = [y + (2 * (1 - kr) * v), y - (2 * kb * (1 - kb) / kg * u) - (2 * kr * (1 - kr) / kg * v), y + (2 * (1 - kb) * u)];
+            double[] signal = [y + (2 * (1 - Kr) * v), y - (2 * Kb * (1 - Kb) / Kg * u) - (2 * Kr * (1 - Kr) / Kg * v), y + (2 * (1 - Kb) * u)];
             var nits = request.Transfer == HdrTransferFunction.Hlg ? HlgNits(signal, request) : [.. signal.Select(PqToNits)];
             var brightest = nits.Max();
             var gain = brightest > 0 ? Curve(brightest, request) / brightest : 1;

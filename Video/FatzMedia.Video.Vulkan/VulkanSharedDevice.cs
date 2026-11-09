@@ -438,13 +438,13 @@ sealed unsafe class VulkanSharedDevice
             : GCHandle.FromIntPtr((nint)context->user_opaque).Target as VulkanSharedDevice;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-static void OnLockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Enter();
+    static void OnLockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Enter();
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-static void OnUnlockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Exit();
+    static void OnUnlockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Exit();
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-static void OnContextFree(AVHWDeviceContext* context)
+    static void OnContextFree(AVHWDeviceContext* context)
     {
         var device = FromContext(context);
         context->user_opaque = null;

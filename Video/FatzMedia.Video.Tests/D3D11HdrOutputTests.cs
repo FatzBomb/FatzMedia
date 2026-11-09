@@ -325,14 +325,14 @@ public sealed class D3D11HdrOutputTests
     {
         var device = deviceResources.Device!;
         var context = deviceResources.Context!;
-        const int width = 8, height = 4;
-        using var target = device.CreateTexture2D(new Texture2DDescription(format, width, height, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource));
-        using var staging = device.CreateTexture2D(new Texture2DDescription(format, width, height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
+        const int Width = 8, Height = 4;
+        using var target = device.CreateTexture2D(new Texture2DDescription(format, Width, Height, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource));
+        using var staging = device.CreateTexture2D(new Texture2DDescription(format, Width, Height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
         var snapshot = new D3D11PresentationTargetSnapshot(
             CompositionTargetDescriptor.PrimaryFinalTargetId,
             target,
-            width,
-            height,
+            Width,
+            Height,
             IntPtr.Zero,
             D3D11PresentationBackendKind.ManagedFrameSink,
             "test",
@@ -398,8 +398,8 @@ public sealed class D3D11HdrOutputTests
 
     static double[] HlgToNits(double[] signal, D3D11HdrToneMapPresenter.ToneMapConstants k)
     {
-        const double a = 0.17883277, b = 0.28466892, c = 0.55991073;
-        double[] scene = [.. signal.Select(s => Math.Clamp(s, 0, 1)).Select(s => s <= 0.5 ? s * s / 3 : (Math.Exp((s - c) / a) + b) / 12)];
+        const double A = 0.17883277, B = 0.28466892, C = 0.55991073;
+        double[] scene = [.. signal.Select(s => Math.Clamp(s, 0, 1)).Select(s => s <= 0.5 ? s * s / 3 : (Math.Exp((s - C) / A) + B) / 12)];
         var luminance = (0.2627 * scene[0]) + (0.6780 * scene[1]) + (0.0593 * scene[2]);
         var ootf = luminance > 0 ? k.Transfer.Y * Math.Pow(luminance, k.Transfer.Z) : 0;
         return [.. scene.Select(e => e * ootf)];

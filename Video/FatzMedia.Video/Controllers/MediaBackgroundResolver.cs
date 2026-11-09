@@ -91,7 +91,7 @@ static class MediaBackgroundResolver
 
     static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
     {
-        const StringComparison baseComparison = StringComparison.Ordinal;
+        const StringComparison BaseComparison = StringComparison.Ordinal;
 
         // '*' and '?' are legal in Linux file names but are wildcards in search patterns.
         var pattern = sourceBase.AsSpan().IndexOfAny('*', '?') >= 0 ? "*" : sourceBase + ".*";
@@ -103,7 +103,7 @@ static class MediaBackgroundResolver
                     IgnoreInaccessible = true,
                     RecurseSubdirectories = false,
                 })
-                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, baseComparison))
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, BaseComparison))
                 .Order(StringComparer.Ordinal)];
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

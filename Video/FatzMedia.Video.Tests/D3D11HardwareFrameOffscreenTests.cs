@@ -121,17 +121,17 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
         if (!CanDecodeInto(decoder, Format.P010))
             return;
 
-        const int y = 600, cb = 400, cr = 700;
+        const int Y = 600, Cb = 400, Cr = 700;
         var fallback = new HdrToneMapFallback();
         var request = new HdrToneMapRequest(1000, 203) { Fallback = fallback };
-        using var pool = CreatePoolSlice(decoder, Format.P010, P010(y, cb, cr));
+        using var pool = CreatePoolSlice(decoder, Format.P010, P010(Y, Cb, Cr));
         var frame = HardwareFrame(decoder, pool, Bt2020, request);
         AdoptAndReattach(bridge, frame, decoder, primary);
 
         Assert.True(bridge.PresentNativeFrame(frame));
         Assert.False(fallback.IsRequested, fallback.Reason);
         // What the engine's CPU path produces for the same YCbCr (R, G, B), against BGRA pixels.
-        var rgb = D3D11HdrToneMapTests.Cpu(y, cb, cr, request);
+        var rgb = D3D11HdrToneMapTests.Cpu(Y, Cb, Cr, request);
         var pixels = consumer.LastFrame.Pixels;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {

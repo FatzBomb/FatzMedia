@@ -58,10 +58,10 @@ sealed class AudioNormalizer
     {
         if (source is null) return 0.0;
 
-        const float blockSeconds = 0.25f;
-        const int maxSamples = 24;
+        const float BlockSeconds = 0.25f;
+        const int MaxSamples = 24;
 
-        return await Task.Run(() => AnalyzePeakInternal(source, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => AnalyzePeakInternal(source, BlockSeconds, MaxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -227,14 +227,14 @@ sealed class AudioNormalizer
 
     double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
     {
-        const double blockSeconds = 0.5;
-        const int maxWindows = 240;
+        const double BlockSeconds = 0.5;
+        const int MaxWindows = 240;
 
         double peak;
 
         peak = source.TryGetDuration(out var duration)
-            ? AnalyzePeakBySeek(source, duration, blockSeconds, maxWindows, cancellationToken)
-            : AnalyzePeakSequential(source, blockSeconds, maxWindows, cancellationToken);
+            ? AnalyzePeakBySeek(source, duration, BlockSeconds, MaxWindows, cancellationToken)
+            : AnalyzePeakSequential(source, BlockSeconds, MaxWindows, cancellationToken);
 
         if (updateGain)
             _ = SetNormalizationGainFromPeak(peak);

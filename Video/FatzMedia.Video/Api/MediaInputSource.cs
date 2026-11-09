@@ -111,8 +111,8 @@ public sealed class MediaInputSource
     /// <param name="displayName">Optional name; defaults to the colour in hex.</param>
     public static MediaInputSource FromColor(uint argb, string? displayName = null)
     {
-        const int stride = SolidColorSize * 4;
-        var pixels = new byte[stride * SolidColorSize];
+        const int Stride = SolidColorSize * 4;
+        var pixels = new byte[Stride * SolidColorSize];
         var b = (byte)argb;
         var g = (byte)(argb >> 8);
         var r = (byte)(argb >> 16);
@@ -129,7 +129,7 @@ public sealed class MediaInputSource
             pixels,
             SolidColorSize,
             SolidColorSize,
-            stride,
+            Stride,
             string.IsNullOrWhiteSpace(displayName) ? $"Solid colour #{argb:X8}" : displayName);
     }
 

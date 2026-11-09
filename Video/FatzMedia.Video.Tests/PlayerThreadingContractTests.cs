@@ -424,7 +424,7 @@ public sealed class PlayerThreadingContractTests
     [Fact]
     public async Task MediaDiagnostic_RaisedDuringALongOperation_ReachesTheHostBeforeItEnds_InOrder()
     {
-        const string category = "ThreadingTest.Retry";
+        const string Category = "ThreadingTest.Retry";
         PlayerCore? owner = null;
         var received = new ConcurrentQueue<string>();
         using var allReceived = new CountdownEvent(3);
@@ -437,7 +437,7 @@ public sealed class PlayerThreadingContractTests
                 using (DiagnosticRouter.EnterOwner(owner!))
                 {
                     for (var attempt = 1; attempt <= 3; attempt++)
-                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, category, $"retry {attempt}/3");
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"retry {attempt}/3");
                 }
 
                 deliveredDuringOpen = allReceived.Wait(TestEnvironment.EventuallyTimeout);
@@ -447,7 +447,7 @@ public sealed class PlayerThreadingContractTests
         owner = player;
         player.MediaDiagnostic += (_, e) =>
         {
-            if (e.Category != category)
+            if (e.Category != Category)
                 return;
             received.Enqueue(e.Message);
             allReceived.Signal();
@@ -462,23 +462,23 @@ public sealed class PlayerThreadingContractTests
     [Fact]
     public async Task MediaDiagnostic_IsNotDeliveredAfterDispose()
     {
-        const string category = "ThreadingTest.AfterDispose";
+        const string Category = "ThreadingTest.AfterDispose";
         var player = new PlayerCore(new SwitchTestPlatformFactory(), MediaPlayerConfiguration.Auto, []);
         var received = new ConcurrentQueue<string>();
         player.MediaDiagnostic += (_, e) =>
         {
-            if (e.Category == category)
+            if (e.Category == Category)
                 received.Enqueue(e.Message);
         };
         using (DiagnosticRouter.EnterOwner(player))
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "before");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, "before");
 
         player.Dispose();
         // Queued before Dispose: delivered by the time it returned.
         Assert.Equal(["before"], received);
 
         using (DiagnosticRouter.EnterOwner(player))
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "after");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, "after");
         await Task.Delay(100);
         Assert.Equal(["before"], received);
     }

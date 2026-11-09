@@ -292,11 +292,11 @@ sealed class D3D11HdrToneMapPresenter : IDisposable
             toneMap = ForScRgbOutput(toneMap, hdrOutput!.Value.DisplayPeakNits);
 
         // P010 keeps 10-bit codes in the top bits of 16: a sampled value v is code * 64 / 65535.
-        const double codeScale = 65535.0 / 64;
+        const double CodeScale = 65535.0 / 64;
         var full = colorSpace.Range == VideoColorRange.Full;
-        var lumaScale = codeScale / (full ? 1023 : 876);
+        var lumaScale = CodeScale / (full ? 1023 : 876);
         var lumaOffset = full ? 0 : -64.0 / 876;
-        var chromaScale = codeScale / (full ? 1023 : 896);
+        var chromaScale = CodeScale / (full ? 1023 : 896);
         var chromaOffset = -512.0 / (full ? 1023 : 896);
 
         (var kr, var kb) = colorSpace.Matrix switch

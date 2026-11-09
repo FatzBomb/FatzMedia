@@ -270,8 +270,8 @@ sealed unsafe partial class VulkanOffscreenCompositor
     {
         FormatProperties properties;
         _vk.GetPhysicalDeviceFormatProperties(_physicalDevice, format, &properties);
-        const FormatFeatureFlags needed = FormatFeatureFlags.SampledImageBit | FormatFeatureFlags.SampledImageFilterLinearBit;
-        return (properties.OptimalTilingFeatures & needed) == needed;
+        const FormatFeatureFlags Needed = FormatFeatureFlags.SampledImageBit | FormatFeatureFlags.SampledImageFilterLinearBit;
+        return (properties.OptimalTilingFeatures & Needed) == Needed;
     }
 
     /// <summary>What one decoded frame needs to be converted.</summary>

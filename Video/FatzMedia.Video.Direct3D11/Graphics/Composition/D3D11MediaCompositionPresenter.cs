@@ -1501,7 +1501,7 @@ sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics 
         out IntPtr errorMessages);
 
     [StructLayout(LayoutKind.Sequential)]
-struct CdgShaderConstants
+    struct CdgShaderConstants
     {
         public Vector4 DestinationRect;
         public Vector4 TextureRect;

@@ -703,11 +703,11 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var arrowGap = _karaokeStyle.FontSize * 0.1f;
         var slotSpacing = arrowLayout.Width + (_karaokeStyle.FontSize * 0.12f);
         var countdownOpacity = opacity * state.Opacity;
-        const uint redArgb = 0xFFFF0000;
-        const uint greenArgb = 0xFF00C000;
-        var red = ToColor(redArgb, countdownOpacity);
-        var green = ToColor(greenArgb, countdownOpacity);
-        var active = ToColor(LerpColor(redArgb, greenArgb, state.ActiveArrowProgress), countdownOpacity);
+        const uint RedArgb = 0xFFFF0000;
+        const uint GreenArgb = 0xFF00C000;
+        var red = ToColor(RedArgb, countdownOpacity);
+        var green = ToColor(GreenArgb, countdownOpacity);
+        var active = ToColor(LerpColor(RedArgb, GreenArgb, state.ActiveArrowProgress), countdownOpacity);
 
         for (var i = 0; i < 4; i++)
         {

@@ -89,7 +89,7 @@ public sealed class VideoFrameLifetimeTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-static (WeakReference Args, WeakReference Payload) RaiseUntracked(TestMediaEngine engine)
+    static (WeakReference Args, WeakReference Payload) RaiseUntracked(TestMediaEngine engine)
     {
         var pixels = Pixels(0x7C);
         var args = Frame(pixels, canBeRetained: false);

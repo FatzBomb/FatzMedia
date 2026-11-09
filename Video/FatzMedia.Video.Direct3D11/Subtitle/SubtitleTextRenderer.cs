@@ -842,11 +842,11 @@ sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextSt
         var arrowGap = _karaokeStyle.FontSize * 0.1f;
         var slotSpacing = arrowMetrics.Width + (_karaokeStyle.FontSize * 0.12f);
         var countdownOpacity = opacity * state.Opacity;
-        const uint redArgb = 0xFFFF0000;
-        const uint greenArgb = 0xFF00C000;
-        var activeArgb = LerpColor(redArgb, greenArgb, state.ActiveArrowProgress);
-        var redBrush = GetBrush(ToColor(redArgb, countdownOpacity));
-        var greenBrush = GetBrush(ToColor(greenArgb, countdownOpacity));
+        const uint RedArgb = 0xFFFF0000;
+        const uint GreenArgb = 0xFF00C000;
+        var activeArgb = LerpColor(RedArgb, GreenArgb, state.ActiveArrowProgress);
+        var redBrush = GetBrush(ToColor(RedArgb, countdownOpacity));
+        var greenBrush = GetBrush(ToColor(GreenArgb, countdownOpacity));
         var activeBrush = GetBrush(ToColor(activeArgb, countdownOpacity));
 
         for (var i = 0; i < 4; i++)

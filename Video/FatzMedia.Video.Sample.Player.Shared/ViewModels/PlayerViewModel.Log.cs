@@ -34,7 +34,7 @@ public partial class PlayerViewModel
     public string GetLogText() => string.Join(Environment.NewLine, DiagnosticLog.Reverse().Select(entry => entry.Line));
 
     [RelayCommand]
-async Task CopyLogAsync()
+    async Task CopyLogAsync()
     {
         if (_host.Clipboard is not { } clipboard)
         {
@@ -56,10 +56,10 @@ async Task CopyLogAsync()
     }
 
     [RelayCommand]
-void ClearLog() => DiagnosticLog.Clear();
+    void ClearLog() => DiagnosticLog.Clear();
 
     [RelayCommand]
-void OpenLogFile()
+    void OpenLogFile()
     {
         if (LogFilePath.Length == 0 || !File.Exists(LogFilePath))
         {

@@ -27,7 +27,7 @@ static partial class Bootstrap
 
     /// <summary>Loads the native libraries; true when FFmpeg loaded (BASS may still be missing: see <see cref="IsBassLoaded"/>).</summary>
     public static bool EnsureInitialized(IReadOnlyList<string> nativeLibraryPaths) => Initialize(nativeLibraryPaths);
-    static List<string> searchPaths = [];
+    static List<string> _searchPaths = [];
     static readonly List<string> _nativeLoadMessages = [];
     static readonly List<NativeLibraryCheck> _nativeChecks = [];
 
@@ -64,7 +64,7 @@ static partial class Bootstrap
 
                 // Each loader replaces its own checks, so a BASS retry keeps the FFmpeg ones.
                 _nativeLoadMessages.Clear();
-                searchPaths = candidatePaths;
+                _searchPaths = candidatePaths;
 
 
                 IsBassLoaded = LoadBass();
@@ -89,7 +89,7 @@ static partial class Bootstrap
             finally
             {
                 // Recorded even when a load step throws, so the report never goes stale.
-                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. searchPaths]) { IsAudioAvailable = IsBassLoaded };
+                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. _searchPaths]) { IsAudioAvailable = IsBassLoaded };
             }
 
             return IsFfmpegLoaded;
@@ -98,9 +98,9 @@ static partial class Bootstrap
 
     static string BuildFailureMessage()
     {
-        var searchPathText = searchPaths.Count == 0
+        var searchPathText = _searchPaths.Count == 0
             ? "none"
-            : string.Join("; ", searchPaths);
+            : string.Join("; ", _searchPaths);
 
         var details = NativeLoadMessages.Count == 0
             ? string.Empty
@@ -124,7 +124,7 @@ static partial class Bootstrap
 
     static IEnumerable<string> ListSearchPathFileNames()
     {
-        foreach (var path in searchPaths)
+        foreach (var path in _searchPaths)
         {
             IEnumerable<string> files;
             try

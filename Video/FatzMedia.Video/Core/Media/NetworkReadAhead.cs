@@ -60,9 +60,9 @@ sealed unsafe class NetworkReadAhead : IDisposable
     const double ReconnectedAfterSeconds = 1.0;
 
     // The calling thread's wait limits (WaitScope): a Stopwatch deadline (0 = none), a token and a condition.
-    [ThreadStatic] static long t_waitDeadline;
-    [ThreadStatic] static CancellationToken t_waitCancellation;
-    [ThreadStatic] static Func<bool>? t_waitAbandon;
+    [ThreadStatic] static long _waitDeadline;
+    [ThreadStatic] static CancellationToken _waitCancellation;
+    [ThreadStatic] static Func<bool>? _waitAbandon;
 
     // How long reads on this thread have waited for packets in total (Stopwatch ticks).
 
@@ -489,9 +489,9 @@ sealed unsafe class NetworkReadAhead : IDisposable
 
     bool ShouldGiveUpWait(long waitStarted, long now) =>
         waitStarted < Interlocked.Read(ref _supersededBefore)
-        || (t_waitDeadline != 0 && now >= t_waitDeadline)
-        || t_waitCancellation.IsCancellationRequested
-        || t_waitAbandon?.Invoke() == true;
+        || (_waitDeadline != 0 && now >= _waitDeadline)
+        || _waitCancellation.IsCancellationRequested
+        || _waitAbandon?.Invoke() == true;
 
     /// <summary>Wakes every waiting consumer. Lock-free.</summary>
     void SignalAllArrivals()
@@ -503,9 +503,9 @@ sealed unsafe class NetworkReadAhead : IDisposable
     static void WaitForData(ManualResetEventSlim arrival)
     {
         var timeout = ConsumerWaitSlice;
-        if (t_waitDeadline != 0)
+        if (_waitDeadline != 0)
         {
-            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), t_waitDeadline);
+            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _waitDeadline);
             if (remaining < timeout)
                 timeout = remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
@@ -513,7 +513,7 @@ sealed unsafe class NetworkReadAhead : IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
-            _ = arrival.Wait(timeout, t_waitCancellation);
+            _ = arrival.Wait(timeout, _waitCancellation);
         }
         catch (OperationCanceledException)
         {
@@ -951,15 +951,15 @@ sealed unsafe class NetworkReadAhead : IDisposable
         public WaitScope(long deadline, CancellationToken cancellation, Func<bool>? abandon = null)
         {
             _active = true;
-            _previousDeadline = t_waitDeadline;
-            _previousCancellation = t_waitCancellation;
-            _previousAbandon = t_waitAbandon;
+            _previousDeadline = _waitDeadline;
+            _previousCancellation = _waitCancellation;
+            _previousAbandon = _waitAbandon;
             if (abandon is not null)
-                t_waitAbandon = abandon;
-            if (deadline != 0 && (t_waitDeadline == 0 || deadline < t_waitDeadline))
-                t_waitDeadline = deadline;
+                _waitAbandon = abandon;
+            if (deadline != 0 && (_waitDeadline == 0 || deadline < _waitDeadline))
+                _waitDeadline = deadline;
             if (cancellation.CanBeCanceled)
-                t_waitCancellation = cancellation;
+                _waitCancellation = cancellation;
         }
 
         public void Dispose()
@@ -967,9 +967,9 @@ sealed unsafe class NetworkReadAhead : IDisposable
             if (!_active)
                 return;
 
-            t_waitDeadline = _previousDeadline;
-            t_waitCancellation = _previousCancellation;
-            t_waitAbandon = _previousAbandon;
+            _waitDeadline = _previousDeadline;
+            _waitCancellation = _previousCancellation;
+            _waitAbandon = _previousAbandon;
         }
     }
 }

@@ -118,7 +118,7 @@ public sealed class PresentationScreen
         new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
 
     [UnmanagedCallersOnly]
-static unsafe int OnMonitor(IntPtr monitor, IntPtr hdc, NativeMethods.RECT* clip, IntPtr data)
+    static unsafe int OnMonitor(IntPtr monitor, IntPtr hdc, NativeMethods.RECT* clip, IntPtr data)
     {
         if (GCHandle.FromIntPtr(data).Target is List<IntPtr> handles)
             handles.Add(monitor);

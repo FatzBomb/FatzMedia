@@ -54,15 +54,15 @@ public sealed class VideoAudioEffectsTests
     [Fact]
     public void PlanWindows_LongFile_SpreadsAtMostTheWindowBudgetOverTheWholeDuration()
     {
-        const double duration = 2 * 60 * 60;
-        var windows = FfmpegAudioPeakScanner.PlanWindows(duration, 0.5, 240);
+        const double Duration = 2 * 60 * 60;
+        var windows = FfmpegAudioPeakScanner.PlanWindows(Duration, 0.5, 240);
 
         // Same stride as AudioNormalizer.AnalyzePeakBySeek: ceil(7200 / 120) = 60 windows apart.
         Assert.Equal(240, windows.Count);
         Assert.Equal(0, windows[0]);
         Assert.Equal(30.0, windows[1], precision: 9);
-        Assert.True(windows[^1] < duration);
-        Assert.True(windows[^1] > duration - 60);
+        Assert.True(windows[^1] < Duration);
+        Assert.True(windows[^1] > Duration - 60);
     }
 
     [Theory]

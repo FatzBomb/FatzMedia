@@ -16,7 +16,7 @@ namespace FatzMedia.Video;
 /// </remarks>
 public sealed class MediaSurfaceBookkeeping
 {
-    static int s_nextSurfaceNumber;
+    static int _nextSurfaceNumber;
 
     readonly string _diagnosticCategory;
     bool _attachRefusalReported;
@@ -26,7 +26,7 @@ public sealed class MediaSurfaceBookkeeping
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticCategory);
         _diagnosticCategory = diagnosticCategory;
-        SurfaceNumber = Interlocked.Increment(ref s_nextSurfaceNumber);
+        SurfaceNumber = Interlocked.Increment(ref _nextSurfaceNumber);
     }
 
     /// <summary>Gets the surface's number in this process, for diagnostics.</summary>

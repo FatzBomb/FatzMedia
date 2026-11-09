@@ -83,37 +83,37 @@ public sealed class FfmpegAudioFallbackTests
     [Fact]
     public void ExtensionOnlyFfmpegDecodes_RequiresConversionAndIsPlayable()
     {
-        const string extension = ".fbfallbacka";
-        _ = FileTypes.FfmpegAudio.Add(extension);
+        const string Extension = ".fbfallbacka";
+        _ = FileTypes.FfmpegAudio.Add(Extension);
         try
         {
-            Assert.True(FfmpegAudioFallback.RequiresConversion($"song{extension}"));
-            Assert.True(FfmpegAudioFallback.CanRetryWithFfmpeg($"song{extension}"));
-            Assert.True(FileTypes.IsPlayableAudio($"song{extension}"));
-            Assert.False(FileTypes.IsAudio($"song{extension}"));
-            Assert.Contains(extension, AcceptedMediaTypes.FromCurrentRuntime().Audio);
+            Assert.True(FfmpegAudioFallback.RequiresConversion($"song{Extension}"));
+            Assert.True(FfmpegAudioFallback.CanRetryWithFfmpeg($"song{Extension}"));
+            Assert.True(FileTypes.IsPlayableAudio($"song{Extension}"));
+            Assert.False(FileTypes.IsAudio($"song{Extension}"));
+            Assert.Contains(Extension, AcceptedMediaTypes.FromCurrentRuntime().Audio);
         }
         finally
         {
-            _ = FileTypes.FfmpegAudio.Remove(extension);
+            _ = FileTypes.FfmpegAudio.Remove(Extension);
         }
     }
 
     [Fact]
     public void ExtensionABassPluginClaims_StaysOnBassButCanRetryWithFfmpeg()
     {
-        const string extension = ".fbfallbackb";
-        _ = FileTypes.Audio.Add(extension);
-        _ = FileTypes.FfmpegAudio.Add(extension);
+        const string Extension = ".fbfallbackb";
+        _ = FileTypes.Audio.Add(Extension);
+        _ = FileTypes.FfmpegAudio.Add(Extension);
         try
         {
-            Assert.False(FfmpegAudioFallback.RequiresConversion($"song{extension}"));
-            Assert.True(FfmpegAudioFallback.CanRetryWithFfmpeg($"song{extension}"));
+            Assert.False(FfmpegAudioFallback.RequiresConversion($"song{Extension}"));
+            Assert.True(FfmpegAudioFallback.CanRetryWithFfmpeg($"song{Extension}"));
         }
         finally
         {
-            _ = FileTypes.Audio.Remove(extension);
-            _ = FileTypes.FfmpegAudio.Remove(extension);
+            _ = FileTypes.Audio.Remove(Extension);
+            _ = FileTypes.FfmpegAudio.Remove(Extension);
         }
     }
 
@@ -128,12 +128,12 @@ public sealed class FfmpegAudioFallbackTests
     [Fact]
     public void FileTree_RoutesFallbackAudioAndPairsItWithCdg()
     {
-        const string extension = ".fbfallbackc";
-        _ = FileTypes.FfmpegAudio.Add(extension);
+        const string Extension = ".fbfallbackc";
+        _ = FileTypes.FfmpegAudio.Add(Extension);
         var directory = Directory.CreateTempSubdirectory("fatzbomb-fallback-");
         try
         {
-            var audio = Path.Combine(directory.FullName, $"song{extension}");
+            var audio = Path.Combine(directory.FullName, $"song{Extension}");
             var cdg = Path.Combine(directory.FullName, "song.cdg");
             File.WriteAllBytes(audio, [1]);
             File.WriteAllBytes(cdg, [1]);
@@ -148,7 +148,7 @@ public sealed class FfmpegAudioFallbackTests
         }
         finally
         {
-            _ = FileTypes.FfmpegAudio.Remove(extension);
+            _ = FileTypes.FfmpegAudio.Remove(Extension);
             directory.Delete(recursive: true);
         }
     }
@@ -157,21 +157,21 @@ public sealed class FfmpegAudioFallbackTests
     public void FileTree_ArchivedFallbackAudio_PairsWithItsCdg()
     {
         // A zip of song.flac + song.cdg without bassflac played as a silent CD+G.
-        const string extension = ".fbfallbackd";
-        _ = FileTypes.FfmpegAudio.Add(extension);
+        const string Extension = ".fbfallbackd";
+        _ = FileTypes.FfmpegAudio.Add(Extension);
         var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-fallback-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(archive, [1]);
         try
         {
-            using var tree = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{extension}", "song.cdg"));
+            using var tree = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{Extension}", "song.cdg"));
 
             Assert.Equal(FileType.AudioCdgArchive, tree.Type);
-            Assert.Equal($"song{extension}", tree.AudioEntry!.Key);
+            Assert.Equal($"song{Extension}", tree.AudioEntry!.Key);
             Assert.Equal("song.cdg", tree.CdgEntry!.Key);
         }
         finally
         {
-            _ = FileTypes.FfmpegAudio.Remove(extension);
+            _ = FileTypes.FfmpegAudio.Remove(Extension);
             File.Delete(archive);
         }
     }
@@ -179,26 +179,26 @@ public sealed class FfmpegAudioFallbackTests
     [Fact]
     public void FileTree_Archive_PrefersAudioABassPluginDecodes()
     {
-        const string fallback = ".fbfallbacke";
-        const string bass = ".fbfallbackf";
-        _ = FileTypes.FfmpegAudio.Add(fallback);
-        _ = FileTypes.Audio.Add(bass);
-        var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-fallback-{Guid.NewGuid():N}.zip");
+        const string Fallback = ".fbfallbacke";
+        const string Bass = ".fbfallbackf";
+        _ = FileTypes.FfmpegAudio.Add(Fallback);
+        _ = FileTypes.Audio.Add(Bass);
+        var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-Fallback-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(archive, [1]);
         try
         {
-            using var paired = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{fallback}", $"song{bass}", "song.cdg"));
+            using var paired = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{Fallback}", $"song{Bass}", "song.cdg"));
             Assert.Equal(FileType.AudioCdgArchive, paired.Type);
-            Assert.Equal($"song{bass}", paired.AudioEntry!.Key);
+            Assert.Equal($"song{Bass}", paired.AudioEntry!.Key);
 
-            using var audioOnly = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"a{fallback}", $"b{bass}"));
+            using var audioOnly = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"a{Fallback}", $"b{Bass}"));
             Assert.Equal(FileType.AudioArchive, audioOnly.Type);
-            Assert.Equal($"b{bass}", audioOnly.AudioEntry!.Key);
+            Assert.Equal($"b{Bass}", audioOnly.AudioEntry!.Key);
         }
         finally
         {
-            _ = FileTypes.FfmpegAudio.Remove(fallback);
-            _ = FileTypes.Audio.Remove(bass);
+            _ = FileTypes.FfmpegAudio.Remove(Fallback);
+            _ = FileTypes.Audio.Remove(Bass);
             File.Delete(archive);
         }
     }

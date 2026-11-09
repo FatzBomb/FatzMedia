@@ -378,9 +378,9 @@ sealed class AudioStreamManager : IDisposable
     {
         foreach (var header in headers)
         {
-            const string prefix = "Content-Length:";
-            if (header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && long.TryParse(header.AsSpan(prefix.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
+            const string Prefix = "Content-Length:";
+            if (header.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(header.AsSpan(Prefix.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
                 && length > 0)
             {
                 return length;
@@ -582,7 +582,7 @@ sealed class AudioStreamManager : IDisposable
     #region Private Methods
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-bool ValidateStreamHandles()
+    bool ValidateStreamHandles()
     {
         if (_sourceHandle != 0)
             return true;
@@ -665,7 +665,7 @@ bool ValidateStreamHandles()
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-void ResetState() => DurationSeconds = -1; // Invalidate duration cache
+    void ResetState() => DurationSeconds = -1; // Invalidate duration cache
 
     double CalculateDuration()
     {
@@ -688,7 +688,7 @@ void ResetState() => DurationSeconds = -1; // Invalidate duration cache
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-static void ResetPosition(int handle)
+    static void ResetPosition(int handle)
     {
         if (handle != 0)
         {
@@ -698,7 +698,7 @@ static void ResetPosition(int handle)
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-static void SafeExecute(Action action)
+    static void SafeExecute(Action action)
     {
         try { action(); }
         catch { /* Ignore cleanup failures */ }

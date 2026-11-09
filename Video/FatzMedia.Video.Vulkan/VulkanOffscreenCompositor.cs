@@ -62,10 +62,10 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     // The last vkCreateInstance result in this process (ENG-050: after an NVIDIA GPU reset it stays
     // VK_ERROR_INCOMPATIBLE_DRIVER for the rest of the process).
-    static int s_lastCreateInstanceResult;
+    static int _lastCreateInstanceResult;
 
     /// <summary>The last <c>vkCreateInstance</c> result in this process (success before any attempt).</summary>
-    internal static Result LastCreateInstanceResult => (Result)Volatile.Read(ref s_lastCreateInstanceResult);
+    internal static Result LastCreateInstanceResult => (Result)Volatile.Read(ref _lastCreateInstanceResult);
     PhysicalDeviceMemoryProperties _memoryProperties;
     VulkanOverlayPipelines? _overlay;
 
@@ -687,7 +687,7 @@ sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             var instanceInfo = new InstanceCreateInfo { SType = StructureType.InstanceCreateInfo, PApplicationInfo = &appInfo };
             Instance instance;
             var result = _vk.CreateInstance(&instanceInfo, null, &instance);
-            Volatile.Write(ref s_lastCreateInstanceResult, (int)result);
+            Volatile.Write(ref _lastCreateInstanceResult, (int)result);
             if (result != Result.Success)
             {
                 failure = $"vkCreateInstance failed: {result}";

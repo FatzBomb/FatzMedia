@@ -1085,7 +1085,7 @@ public partial class PlayerCore : IPlayerSession
     /// <summary>Creates the engine, presentation and control objects and subscribes to them.</summary>
     [MemberNotNull(nameof(_serviceProvider), nameof(_mediaEngine), nameof(_acceptedTypes), nameof(Effects), nameof(CdgVisuals),
         nameof(_presentationCoordinator), nameof(Controls), nameof(File), nameof(_controlOperations), nameof(_positionNotifier))]
-void CreateSessionGraph(
+    void CreateSessionGraph(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> resolvedNativeLibraryPaths,
         PlayerOperationQueue? operations = null,

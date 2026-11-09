@@ -80,7 +80,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     PresentationVsyncTiming[] _scratchSurfaceTimings = [];
     // The targets of the video frame being presented on this thread (Stage 017A slice 5).
     [ThreadStatic]
-static MediaCompositionTargetFilter? t_videoFrameTargets;
+    static MediaCompositionTargetFilter? _videoFrameTargets;
     ICdgEngine? _attachedCdg;
     bool _isRenderingActive;
     bool _disposed;
@@ -773,7 +773,7 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
     // During a frame raised for some displays only, every composition built on this thread goes
     // to those displays' targets.
     static MediaCompositionFrame ForVideoFrameTargets(MediaCompositionFrame frame) =>
-        t_videoFrameTargets is { } targets && frame.Targets is null ? frame with { Targets = targets } : frame;
+        _videoFrameTargets is { } targets && frame.Targets is null ? frame with { Targets = targets } : frame;
 
     void AttachCdgIfAvailable()
     {
@@ -906,7 +906,7 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
         if (IsRecoveringDevice && IsHardwareFrame(e))
             return;
 
-        t_videoFrameTargets = e.Targets;
+        _videoFrameTargets = e.Targets;
         try
         {
             if (HasCdgContent)
@@ -923,7 +923,7 @@ static MediaCompositionTargetFilter? t_videoFrameTargets;
         }
         finally
         {
-            t_videoFrameTargets = null;
+            _videoFrameTargets = null;
         }
     }
 

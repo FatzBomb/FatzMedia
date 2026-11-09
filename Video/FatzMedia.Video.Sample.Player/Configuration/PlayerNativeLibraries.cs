@@ -1,4 +1,6 @@
+#pragma warning disable IDE0005 // needed in the WPF build; the linked WinForms copy has System.IO implicitly
 using System.IO;
+#pragma warning restore IDE0005
 
 namespace FatzMedia.Video.Sample.Player.Configuration;
 

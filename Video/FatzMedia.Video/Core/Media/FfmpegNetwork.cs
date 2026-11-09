@@ -75,9 +75,9 @@ static class FfmpegNetwork
     /// <summary>Describes an FFmpeg error code (<c>av_strerror</c>).</summary>
     public static unsafe string DescribeError(int error)
     {
-        const int size = 256;
-        var buffer = stackalloc byte[size];
-        return ffmpeg.av_strerror(error, buffer, size) == 0
+        const int Size = 256;
+        var buffer = stackalloc byte[Size];
+        return ffmpeg.av_strerror(error, buffer, Size) == 0
             ? Marshal.PtrToStringUTF8((nint)buffer) ?? $"error {error}"
             : $"error {error}";
     }
@@ -297,7 +297,7 @@ sealed unsafe class FfmpegTlsIoOpen : IDisposable
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-static int OnIoOpen(AVFormatContext* context, AVIOContext** pb, byte* url, int flags, AVDictionary** options)
+    static int OnIoOpen(AVFormatContext* context, AVIOContext** pb, byte* url, int flags, AVDictionary** options)
     {
         FfmpegTlsIoOpen? hook = null;
         if (context != null && context->opaque != null)

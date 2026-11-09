@@ -1118,7 +1118,7 @@ sealed partial class VideoPipeline(
         // Target interval is read fresh each tick so source-FPS or monitor changes take effect
         // on the next tick. Stage 11 paces primary video at source cadence when FPS is known
         // instead of polling at display refresh for 24/30fps content.
-        const int diagnosticInterval = 120;
+        const int DiagnosticInterval = 120;
         // The loop wrap decodes here; with a network source it takes only packets already read ahead.
         using var waits = NetworkReadAhead.NoWait();
         using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
@@ -1153,7 +1153,7 @@ sealed partial class VideoPipeline(
             diagnosticMaxGapMs = Math.Max(diagnosticMaxGapMs, gapMs);
             diagnosticSumGapMs += gapMs;
             diagnosticTicks++;
-            if (diagnosticTicks >= diagnosticInterval)
+            if (diagnosticTicks >= DiagnosticInterval)
             {
                 var targetMs = targetIntervalSeconds * 1000.0;
                 if (_configuration.EnablePerformanceLogging
@@ -2685,7 +2685,7 @@ sealed partial class VideoPipeline(
 
     VideoFrameEventArgs CreateFrameEventArgs(VideoFrameData frame) => new()
     {
-        Targets = t_frameReadyTargets,
+        Targets = _frameReadyTargets,
         PixelData = frame.Data != null
             ? new ReadOnlyMemory<byte>(frame.Data, 0, frame.Length)
             : ReadOnlyMemory<byte>.Empty,

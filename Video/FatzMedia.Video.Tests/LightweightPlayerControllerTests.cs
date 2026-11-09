@@ -129,18 +129,18 @@ public sealed class LightweightPlayerControllerTests
     [Fact]
     public async Task MissingPlatformFactory_WarnsAndCreatesNothing()
     {
-        const string category = "Test.NoFactory";
+        const string Category = "Test.NoFactory";
         var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category)
+            if (info.Category == Category)
                 warnings.Enqueue(info);
         }
 
         DiagnosticRouter.DiagnosticOccurred += Record;
         try
         {
-            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
             Assert.False(await controller.LoadAsync("song.cdg", null));
             Assert.Null(controller.Player);
             Assert.False(controller.HasPlayerOrPendingCreation);
@@ -157,11 +157,11 @@ public sealed class LightweightPlayerControllerTests
     [Fact]
     public async Task FailedCreation_RaisesAnErrorAndAllowsAnotherAttempt()
     {
-        const string category = "Test.FailedCreation";
+        const string Category = "Test.FailedCreation";
         var errors = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category && info.Level == MediaDiagnosticLevel.Error)
+            if (info.Category == Category && info.Level == MediaDiagnosticLevel.Error)
                 errors.Enqueue(info);
         }
 
@@ -169,7 +169,7 @@ public sealed class LightweightPlayerControllerTests
         try
         {
             var factory = new LightweightTestPlatformFactory(new TestMediaEngine()) { Fail = true };
-            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
             Assert.Null(await controller.EnsurePlayerAsync(factory));
             Assert.False(controller.HasPlayerOrPendingCreation);
 
@@ -282,15 +282,15 @@ public sealed class LightweightPlayerControllerTests
     [Fact]
     public async Task RunQueuedReload_ClearsTheQueue_SkipsWhenTheControlCannotRun_AndWarnsOnFailure()
     {
-        const string category = "Test.QueuedReload";
+        const string Category = "Test.QueuedReload";
         var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category)
+            if (info.Category == Category)
                 warnings.Enqueue(info);
         }
 
-        using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+        using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
         var runs = 0;
         Assert.True(controller.TryQueueReload());
         await controller.RunQueuedReloadAsync(() => false, () =>

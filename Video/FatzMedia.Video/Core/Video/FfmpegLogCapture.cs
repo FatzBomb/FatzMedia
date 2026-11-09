@@ -21,7 +21,7 @@ static unsafe class FfmpegLogCapture
 
     // The observer of the network read running on this thread (Stage 039A), or null.
     [ThreadStatic]
-static Action<int, string>? t_networkObserver;
+    static Action<int, string>? _networkObserver;
 
     public static void Begin(void* context)
     {
@@ -48,15 +48,15 @@ static Action<int, string>? t_networkObserver;
     /// </summary>
     public static NetworkObserverScope ObserveNetwork(Action<int, string> observer)
     {
-        var previous = t_networkObserver;
-        t_networkObserver = observer;
+        var previous = _networkObserver;
+        _networkObserver = observer;
         return new NetworkObserverScope(previous);
     }
 
     /// <summary>Restores the previous observer of this thread.</summary>
     public readonly struct NetworkObserverScope(Action<int, string>? previous) : IDisposable
     {
-        public void Dispose() => t_networkObserver = previous;
+        public void Dispose() => _networkObserver = previous;
     }
 
     static void EnsureInstalledCore()
@@ -97,7 +97,7 @@ static Action<int, string>? t_networkObserver;
             return;
         }
 
-        if (level <= ffmpeg.AV_LOG_WARNING && t_networkObserver is { } observer)
+        if (level <= ffmpeg.AV_LOG_WARNING && _networkObserver is { } observer)
         {
             var buffer = stackalloc byte[LineBufferBytes];
             var printPrefix = 1;

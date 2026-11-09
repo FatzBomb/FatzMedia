@@ -10,18 +10,18 @@ public sealed class RendererResourcePolicyTests
     [Fact]
     public void DiagnosticLatch_ReportsOncePerEpisode()
     {
-        const string category = "Eng026Test.Latch";
+        const string Category = "Eng026Test.Latch";
         var latch = new RendererDiagnosticLatch();
-        var raised = Capture(category, () =>
+        var raised = Capture(Category, () =>
         {
-            Assert.True(latch.Raise(MediaDiagnosticLevel.Warning, category, "first"));
-            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, category, "repeat"));
-            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, category, "repeat"));
+            Assert.True(latch.Raise(MediaDiagnosticLevel.Warning, Category, "first"));
+            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, Category, "repeat"));
+            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, Category, "repeat"));
             Assert.True(latch.IsLatched);
 
             latch.Reset();
             Assert.False(latch.IsLatched);
-            Assert.True(latch.Raise(MediaDiagnosticLevel.Error, category, "next episode", new InvalidOperationException("cause")));
+            Assert.True(latch.Raise(MediaDiagnosticLevel.Error, Category, "next episode", new InvalidOperationException("cause")));
         });
 
         Assert.Equal(["first", "next episode"], raised.Select(static info => info.Message));
@@ -33,10 +33,10 @@ public sealed class RendererResourcePolicyTests
     [Fact]
     public void DiagnosticLatch_ConcurrentFailuresRaiseOnce()
     {
-        const string category = "Eng026Test.LatchConcurrent";
+        const string Category = "Eng026Test.LatchConcurrent";
         var latch = new RendererDiagnosticLatch();
-        var raised = Capture(category, () =>
-            Parallel.For(0, 64, _ => latch.Raise(MediaDiagnosticLevel.Warning, category, "failure")));
+        var raised = Capture(Category, () =>
+            Parallel.For(0, 64, _ => latch.Raise(MediaDiagnosticLevel.Warning, Category, "failure")));
 
         _ = Assert.Single(raised);
     }

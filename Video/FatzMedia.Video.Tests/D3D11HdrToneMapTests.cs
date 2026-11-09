@@ -100,10 +100,10 @@ public sealed class D3D11HdrToneMapTests
     {
         // What swscale produces: full-range 16-bit R'G'B' from limited-range BT.2020 YCbCr.
         double yn = (y - 64) / 876.0, cbn = (cb - 512) / 896.0, crn = (cr - 512) / 896.0;
-        const double kr = 0.2627, kb = 0.0593, kg = 1 - kr - kb;
-        var r = yn + (2 * (1 - kr) * crn);
-        var b = yn + (2 * (1 - kb) * cbn);
-        var g = (yn - (kr * r) - (kb * b)) / kg;
+        const double Kr = 0.2627, Kb = 0.0593, Kg = 1 - Kr - Kb;
+        var r = yn + (2 * (1 - Kr) * crn);
+        var b = yn + (2 * (1 - Kb) * cbn);
+        var g = (yn - (Kr * r) - (Kb * b)) / Kg;
         ushort ToCode(double v) => (ushort)Math.Round(Math.Clamp(v, 0, 1) * 65535);
 
         var output = new byte[4];
@@ -139,8 +139,8 @@ public sealed class D3D11HdrToneMapTests
     // The shader's HlgToNits: inverse OETF per channel, then the OOTF on BT.2020 luminance.
     static double[] HlgToNits(double[] signal, D3D11HdrToneMapPresenter.ToneMapConstants k)
     {
-        const double a = 0.17883277, b = 0.28466892, c = 0.55991073;
-        double[] scene = [.. signal.Select(s => Math.Clamp(s, 0, 1)).Select(s => s <= 0.5 ? s * s / 3 : (Math.Exp((s - c) / a) + b) / 12)];
+        const double A = 0.17883277, B = 0.28466892, C = 0.55991073;
+        double[] scene = [.. signal.Select(s => Math.Clamp(s, 0, 1)).Select(s => s <= 0.5 ? s * s / 3 : (Math.Exp((s - C) / A) + B) / 12)];
         var luminance = (0.2627 * scene[0]) + (0.6780 * scene[1]) + (0.0593 * scene[2]);
         var ootf = luminance > 0 ? k.Transfer.Y * Math.Pow(luminance, k.Transfer.Z) : 0;
         return [.. scene.Select(e => e * ootf)];

@@ -229,12 +229,12 @@ public class CdgStateMachineTests
     public void TileBlockNormal_WritesTilePixelsFromRowBits()
     {
         var sm = new CdgStateMachine();
-        const byte color0 = 1;
-        const byte color1 = 2;
-        // All pixel bits set (6 bits per row, 12 rows) → every pixel = color1
+        const byte Color0 = 1;
+        const byte Color1 = 2;
+        // All pixel bits set (6 bits per row, 12 rows) → every pixel = Color1
         var data = new byte[16];
-        data[0] = color0;
-        data[1] = color1;
+        data[0] = Color0;
+        data[1] = Color1;
         data[2] = 0; // row 0
         data[3] = 0; // col 0
         for (var i = 0; i < 12; i++)
@@ -247,10 +247,10 @@ public class CdgStateMachineTests
         Assert.True(changed);
 
         var indices = GetColorIndices(sm);
-        // Tile is 6 wide × 12 tall at origin → all should be color1
+        // Tile is 6 wide × 12 tall at origin → all should be Color1
         for (var row = 0; row < CdgConstants.TileHeight; row++)
             for (var col = 0; col < CdgConstants.TileWidth; col++)
-                Assert.Equal(color1, indices[(row * CdgConstants.FrameWidth) + col]);
+                Assert.Equal(Color1, indices[(row * CdgConstants.FrameWidth) + col]);
         // Pixel just outside the tile should be 0
         Assert.Equal(0, indices[CdgConstants.TileWidth]);
     }

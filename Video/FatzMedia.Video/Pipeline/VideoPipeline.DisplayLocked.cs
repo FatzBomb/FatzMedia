@@ -30,7 +30,7 @@ sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresentationTimi
 
     // The targets of the frame being raised on this thread (null: every target).
     [ThreadStatic]
-static MediaCompositionTargetFilter? t_frameReadyTargets;
+    static MediaCompositionTargetFilter? _frameReadyTargets;
 
     readonly List<PresentationTimingGroup> _timingGroups = [];
     readonly Dictionary<long, DisplayLockedTarget> _displayLockedTargets = [];
@@ -262,7 +262,7 @@ static MediaCompositionTargetFilter? t_frameReadyTargets;
         var selection = _displayLockedBatch[0].Selection;
         var batchCoversEveryDisplay = _displayLockedBatch.Count >= _displayLockedDisplayCount;
         double? shownToAll = null;
-        t_frameReadyTargets = MergeTargets(_displayLockedBatch, batchCoversEveryDisplay);
+        _frameReadyTargets = MergeTargets(_displayLockedBatch, batchCoversEveryDisplay);
         try
         {
             var before = _currentFrame?.PresentationTime;
@@ -283,7 +283,7 @@ static MediaCompositionTargetFilter? t_frameReadyTargets;
         }
         finally
         {
-            t_frameReadyTargets = null;
+            _frameReadyTargets = null;
         }
 
         var workEnd = Stopwatch.GetTimestamp();
@@ -332,7 +332,7 @@ static MediaCompositionTargetFilter? t_frameReadyTargets;
         if (lagging == 0)
             return;
 
-        t_frameReadyTargets = lagging == _displayLockedBatch.Count
+        _frameReadyTargets = lagging == _displayLockedBatch.Count
             ? MergeTargets(_displayLockedBatch, _displayLockedBatch.Count >= _displayLockedDisplayCount)
             : MergeTargets([.. _displayLockedBatch.Where(static member => member.ReissuedTime is not null)], coversEveryDisplay: false);
         ReissueCurrentFrame();

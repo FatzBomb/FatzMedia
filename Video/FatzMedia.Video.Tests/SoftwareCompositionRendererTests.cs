@@ -551,14 +551,14 @@ public sealed class SoftwareCompositionRendererTests
         // transparent source pixels, direct CD+G writes, vectorized wash); every pixel must still
         // equal the per-pixel nearest-neighbour blends of background, wash, CD+G and subtitles.
         // 1200x864 is an exact 4x of the CD+G screen and 2x of the subtitle bitmap.
-        const int width = 1200;
-        const int height = 864;
-        const int backgroundWidth = 37;
-        const int backgroundHeight = 23;
-        const int subtitleWidth = 600;
-        const int subtitleHeight = 432;
+        const int Width = 1200;
+        const int Height = 864;
+        const int BackgroundWidth = 37;
+        const int BackgroundHeight = 23;
+        const int SubtitleWidth = 600;
+        const int SubtitleHeight = 432;
         var random = new Random(17);
-        var background = new byte[backgroundWidth * backgroundHeight * 4];
+        var background = new byte[BackgroundWidth * BackgroundHeight * 4];
         random.NextBytes(background);
         for (var offset = 3; offset < background.Length; offset += 4)
             background[offset] = random.Next(3) switch { 0 => 0, 1 => 255, _ => background[offset] };
@@ -571,7 +571,7 @@ public sealed class SoftwareCompositionRendererTests
             palette[index] = random.Next();
 
         // Premultiplied: alpha 0 with a non-zero colour still adds its colour.
-        var subtitle = new byte[subtitleWidth * subtitleHeight * 4];
+        var subtitle = new byte[SubtitleWidth * SubtitleHeight * 4];
         for (var offset = 0; offset < subtitle.Length; offset += 4)
         {
             var alpha = random.Next(4) switch { 0 => 255, 1 => random.Next(256), _ => 0 };
@@ -582,29 +582,29 @@ public sealed class SoftwareCompositionRendererTests
             subtitle[offset + 3] = (byte)alpha;
         }
 
-        var frame = CreateBackgroundFrame(background, backgroundWidth, backgroundHeight, MediaCompositionStretchMode.Fill) with
+        var frame = CreateBackgroundFrame(background, BackgroundWidth, BackgroundHeight, MediaCompositionStretchMode.Fill) with
         {
             WashArgb = washArgb,
             CdgOverlay = new CdgRenderSnapshot(1, 1, cdgIndices, palette, 0, 2, []),
             SubtitleBgra = subtitle,
-            SubtitleWidth = subtitleWidth,
-            SubtitleHeight = subtitleHeight,
-            SubtitleStride = subtitleWidth * 4
+            SubtitleWidth = SubtitleWidth,
+            SubtitleHeight = SubtitleHeight,
+            SubtitleStride = SubtitleWidth * 4
         };
 
-        var output = _renderer.Render(frame, width, height);
+        var output = _renderer.Render(frame, Width, Height);
 
         Assert.Equal(SoftwareRenderStatus.Rendered, output.Status);
         var pixels = output.Pixels.Span;
         var washAlpha = (int)(washArgb >> 24);
         Span<int> expected = stackalloc int[4];
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            var backgroundY = Math.Clamp((int)Math.Floor((y + 0.5) / height * backgroundHeight), 0, backgroundHeight - 1);
-            for (var x = 0; x < width; x++)
+            var backgroundY = Math.Clamp((int)Math.Floor((y + 0.5) / Height * BackgroundHeight), 0, BackgroundHeight - 1);
+            for (var x = 0; x < Width; x++)
             {
-                var backgroundX = Math.Clamp((int)Math.Floor((x + 0.5) / width * backgroundWidth), 0, backgroundWidth - 1);
-                var backgroundOffset = ((backgroundY * backgroundWidth) + backgroundX) * 4;
+                var backgroundX = Math.Clamp((int)Math.Floor((x + 0.5) / Width * BackgroundWidth), 0, BackgroundWidth - 1);
+                var backgroundOffset = ((backgroundY * BackgroundWidth) + backgroundX) * 4;
                 var backgroundAlpha = background[backgroundOffset + 3];
                 for (var channel = 0; channel < 4; channel++)
                 {
@@ -623,12 +623,12 @@ public sealed class SoftwareCompositionRendererTests
                     expected[3] = 255;
                 }
 
-                var subtitleOffset = (((y / 2) * subtitleWidth) + (x / 2)) * 4;
+                var subtitleOffset = (((y / 2) * SubtitleWidth) + (x / 2)) * 4;
                 var subtitleAlpha = subtitle[subtitleOffset + 3];
                 for (var channel = 0; channel < 4; channel++)
                 {
                     expected[channel] = Math.Min(255, subtitle[subtitleOffset + channel] + (((expected[channel] * (255 - subtitleAlpha)) + 127) / 255));
-                    Assert.Equal(expected[channel], pixels[(((y * width) + x) * 4) + channel]);
+                    Assert.Equal(expected[channel], pixels[(((y * Width) + x) * 4) + channel]);
                 }
             }
         }

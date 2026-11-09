@@ -54,17 +54,17 @@ public sealed partial class LinuxNetworkVideoNativeTests
             return;
 
         using var server = new LocalHttpMediaServer(media);
-        const long cap = 2L << 20;
-        var policy = new NetworkReadAheadPolicy { MaxBytes = cap };
+        const long Cap = 2L << 20;
+        var policy = new NetworkReadAheadPolicy { MaxBytes = Cap };
         using var demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), policy, withAudio: true, out var video, out _);
         var readAhead = demuxer.ReadAhead!;
 
         Assert.Equal(1, TakePackets(demuxer, video, 1));
         Assert.True(SpinWait.SpinUntil(() => readAhead.IsReaderPaused, TimeSpan.FromSeconds(20)), "the reader never stopped");
 
-        output.WriteLine($"byte cap 2 MB: stopped at {readAhead.BufferedBytes / 1024} KB, {readAhead.BufferedSeconds:F2} s");
-        // At most one packet past the cap (the reader checks before each read).
-        Assert.InRange(readAhead.BufferedBytes, cap, cap + (512 * 1024));
+        output.WriteLine($"byte Cap 2 MB: stopped at {readAhead.BufferedBytes / 1024} KB, {readAhead.BufferedSeconds:F2} s");
+        // At most one packet past the Cap (the reader checks before each read).
+        Assert.InRange(readAhead.BufferedBytes, Cap, Cap + (512 * 1024));
         Assert.InRange(readAhead.BufferedSeconds, 1, 6);
     }
 

@@ -130,21 +130,21 @@ public sealed class HlgToneMapperTests
     public void AnImage_ConvertsEveryRow()
     {
         var mapper = CreateMapper();
-        const int width = 5, height = 37, sourceStride = width * 6, destinationStride = (width * 4) + 4;
-        var source = new byte[sourceStride * height];
-        for (var y = 0; y < height; y++)
+        const int Width = 5, Height = 37, SourceStride = Width * 6, DestinationStride = (Width * 4) + 4;
+        var source = new byte[SourceStride * Height];
+        for (var y = 0; y < Height; y++)
         {
-            for (var x = 0; x < width * 3; x++)
-                BitConverter.TryWriteBytes(source.AsSpan((y * sourceStride) + (x * 2), 2), Code(y / (double)height));
+            for (var x = 0; x < Width * 3; x++)
+                BitConverter.TryWriteBytes(source.AsSpan((y * SourceStride) + (x * 2), 2), Code(y / (double)Height));
         }
 
-        var destination = new byte[destinationStride * height];
-        mapper.Convert(source, sourceStride, destination, destinationStride, width, height);
+        var destination = new byte[DestinationStride * Height];
+        mapper.Convert(source, SourceStride, destination, DestinationStride, Width, Height);
 
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            var expected = Convert(mapper, Code(y / (double)height), Code(y / (double)height), Code(y / (double)height))[0];
-            Assert.Equal(expected, destination[(y * destinationStride) + ((width - 1) * 4)]);
+            var expected = Convert(mapper, Code(y / (double)Height), Code(y / (double)Height), Code(y / (double)Height))[0];
+            Assert.Equal(expected, destination[(y * DestinationStride) + ((Width - 1) * 4)]);
         }
     }
 

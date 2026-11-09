@@ -168,7 +168,7 @@ public partial class PlayerViewModel
     };
 
     [RelayCommand]
-void ResetBaseVisualTransform()
+    void ResetBaseVisualTransform()
     {
         _includeOverlays = false;
         _redGain = 1d;
