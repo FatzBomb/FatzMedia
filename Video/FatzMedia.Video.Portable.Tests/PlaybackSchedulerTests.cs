@@ -173,7 +173,7 @@ public sealed class PlaybackSchedulerTests
         scheduler.Start(_ =>
         {
             stuckStarted.Set();
-            release.Wait(); // ignores cancellation
+            release.Wait(CancellationToken.None); // ignores cancellation
         });
         Assert.True(stuckStarted.Wait(Timeout));
         // Not stopped: what the loop uses must not be freed (the background video decoder).

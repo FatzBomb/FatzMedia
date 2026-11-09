@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
@@ -179,16 +180,16 @@ sealed class LocalHttpMediaServer : IDisposable
                     : "video/mp4";
                 var status = rangeStart is null ? "200 OK" : "206 Partial Content";
                 var head = new StringBuilder()
-                    .Append($"HTTP/1.1 {status}\r\n")
-                    .Append($"Content-Type: {contentType}\r\n");
+                    .Append(CultureInfo.InvariantCulture, $"HTTP/1.1 {status}\r\n")
+                    .Append(CultureInfo.InvariantCulture, $"Content-Type: {contentType}\r\n");
                 if (icyTitle is not null)
-                    head.Append("icy-name: FatzBomb test radio\r\n").Append($"icy-metaint: {IcyMetaInterval}\r\n");
+                    head.Append("icy-name: FatzBomb test radio\r\n").Append(CultureInfo.InvariantCulture, $"icy-metaint: {IcyMetaInterval}\r\n");
                 else
-                    head.Append($"Content-Length: {count}\r\n");
+                    head.Append(CultureInfo.InvariantCulture, $"Content-Length: {count}\r\n");
                 if (SupportsRanges && icyTitle is null)
                     head.Append("Accept-Ranges: bytes\r\n");
                 if (rangeStart is not null)
-                    head.Append($"Content-Range: bytes {start}-{length - 1}/{length}\r\n");
+                    head.Append(CultureInfo.InvariantCulture, $"Content-Range: bytes {start}-{length - 1}/{length}\r\n");
                 head.Append("Connection: close\r\n\r\n");
                 await WriteAsync(stream, head.ToString()).ConfigureAwait(false);
                 if (icyTitle is not null)

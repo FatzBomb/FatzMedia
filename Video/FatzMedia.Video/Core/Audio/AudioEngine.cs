@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Abstractions;
@@ -27,14 +28,13 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     readonly AudioNormalizer _normalizer;
     // The player this engine was built for, for diagnostics raised on BASS's own threads.
     readonly object? _diagnosticOwner;
-    readonly AudioSilenceAnalyzer _silenceAnalyzer;
     readonly MediaAnalysisCache _analysisCache;
     readonly AudioStreamManager _streamManager;
     readonly IOutputLatencyProvider _outputLatencyProvider;
     readonly SilenceTrimOptions _silenceTrim;
 
     // Adaptive sample rate management
-    bool _bassInitialized = false;
+    bool _bassInitialized;
     int _currentDeviceSampleRate = 44100; // Default fallback
     int _requestedDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
     int _currentDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
@@ -107,7 +107,6 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _networkRetry = networkRetry ?? NetworkRetryPolicy.Default;
         _networkMetadataSyncProcedure = OnNetworkMetadataSync;
         _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
-        _silenceAnalyzer = new AudioSilenceAnalyzer();
         _analysisCache = analysisCache ?? MediaAnalysisCache.Shared;
         _streamManager = streamManager ?? throw new ArgumentNullException(nameof(streamManager));
         _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
@@ -168,7 +167,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     } = true;
 
     /// <inheritdoc/>
-    public int CurrentTempo { get; private set; } = 0;
+    public int CurrentTempo { get; private set; }
 
     /// <remarks>
     /// Network sources never loop: a live stream cannot restart, and the native loop flag is not
@@ -674,7 +673,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 NormalizationGainCache.Set(gainKey, normalizationGain);
             }
 
-            var scan = await _silenceAnalyzer.ScanAsync(BassChannelLevelSource.ForHandle(handle), sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
+            var scan = await AudioSilenceAnalyzer.ScanAsync(BassChannelLevelSource.ForHandle(handle), sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var result = SilenceTrimCalculator.Calculate(scan.SourceDuration, scan.SilenceRegions, normalizationGain, _silenceTrim);
             if (mediaKey is { } storeKey)
@@ -803,7 +802,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
                 "AudioEngine",
-                $"Network stream connected: {capabilities.SourceClass}, length={probe.ContentLength?.ToString() ?? "unknown"}, ranges={probe.SupportsRangeRequests}, icy={probe.HasIcyMetadata}",
+                $"Network stream connected: {capabilities.SourceClass}, length={probe.ContentLength?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}, ranges={probe.SupportsRangeRequests}, icy={probe.HasIcyMetadata}",
                 sourcePath: url);
 
             AttachPlaybackEndSync();
@@ -1221,7 +1220,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Silence analysis starting ({sourceLabel})");
-                var scan = await _silenceAnalyzer.ScanAsync(
+                var scan = await AudioSilenceAnalyzer.ScanAsync(
                     BassChannelLevelSource.ForHandle(analysisHandle),
                     sourceDuration,
                     _silenceTrim.ThresholdDecibels,
@@ -1367,7 +1366,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    internal static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
+    internal static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}";
 
     MediaAnalysisCacheKey? CreateMediaAnalysisCacheKey(string filePath, bool analyzeSilence) =>
         analyzeSilence

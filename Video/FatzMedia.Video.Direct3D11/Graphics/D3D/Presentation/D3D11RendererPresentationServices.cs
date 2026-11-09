@@ -17,11 +17,11 @@ using FatzMedia.Video.Direct3D11;
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 
 /// <summary>
-/// Builds and owns the presentation-side services used by <see cref="VorticeD3D11Renderer" />.
+/// Builds and owns the presentation-side services used by <c>VorticeD3D11Renderer</c>.
 /// Keeping this object graph out of the renderer makes the renderer a small coordinator while
 /// preserving the existing backend, upload, compositor, and presenter lifetimes.
 /// </summary>
-sealed class D3D11RendererPresentationServices
+sealed class D3D11RendererPresentationServices : IDisposable
 {
     const int DirectCompositionOverlaySplitDiagnosticInterval = 120;
 
@@ -580,6 +580,8 @@ sealed class D3D11RendererPresentationServices
             ? "directcomposition base"
             : frame.Reason + " directcomposition base"
     };
+
+    public void Dispose() => MediaCompositor.Dispose();
 
     public void CleanupResources()
     {

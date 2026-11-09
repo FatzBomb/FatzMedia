@@ -341,7 +341,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         Assert.True(SpinWait.SpinUntil(() => session.BufferingList.Contains(true), TimeSpan.FromSeconds(20)),
             $"no buffering start; diagnostics: {string.Join(" | ", session.DiagnosticList)}");
         var stallStart = Stopwatch.StartNew();
-        Assert.True(SpinWait.SpinUntil(() => !session.BufferingList.LastOrDefault() && session.BufferingList.Contains(false), TimeSpan.FromSeconds(10)), "buffering never ended");
+        Assert.True(SpinWait.SpinUntil(() => (session.BufferingList.Count == 0 || !session.BufferingList[^1]) && session.BufferingList.Contains(false), TimeSpan.FromSeconds(10)), "buffering never ended");
         var framesAfterStall = session.Sink.Frames;
         Assert.True(SpinWait.SpinUntil(() => session.Sink.Frames > framesAfterStall + 5, TimeSpan.FromSeconds(10)), "no frames after the reconnect");
         Assert.Contains(session.DiagnosticList, line => line.Contains("Network retry", StringComparison.Ordinal));

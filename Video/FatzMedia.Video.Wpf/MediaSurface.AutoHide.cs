@@ -7,6 +7,7 @@ namespace FatzMedia.Video.Wpf;
 /// <see cref="MediaSurfaceContentTracker"/> (Stage 046A), shared with the Avalonia and WinForms
 /// surfaces; this partial only shows or hides the internal presentation host on the UI thread.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "The tracker deliberately outlives unload (it follows the session meanwhile) and disposes itself through the weak handler once the surface is collected; the host is released by DisposeCompositedHost on unload; the control is not IDisposable.")]
 public sealed partial class MediaSurface
 {
     readonly MediaSurfaceContentTracker _contentTracker = new();

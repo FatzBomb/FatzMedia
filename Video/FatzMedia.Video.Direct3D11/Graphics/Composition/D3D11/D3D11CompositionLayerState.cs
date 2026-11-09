@@ -24,21 +24,21 @@ sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposabl
     readonly RendererDiagnosticLatch _failure = new();
 
     public MediaCompositionLayer? Descriptor { get; private set; }
-    public MediaCompositionLayerDirtyFlags DirtyFlags { get; private set; } = MediaCompositionLayerDirtyFlags.None;
+    public MediaCompositionLayerChanges DirtyFlags { get; private set; } = MediaCompositionLayerChanges.None;
     public long LastCapturedSequence { get; private set; } = -1;
     public long UploadedRevision { get; private set; } = -1;
     public long RenderedRevision { get; set; } = -1;
     public bool IsActive => Descriptor != null;
     public bool HasRetainedResources => HasTexture || HasCdgResources || SolidColorOpacity > 0d;
     public bool HadRetainedResourcesWhenDeactivated { get; private set; }
-    public bool WasDeactivated => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.Deactivated);
-    public bool RequiresResourceAllocation => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.ResourceAllocationChanged);
+    public bool WasDeactivated => DirtyFlags.HasFlag(MediaCompositionLayerChanges.Deactivated);
+    public bool RequiresResourceAllocation => DirtyFlags.HasFlag(MediaCompositionLayerChanges.ResourceAllocationChanged);
     public bool NeedsUpload => Descriptor != null
-        && (DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.UploadRequired)
+        && (DirtyFlags.HasFlag(MediaCompositionLayerChanges.UploadRequired)
             || (Descriptor.Revision >= 0 && Descriptor.Revision != UploadedRevision));
 
     public bool NeedsRender => Descriptor != null
-        && (DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.RenderRequired)
+        && (DirtyFlags.HasFlag(MediaCompositionLayerChanges.RenderRequired)
             || (Descriptor.Revision >= 0 && Descriptor.Revision != RenderedRevision));
 
     public CompositionLayerSchedule Schedule { get; private set; } = CompositionLayerSchedule.None;
@@ -285,13 +285,13 @@ sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposabl
     public void MarkUploaded(long revision)
     {
         UploadedRevision = revision;
-        DirtyFlags &= ~MediaCompositionLayerDirtyFlags.UploadRequired;
+        DirtyFlags &= ~MediaCompositionLayerChanges.UploadRequired;
     }
 
     public void MarkRendered(long revision)
     {
         RenderedRevision = revision;
-        DirtyFlags &= ~MediaCompositionLayerDirtyFlags.RenderRequired;
+        DirtyFlags &= ~MediaCompositionLayerChanges.RenderRequired;
     }
 
 
@@ -299,19 +299,19 @@ sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposabl
     {
         if (WasDeactivated || Descriptor == null)
         {
-            DirtyFlags = MediaCompositionLayerDirtyFlags.None;
+            DirtyFlags = MediaCompositionLayerChanges.None;
             HadRetainedResourcesWhenDeactivated = false;
             return;
         }
 
         var needsUpload = NeedsUpload;
         var needsRender = NeedsRender;
-        var remainingFlags = MediaCompositionLayerDirtyFlags.None;
+        var remainingFlags = MediaCompositionLayerChanges.None;
         if (needsUpload)
-            remainingFlags |= MediaCompositionLayerDirtyFlags.UploadRequired;
+            remainingFlags |= MediaCompositionLayerChanges.UploadRequired;
 
         if (needsRender)
-            remainingFlags |= MediaCompositionLayerDirtyFlags.RenderRequired;
+            remainingFlags |= MediaCompositionLayerChanges.RenderRequired;
 
         DirtyFlags = remainingFlags;
     }
@@ -321,7 +321,7 @@ sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposabl
         HadRetainedResourcesWhenDeactivated = HasRetainedResources;
         var wasActive = Descriptor != null || HadRetainedResourcesWhenDeactivated;
         Descriptor = null;
-        DirtyFlags = wasActive ? MediaCompositionLayerDirtyFlags.Deactivated : MediaCompositionLayerDirtyFlags.None;
+        DirtyFlags = wasActive ? MediaCompositionLayerChanges.Deactivated : MediaCompositionLayerChanges.None;
         if (captureSequence >= 0)
             LastCapturedSequence = captureSequence;
 
@@ -344,67 +344,67 @@ sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposabl
 
     public void Dispose() => Clear();
 
-    static MediaCompositionLayerDirtyFlags ComputeDirtyFlags(MediaCompositionLayer? previous, MediaCompositionLayer current)
+    static MediaCompositionLayerChanges ComputeDirtyFlags(MediaCompositionLayer? previous, MediaCompositionLayer current)
     {
         if (previous == null)
-            return MediaCompositionLayerDirtyFlags.Activated
-                | MediaCompositionLayerDirtyFlags.ContentChanged
-                | MediaCompositionLayerDirtyFlags.SizeChanged
-                | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
-                | MediaCompositionLayerDirtyFlags.UploadRequired
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            return MediaCompositionLayerChanges.Activated
+                | MediaCompositionLayerChanges.ContentChanged
+                | MediaCompositionLayerChanges.SizeChanged
+                | MediaCompositionLayerChanges.ResourceAllocationChanged
+                | MediaCompositionLayerChanges.UploadRequired
+                | MediaCompositionLayerChanges.RenderRequired;
 
-        var flags = MediaCompositionLayerDirtyFlags.None;
+        var flags = MediaCompositionLayerChanges.None;
 
         if (previous.SourceKind != current.SourceKind)
-            flags |= MediaCompositionLayerDirtyFlags.SourceKindChanged
-                | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
-                | MediaCompositionLayerDirtyFlags.UploadRequired
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.SourceKindChanged
+                | MediaCompositionLayerChanges.ResourceAllocationChanged
+                | MediaCompositionLayerChanges.UploadRequired
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.Revision != current.Revision || previous.NativeResource != current.NativeResource)
-            flags |= MediaCompositionLayerDirtyFlags.ContentChanged
-                | MediaCompositionLayerDirtyFlags.UploadRequired
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.ContentChanged
+                | MediaCompositionLayerChanges.UploadRequired
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.Width != current.Width || previous.Height != current.Height)
-            flags |= MediaCompositionLayerDirtyFlags.SizeChanged
-                | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
-                | MediaCompositionLayerDirtyFlags.UploadRequired
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.SizeChanged
+                | MediaCompositionLayerChanges.ResourceAllocationChanged
+                | MediaCompositionLayerChanges.UploadRequired
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.Stride != current.Stride)
-            flags |= MediaCompositionLayerDirtyFlags.StrideChanged
-                | MediaCompositionLayerDirtyFlags.UploadRequired
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.StrideChanged
+                | MediaCompositionLayerChanges.UploadRequired
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.StretchMode != current.StretchMode)
-            flags |= MediaCompositionLayerDirtyFlags.StretchChanged
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.StretchChanged
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.CanvasLeft != current.CanvasLeft
             || previous.CanvasTop != current.CanvasTop
             || previous.CanvasWidth != current.CanvasWidth
             || previous.CanvasHeight != current.CanvasHeight)
         {
-            flags |= MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.RenderRequired;
         }
 
         if (!NearlyEquals(previous.FramesPerSecond, current.FramesPerSecond))
-            flags |= MediaCompositionLayerDirtyFlags.FrameRateChanged
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.FrameRateChanged
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (!NearlyEquals(previous.Opacity, current.Opacity))
-            flags |= MediaCompositionLayerDirtyFlags.OpacityChanged
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.OpacityChanged
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.ColorArgb != current.ColorArgb)
-            flags |= MediaCompositionLayerDirtyFlags.ColorChanged
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.ColorChanged
+                | MediaCompositionLayerChanges.RenderRequired;
 
         if (previous.BaseVisualTransform != current.BaseVisualTransform)
-            flags |= MediaCompositionLayerDirtyFlags.TransformChanged
-                | MediaCompositionLayerDirtyFlags.RenderRequired;
+            flags |= MediaCompositionLayerChanges.TransformChanged
+                | MediaCompositionLayerChanges.RenderRequired;
 
         return flags;
     }

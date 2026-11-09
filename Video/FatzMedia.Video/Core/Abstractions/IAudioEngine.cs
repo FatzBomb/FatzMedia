@@ -4,6 +4,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// Implementations provide decode/playback, transport controls,
 /// and pitch/tempo/volume controls. No WPF types here.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716", Justification = "Stop is the natural name; a C#-only API where the VB keyword clash does not matter and a rename would break every host.")]
 public interface IAudioEngine : IDisposable
 {
     /// <summary>

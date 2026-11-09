@@ -16,7 +16,7 @@ namespace FatzMedia.Video.Tests;
 /// Stage 045A slice 2: a renderer that decodes on its own device supplies every decoder's hardware
 /// device (the Vulkan renderer with FFmpeg Vulkan Video); other renderers leave the platform's.
 /// </summary>
-[Collection(MediaPresentationCoordinatorCollection.Name)]
+[Collection(MediaPresentationCoordinatorGroup.Name)]
 public sealed class RendererVideoDecodeServicesTests
 {
     [Fact]
@@ -200,7 +200,7 @@ public sealed class RendererVideoDecodeServicesTests
         public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => Lost;
     }
 
-    class DecodingRendererBackend : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
+    sealed class DecodingRendererBackend : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
     {
         public event EventHandler? FramePresented
         {

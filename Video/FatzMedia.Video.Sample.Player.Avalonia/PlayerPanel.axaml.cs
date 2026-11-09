@@ -21,6 +21,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// and the surface's presentation path. The full-screen chrome rule, the stats line and the
 /// second-screen placement are shared with the other players (Player.Shared, Stage 046A slice 3).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Released by DisposeAsync, which the host awaits on close; the view is not IDisposable.")]
 public partial class PlayerPanel : UserControl, IPlayerSlot
 {
     readonly int _index;

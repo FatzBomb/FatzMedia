@@ -15,8 +15,8 @@ static partial class Bootstrap
     // paths still retry BASS.
     static List<string>? _withoutBassSearchPaths;
 
-    internal static bool IsBassLoaded { get; private set; } = false;
-    internal static bool IsFfmpegLoaded { get; private set; } = false;
+    internal static bool IsBassLoaded { get; private set; }
+    internal static bool IsFfmpegLoaded { get; private set; }
     /// <summary>True once FFmpeg and BASS both loaded: nothing is left to load.</summary>
     public static bool IsInitialized => _isInitialized;
     public static string Message { get; set; } = string.Empty;

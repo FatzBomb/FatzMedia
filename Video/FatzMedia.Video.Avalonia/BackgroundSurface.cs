@@ -191,7 +191,11 @@ public class BackgroundSurface : Panel, IDisposable
     public Task<bool> StopAsync() => _host.Controller.StopAsync();
 
     /// <summary>Releases the player (UI thread); the control cannot load afterwards.</summary>
-    public void Dispose() => _host.Dispose();
+    public void Dispose()
+    {
+        _host.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

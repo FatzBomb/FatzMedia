@@ -1194,6 +1194,7 @@ public partial class PlayerCore : IPlayerSession
             if (!turn.TryWait(DisposeWaitTimeout))
             {
                 DisposeLater(operations);
+                GC.SuppressFinalize(this);
                 return;
             }
 
@@ -1232,7 +1233,6 @@ public partial class PlayerCore : IPlayerSession
     void DisposeLater(PlayerOperationQueue operations)
     {
         _disposed = true;
-        GC.SuppressFinalize(this);
         using (DiagnosticRouter.EnterOwner(this))
         {
             DiagnosticRouter.Raise(

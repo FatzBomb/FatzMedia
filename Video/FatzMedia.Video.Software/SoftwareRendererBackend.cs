@@ -10,7 +10,6 @@ sealed class SoftwareRendererBackend : IMediaRendererBackend, IMediaRendererVide
     internal const string NoVideoDecodeReason = "the software renderer draws only CPU frames";
 
     readonly Lock _sync = new();
-    readonly SoftwareCompositionRenderer _renderer = new();
     // Attached managed frame-sink surfaces by id: the primary plus any secondary/projector
     // windows (ENG-016). Each composition is rendered once per target at the target's size.
     readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
@@ -113,7 +112,7 @@ sealed class SoftwareRendererBackend : IMediaRendererBackend, IMediaRendererVide
         // share it and no lock is held across the sink call; a concurrent present simply renders
         // into a new buffer.
         var buffer = Interlocked.Exchange(ref target.Buffer, null);
-        var output = _renderer.Render(frame, target.Surface.PixelWidth, target.Surface.PixelHeight, ref buffer);
+        var output = SoftwareCompositionRenderer.Render(frame, target.Surface.PixelWidth, target.Surface.PixelHeight, ref buffer);
         if (output.IsRendered)
         {
             // The sink copies the span before returning, so the buffer can be reused next frame.

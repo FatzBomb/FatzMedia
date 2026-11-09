@@ -66,9 +66,9 @@ public sealed class D3D11CompositionLayerStateTests
             BaseVisualTransform = new BaseVisualTransform { Contrast = 1.5f }
         });
 
-        Assert.True(state.DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.TransformChanged));
-        Assert.True(state.DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.RenderRequired));
-        Assert.False(state.DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.UploadRequired));
+        Assert.True(state.DirtyFlags.HasFlag(MediaCompositionLayerChanges.TransformChanged));
+        Assert.True(state.DirtyFlags.HasFlag(MediaCompositionLayerChanges.RenderRequired));
+        Assert.False(state.DirtyFlags.HasFlag(MediaCompositionLayerChanges.UploadRequired));
         Assert.True(state.NeedsRender);
         Assert.False(state.NeedsUpload);
     }

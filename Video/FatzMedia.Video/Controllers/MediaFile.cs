@@ -41,7 +41,7 @@ sealed class MediaFile
     /// <summary>
     /// Gets or sets whether to automatically start playback after loading.
     /// </summary>
-    public bool PlayOnLoad { get; set; } = false;
+    public bool PlayOnLoad { get; set; }
 
     /// <summary>Gets or sets whether pitch resets to zero after each successful load.</summary>
     public bool ResetPitchOnMediaLoad { get; set; }

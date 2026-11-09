@@ -6,6 +6,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// UI-agnostic CDG decoding/engine abstraction.
 /// Implementations should not depend on WPF/WinUI types.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716", Justification = "Stop is the natural name; a C#-only API where the VB keyword clash does not matter and a rename would break every host.")]
 public interface ICdgEngine : IDisposable
 {
     // Geometry

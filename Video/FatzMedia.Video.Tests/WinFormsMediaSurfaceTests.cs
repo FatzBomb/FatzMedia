@@ -438,7 +438,9 @@ public sealed class WinFormsMediaSurfaceTests
 
         public ConcurrentQueue<string> DetachedIds { get; } = new();
 
-        public int VideoDisplayModeSets;
+        int _videoDisplayModeSets;
+
+        public int VideoDisplayModeSets => _videoDisplayModeSets;
 
         public static (IPlayerSession Session, SurfaceRecorder Recorder) Create()
         {
@@ -480,7 +482,7 @@ public sealed class WinFormsMediaSurfaceTests
                     DetachedIds.Enqueue((string)args![0]!);
                     break;
                 case "set_" + nameof(IPlayerSession.VideoDisplayMode):
-                    _ = Interlocked.Increment(ref VideoDisplayModeSets);
+                    _ = Interlocked.Increment(ref _videoDisplayModeSets);
                     break;
             }
 

@@ -12,6 +12,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// (<c>--lightweight-surfaces</c>, Stage 046A slice 2; the WPF and WinForms players have the same
 /// window). Each control creates its own player with the renderer chosen at startup.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Released by the Closed handler; the window itself is not IDisposable.")]
 sealed class LightweightSurfacesWindow : Window
 {
     static readonly Color[] Colours = [Colors.DarkSlateBlue, Colors.DarkGreen, Colors.Black];

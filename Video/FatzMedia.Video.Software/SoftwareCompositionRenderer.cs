@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Software;
 /// <summary>
 /// Deterministically composes software-backed media layers into premultiplied BGRA8 pixels.
 /// </summary>
-public sealed class SoftwareCompositionRenderer
+public static class SoftwareCompositionRenderer
 {
     const long ParallelPixelThreshold = 512 * 1024;
     const int MinRowsPerBand = 32;
@@ -19,7 +19,7 @@ public sealed class SoftwareCompositionRenderer
     const int MaxBands = 8;
     const long MinPixelsPerBand = 128 * 1024;
 
-    public SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height)
+    public static SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height)
     {
         SoftwareCompositionBuffer? buffer = null;
         return Render(frame, width, height, ref buffer);
@@ -31,7 +31,7 @@ public sealed class SoftwareCompositionRenderer
     /// full-surface array per frame, about 109 MB/s for 1080p software video). The output's
     /// pixels are then only valid until the next render into the same buffer.
     /// </summary>
-    internal SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height, ref SoftwareCompositionBuffer? reusableBuffer)
+    internal static SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height, ref SoftwareCompositionBuffer? reusableBuffer)
     {
         if (width <= 0 || height <= 0)
         {

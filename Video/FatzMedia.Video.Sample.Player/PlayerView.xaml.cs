@@ -21,6 +21,7 @@ namespace FatzMedia.Video.Sample.Player;
 /// surface description. The chrome rule, the stats line and the screen choice are shared with the
 /// Avalonia and WinForms players (Player.Shared).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Released by DisposeAsync, which the host awaits on close; the view is not IDisposable.")]
 public partial class PlayerView : UserControl, IPlayerSlot
 {
     const double SeekKeyStepSeconds = 5;

@@ -58,7 +58,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
         Assert.True(Math.Abs(plainStats.MeanLuma - stats.MeanLuma) > 2, "tone mapping did not change the picture");
     }
 
-    Frame? CaptureFrame(string fileName, HdrToneMappingOptions hdr, out IReadOnlyList<string> diagnostics)
+    static Frame? CaptureFrame(string fileName, HdrToneMappingOptions hdr, out IReadOnlyList<string> diagnostics)
     {
         diagnostics = [];
         var ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");

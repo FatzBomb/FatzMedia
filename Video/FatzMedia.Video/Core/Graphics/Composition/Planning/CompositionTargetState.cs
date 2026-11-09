@@ -4,10 +4,10 @@ public sealed class CompositionTargetState(string id)
 {
     public string Id { get; } = id;
     public CompositionTargetDescriptor Descriptor { get; private set; }
-    public CompositionTargetDirtyFlags DirtyFlags { get; private set; } = CompositionTargetDirtyFlags.None;
+    public CompositionTargetChanges DirtyFlags { get; private set; } = CompositionTargetChanges.None;
     public long LastCapturedSequence { get; private set; } = -1;
     public bool IsActive { get; private set; }
-    public bool WasDeactivated => DirtyFlags.HasFlag(CompositionTargetDirtyFlags.Deactivated);
+    public bool WasDeactivated => DirtyFlags.HasFlag(CompositionTargetChanges.Deactivated);
 
     public void Update(CompositionTargetDescriptor descriptor, long captureSequence)
     {
@@ -21,12 +21,12 @@ public sealed class CompositionTargetState(string id)
     {
         if (!IsActive)
         {
-            DirtyFlags = CompositionTargetDirtyFlags.None;
+            DirtyFlags = CompositionTargetChanges.None;
             LastCapturedSequence = captureSequence;
             return;
         }
 
-        DirtyFlags = CompositionTargetDirtyFlags.Deactivated;
+        DirtyFlags = CompositionTargetChanges.Deactivated;
         LastCapturedSequence = captureSequence;
         IsActive = false;
     }
@@ -39,28 +39,28 @@ public sealed class CompositionTargetState(string id)
                 ? $"{Id}; deactivated dirty={DirtyFlags} capture={LastCapturedSequence}"
                 : $"{Id}; inactive capture={LastCapturedSequence}";
 
-    public void MarkPlanConsumed() => DirtyFlags = CompositionTargetDirtyFlags.None;
+    public void MarkPlanConsumed() => DirtyFlags = CompositionTargetChanges.None;
 
     public CompositionTargetUpdate CreateUpdatePlanEntry()
     {
         var action = CompositionTargetUpdateAction.None;
-        if (DirtyFlags.HasFlag(CompositionTargetDirtyFlags.Deactivated))
+        if (DirtyFlags.HasFlag(CompositionTargetChanges.Deactivated))
         {
             action |= CompositionTargetUpdateAction.Deactivate;
         }
         else if (IsActive)
         {
-            if (DirtyFlags.HasFlag(CompositionTargetDirtyFlags.Activated))
+            if (DirtyFlags.HasFlag(CompositionTargetChanges.Activated))
             {
                 action |= CompositionTargetUpdateAction.Activate;
             }
 
-            if (DirtyFlags.HasFlag(CompositionTargetDirtyFlags.SizeChanged))
+            if (DirtyFlags.HasFlag(CompositionTargetChanges.SizeChanged))
             {
                 action |= CompositionTargetUpdateAction.Resize;
             }
 
-            if (DirtyFlags.HasFlag(CompositionTargetDirtyFlags.BackendChanged))
+            if (DirtyFlags.HasFlag(CompositionTargetChanges.BackendChanged))
             {
                 action |= CompositionTargetUpdateAction.BackendChange;
             }
@@ -81,29 +81,29 @@ public sealed class CompositionTargetState(string id)
             LastCapturedSequence);
     }
 
-    static CompositionTargetDirtyFlags ComputeDirtyFlags(
+    static CompositionTargetChanges ComputeDirtyFlags(
         CompositionTargetDescriptor previous,
         CompositionTargetDescriptor current,
         bool wasActive)
     {
         if (!current.IsValid)
-            return wasActive ? CompositionTargetDirtyFlags.Deactivated : CompositionTargetDirtyFlags.None;
+            return wasActive ? CompositionTargetChanges.Deactivated : CompositionTargetChanges.None;
 
         if (!wasActive || !previous.IsValid)
-            return CompositionTargetDirtyFlags.Activated
-                | CompositionTargetDirtyFlags.SizeChanged
-                | CompositionTargetDirtyFlags.BackendChanged
-                | CompositionTargetDirtyFlags.RevisionChanged;
+            return CompositionTargetChanges.Activated
+                | CompositionTargetChanges.SizeChanged
+                | CompositionTargetChanges.BackendChanged
+                | CompositionTargetChanges.RevisionChanged;
 
-        var flags = CompositionTargetDirtyFlags.None;
+        var flags = CompositionTargetChanges.None;
         if (previous.Width != current.Width || previous.Height != current.Height)
-            flags |= CompositionTargetDirtyFlags.SizeChanged;
+            flags |= CompositionTargetChanges.SizeChanged;
 
         if (previous.Kind != current.Kind || !string.Equals(previous.BackendName, current.BackendName, StringComparison.Ordinal))
-            flags |= CompositionTargetDirtyFlags.BackendChanged;
+            flags |= CompositionTargetChanges.BackendChanged;
 
         if (previous.Revision != current.Revision)
-            flags |= CompositionTargetDirtyFlags.RevisionChanged;
+            flags |= CompositionTargetChanges.RevisionChanged;
 
         return flags;
     }

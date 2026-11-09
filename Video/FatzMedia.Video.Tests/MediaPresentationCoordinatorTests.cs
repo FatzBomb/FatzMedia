@@ -11,12 +11,12 @@ using FatzMedia.Video.Pipeline;
 namespace FatzMedia.Video.Tests;
 
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class MediaPresentationCoordinatorCollection
+public sealed class MediaPresentationCoordinatorGroup
 {
     public const string Name = "Media presentation coordinator";
 }
 
-[Collection(MediaPresentationCoordinatorCollection.Name)]
+[Collection(MediaPresentationCoordinatorGroup.Name)]
 public sealed class MediaPresentationCoordinatorTests
 {
     [Fact]

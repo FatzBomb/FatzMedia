@@ -37,7 +37,7 @@ public sealed class Direct3D11DeviceSelectionTests
 
     static MediaPresentationAvailability Probe(Direct3D11DeviceSelection selection)
     {
-        IMediaPresentationAvailabilityProbe probe = new Direct3D11PresentationCoordinatorFactory(
+        var probe = new Direct3D11PresentationCoordinatorFactory(
             new SystemPrecisionWaiterFactory(),
             new Direct3D11PresentationOptions { DeviceSelection = selection });
         return probe.ProbeAvailability();

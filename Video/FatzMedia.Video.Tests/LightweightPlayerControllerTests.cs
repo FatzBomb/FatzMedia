@@ -327,10 +327,12 @@ public sealed class LightweightPlayerControllerTests
         }
     }
 
-    sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IPlatformFactory
+    sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IPlatformFactory, IDisposable
     {
         readonly ConcurrentQueue<TestMediaEngine> _engines = new(engines);
         readonly NullPresentationCoordinator _coordinator = new();
+
+        public void Dispose() => _coordinator.Dispose();
         TestMediaEngine _last = engines[0];
         int _createdPlayers;
 

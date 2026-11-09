@@ -5,7 +5,7 @@ public readonly record struct CompositionLayerUpdate(
     MediaCompositionLayerSourceKind SourceKind,
     int Order,
     long Revision,
-    MediaCompositionLayerDirtyFlags DirtyFlags,
+    MediaCompositionLayerChanges DirtyFlags,
     CompositionLayerUpdateAction Action,
     CompositionLayerSchedule Schedule,
     bool HasRetainedResources,

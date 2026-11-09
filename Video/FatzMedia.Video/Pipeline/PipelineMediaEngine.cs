@@ -377,10 +377,9 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
         var started = Stopwatch.GetTimestamp();
         try
         {
-            var options = new FfmpegNetworkOptions(policy, cancellation.Token, tls, _configuration.NetworkReadAhead);
+            var options = new FfmpegNetworkOptions(policy, tls, _configuration.NetworkReadAhead, cancellation.Token);
             outcome = NetworkOpenRetry.Run(
                 policy,
-                cancellation.Token,
                 _ =>
                 {
                     if (route == FfmpegNetworkRoute.Video)
@@ -406,7 +405,8 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
                     NetworkDiagnosticCategory,
                     $"Network retry {retry}/{policy.MaxRetries} in {delay.TotalSeconds:F1}s ({LastError() ?? "no response"})",
                     sourcePath: url),
-                out attempts);
+                out attempts,
+                cancellation.Token);
         }
         finally
         {

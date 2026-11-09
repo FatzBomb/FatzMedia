@@ -9,13 +9,13 @@ namespace FatzMedia.Video.Core.Media;
 /// Options for opening a network source through FFmpeg (Stage 039A).
 /// </summary>
 /// <param name="Retry">The host's bounded retry policy: its connect timeout bounds the open and every read.</param>
-/// <param name="Cancellation">Cancels an open in progress (Close or Dispose while connecting).</param>
 /// <param name="Tls">The host's certificate checks for https (ENG-034).</param>
 /// <param name="ReadAhead">How far a <see cref="SharedDemuxer"/> reads ahead (slice 2); null uses the default.</param>
-sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls, NetworkReadAheadPolicy? ReadAhead = null)
+/// <param name="Cancellation">Cancels an open in progress (Close or Dispose while connecting).</param>
+sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, NetworkTlsPolicy Tls, NetworkReadAheadPolicy? ReadAhead, CancellationToken Cancellation)
 {
     /// <summary>The default policies, not cancellable.</summary>
-    public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, CancellationToken.None, NetworkTlsPolicy.Default);
+    public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, NetworkTlsPolicy.Default, null, CancellationToken.None);
 }
 
 /// <summary>Process-wide FFmpeg network setup (Stage 039A).</summary>

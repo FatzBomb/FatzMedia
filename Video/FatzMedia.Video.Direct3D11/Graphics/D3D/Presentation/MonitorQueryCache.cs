@@ -107,7 +107,7 @@ class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp = null)
 }
 
 /// <summary>
-/// Caches the refresh rate of each window's monitor for <see cref="IMediaRendererBackend.GetSurfaceRefreshRateHz"/>
+/// Caches the refresh rate of each window's monitor for <c>IMediaRendererBackend.GetSurfaceRefreshRateHz</c>
 /// (Stage 017A slice 3); see <see cref="MonitorQueryCache{T}"/>.
 /// </summary>
 sealed class MonitorRefreshRateCache(Func<nint, double?> query, Func<long>? timestamp = null)

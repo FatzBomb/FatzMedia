@@ -14,6 +14,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.Presentation;
 /// every step. <see cref="RebuildAsync"/> and <see cref="ShutdownAsync"/> never throw; failures go
 /// to <see cref="IPlayerSetHost{TSlot}.ReportFailure"/>.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Released by the async shutdown, which must finish rebuilds and dispose players first; a sync Dispose would not fit.")]
 public sealed class PlayerSetController<TSlot>
     where TSlot : class, IPlayerSlot
 {

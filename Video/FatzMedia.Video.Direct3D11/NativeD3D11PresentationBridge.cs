@@ -533,6 +533,7 @@ sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         lock (_lock)
         {
             PresentationServices.CleanupResources();
+            PresentationServices.Dispose();
             _disposed = true;
         }
 

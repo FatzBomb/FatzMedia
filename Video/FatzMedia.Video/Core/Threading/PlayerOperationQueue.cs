@@ -152,15 +152,13 @@ sealed class PlayerOperationQueue : IDisposable
     /// </summary>
     public ExclusiveTurn BeginExclusiveTurn()
     {
-        if (Volatile.Read(ref _disposed) != 0)
-            throw new ObjectDisposedException(nameof(PlayerOperationQueue));
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, typeof(PlayerOperationQueue));
 
         if (IsExecutingOperation)
             return new ExclusiveTurn(this, inline: true);
 
         var turn = new ExclusiveTurn(this, inline: false);
-        if (!_queue.Writer.TryWrite(turn.RunOnWorkerAsync))
-            throw new ObjectDisposedException(nameof(PlayerOperationQueue));
+        ObjectDisposedException.ThrowIf(!_queue.Writer.TryWrite(turn.RunOnWorkerAsync), typeof(PlayerOperationQueue));
 
         return turn;
     }

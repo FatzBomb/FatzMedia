@@ -46,8 +46,7 @@ sealed class RetainedFrameBuffer
         while (true)
         {
             var current = Volatile.Read(ref _references);
-            if (current <= 0)
-                throw new ObjectDisposedException(nameof(RetainedFrameBuffer));
+            ObjectDisposedException.ThrowIf(current <= 0, typeof(RetainedFrameBuffer));
             if (Interlocked.CompareExchange(ref _references, current + 1, current) == current)
                 return this;
         }

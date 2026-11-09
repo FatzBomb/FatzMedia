@@ -511,8 +511,7 @@ sealed unsafe partial class VulkanOffscreenCompositor
 
     void ValidateExportTarget(ExportTarget export)
     {
-        if (export.Set.IsDestroyed || !_exportedSets.Contains(export.Set))
-            throw new ObjectDisposedException(nameof(VulkanExportedImageSet));
+        ObjectDisposedException.ThrowIf(export.Set.IsDestroyed || !_exportedSets.Contains(export.Set), typeof(VulkanExportedImageSet));
     }
 
     /// <summary>

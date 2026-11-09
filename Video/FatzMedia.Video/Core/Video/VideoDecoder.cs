@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -1166,8 +1167,8 @@ sealed unsafe class VideoDecoder(
     {
         var buffer = stackalloc byte[ffmpeg.AV_ERROR_MAX_STRING_SIZE];
         return ffmpeg.av_strerror(errorCode, buffer, ffmpeg.AV_ERROR_MAX_STRING_SIZE) == 0
-            ? Marshal.PtrToStringAnsi((IntPtr)buffer) ?? errorCode.ToString()
-            : errorCode.ToString();
+            ? Marshal.PtrToStringAnsi((IntPtr)buffer) ?? errorCode.ToString(CultureInfo.InvariantCulture)
+            : errorCode.ToString(CultureInfo.InvariantCulture);
     }
 
     AVFrame* GetSoftwareFrameForProcessing()

@@ -176,9 +176,11 @@ public sealed class AudioUnavailableTests : IDisposable
         public double GetPresentationRefreshIntervalSeconds() => 1.0 / 60;
     }
 
-    sealed class NoAudioPlatformFactory : IPlatformFactory
+    sealed class NoAudioPlatformFactory : IPlatformFactory, IDisposable
     {
         readonly NullPresentationCoordinator _coordinator = new();
+
+        public void Dispose() => _coordinator.Dispose();
 
         public string LastNativeLoadMessage => string.Empty;
 
