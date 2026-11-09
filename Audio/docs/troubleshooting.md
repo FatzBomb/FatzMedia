@@ -11,7 +11,7 @@ Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` 
 | `FA_ERROR_INVALID_ARG` (-2) | `InvalidArgument` | A `NULL` handle or pointer, a value out of range, a `struct_size` of 0, or a call that does not apply to this stream | Fix the call. Output structs need `struct_size = sizeof(...)` before the call |
 | `FA_ERROR_OUT_OF_MEMORY` (-3) | `OutOfMemory` | An allocation failed | Close what you no longer use; see [limits](limits.md) |
 | `FA_ERROR_NOT_FOUND` (-4) | `NotFound` | No such file, track, device, tag or header | Check the path (UTF-8 in C), the track number or the device id |
-| `FA_ERROR_UNSUPPORTED_FORMAT` (-5) | `UnsupportedFormat` | No built-in decoder recognised the data, or it is a codec FatzAudio does not play (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file, or a file with no audio | See [formats](formats.md). For other codecs, hand FatzAudio frames from your own FFmpeg ([FFmpeg hand-off](features/ffmpeg.md)) |
+| `FA_ERROR_UNSUPPORTED_FORMAT` (-5) | `UnsupportedFormat` | No built-in decoder recognised the data, or it is a codec FatzMedia.Audio does not play (DTS and TrueHD without a system decoder, WMA outside Windows), or a damaged file, or a file with no audio | See [formats](formats.md). For other codecs, hand FatzMedia.Audio frames from your own FFmpeg ([FFmpeg hand-off](features/ffmpeg.md)) |
 | `FA_ERROR_DEVICE` (-6) | `Device` | The output or input device could not be opened | In use by another app in exclusive mode, unplugged, or no permission. List devices and try another ([devices](features/devices.md)) |
 | `FA_ERROR_IO` (-7) | `Io` | A file could not be read or created, or a temp directory is missing | Check permissions and free space |
 | `FA_ERROR_NETWORK` (-8) | `Network` | A URL could not be reached, timed out, or the server said 401 or 403 | See [web streams](features/web-streams.md); read `fa_net_status.last_error` |
@@ -22,7 +22,7 @@ Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` 
 | `FA_ERROR_PROVIDER_MISSING` (-13) | `ProviderMissing` | A library loaded at run time is not there: LAME for MP3 encoding, libcurl or a system TLS stack for HTTPS | Ship LAME with your app ([recording and encoding](features/recording-encoding.md)); see [web streams](features/web-streams.md) |
 | `FA_ERROR_NO_DISC` (-14) | `NoDisc` | The drive is empty or its tray is open | Ask the user to insert a disc ([discs](features/disc.md)) |
 | `FA_ERROR_NO_SOUNDFONT` (-15) | `NoSoundFont` | A MIDI file and no soundfont, and the system has no GM bank | Set `engine.DefaultSoundFont` or call `fa_engine_set_soundfont` ([MIDI](features/midi.md)) |
-| `FA_ERROR_PROTECTED_CONTENT` (-16) | `ProtectedContent` | DRM-protected or encrypted media (WMA DRM, FairPlay, Common Encryption, `SAMPLE-AES`) | Tell the user the file is copy-protected. FatzAudio never decrypts |
+| `FA_ERROR_PROTECTED_CONTENT` (-16) | `ProtectedContent` | DRM-protected or encrypted media (WMA DRM, FairPlay, Common Encryption, `SAMPLE-AES`) | Tell the user the file is copy-protected. FatzMedia.Audio never decrypts |
 | `FA_ERROR_TOO_LARGE` (-17) | `TooLarge` | A compressed ZIP entry that unpacks to over 4 GB, or bigger than the memory limit with `FA_ENGINE_NO_TEMP_FILES` set, or a sample over 1 GB of PCM | Extract the archive, or drop `FA_ENGINE_NO_TEMP_FILES` ([CD+G](features/cdg.md#zip-archives)) |
 | `FA_ERROR_SIZE_MISMATCH` (-18) | `SizeMismatch` | The buffer given to `fa_surface_update_into` is not the surface's size | Allocate `width * height * 4` bytes |
 | `FA_ERROR_NOT_ENOUGH_CHANNELS` (-19) | `NotEnoughChannels` | The headphone cue needs output channels the device does not have | Use a device with 4 or more channels, or a second device ([DJ mixer](features/dj-mixer.md)) |
@@ -37,9 +37,9 @@ A problem *inside* a playing stream (a bad packet, an unreadable disc sector) do
 
 **No sound.** Work through the [checklist in Getting started](getting-started.md#6-no-sound-a-checklist). The two usual causes are a console program that exits before the song ends, and an output that was never started.
 
-**MIDI is silent or fails with `NoSoundFont`.** MIDI needs instrument sounds. FatzAudio uses a soundfont you load, or the operating system's bank (Windows `gm.dls`, macOS's, an installed `.sf2` on Linux). It never bundles one. See [MIDI](features/midi.md).
+**MIDI is silent or fails with `NoSoundFont`.** MIDI needs instrument sounds. FatzMedia.Audio uses a soundfont you load, or the operating system's bank (Windows `gm.dls`, macOS's, an installed `.sf2` on Linux). It never bundles one. See [MIDI](features/midi.md).
 
-**`UnsupportedFormat` on a file that plays elsewhere.** Check the codec with a different tool: DTS and TrueHD play only where the system has a decoder for them, and WMA only on Windows. A file renamed to the wrong extension is fine (FatzAudio reads the content), but a damaged header or a file that is really a text or HTML error page is not. See [formats](formats.md).
+**`UnsupportedFormat` on a file that plays elsewhere.** Check the codec with a different tool: DTS and TrueHD play only where the system has a decoder for them, and WMA only on Windows. A file renamed to the wrong extension is fine (FatzMedia.Audio reads the content), but a damaged header or a file that is really a text or HTML error page is not. See [formats](formats.md).
 
 **.NET: `DllNotFoundException` or `BadImageFormatException`.** The native library is missing or is for another architecture. The NuGet package carries `win-x64` and `linux-x64`; other platforms need their library staged ([platforms](platforms.md#net-package)).
 
@@ -47,7 +47,7 @@ A problem *inside* a playing stream (a bad packet, an unreadable disc sector) do
 
 **Crackles or dropouts.** Check `worker_load` and the underrun count (`fa_stream_get_stats`, [dropouts](features/streams.md#dropouts-underruns)); a busy machine, a very small device buffer or a slow network source are the usual causes ([playback](features/playback.md)).
 
-**Event handlers run on the wrong thread.** Events are raised on an engine thread, not your UI thread. Marshal to the UI thread yourself. The callbacks may call any FatzAudio function ([events](features/events.md), [concepts](concepts.md#threads)).
+**Event handlers run on the wrong thread.** Events are raised on an engine thread, not your UI thread. Marshal to the UI thread yourself. The callbacks may call any FatzMedia.Audio function ([events](features/events.md), [concepts](concepts.md#threads)).
 
 **HTTPS fails on Android 7 to 11.** Java and Kotlin apps call `fa_android_set_java_vm` once ([web streams](features/web-streams.md#android)).
 

@@ -1,6 +1,6 @@
 # Levels, loudness meters and spectrum
 
-FatzAudio measures what is being heard, for VU meters and visualizers: peak and RMS levels, momentary and short-term loudness ([below](#loudness-meters)), and a magnitude spectrum (FFT). Both work on one stream or on a whole output device. They replace `BASS_ChannelGetLevel`/`GetLevelEx` and `BASS_ChannelGetData` with the `BASS_DATA_FFT...` flags.
+FatzMedia.Audio measures what is being heard, for VU meters and visualizers: peak and RMS levels, momentary and short-term loudness ([below](#loudness-meters)), and a magnitude spectrum (FFT). Both work on one stream or on a whole output device. They replace `BASS_ChannelGetLevel`/`GetLevelEx` and `BASS_ChannelGetData` with the `BASS_DATA_FFT...` flags.
 
 | Call | Measures |
 |---|---|
@@ -81,7 +81,7 @@ void draw_meters(fa_stream* song, fa_device* output)
 ## C#
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 // Once, when the window opens (the first call starts recording):
 song.GetLevels();

@@ -1,10 +1,10 @@
-# FatzAudio for .NET
+# FatzMedia.Audio for .NET
 
-Idiomatic .NET binding for the [FatzAudio](https://github.com/FatzBomb75/FatzAudio) native audio engine.
+Idiomatic .NET binding for the [FatzMedia.Audio](https://github.com/FatzBomb/FatzMedia) native audio engine.
 Targets `net8.0` and `net10.0`. The package ships the native library under `runtimes/<rid>/native/`.
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 using var engine = AudioEngine.Create();
 using var output = engine.OpenOutput();            // null / omitted = system default device
@@ -32,7 +32,7 @@ song.Ramp(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(3), Curve.EqualPower);
 | `PushAudioStream` | Stream you feed with PCM via `Push(...)`, or with decoded frames in any format via `PushFrame(...)`. `End`, `Flush`, `Buffered`. |
 | `PacketAudioStream` | Stream you feed with compressed packets from your demuxer (FFmpeg): `PushPacket(...)`. Decoded on worker threads; `Clock` follows your timestamps. |
 | `LoudnessScan` | Measures the loudness of audio you feed (a video file's track from your demuxer): `engine.OpenLoudnessScan(...)`, `WantsMore`, `PushPacket` / `PushFrame`, `Finish()`. Stored in the cache under the file's `AudioFingerprint`; a stream that names its song with `StreamOptions.SourceIdentity` gets the result and the start wait ([normalization](../../docs/features/normalization.md#streams-you-feed-packets-and-decoded-frames)). |
-| `FFmpeg` | `ToSampleFormat(...)`: maps an FFmpeg `AVSampleFormat` to a `SampleFormat` for `PushFrame`. FatzAudio never loads or bundles FFmpeg: your app decodes or demuxes with its own and hands over packets or frames ([FFmpeg hand-off](../../docs/features/ffmpeg.md)). |
+| `FFmpeg` | `ToSampleFormat(...)`: maps an FFmpeg `AVSampleFormat` to a `SampleFormat` for `PushFrame`. FatzMedia.Audio never loads or bundles FFmpeg: your app decodes or demuxes with its own and hands over packets or frames ([FFmpeg hand-off](../../docs/features/ffmpeg.md)). |
 | `DjMixer`, `DjDeck`, `Mic` | Two-deck DJ mixer: crossfader, isolator EQ, headphone cue, beat sync, loops, auto-mix (`mixer.AutoMix`), karaoke microphones with effects and ducking, latency check, aligned stem recording ([DJ mixer](../../docs/features/dj-mixer.md)). |
 | `Equalizer` | Parametric and graphic EQ presets for `SetEqualizer` ([equalizer](../../docs/features/equalizer.md)). |
 | `Disc` | Audio CD and `.cue` image drives: table of contents, CD-Text, ids, `engine.OpenDisc` ([disc playback](../../docs/features/disc.md)). |
@@ -61,11 +61,11 @@ alive until it is disposed itself, so disposal order never causes a crash.
 
 ## Native library
 
-Resolved through the normal `runtimes/<rid>/native` layout, with a fallback to the application directory. The NuGet package ships win-x64, win-arm64, linux-x64, linux-arm64, osx (universal), android-arm64, android-x64 and an iOS xcframework (linked by `build/FatzAudio.targets` in iOS projects). For other Android ABIs build the library and place it in the app yourself ([Building](../../docs/building.md)).
+Resolved through the normal `runtimes/<rid>/native` layout, with a fallback to the application directory. The NuGet package ships win-x64, win-arm64, linux-x64, linux-arm64, osx (universal), android-arm64, android-x64 and an iOS xcframework (linked by `build/FatzMedia.Audio.targets` in iOS projects). For other Android ABIs build the library and place it in the app yourself ([Building](../../docs/building.md)).
 
 When packing, the `win-x64` library is taken from `$(FatzAudioNativeDir)\fatzaudio.dll`
 (default: `build\bin\Release` of the repository; override with `-p:FatzAudioNativeDir=...`).
-Binaries for other platforms placed in `src/FatzAudio/runtimes/<rid>/native/` are packed too.
+Binaries for other platforms placed in `src/FatzMedia.Audio/runtimes/<rid>/native/` are packed too.
 CI packs all of the above and publishes the package ([building](../../docs/building.md#nuget-package-and-versions)).
 
 The binding and the native library share one version. The first call into the library throws
@@ -83,7 +83,7 @@ The tests run without audio hardware (they use `AudioEngineOptions.NullOutput`).
 library first, then point the tests at it:
 
 ```
-dotnet test bindings/dotnet/tests/FatzAudio.Tests -p:FatzAudioNativeDir=<repo>/build/bin/Release
+dotnet test bindings/dotnet/tests/FatzMedia.Audio.Tests -p:FatzAudioNativeDir=<repo>/build/bin/Release
 ```
 
 On Linux and macOS (and Windows with the Ninja generator, as in CI) the CMake output folder is `build/bin` (no `Release` subfolder).

@@ -1,6 +1,6 @@
 # Playback, buffering and threads
 
-When a stream is attached to a device, FatzAudio decodes it **ahead of time on worker threads** into a lock-free ring buffer. The device's audio callback only mixes what is already decoded. That's what keeps playback smooth: a slow disk, a big FLAC frame or a busy CPU never makes the audio thread wait.
+When a stream is attached to a device, FatzMedia.Audio decodes it **ahead of time on worker threads** into a lock-free ring buffer. The device's audio callback only mixes what is already decoded. That's what keeps playback smooth: a slow disk, a big FLAC frame or a busy CPU never makes the audio thread wait.
 
 ```
  decode workers (N threads)                       audio thread (real-time)
@@ -162,7 +162,7 @@ output.Muted = true;
 
 ## Clicks at seeks and loop wraps
 
-A seek on a playing stream would cut one waveform and start another, which clicks, most on steady tones. FatzAudio
+A seek on a playing stream would cut one waveform and start another, which clicks, most on steady tones. FatzMedia.Audio
 fades the old audio out over 1.5 ms (the mixer plays it, so the seek waits up to a callback for it) and fades the
 new audio in over the same time. A loop that jumps back with a step in the signal (a loop point that is not on a
 zero crossing, or a loop that is not a whole number of periods) has the step removed over about 2 ms; a seamless

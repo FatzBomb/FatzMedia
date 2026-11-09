@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FatzAudio\FatzAudio.csproj" />
+    <ProjectReference Include="..\..\src\FatzMedia.Audio\FatzMedia.Audio.csproj" />
   </ItemGroup>
 
 </Project>

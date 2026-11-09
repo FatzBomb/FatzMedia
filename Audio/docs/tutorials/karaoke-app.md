@@ -1,6 +1,6 @@
 # Tutorial: a karaoke app
 
-Karaoke songs come as an MP3 plus a `.cdg` file, a ZIP holding both, a MIDI `.kar` file, or a CD+G disc. FatzAudio plays the audio and draws the words into a pixel buffer; your app puts that buffer on screen. Start from the [WPF player](wpf-player.md).
+Karaoke songs come as an MP3 plus a `.cdg` file, a ZIP holding both, a MIDI `.kar` file, or a CD+G disc. FatzMedia.Audio plays the audio and draws the words into a pixel buffer; your app puts that buffer on screen. Start from the [WPF player](wpf-player.md).
 
 ## 1. CD+G songs
 

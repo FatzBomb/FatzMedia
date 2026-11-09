@@ -1,10 +1,10 @@
-# FatzAudio
+# FatzMedia.Audio
 
-FatzAudio is a cross-platform audio engine with a plain C API (`include/fatzaudio/fatzaudio.h`),
+FatzMedia.Audio is a cross-platform audio engine with a plain C API (`include/fatzaudio/fatzaudio.h`),
 built as a shared library (`fatzaudio.dll` / `libfatzaudio.so` / `libfatzaudio.dylib`).
 The current backend uses [miniaudio](https://github.com/mackron/miniaudio) (vendored in
 `third_party/miniaudio`) for device I/O, and its embedded dr_wav/dr_flac/dr_mp3 behind
-FatzAudio's own decoder registry. Time stretching uses
+FatzMedia.Audio's own decoder registry. Time stretching uses
 [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) (MIT, vendored in
 `third_party/signalsmith`, wrapped in `src/stretch.cpp`, the library's only C++ file).
 Opus and Vorbis decode with [libopus](https://opus-codec.org/) 1.5.2 and
@@ -50,6 +50,6 @@ See the [documentation](docs/README.md). [fatzaudio-design.md](fatzaudio-design.
 
 ## Licenses
 
-FatzAudio is proprietary software. Copyright (c) 2026 FatzBomb Entertainment. All rights reserved. See [LICENSE](../LICENSE); use or redistribution needs written permission.
+FatzMedia.Audio is proprietary software. Copyright (c) 2026 FatzBomb Entertainment. All rights reserved. See [LICENSE](../LICENSE); use or redistribution needs written permission.
 
 Third-party code built into the library, and what is loaded at run time, is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,6 +1,6 @@
 # Opening and decoding streams
 
-A stream is anything that produces audio. You open it from a file, a memory block, your own read callbacks, or a URL ([web streams](web-streams.md)), and FatzAudio works out the format from the data itself. There's one open call per kind of source and none per format: no plugins to load, no `BASS_FLAC_StreamCreateFile`.
+A stream is anything that produces audio. You open it from a file, a memory block, your own read callbacks, or a URL ([web streams](web-streams.md)), and FatzMedia.Audio works out the format from the data itself. There's one open call per kind of source and none per format: no plugins to load, no `BASS_FLAC_StreamCreateFile`.
 
 ## Supported formats
 
@@ -27,7 +27,7 @@ A stream is anything that produces audio. You open it from a file, a memory bloc
 | Monkey's Audio | `.ape` files of every version from 3.80 on (Monkey's Audio 3.80, 2000, to today), all five compression levels, 8, 16, 24 and 32-bit integer and 32-bit float, 1 to 32 channels, with or without ID3v2 and APEv2 tags; lossless, to the bit ([Monkey's Audio](#monkeys-audio)) | `ape` (container `ape`) |
 | MIDI | Standard MIDI Files (format 0, 1, 2), karaoke `.kar`, RIFF `.rmi`; played with a SoundFont 2 you load ([MIDI](midi.md)) | `midi` (container `smf` or `rmid`) |
 
-Inside MP4, Matroska and ASF, PCM, MP3 and MP2, AC-3, E-AC-3, Opus, Vorbis, FLAC and ALAC tracks decode built in (and µ-law, A-law and IMA4 in MP4/QuickTime) (ALAC to the bit, all channel layouts up to 7.1 and every bit depth). AAC (AAC-LC, HE-AAC, HE-AAC v2, Main and LTP, up to 7.1) decodes built in as well, on every platform ([AAC](#aac)). WMA decodes on Windows (Media Foundation). DTS and TrueHD decode only where the system has a decoder for them ([DTS and TrueHD](#dts-and-truehd)). Every other codec (WMA outside Windows, ...) is not supported and returns `FA_ERROR_UNSUPPORTED_FORMAT`; FatzAudio never uses FFmpeg. If your app needs one of those, we recommend you decode it with your own FFmpeg and hand FatzAudio the decoded frames ([FFmpeg hand-off](ffmpeg.md#decoded-frames-instead-c)).
+Inside MP4, Matroska and ASF, PCM, MP3 and MP2, AC-3, E-AC-3, Opus, Vorbis, FLAC and ALAC tracks decode built in (and µ-law, A-law and IMA4 in MP4/QuickTime) (ALAC to the bit, all channel layouts up to 7.1 and every bit depth). AAC (AAC-LC, HE-AAC, HE-AAC v2, Main and LTP, up to 7.1) decodes built in as well, on every platform ([AAC](#aac)). WMA decodes on Windows (Media Foundation). DTS and TrueHD decode only where the system has a decoder for them ([DTS and TrueHD](#dts-and-truehd)). Every other codec (WMA outside Windows, ...) is not supported and returns `FA_ERROR_UNSUPPORTED_FORMAT`; FatzMedia.Audio never uses FFmpeg. If your app needs one of those, we recommend you decode it with your own FFmpeg and hand FatzMedia.Audio the decoded frames ([FFmpeg hand-off](ffmpeg.md#decoded-frames-instead-c)).
 
 More formats are added to the same registry (built-in or OS decoders for the codecs above follow the build order in the design doc). Ask the library at runtime with `fa_format_count` / `fa_format_get_info`, or `AudioEngine.SupportedFormats` in .NET.
 
@@ -43,7 +43,7 @@ Apps that demux files themselves (for example with FFmpeg, for the video) can pu
 
 If nothing matches, the open returns `FA_ERROR_UNSUPPORTED_FORMAT`.
 
-Protected content returns `FA_ERROR_PROTECTED_CONTENT` instead, so the app can tell the user the file is copy-protected rather than broken. That covers DRM-protected WMA/ASF, MP4/M4A with Common Encryption (`enca`) or iTunes FairPlay (`drms`), Matroska/WebM tracks with ContentEncryption, and HLS with `SAMPLE-AES` or another DRM key method. FatzAudio never decrypts these: the licences live with the platform's DRM components.
+Protected content returns `FA_ERROR_PROTECTED_CONTENT` instead, so the app can tell the user the file is copy-protected rather than broken. That covers DRM-protected WMA/ASF, MP4/M4A with Common Encryption (`enca`) or iTunes FairPlay (`drms`), Matroska/WebM tracks with ContentEncryption, and HLS with `SAMPLE-AES` or another DRM key method. FatzMedia.Audio never decrypts these: the licences live with the platform's DRM components.
 
 Karaoke files: a ZIP archive opened with `fa_stream_open_path`, `fa_stream_open_memory` or `fa_stream_open_io` plays the audio file inside it, and `fa_stream_open_path` on an audio file also loads a `.cdg` of the same name next to it (turn that off with `FA_OPEN_NO_CDG`). A `.cdg` with no audio, or a ZIP holding only one, opens as a silent stream as long as the graphics ([graphics with no audio](cdg.md#graphics-with-no-audio)). See [CD+G](cdg.md).
 
@@ -138,7 +138,7 @@ Ownership rules for `user`:
 ## C#
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 using var engine = AudioEngine.Create();
 
@@ -179,7 +179,7 @@ using var fromStream = engine.OpenStream(File.OpenRead("track.wav"));
 | `audio_bytes` | Bytes of this audio stream's coded data, without tags, headers or other tracks; -1 if unknown. Exact for WAV, AIFF, CD and MP4; close for MP3, AAC, AC-3, E-AC-3, FLAC, Ogg and single-track Matroska/WebM. .NET: `Info.AudioBytes` |
 | `bitrate` | Average bits per second: `audio_bytes` over the duration, else the codec's nominal rate; 0 if unknown. An MP3's Xing/LAME header frame is not counted |
 | `bits_per_sample` | 16, 24, ... for PCM and lossless sources (WAV, AIFF, FLAC, ALAC, WMA Lossless, CD); 0 for lossy codecs |
-| `can_decode` | Always 1 for a stream you have open. 0 only in the details `fa_tags_get_info` gives for a file whose codec FatzAudio does not decode (DTS or TrueHD with no system decoder, WMA off Windows): [tags.md](tags.md) |
+| `can_decode` | Always 1 for a stream you have open. 0 only in the details `fa_tags_get_info` gives for a file whose codec FatzMedia.Audio does not decode (DTS or TrueHD with no system decoder, WMA off Windows): [tags.md](tags.md) |
 
 The same properties come without opening a stream, together with the tags, from `fa_tags_read_path` (see [tags.md](tags.md)).
 
@@ -218,7 +218,7 @@ Decoding comes first in the engine: the workers decode before they draw (render-
 ## Pitfalls
 
 - `fa_stream_open_memory` copies the data, so you can free your buffer right after the call.
-- Paths are UTF-8. On Windows FatzAudio converts them to UTF-16 internally, so non-ASCII file names work.
+- Paths are UTF-8. On Windows FatzMedia.Audio converts them to UTF-16 internally, so non-ASCII file names work.
 - `audio_track` greater than 0 returns `FA_ERROR_NOT_FOUND` for single-track formats.
 
 ## WAV and AIFF
@@ -229,7 +229,7 @@ Decoding comes first in the engine: the workers decode before they draw (render-
 
 ## FLAC
 
-- Seeks are sample exact, with or without a SEEKTABLE. A file without one (FFmpeg's FLAC encoder writes none; FatzAudio's writes one when its output can seek) is searched: each probe reads one frame header near where the target should be and narrows the range, two to four probes usually find it, and only the frame the search ends on is decoded. A seek takes well under a millisecond. A SEEKTABLE narrows the search to the stretch between two of its points.
+- Seeks are sample exact, with or without a SEEKTABLE. A file without one (FFmpeg's FLAC encoder writes none; FatzMedia.Audio's writes one when its output can seek) is searched: each probe reads one frame header near where the target should be and narrows the range, two to four probes usually find it, and only the frame the search ends on is decoded. A seek takes well under a millisecond. A SEEKTABLE narrows the search to the stretch between two of its points.
 - Audio whose compression changes sharply, such as long digital silence followed by music, can take more probes (about a dozen) but still lands exactly.
 
 ## MP3, MP2 and MP1
@@ -274,7 +274,7 @@ Console.WriteLine($"{s.Info.Codec} {s.Info.BitsPerSample}-bit {s.Info.Format.Sam
 
 ## DSD (DSF and DSDIFF)
 
-Super Audio CD rips and hi-res downloads come as DSD: one bit per sample at 2.8 MHz (DSD64) or a multiple of it. FatzAudio converts DSD to PCM as it decodes, so a DSD file plays, seeks, normalizes, records and analyses like any other file.
+Super Audio CD rips and hi-res downloads come as DSD: one bit per sample at 2.8 MHz (DSD64) or a multiple of it. FatzMedia.Audio converts DSD to PCM as it decodes, so a DSD file plays, seeks, normalizes, records and analyses like any other file.
 
 - **Files:** DSF (Sony's format, most downloads) and DSDIFF (`.dff`, Philips' format, most SACD rips), found by content. DSD64, DSD128, DSD256, DSD512 and DSD1024, on the 44.1 kHz family (2.8224 MHz and up) and the 48 kHz family (3.072 MHz and up). DSF holds 1 to 6 channels in its standard layouts; the 3-channel and wider ones get a speaker mask (`format.channel_mask`). In DSDIFF the channels named in the file (`SLFT`, `SRGT`, `MLFT`, `MRGT`, `C`, `LFE`, `LS`, `RS`) come out in WAVE order (front left, right, centre, LFE, back left, right); others stay in the file's order. DSDIFF compressed with DST is recognised and returns `FA_ERROR_UNSUPPORTED_FORMAT`; `fa_tags_read_*` still gives its codec (`dst`), rate, channels and length with `can_decode` 0.
 - **Output rate:** 88.2 kHz (96 kHz on the 48 kHz family) unless `fa_open_options.dsd_rate` (.NET `StreamOptions.DsdRate`) asks for another: the nearest of 44.1, 88.2, 176.4 and 352.8 kHz (48 to 384 kHz) is used. The engine resamples to the device as for any other file, so the default suits playback; a higher rate only matters when you decode or record and want to keep more of the ultrasonic band. The PCM is 32-bit float.
@@ -283,7 +283,7 @@ Super Audio CD rips and hi-res downloads come as DSD: one bit per sample at 2.8 
 - **Seeking** is exact: the samples after a seek are the ones a straight decode gives there.
 - **Stream info:** codec `dsd`, `bits_per_sample` 1, `bitrate` the DSD rate times the channel count (so `bitrate / channels` is the DSD rate: 2822400 for DSD64).
 - **Tags:** the ID3v2 tag of a DSF file, and in DSDIFF the `ID3 ` chunk most tools write and the title and artist of the edited master information (`DITI`, `DIAR`, as `FA_TAG_FORMAT_DSDIFF` items, .NET `TagFormat.Dsdiff`) ([tags](tags.md)).
-- **Not provided:** raw DSD output and DSD over PCM (DoP) to an external DAC. They need the bits to reach the DAC untouched, and FatzAudio mixes every stream in float.
+- **Not provided:** raw DSD output and DSD over PCM (DoP) to an external DAC. They need the bits to reach the DAC untouched, and FatzMedia.Audio mixes every stream in float.
 
 ```c
 fa_open_options o;
@@ -304,7 +304,7 @@ Console.WriteLine($"DSD{s.Info.Bitrate / s.Info.Format.Channels / 44100}, played
 
 ## AAC
 
-AAC decodes with FatzAudio's own decoder, the same on every platform, with no FFmpeg and no system codec. It plays `.aac` (ADTS) files, AAC radio and HLS, and AAC tracks in MP4/M4A/MOV, Matroska, CAF and video files, plus AAC packets you push ([FFmpeg hand-off](ffmpeg.md)).
+AAC decodes with FatzMedia.Audio's own decoder, the same on every platform, with no FFmpeg and no system codec. It plays `.aac` (ADTS) files, AAC radio and HLS, and AAC tracks in MP4/M4A/MOV, Matroska, CAF and video files, plus AAC packets you push ([FFmpeg hand-off](ffmpeg.md)).
 
 | Profile | Supported |
 |---|---|
@@ -313,10 +313,10 @@ AAC decodes with FatzAudio's own decoder, the same on every platform, with no FF
 | HE-AAC v2 (parametric stereo) | ✅ every PS mode: 10, 20 and 34 bands, fine and coarse IID, both mixing procedures, IPD/OPD phase |
 | AAC Main | ✅ with backward-adaptive prediction |
 | AAC-LTP | ✅ with long-term prediction |
-| xHE-AAC (USAC) | Through the system's decoder where there is one (Media Foundation, AudioToolbox, MediaCodec). Elsewhere it returns `FA_ERROR_UNSUPPORTED_FORMAT`; an app that must play it can decode it with its own FFmpeg and hand FatzAudio the frames ([FFmpeg hand-off](ffmpeg.md)) |
+| xHE-AAC (USAC) | Through the system's decoder where there is one (Media Foundation, AudioToolbox, MediaCodec). Elsewhere it returns `FA_ERROR_UNSUPPORTED_FORMAT`; an app that must play it can decode it with its own FFmpeg and hand FatzMedia.Audio the frames ([FFmpeg hand-off](ffmpeg.md)) |
 | AAC SSR, low delay and the other error-resilient (ER) profiles, 960-sample frames | Not supported. MP4/MKV tracks with such a configuration return `FA_ERROR_UNSUPPORTED_FORMAT`; an `.aac` (ADTS) file of AAC SSR, the only one of these that ADTS can carry, returns `FA_ERROR_UNSUPPORTED_FORMAT` |
 
-The output matches FFmpeg's AAC decoder to float precision: about 136 dB SNR for AAC-LC, AAC Main and AAC-LTP and 90 to 130 dB for HE-AAC and HE-AAC v2 (measured on streams from Fraunhofer's encoder and FFmpeg's; the tests check every profile and PS mode). For PS phase data (IPD/OPD) the lowest QMF band differs slightly from FFmpeg, which conjugates the phase of its negative-frequency part only at the start of each interpolation; FatzAudio follows the standard there, as FAAD2 does.
+The output matches FFmpeg's AAC decoder to float precision: about 136 dB SNR for AAC-LC, AAC Main and AAC-LTP and 90 to 130 dB for HE-AAC and HE-AAC v2 (measured on streams from Fraunhofer's encoder and FFmpeg's; the tests check every profile and PS mode). For PS phase data (IPD/OPD) the lowest QMF band differs slightly from FFmpeg, which conjugates the phase of its negative-frequency part only at the start of each interpolation; FatzMedia.Audio follows the standard there, as FAAD2 does.
 
 ```c
 fa_stream* s;
@@ -341,7 +341,7 @@ Console.WriteLine($"{s.Info.Format.SampleRate} Hz, {s.Info.Format.Channels} chan
 
 ## Ogg Opus and Ogg Vorbis
 
-Opus and Vorbis decode with libopus and libvorbis, compiled into the library: no FFmpeg, no extra DLL. libvorbis's inverse MDCT is replaced by FatzAudio's own (the one the AC-3 and AAC decoders use), which makes Vorbis decoding about a quarter faster than stock libvorbis and faster than BASS's. Ogg FLAC (`.oga`) uses the same FLAC decoder as `.flac` files and gives exactly the same samples. The same decoders play Opus and Vorbis tracks in WebM, Matroska and MP4, and raw Opus packets pushed by your app ([FFmpeg hand-off](ffmpeg.md)), which replaces bassopus's `BASS_OPUS_StreamCreate` + `BASS_StreamPutData`.
+Opus and Vorbis decode with libopus and libvorbis, compiled into the library: no FFmpeg, no extra DLL. libvorbis's inverse MDCT is replaced by FatzMedia.Audio's own (the one the AC-3 and AAC decoders use), which makes Vorbis decoding about a quarter faster than stock libvorbis and faster than BASS's. Ogg FLAC (`.oga`) uses the same FLAC decoder as `.flac` files and gives exactly the same samples. The same decoders play Opus and Vorbis tracks in WebM, Matroska and MP4, and raw Opus packets pushed by your app ([FFmpeg hand-off](ffmpeg.md)), which replaces bassopus's `BASS_OPUS_StreamCreate` + `BASS_StreamPutData`.
 
 ```c
 fa_stream* s;
@@ -363,10 +363,10 @@ using var s = engine.OpenFile("song.opus");
 
 ## WMA
 
-`.wma` files (and `.asf`/`.wmv`, audio only) open with the ordinary calls; there is no plugin to load. FatzAudio reads the ASF container itself and hands each audio frame to a decoder:
+`.wma` files (and `.asf`/`.wmv`, audio only) open with the ordinary calls; there is no plugin to load. FatzMedia.Audio reads the ASF container itself and hands each audio frame to a decoder:
 
 - **Windows**: the system's own Windows Media Audio decoders, through Media Foundation. Nothing to install or ship. On Windows N and KN editions without the Media Feature Pack (and on Server Core) Media Foundation is missing; WMA then returns `FA_ERROR_PROVIDER_MISSING` (.NET: `ErrorCode.ProviderMissing`), so your app can tell the user to install the Media Feature Pack from Windows optional features. Other Media Foundation failures (a damaged stream, a format the decoder refuses) still return `FA_ERROR_UNSUPPORTED_FORMAT`.
-- **macOS, Linux, Android, iOS**: not supported; a WMA track returns `FA_ERROR_UNSUPPORTED_FORMAT`. These systems have no WMA decoder and there is no public WMA specification. An app that must play WMA there can decode it with your own FFmpeg and hand FatzAudio the decoded frames ([FFmpeg hand-off](ffmpeg.md#decoded-frames-instead-c)). PCM, MP3 and AC-3 inside ASF decode built in everywhere.
+- **macOS, Linux, Android, iOS**: not supported; a WMA track returns `FA_ERROR_UNSUPPORTED_FORMAT`. These systems have no WMA decoder and there is no public WMA specification. An app that must play WMA there can decode it with your own FFmpeg and hand FatzMedia.Audio the decoded frames ([FFmpeg hand-off](ffmpeg.md#decoded-frames-instead-c)). PCM, MP3 and AC-3 inside ASF decode built in everywhere.
 
 Details:
 
@@ -392,7 +392,7 @@ Console.WriteLine($"{s.Info.Codec} in {s.Info.Container}");
 
 ## AVI and FLV
 
-Old video files open like any other video: FatzAudio reads only the audio chunks and never touches the video. `audio_track` picks the track as in [Video files and audio tracks](#video-files-and-audio-tracks).
+Old video files open like any other video: FatzMedia.Audio reads only the audio chunks and never touches the video. `audio_track` picks the track as in [Video files and audio tracks](#video-files-and-audio-tracks).
 
 - **AVI.** Local files, memory and your own read callbacks. A seekable source lists its audio chunks at open from the OpenDML index, else the old `idx1` index (offsets counted from the `movi` list or from the file start; both occur and both work), else by walking the file: so a file with no index, a capture whose RIFF size is wrong or zero, or an OpenDML file in several `AVIX` parts all play, and the length is exact. A forward-only source plays as the chunks come, with no seeking (`FA_ERROR_NOT_SEEKABLE`) and the length from the stream header. The time of a chunk comes from the stream header (`dwScale / dwRate`): PCM counts its own frames, a variable-rate MP3, MP2, AC-3 or AAC chunk is one unit, and a constant-rate one counts bytes. A chunk may end mid-frame; the decoder joins the pieces. Seeks are exact, with the same samples a straight decode gives there. Tags in an `INFO` list are read by `fa_tags_read_path` as for WAV.
 - **FLV.** The audio tags are listed at open by hopping over the video tags (a hour of 25 frames per second is a fraction of a second) and played from the list; times are milliseconds in the file and are snapped to the codec's frame grid, so seeks are exact. AAC needs its configuration tag (every muxer writes it first). A forward-only source plays as the tags come, without seeking.
@@ -417,7 +417,7 @@ Console.WriteLine($"{s.Info.Codec}, {s.Info.BitsPerSample}-bit, {s.Info.Duration
 
 ## MPEG program and transport streams
 
-Recordings, DVD and Video CD rips and broadcast captures open like any other video file: FatzAudio reads only the audio and never touches the video. `audio_track` picks the track as in [Video files and audio tracks](#video-files-and-audio-tracks); tracks are numbered in the order the streams are first met (program stream) or listed in the program map (transport stream).
+Recordings, DVD and Video CD rips and broadcast captures open like any other video file: FatzMedia.Audio reads only the audio and never touches the video. `audio_track` picks the track as in [Video files and audio tracks](#video-files-and-audio-tracks); tracks are numbered in the order the streams are first met (program stream) or listed in the program map (transport stream).
 
 - **Program streams** (`.mpg`, `.mpeg`, `.vob`, `.dat`): MPEG-2 and the MPEG-1 system layer of Video CD; MPEG audio (stream ids `0xC0` to `0xDF`) and the AC-3 and DTS of a DVD (private stream 1). **Transport streams** (`.ts`, `.mts`, `.m2ts`): 188-byte packets, 192 with the time stamp of a Blu-ray/AVCHD file, or 204 with error correction bytes; the first program's MPEG audio, ADTS AAC, AC-3 (also in DVB private streams), E-AC-3, and DTS and DTS-HD (Blu-ray stream types `0x82`, `0x85`, `0x86`, DVB descriptor `0x7B`). DTS plays only where the system has a decoder for it ([DTS and TrueHD](#dts-and-truehd)). Both are found by content, not by name; a stream that does not start on a packet boundary is found again.
 - **Length and seeking.** Neither format has an index. At open the first and the last time stamp give the length (the last few megabytes are read, and the frames after the last stamp are counted, so the length is to the sample), and a seek searches the file for the packet at the target: it guesses from the data rate and narrows down, then the decoder runs in from a little before the target. A seek reads a small part of the file around the guesses (a 120 s test file of 60 MB seeks in about a millisecond from the cache). The samples after a seek are the same a straight decode gives there. The 33-bit time stamps wrap after 26.5 hours; files shorter than 13 hours play across a wrap. A stream with no time stamps at all cannot be placed and is refused.
@@ -433,13 +433,13 @@ Console.WriteLine($"{s.Info.Codec} in {s.Info.Container}, {s.Info.Duration}");
 
 ## DTS and TrueHD
 
-FatzAudio has no DTS or TrueHD decoder of its own. It reads both formats and hands the frames to **the system's decoder, where the machine has one**: Media Foundation on Windows (DTS), MediaCodec on Android (DTS, DTS-HD and TrueHD). Without one, the stream returns `FA_ERROR_UNSUPPORTED_FORMAT` (.NET `UnsupportedFormat`) as before, and `fa_tags_read_*` still gives the file's details with `can_decode` 0 ([tags](tags.md)).
+FatzMedia.Audio has no DTS or TrueHD decoder of its own. It reads both formats and hands the frames to **the system's decoder, where the machine has one**: Media Foundation on Windows (DTS), MediaCodec on Android (DTS, DTS-HD and TrueHD). Without one, the stream returns `FA_ERROR_UNSUPPORTED_FORMAT` (.NET `UnsupportedFormat`) as before, and `fa_tags_read_*` still gives the file's details with `can_decode` 0 ([tags](tags.md)).
 
-Whether a machine has one is up to the machine: Windows does not add a DTS decoder that users can install, but some PCs come with one from their maker; some Android TVs, boxes and phones have one from the device maker. macOS, iOS and Linux have none. So treat this as a bonus, not as DTS support: **an app that must play DTS or TrueHD everywhere should decode it with its own FFmpeg and hand FatzAudio the frames** ([FFmpeg hand-off](ffmpeg.md)).
+Whether a machine has one is up to the machine: Windows does not add a DTS decoder that users can install, but some PCs come with one from their maker; some Android TVs, boxes and phones have one from the device maker. macOS, iOS and Linux have none. So treat this as a bonus, not as DTS support: **an app that must play DTS or TrueHD everywhere should decode it with its own FFmpeg and hand FatzMedia.Audio the frames** ([FFmpeg hand-off](ffmpeg.md)).
 
 - **What is read.** DTS core frames, with the DTS-HD extension substreams after them (High Resolution and Master Audio keep their extra parts; a decoder that only takes the core gets the core frames alone), in raw `.dts`/`.cpt` files (16-bit words in either byte order), Matroska, MP4, AVI, and MPEG program and transport streams (DVD, Blu-ray `.m2ts`). TrueHD is read in Matroska and MP4 only, and goes only to Android's decoder (Media Foundation has no TrueHD type).
 - **Raw `.dts` files** have the exact length and exact seeks: a file whose frames all have the same size (DTS core) is placed by arithmetic, others are indexed at open. A leading ID3v2 tag and junk between frames are slid over. Not recognised: 14-bit packed streams (DTS audio CDs ripped as `.wav`/`.cpt`), DTS-HD files with a `DTSHDHDR` header (`.dtshd`), and DTS Express (substreams with no core).
-- **Why no decoder of its own.** FatzAudio's decoders are written from public specifications. The DTS specification (ETSI TS 102 114) leaves out two tables every DTS stream needs, and the only copies are in other decoders' source; TrueHD has no public specification. Docs say "DTS core decoding" only for what a system decoder does; no DTS licence or logo is implied.
+- **Why no decoder of its own.** FatzMedia.Audio's decoders are written from public specifications. The DTS specification (ETSI TS 102 114) leaves out two tables every DTS stream needs, and the only copies are in other decoders' source; TrueHD has no public specification. Docs say "DTS core decoding" only for what a system decoder does; no DTS licence or logo is implied.
 - **Pushed packets.** `fa_stream_open_packets` with codec `dts` (or `truehd`) uses the same system decoder; DTS packets may be cut anywhere, the frames are joined again.
 
 ```c
@@ -460,7 +460,7 @@ catch (FatzAudioException e) when (e.ErrorCode == ErrorCode.UnsupportedFormat)
 
 ## Video files and audio tracks
 
-Open a video file like any other: FatzAudio reads only its audio. `fa_open_options.audio_track` (.NET `StreamOptions.AudioTrack`) picks the track, counting audio tracks only from 0; -1 is the first. `fa_stream_info.audio_track_count` (.NET `Info.AudioTrackCount`) says how many there are, and a track that doesn't exist returns `FA_ERROR_NOT_FOUND`.
+Open a video file like any other: FatzMedia.Audio reads only its audio. `fa_open_options.audio_track` (.NET `StreamOptions.AudioTrack`) picks the track, counting audio tracks only from 0; -1 is the first. `fa_stream_info.audio_track_count` (.NET `Info.AudioTrackCount`) says how many there are, and a track that doesn't exist returns `FA_ERROR_NOT_FOUND`.
 
 ```c
 fa_open_options o;
@@ -478,5 +478,5 @@ Console.WriteLine(s.Info.AudioTrackCount);
 - Only the audio's own bytes are read, so reading a track of a large video is fast: about 1000x real time for a 720p file, reading 3 to 7 percent of it. Normalization scans use the same path ([normalization](normalization.md)).
 - Forward-only sources work when the MP4 has its index in front (faststart or fragmented); otherwise `FA_ERROR_NOT_SEEKABLE`. Matroska always works.
 - Not supported: encrypted tracks (CENC), compressed Matroska tracks (zlib, bzip2, LZO), chained Matroska segments, and MP4 edit lists beyond a leading gap and one edit.
-- When your app demuxes the video itself with FFmpeg, you can still open the file a second time for the audio, or hand FatzAudio the packets you already read ([FFmpeg hand-off](ffmpeg.md)).
+- When your app demuxes the video itself with FFmpeg, you can still open the file a second time for the audio, or hand FatzMedia.Audio the packets you already read ([FFmpeg hand-off](ffmpeg.md)).
 - Over the network (`fa_stream_open_url`) the same files play and seek while they download, reading only what is needed: a fragmented MP4 reads its fragments as playback reaches them, and Matroska reads Cues stored at the end in one extra request ([MP4 and Matroska files](web-streams.md#mp4-and-matroska-files)).

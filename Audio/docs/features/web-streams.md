@@ -9,7 +9,7 @@
 | An HLS playlist (`.m3u8`), on demand or live | The best audio variant, MPEG-TS, fMP4 or plain audio segments, AES-128 encryption. On-demand HLS is seekable to the frame |
 | A `.pls` or `.m3u` playlist (what radio sites usually link to) | Its first entry is played |
 
-The format is detected from the content, as for files ([streams](streams.md#how-detection-works)): WAV, FLAC, MP3, Ogg Opus, Ogg Vorbis, Ogg FLAC, AAC, AC-3 and E-AC-3, MP4/M4A/MOV and Matroska/WebM files (also with video, [below](#mp4-and-matroska-files)), and inside HLS segments (MPEG-TS, fMP4 or packed audio). AAC, which most HLS and many radio stations use, including HE-AAC and HE-AAC v2, decodes with FatzAudio's own decoder on every platform, with no FFmpeg ([AAC](streams.md#aac)).
+The format is detected from the content, as for files ([streams](streams.md#how-detection-works)): WAV, FLAC, MP3, Ogg Opus, Ogg Vorbis, Ogg FLAC, AAC, AC-3 and E-AC-3, MP4/M4A/MOV and Matroska/WebM files (also with video, [below](#mp4-and-matroska-files)), and inside HLS segments (MPEG-TS, fMP4 or packed audio). AAC, which most HLS and many radio stations use, including HE-AAC and HE-AAC v2, decodes with FatzMedia.Audio's own decoder on every platform, with no FFmpeg ([AAC](streams.md#aac)).
 
 ## C
 
@@ -153,7 +153,7 @@ catch (OperationCanceledException) { /* another station was picked meanwhile */ 
 | `FA_ERROR_CANCELLED` | The app raised `fa_open_options.cancel` |
 | `FA_ERROR_NETWORK` | The server can't be reached, refused the connection, or timed out |
 | `FA_ERROR_NOT_FOUND` | The server answered with an error (404, 403, 500, ...) |
-| `FA_ERROR_UNSUPPORTED_FORMAT` | What came back isn't audio FatzAudio can decode (a web page, say) |
+| `FA_ERROR_UNSUPPORTED_FORMAT` | What came back isn't audio FatzMedia.Audio can decode (a web page, say) |
 | `FA_ERROR_PROTECTED_CONTENT` | The stream is DRM-protected: HLS with `SAMPLE-AES` or another DRM key method, or an encrypted file |
 | `FA_ERROR_PROVIDER_MISSING` | `https://` on a Linux system without libcurl, or on Android before the Java VM is known ([Android](#android)) |
 
@@ -197,7 +197,7 @@ A file whose audio is spread over a lot of video (a 1080p film's soundtrack) nee
 
 ## Song titles (ICY metadata)
 
-Radio servers send the title of the song inside the audio data, every few KB. The title is downloaded seconds before you hear it (the buffer), so FatzAudio keeps it until playback reaches the byte where it was sent, then raises `FA_EVENT_METADATA`. `value` is the title's `seq` (1, 2, ...), and `fa_stream_get_metadata` returns the title heard now, never one that is still in the buffer. Events are delivered on the event thread, so when titles change faster than that (a decode-only stream read faster than real time), `fa_stream_get_metadata` in the handler can already return a newer title: compare its `seq` with the event's `value`. The .NET `MetadataChanged` skips such stale events and raises only the latest title.
+Radio servers send the title of the song inside the audio data, every few KB. The title is downloaded seconds before you hear it (the buffer), so FatzMedia.Audio keeps it until playback reaches the byte where it was sent, then raises `FA_EVENT_METADATA`. `value` is the title's `seq` (1, 2, ...), and `fa_stream_get_metadata` returns the title heard now, never one that is still in the buffer. Events are delivered on the event thread, so when titles change faster than that (a decode-only stream read faster than real time), `fa_stream_get_metadata` in the handler can already return a newer title: compare its `seq` with the event's `value`. The .NET `MetadataChanged` skips such stale events and raises only the latest title.
 
 Ogg radio (Opus or Vorbis) has no ICY titles: every song starts a new Ogg link with its own comment header, and its `ARTIST` and `TITLE` become `stream_title` ("Artist - Title"), announced the same way at the song's first sample.
 
@@ -263,7 +263,7 @@ file.Dispose();
 
 ## HTTPS
 
-FatzAudio never bundles a TLS library. HTTPS goes through the system's stack, so certificates, corporate proxies and the system's security settings apply as they do for every other app:
+FatzMedia.Audio never bundles a TLS library. HTTPS goes through the system's stack, so certificates, corporate proxies and the system's security settings apply as they do for every other app:
 
 | Platform | Stack |
 |---|---|
@@ -272,7 +272,7 @@ FatzAudio never bundles a TLS library. HTTPS goes through the system's stack, so
 | Linux | libcurl, loaded at runtime (`libcurl.so.4`, installed almost everywhere). Without it, `https://` returns `FA_ERROR_PROVIDER_MISSING`; `http://` still works |
 | Android | `HttpURLConnection` (Conscrypt), called through JNI on the app's Java VM. The app's network security config applies |
 
-Plain `http://` uses FatzAudio's own small HTTP/1.1 client on every platform. It understands Shoutcast's `ICY 200 OK` answers, which some HTTP stacks reject.
+Plain `http://` uses FatzMedia.Audio's own small HTTP/1.1 client on every platform. It understands Shoutcast's `ICY 200 OK` answers, which some HTTP stacks reject.
 
 ### Connections
 
@@ -286,7 +286,7 @@ closes that connection (the rest of the old body isn't read), so the request aft
 
 ### Redirects
 
-FatzAudio follows redirects itself, up to 8, the same way on every platform and stack, also from `https://` to
+FatzMedia.Audio follows redirects itself, up to 8, the same way on every platform and stack, also from `https://` to
 `http://`. Credentials go along only to where they belong:
 
 - The URL's own credentials (`https://user:password@host/...`) are sent to the URL's own origin (scheme, host and
@@ -352,7 +352,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
 What else to know on Android:
 
 - The certificates, user-added CAs and certificate pinning of your app's [network security config](https://developer.android.com/privacy-and-security/security-config) apply to `https://`, as they do for the app's own requests.
-- The network security config's cleartext rule does not apply to `http://`: that goes through FatzAudio's own client. Use `https://` URLs if your app must not send cleartext.
+- The network security config's cleartext rule does not apply to `http://`: that goes through FatzMedia.Audio's own client. Use `https://` URLs if your app must not send cleartext.
 - The proxy of the active network (Wi-Fi proxy settings, with its exclusion list) is used for `http://` and `https://` when `proxy` is `NULL`.
 - Credentials in `proxy` (`"http://user:password@host:port"`) are sent for `http://` only, as on Windows: `https://` through a proxy that asks for a password fails with `FA_ERROR_NETWORK`.
 - Android's HTTPS stack rejects the `ICY 200 OK` status line of old Shoutcast v1 servers, so such a server works over `http://` only. Icecast and Shoutcast v2 answer `HTTP/1.x` and work over both.

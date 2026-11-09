@@ -1,8 +1,8 @@
 # Migrating from SoundTouch
 
-SoundTouch (and wrappers around it such as NAudio's `SoundTouchWaveProvider` or SoundTouch.Net) is a processor you feed samples into and pull samples out of. FatzAudio has no separate processor: tempo, pitch and rate are parameters on the stream ([tempo and pitch](../features/tempo-pitch.md)), so the feeding loop, the buffering and the position bookkeeping go away. It also sounds cleaner: SoundTouch splices overlapping chunks of audio, which makes chords phase and moves drum hits by several milliseconds; FatzAudio uses a phase vocoder and an exact resampler (measured in the [feature guide](../features/tempo-pitch.md#how-it-works-and-how-good-it-is)).
+SoundTouch (and wrappers around it such as NAudio's `SoundTouchWaveProvider` or SoundTouch.Net) is a processor you feed samples into and pull samples out of. FatzMedia.Audio has no separate processor: tempo, pitch and rate are parameters on the stream ([tempo and pitch](../features/tempo-pitch.md)), so the feeding loop, the buffering and the position bookkeeping go away. It also sounds cleaner: SoundTouch splices overlapping chunks of audio, which makes chords phase and moves drum hits by several milliseconds; FatzMedia.Audio uses a phase vocoder and an exact resampler (measured in the [feature guide](../features/tempo-pitch.md#how-it-works-and-how-good-it-is)).
 
-| SoundTouch | FatzAudio (C) | FatzAudio (.NET) |
+| SoundTouch | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) |
 |---|---|---|
 | `setTempo(t)` / `setTempoChange(percent)` | `FA_PARAM_TEMPO` = `t` (or `1 + percent / 100`) | `stream.Tempo` |
 | `setPitchSemiTones(n)` / `setPitchOctaves(o)` / `setPitch(ratio)` | `FA_PARAM_PITCH` in semitones: `n`, `12 × o`, or `12 × log2(ratio)` | `stream.Pitch` |
@@ -31,7 +31,7 @@ output.Play();
 // after seeking reader.CurrentTime: st.Clear()
 ```
 
-FatzAudio:
+FatzMedia.Audio:
 ```csharp
 using var song = engine.OpenFile(path);
 song.Tempo = 0.8f;

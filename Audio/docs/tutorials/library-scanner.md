@@ -16,7 +16,7 @@ foreach (var path in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDir
 }
 ```
 
-Anything FatzAudio cannot read as audio throws `UnsupportedFormat`; skip it. Details: [tags](../features/tags.md).
+Anything FatzMedia.Audio cannot read as audio throws `UnsupportedFormat`; skip it. Details: [tags](../features/tags.md).
 
 ## 2. Loudness for normalization
 

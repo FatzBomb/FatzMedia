@@ -1,7 +1,7 @@
 using System.Text;
-using FatzAudio;
+using FatzMedia.Audio;
 
-namespace FatzAudio.AppChecks;
+namespace FatzMedia.Audio.AppChecks;
 
 /// <summary>What the CI app jobs check inside a real app process; the first line to print says how it went.</summary>
 internal static class AppCheck

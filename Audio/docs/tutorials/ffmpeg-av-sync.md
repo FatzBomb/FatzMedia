@@ -1,6 +1,6 @@
 # Tutorial: audio for a video player (FFmpeg A/V sync)
 
-FatzAudio never links FFmpeg and plays no video. If your app demuxes video with FFmpeg, it can hand the audio packets to FatzAudio and let its clock drive the picture. FatzAudio's clock reports the time of the audio leaving the speaker right now, in your own timeline, so the video follows what is heard.
+FatzMedia.Audio never links FFmpeg and plays no video. If your app demuxes video with FFmpeg, it can hand the audio packets to FatzMedia.Audio and let its clock drive the picture. FatzMedia.Audio's clock reports the time of the audio leaving the speaker right now, in your own timeline, so the video follows what is heard.
 
 ## 1. Describe the audio track and play it
 
@@ -34,8 +34,8 @@ TimeSpan now = audio.Clock;   // show the video frame for this time
 
 Pushing never blocks, so keep about a second queued (`Buffered`). When the queue runs dry the stream stalls and the clock holds.
 
-## 3. Seeking and codecs FatzAudio does not play
+## 3. Seeking and codecs FatzMedia.Audio does not play
 
-Seek your demuxer, call `audio.Flush()`, and push from the new position. For DTS, TrueHD or anything else FatzAudio rejects, decode with FFmpeg and push frames with `engine.CreatePushStream(...)` and `PushFrame(...)`.
+Seek your demuxer, call `audio.Flush()`, and push from the new position. For DTS, TrueHD or anything else FatzMedia.Audio rejects, decode with FFmpeg and push frames with `engine.CreatePushStream(...)` and `PushFrame(...)`.
 
 Full details, the C calls and the error cases: [FFmpeg hand-off and A/V sync](../features/ffmpeg.md).

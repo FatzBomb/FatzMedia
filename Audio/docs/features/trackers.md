@@ -1,6 +1,6 @@
 # Tracker modules
 
-FatzAudio plays tracker modules itself, with [libopenmpt](https://lib.openmpt.org) 0.8.9 built into the library. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream. It replaces `BASS_MusicLoad`.
+FatzMedia.Audio plays tracker modules itself, with [libopenmpt](https://lib.openmpt.org) 0.8.9 built into the library. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream. It replaces `BASS_MusicLoad`.
 
 | What | Supported |
 |---|---|

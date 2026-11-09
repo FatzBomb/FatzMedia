@@ -19,7 +19,7 @@ root = pathlib.Path(__file__).resolve().parent.parent
 docs = root / "docs"
 stage = root / "build/docs-stage"
 site = root / "build/docs-site"
-GITHUB = "https://github.com/FatzBomb75/FatzAudio/blob/main/"
+GITHUB = "https://github.com/FatzBomb/FatzMedia/blob/main/Audio/"
 SKIP = ("archive/", "engineering-notes.md")
 link = re.compile(r"(?<!!)(\]\()([^)\s#]*)(#[^)\s]*)?((?:\s+\"[^\"]*\")?\))")
 

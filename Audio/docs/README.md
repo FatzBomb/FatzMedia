@@ -1,4 +1,4 @@
-# FatzAudio documentation
+# FatzMedia.Audio documentation
 
 | Section | What's in it |
 |---|---|
@@ -11,7 +11,7 @@
 | [Formats and codecs](formats.md) | What plays, what is written, per platform |
 | [Building](building.md) | Build for Windows, macOS, Linux, Android and iOS, and run the tests |
 | [Feature guides](features/README.md) | One page per feature: what it does, how to use it, options, pitfalls; for example [MIDI and karaoke files](features/midi.md) |
-| [Migrating from BASS](migration/bass.md) | Every BASS function and add-on mapped to FatzAudio |
+| [Migrating from BASS](migration/bass.md) | Every BASS function and add-on mapped to FatzMedia.Audio |
 | [Migrating from SoundTouch](migration/soundtouch.md) | SoundTouch calls mapped to the tempo, pitch and rate parameters |
 | [C API reference](reference/c-api.md) | Every function and type, generated from the header |
 | [Troubleshooting and error codes](troubleshooting.md) | Every `FA_ERROR_*` code and what to do; symptoms |

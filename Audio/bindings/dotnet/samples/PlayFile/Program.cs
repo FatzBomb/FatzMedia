@@ -1,4 +1,4 @@
-using FatzAudio;
+using FatzMedia.Audio;
 
 if (args.Length != 1)
 {
@@ -29,6 +29,6 @@ try
 }
 catch (FatzAudioException ex)
 {
-    Console.Error.WriteLine($"FatzAudio error {ex.ErrorCode}: {ex.Message}");
+    Console.Error.WriteLine($"FatzMedia.Audio error {ex.ErrorCode}: {ex.Message}");
     return 2;
 }

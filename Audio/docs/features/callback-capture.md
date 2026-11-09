@@ -55,7 +55,7 @@ Any interleaved sample format works (`FA_FORMAT_S16`, `S24`, `S32`, `U8`, `F32`,
 ### C#
 
 ```csharp
-using FatzAudio;
+using FatzMedia.Audio;
 
 double phase = 0;
 using var tone = engine.OpenCallback(48000, 2, buffer =>

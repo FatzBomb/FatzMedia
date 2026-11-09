@@ -1,15 +1,15 @@
 # FFmpeg hand-off and A/V sync
 
-For apps that already read the file themselves, usually with FFmpeg because of the video. The old way with BASS is: decode the audio to PCM, convert it, push it, and keep correcting the video against the audio by hand. With FatzAudio you hand over what you already have, and the video follows one clock.
+For apps that already read the file themselves, usually with FFmpeg because of the video. The old way with BASS is: decode the audio to PCM, convert it, push it, and keep correcting the video against the audio by hand. With FatzMedia.Audio you hand over what you already have, and the video follows one clock.
 
-| You have | Use | What FatzAudio does |
+| You have | Use | What FatzMedia.Audio does |
 |---|---|---|
 | Compressed packets from `av_read_frame` | `fa_stream_open_packets` + `fa_stream_push_packet` (.NET `OpenPackets`, `PushPacket`) | Decodes them on its worker threads. Your app does no audio decoding at all |
 | Decoded `AVFrame`s from your own decoder | `fa_stream_open_push` + `fa_stream_push_frame` (.NET `CreatePushStream`, `PushFrame`) | Takes them as they are (planar or interleaved, any sample format, any rate) and converts on a worker thread, with the same windowed-sinc resampler as playback. No swresample step |
 | Interleaved PCM | `fa_stream_push_pcm` (.NET `Push`) | Plays it |
 | A video renderer to keep in sync | `fa_stream_get_clock` (.NET `Clock`) | Reports the pts of the audio leaving the speaker right now, in your own timeline |
 
-FatzAudio never links or ships FFmpeg. Packet streams decode PCM, MP3, AAC (LC, HE-AAC, HE-AAC v2, Main and LTP, see [AAC](streams.md#aac)), AC-3 and E-AC-3 (Dolby Digital and Dolby Digital Plus, see [Dolby Digital](dolby.md)), Opus, Vorbis, FLAC and ALAC themselves; FatzAudio never loads or uses FFmpeg. Two codecs go to the operating system's own decoders:
+FatzMedia.Audio never links or ships FFmpeg. Packet streams decode PCM, MP3, AAC (LC, HE-AAC, HE-AAC v2, Main and LTP, see [AAC](streams.md#aac)), AC-3 and E-AC-3 (Dolby Digital and Dolby Digital Plus, see [Dolby Digital](dolby.md)), Opus, Vorbis, FLAC and ALAC themselves; FatzMedia.Audio never loads or uses FFmpeg. Two codecs go to the operating system's own decoders:
 
 | Codec | Windows | macOS, iOS | Android | Linux |
 |---|---|---|---|---|
@@ -24,7 +24,7 @@ Raw Opus packets without a container (bassopus's `BASS_OPUS_StreamCreate`) need 
 
 ## Packets straight from the demuxer (C)
 
-Include `fatzaudio_ffmpeg.h` after your FFmpeg headers. It fills FatzAudio's structs from FFmpeg's in one line each and compiles against whatever FFmpeg version you build with (4.0 to 8.x).
+Include `fatzaudio_ffmpeg.h` after your FFmpeg headers. It fills FatzMedia.Audio's structs from FFmpeg's in one line each and compiles against whatever FFmpeg version you build with (4.0 to 8.x).
 
 ```c
 #include <libavformat/avformat.h>
@@ -97,7 +97,7 @@ while (avcodec_receive_frame(dec, frame) >= 0) {
 }
 ```
 
-The frame's own format can differ from the stream's, and may change from frame to frame: FatzAudio converts on its worker threads. Only 64-bit integer and planar 8-bit samples are not accepted (`FA_ERROR_UNSUPPORTED_FORMAT`).
+The frame's own format can differ from the stream's, and may change from frame to frame: FatzMedia.Audio converts on its worker threads. Only 64-bit integer and planar 8-bit samples are not accepted (`FA_ERROR_UNSUPPORTED_FORMAT`).
 
 ## .NET
 
@@ -165,7 +165,7 @@ Pushing never blocks. More than 256 MB queued returns `FA_ERROR_BUSY`.
 
 | Result | Meaning |
 |---|---|
-| `FA_ERROR_UNSUPPORTED_FORMAT` | FatzAudio does not decode the codec (decode it yourself and push frames), or the frame's sample format isn't supported |
+| `FA_ERROR_UNSUPPORTED_FORMAT` | FatzMedia.Audio does not decode the codec (decode it yourself and push frames), or the frame's sample format isn't supported |
 | `FA_ERROR_INVALID_ARG` | No codec name, a rate or channel count of 0, `FA_OPEN_LOOP`, or `push_frame` on a packet stream |
 | `FA_EVENT_DECODE_ERROR` (`DecodeError`) | A packet failed to decode. It is skipped and playback continues |
 

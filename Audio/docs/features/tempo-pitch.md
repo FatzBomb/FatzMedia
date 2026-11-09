@@ -64,11 +64,11 @@ song.TempoOptions = new TempoOptions { KeepFormants = true, Latency = TimeSpan.F
 
 ## How it works and how good it is
 
-Tempo uses a phase vocoder with phase locking and transient handling ([Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch), MIT, built into the library). Pitch is done by stretching the time and then resampling with FatzAudio's own windowed-sinc resampler (Kaiser window, 96 taps, about -90 dB aliasing), so the key lands exactly where you ask: 0.00 cents of error at any setting. Rate is the same resampler on its own.
+Tempo uses a phase vocoder with phase locking and transient handling ([Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch), MIT, built into the library). Pitch is done by stretching the time and then resampling with FatzMedia.Audio's own windowed-sinc resampler (Kaiser window, 96 taps, about -90 dB aliasing), so the key lands exactly where you ask: 0.00 cents of error at any setting. Rate is the same resampler on its own.
 
 Measured with `tools/tempo-compare` against bass_fx 2.4 (the legacy app's DLL, through its public API), SoundTouch 2.3.2 (`soundstretch`) and Rubber Band 3.3 on the same 48 kHz test signals. Higher dB is cleaner (signal against everything that should not be there); the full table is in the tool's report.
 
-| Test | FatzAudio | bass_fx | SoundTouch | Rubber Band |
+| Test | FatzMedia.Audio | bass_fx | SoundTouch | Rubber Band |
 |---|---|---|---|---|
 | Sine, tempo 0.8 … 1.25 or pitch ±3 … -12 | 59 … 66 dB | 35 … 48 dB | 38 … 58 dB | 64 … 68 dB |
 | Chord (C major), tempo or pitch | 49 … 57 dB | 21 … 32 dB | 21 … 29 dB | 36 … 62 dB |
