@@ -88,10 +88,7 @@ jobs:
         run: ./scripts/check-presentation-parity.ps1
 
       # ../Audio: FatzMedia.Audio comes in by project reference and keeps its own style.
-      # Not blocking until the style cleanup: the shared style adopted in the migration flags ~6,000
-      # existing lines (Video/ IDE0040, IDE0007). Remove continue-on-error with that cleanup.
       - name: Format check
-        continue-on-error: true
         run: dotnet format FatzMedia.Video.sln --verify-no-changes --no-restore --exclude ../Audio
 
   linux-portable:
