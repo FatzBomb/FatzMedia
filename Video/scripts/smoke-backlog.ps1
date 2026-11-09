@@ -40,8 +40,8 @@ $SmokeName = 'backlog'
 
 $GenDir = Join-Path $OutDir 'media'
 New-Item -ItemType Directory -Force -Path $GenDir | Out-Null
-$FallbackTemp = Join-Path $env:TEMP 'FatzBombMediaControl'
-$CacheDir = Join-Path $env:LOCALAPPDATA 'FatzBomb.MediaControl\AudioCache'
+$FallbackTemp = Join-Path $env:TEMP 'FatzMediaVideo'
+$CacheDir = Join-Path $env:LOCALAPPDATA 'FatzMedia.Video\AudioCache'
 $Totals = @{ Pass = 0; Fail = 0; Info = 0 }
 
 # ---------------------------------------------------------------------------------------------
@@ -512,7 +512,7 @@ function Test-6 {
 function Test-7 {
     if (-not (Start-Step 7 'Vulkan renderer tests on your GPU' '026A slices 1-2: the Vulkan tests ran only on a software Vulkan so far. Fully automatic.' '3')) { return }
     $out = Join-Path $LogsOut 'vulkan-tests.txt'
-    & dotnet test (Join-Path $Repo 'FatzBomb.MediaControl.Rendering.Vulkan.Tests') -c Release --logger 'console;verbosity=normal' 2>&1 | Tee-Object -FilePath $out | Out-Null
+    & dotnet test (Join-Path $Repo 'FatzMedia.Video.Vulkan.Tests') -c Release --logger 'console;verbosity=normal' 2>&1 | Tee-Object -FilePath $out | Out-Null
     $summary = @(Select-String -Path $out -Pattern 'Passed!|Failed!|Total tests|^\s*(Passed|Failed|Skipped|Total):\s*\d+' | ForEach-Object { $_.Line.Trim() })
     $failedTests = @(Select-String -Path $out -Pattern '^\s*Failed\s+\S+' | ForEach-Object { $_.Line.Trim() } | Select-Object -First 5)
     # Device names come from the tests' own output lines, never from test names ("...OnLavapipe").
@@ -660,25 +660,24 @@ function Test-12 {
 # Main
 # ---------------------------------------------------------------------------------------------
 Clear-Host
-Write-Host 'FatzBomb.MediaControl smoke backlog' -ForegroundColor Cyan
+Write-Host 'FatzMedia.Video smoke backlog' -ForegroundColor Cyan
 Write-Host "Results folder: $OutDir"
-if (-not (Test-Path (Join-Path $Repo 'FatzBomb.MediaControl.sln'))) { throw "No FatzBomb.MediaControl.sln in $Repo. Pass -Repo <folder>." }
+if (-not (Test-Path (Join-Path $Repo 'FatzMedia.Video.sln'))) { throw "No FatzMedia.Video.sln in $Repo. Pass -Repo <folder>." }
 
 $branch = (& git -C $Repo rev-parse --abbrev-ref HEAD).Trim()
 $commit = (& git -C $Repo rev-parse --short HEAD).Trim()
 Say "Repo: $Repo  (branch $branch, commit $commit)"
-if (-not $env:FATZAUDIO_PACKAGES_TOKEN) { Say-Warn 'FATZAUDIO_PACKAGES_TOKEN is not set: the build cannot restore FatzAudio. Set it first (a classic PAT with read:packages).' }
 
 if (-not $SkipBuild) {
     Say 'Building the solution (Release). This takes a few minutes...'
-    & dotnet build (Join-Path $Repo 'FatzBomb.MediaControl.sln') -c Release -v minimal | Out-Host
+    & dotnet build (Join-Path $Repo 'FatzMedia.Video.sln') -c Release -v minimal | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'The build failed: see the output above.' }
 }
 
 $Exe = @{
-    Wpf      = Find-Exe 'FatzBomb.MediaControl.Player' 'FatzBomb.MediaControl.Player'
-    Ava      = Find-Exe 'FatzBomb.MediaControl.Player.Avalonia' 'FatzBomb.MediaControl.Player.Avalonia'
-    WinForms = Find-Exe 'FatzBomb.MediaControl.Player.WinForms' 'FatzBomb.MediaControl.Player.WinForms'
+    Wpf      = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player'
+    Ava      = Find-Exe 'FatzMedia.Video.Sample.Player.Avalonia' 'FatzMedia.Video.Sample.Player.Avalonia'
+    WinForms = Find-Exe 'FatzMedia.Video.Sample.Player.WinForms' 'FatzMedia.Video.Sample.Player.WinForms'
 }
 foreach ($k in $Exe.Keys) {
     $dir = Split-Path $Exe[$k]
@@ -741,7 +740,7 @@ $script:FfmpegExe = if ($needsFfmpeg) { Find-Ffmpeg } else { $null }
 if ($script:FfmpegExe) { Say-Info "FFmpeg: $($script:FfmpegExe)" }
 
 $gpuNames = (@(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | ForEach-Object { '{0} (driver {1})' -f $_.Name, $_.DriverVersion }) -join '; ')
-Add-Result 'FatzBomb.MediaControl smoke backlog results'
+Add-Result 'FatzMedia.Video smoke backlog results'
 Add-Result ('Date: {0}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'))
 Add-Result "Repo: branch $branch, commit $commit"
 Add-Result "GPU: $gpuNames"

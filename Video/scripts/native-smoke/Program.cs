@@ -1,6 +1,6 @@
-using FatzBomb.MediaControl;
-using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Rendering.Direct3D11;
+using FatzMedia.Video;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Direct3D11;
 
 try
 {

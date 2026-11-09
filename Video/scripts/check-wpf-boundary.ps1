@@ -1,15 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$coreProject = Join-Path $root 'FatzBomb.MediaControl'
-$wpfProject = Join-Path $root 'FatzBomb.MediaControl.Wpf'
+$coreProject = Join-Path $root 'FatzMedia.Video'
+$wpfProject = Join-Path $root 'FatzMedia.Video.Wpf'
 
 if (-not (Test-Path $coreProject)) {
-    throw 'WPF boundary check failed: FatzBomb.MediaControl project folder was not found.'
+    throw 'WPF boundary check failed: FatzMedia.Video project folder was not found.'
 }
 
 if (-not (Test-Path $wpfProject)) {
-    throw 'WPF boundary check failed: FatzBomb.MediaControl.Wpf project folder was not found.'
+    throw 'WPF boundary check failed: FatzMedia.Video.Wpf project folder was not found.'
 }
 
 $coreForbiddenPatterns = @(
@@ -41,7 +41,7 @@ $adapterForbiddenPatterns = @(
     '\bBackgroundFrameReady\b',
     '\bImageFrameReady\b',
     '\bBackgroundCleared\b',
-    'FatzBomb\.MediaControl\.Core\.Cdg',
+    'FatzMedia\.Video\.Core\.Cdg',
     '\bCdgEngine\b',
     '\bCdgStateMachine\b',
     '\bCdgRenderSnapshot\b',
@@ -91,16 +91,16 @@ function Find-Violations {
 $coreViolations = @(Find-Violations -Path $coreProject -Patterns $coreForbiddenPatterns)
 if ($coreViolations.Count -gt 0) {
     $coreViolations | Format-Table -AutoSize
-    throw 'WPF boundary check failed: WPF-specific bitmap/UI types were found in FatzBomb.MediaControl.'
+    throw 'WPF boundary check failed: WPF-specific bitmap/UI types were found in FatzMedia.Video.'
 }
 
 $adapterViolations = @(Find-Violations -Path $wpfProject -Patterns $adapterForbiddenPatterns)
 if ($adapterViolations.Count -gt 0) {
     $adapterViolations | Format-Table -AutoSize
-    throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzBomb.MediaControl.Wpf.'
+    throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzMedia.Video.Wpf.'
 }
 
-[xml] $wpfProjectFile = Get-Content -Raw -Path (Join-Path $wpfProject 'FatzBomb.MediaControl.Wpf.csproj')
+[xml] $wpfProjectFile = Get-Content -Raw -Path (Join-Path $wpfProject 'FatzMedia.Video.Wpf.csproj')
 $wpfProjectReferences = @($wpfProjectFile.Project.ItemGroup.ProjectReference | ForEach-Object Include)
 if ($wpfProjectReferences | Where-Object { $_ -match 'Rendering\.Direct3D11' }) {
     throw 'WPF boundary check failed: WPF adapter must not reference the Direct3D11 renderer project.'

@@ -8,7 +8,7 @@ is the reference and must not regress.
 
 ## Shape
 
-- `FatzBomb.MediaControl.Player.Shared` (net10.0, not packable; Core and
+- `FatzMedia.Video.Sample.Player.Shared` (net10.0, not packable; Core and
   CommunityToolkit.Mvvm only, pinned in `scripts/check-core-boundary.ps1`):
   - `ViewModels/PlayerViewModel` (+ partials per concern): engine creation, transport, seek
     scrubbing, sync offsets, effects, equalizer, subtitles, visual transforms, prepared next and

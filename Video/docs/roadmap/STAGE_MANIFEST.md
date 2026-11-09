@@ -27,7 +27,7 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
   our blocking surface requests and silence detection (reply:
   `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`). Slice 2 (opt-in `FatzAudioEngine` for
-  files and archives in the new `FatzBomb.MediaControl.Audio.FatzAudio` package, pinned to
+  files and archives in the new `FatzMedia.Video.Audio` package, pinned to
   1.0.0-rc.1; `--audio=fatz`) merged, owner smoke passed 2026-11-03 (`updates/037A_2`). Loudness
   (LUFS) normalization on the FatzAudio engine (`MediaPlayerConfiguration.Normalization`, -14 LUFS
   default, per-user scan cache) implemented, pending manual smoke (`updates/037A_Normalization`). Analysis:
@@ -53,7 +53,7 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`updates/043A_1`, `updates/043A_2`).
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
-  shared view model (`FatzBomb.MediaControl.Player.Shared`), at feature parity with the WPF
+  shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF
   player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.

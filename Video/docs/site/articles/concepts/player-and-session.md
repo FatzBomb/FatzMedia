@@ -6,9 +6,9 @@ Everything you do with the engine goes through one object: a player. This page e
 
 | Type | What it is |
 | --- | --- |
-| <xref:FatzBomb.MediaControl.IMediaControlSession> | The framework-neutral control surface: load, transport, seek, state, effects, backgrounds, prepared-next, events and presentation-surface calls. Adapter controls and your own code can depend on this interface instead of a concrete class, which also makes it easy to substitute a test double. |
-| <xref:FatzBomb.MediaControl.MediaControlPlayer> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
-| <xref:FatzBomb.MediaControl.Wpf.Player>, <xref:FatzBomb.MediaControl.WinForms.Player>, <xref:FatzBomb.MediaControl.Avalonia.Player> | Adapter classes that derive from `MediaControlPlayer`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
+| <xref:FatzMedia.Video.IMediaControlSession> | The framework-neutral control surface: load, transport, seek, state, effects, backgrounds, prepared-next, events and presentation-surface calls. Adapter controls and your own code can depend on this interface instead of a concrete class, which also makes it easy to substitute a test double. |
+| <xref:FatzMedia.Video.MediaControlPlayer> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
+| <xref:FatzMedia.Video.Wpf.Player>, <xref:FatzMedia.Video.WinForms.Player>, <xref:FatzMedia.Video.Avalonia.Player> | Adapter classes that derive from `MediaControlPlayer`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
 
 `MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IMediaControlSession`.
 
@@ -17,7 +17,7 @@ Everything you do with the engine goes through one object: a player. This page e
 A player needs three things: a platform factory (which also holds the renderer), a configuration, and the folders where the native libraries live.
 
 ```csharp
-var player = await FatzBomb.MediaControl.Wpf.Player.CreateAsync(
+var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
     MediaPlayerConfiguration.Auto,
     WindowsNativeLibraryPaths.GetDefaultSearchPaths(),
     new WindowsDirect3D11MediaControlPlatformFactory());
@@ -46,7 +46,7 @@ Create one player per independent playback, each with its own platform factory a
 
 ## Configuration
 
-<xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration> is an immutable record struct that you pass at creation. Start from `MediaPlayerConfiguration.Auto` (or `new MediaPlayerConfiguration(VideoDecodingMethod.Auto)`) and override with `with` or an object initializer:
+<xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration> is an immutable record struct that you pass at creation. Start from `MediaPlayerConfiguration.Auto` (or `new MediaPlayerConfiguration(VideoDecodingMethod.Auto)`) and override with `with` or an object initializer:
 
 ```csharp
 var configuration = MediaPlayerConfiguration.Auto with
@@ -87,7 +87,7 @@ await session.StopAsync();                      // stops and returns to the star
 session.Close();                                // closes the media
 ```
 
-- **Load** takes a file path or a <xref:FatzBomb.MediaControl.MediaInputSource> (a file, a network URI, a BGRA image or a plain colour). An optional background and an `ignoreSidecar` flag control background discovery. A `CancellationToken` overload cancels a load that is queued or in progress. A file that cannot be opened makes the load return `false`, and the engine reports why through `MediaError` and `MediaDiagnostic`.
+- **Load** takes a file path or a <xref:FatzMedia.Video.MediaInputSource> (a file, a network URI, a BGRA image or a plain colour). An optional background and an `ignoreSidecar` flag control background discovery. A `CancellationToken` overload cancels a load that is queued or in progress. A file that cannot be opened makes the load return `false`, and the engine reports why through `MediaError` and `MediaDiagnostic`.
 - **Transport**: `Play`, `Pause`, `Stop`, `Seek` and their async forms.
 - **Seeking and scrubbing**: `SeekAsync` queues a seek, and a newer request replaces one still waiting, so you can call it for every mouse move while the user drags a seek bar. Wrap a drag in `BeginScrub()` and `EndScrub()` (send the release seek before `EndScrub`). `ScrubAudio` chooses whether sound plays during the drag.
 - **Effects**: `player.Effects.Volume` (0 to 1), `Pitch` (-60 to +60 semitones), `Tempo` (5 to 5000, where 100 is normal), plus `Normalize` and `Equalizer` on the player.
@@ -100,7 +100,7 @@ session.Close();                                // closes the media
 
 | Member | Meaning |
 | --- | --- |
-| `State` | A <xref:FatzBomb.MediaControl.Core.Abstractions.MediaPlayerState>: `Null` (nothing open), `Playing`, `Paused`, `Stopped`, `Buffering`. |
+| `State` | A <xref:FatzMedia.Video.Core.Abstractions.MediaPlayerState>: `Null` (nothing open), `Playing`, `Paused`, `Stopped`, `Buffering`. |
 | `IsOpen` | Whether media is open. |
 | `Content` | The content roles of the open media (a flags value): audio, video, CD+G, image, archive, subtitle. `HasVideo`, `HasAudio`, `HasCdg`, `HasSubtitle` and `HasVisualContent` read from it. |
 | `Position`, `Duration` | Current position (settable, same as `Seek`) and length. Live network sources report zero duration. |

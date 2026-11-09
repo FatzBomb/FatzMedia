@@ -31,5 +31,5 @@ artifacts/
 .claude/worktrees/
 **/native/*.so*
 
-# Local copies of the soundfont in the other players' native folders (the tracked one is in FatzBomb.MediaControl.Player/native)
+# Local copies of the soundfont in the other players' native folders (the tracked one is in FatzMedia.Video.Sample.Player/native)
 **/native/*.sf2

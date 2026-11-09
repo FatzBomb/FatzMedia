@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $resolvedNativePath -PathType Container)) {
     throw "Native smoke test path is not a directory: $resolvedNativePath"
 }
 
-$manifestPath = Join-Path $root 'FatzBomb.MediaControl.Windows\runtimes\win-x64\native\native-assets.manifest.json'
+$manifestPath = Join-Path $root 'FatzMedia.Video.Windows\runtimes\win-x64\native\native-assets.manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $requiredFiles = @($manifest.bass.requiredFiles) + @($manifest.ffmpeg.requiredFiles)
 foreach ($requiredFile in $requiredFiles) {
@@ -57,10 +57,10 @@ $null = New-Item -ItemType Directory -Path $feedPath -Force
 $null = New-Item -ItemType Directory -Path $hostPath -Force
 
 $packProjects = @(
-    'FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-    'FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
-    'FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-    'FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
+    'FatzMedia.Video\FatzMedia.Video.csproj',
+    'FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj',
+    'FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
+    'FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj'
 )
 
 foreach ($relativeProject in $packProjects) {
@@ -71,7 +71,7 @@ foreach ($relativeProject in $packProjects) {
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$windowsPackagePath = Join-Path $feedPath "FatzBomb.MediaControl.Windows.$PackageVersion.nupkg"
+$windowsPackagePath = Join-Path $feedPath "FatzMedia.Video.Windows.$PackageVersion.nupkg"
 if (-not (Test-Path -LiteralPath $windowsPackagePath -PathType Leaf)) {
     throw "Windows package was not created: $windowsPackagePath"
 }
@@ -131,10 +131,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $expectedManagedAssemblies = @(
     'NativePublishSmoke.dll',
-    'FatzBomb.MediaControl.dll',
-    'FatzBomb.MediaControl.Windows.dll',
-    'FatzBomb.MediaControl.Rendering.Direct3D11.dll',
-    'FatzBomb.MediaControl.Windows.Direct3D11.dll'
+    'FatzMedia.Video.dll',
+    'FatzMedia.Video.Windows.dll',
+    'FatzMedia.Video.Direct3D11.dll',
+    'FatzMedia.Video.Windows.Direct3D11.dll'
 )
 foreach ($assembly in $expectedManagedAssemblies) {
     if (-not (Test-Path -LiteralPath (Join-Path $publishPath $assembly) -PathType Leaf)) {

@@ -212,7 +212,7 @@ ours to cut. ENG-050 is closed apart from that. The failure message now counts t
 
 Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a
 new run scanned again. FatzAudio creates only the last level of `cache_directory`; our default
-`%LOCALAPPDATA%\FatzBomb.MediaControl\AudioCache` needs two. Fixed: `FatzAudioEngine` creates the folder
+`%LOCALAPPDATA%\FatzMedia.Video\AudioCache` needs two. Fixed: `FatzAudioEngine` creates the folder
 (a warning and no cache when it cannot). The engine test uses a two-level folder (fails without the fix).
 
 ### ENG-047 - Clicks and pops on loop wraps and seeks
@@ -300,7 +300,7 @@ the current behaviour.
 **Behaviour a buyer will hit:**
 - ~~**Text only on Direct3D11.**~~ Resolved 2026-11-01, pending Windows smoke: the Software
   and Vulkan renderers draw subtitles, MIDI/KAR lyrics, countdowns and title cards with
-  `SkiaSubtitleRasterizer` (new package `FatzBomb.MediaControl.Rendering.Text`, SkiaSharp
+  `SkiaSubtitleRasterizer` (new package `FatzMedia.Video.Text`, SkiaSharp
   3.119.4); Vulkan gained a subtitle overlay pipeline. Linux verified with lavapipe and the
   software renderer; Windows Software/Vulkan hosts (libSkiaSharp.dll loading, Segoe UI) still to
   smoke. Known differences from DirectWrite: no shaping (ligatures, complex scripts), system
@@ -464,7 +464,7 @@ end one sample earlier (the file's authored loop end). So the SF2 is not the cau
 MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
 flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
 but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
-the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
+the sizes in `%LOCALAPPDATA%\FatzMedia.Video\soundfonts`. Workaround: rename the old
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.
 
@@ -973,7 +973,7 @@ Tests (opt-in native, `LinuxNetworkVideoNativeTests.Seeks.cs`; a UI thread polls
 `_ioGate` split is not exercised here (no BASS): it is verified by reading and by the smoke below.
 
 Windows smoke (Avalonia test player, BASS and FFmpeg 9 in `native/`):
-1. `dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 --
+1. `dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0-windows7.0 --
    --renderer=direct3d11 --url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`. Sound plays.
 2. Seek about ten times by clicking and by dragging the seek bar: forward, back, twice in quick
    succession, and once more before the previous seek has shown its frame. The window must stay
@@ -1157,7 +1157,7 @@ and Full play the H.264 clip; Audio mode logs the Error and `MediaError` above.
 
 Manual smoke (Windows):
 1. Rename `bass.dll` and `bass_fx.dll` (and the plugins) in the host's `native/` folder, for
-   example to `bass.dll.off`, for `FatzBomb.MediaControl.Player` and `.Player.Avalonia`.
+   example to `bass.dll.off`, for `FatzMedia.Video.Sample.Player` and `.Player.Avalonia`.
 2. Start the WPF player: it opens with no startup error; the log shows the BASS files as
    Warnings and "Audio is unavailable: the BASS libraries did not load...". Load a video: the
    picture plays without sound. Load an MP3: it fails with an Error "Audio engine unavailable:

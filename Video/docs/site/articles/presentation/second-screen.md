@@ -13,7 +13,7 @@ The player has one primary surface (the control your main window shows) and any 
 
 ## SecondaryPresentationWindow
 
-Each adapter has a window that holds a projector `MediaSurface`: <xref:FatzBomb.MediaControl.Wpf.SecondaryPresentationWindow>, <xref:FatzBomb.MediaControl.Avalonia.SecondaryPresentationWindow> and <xref:FatzBomb.MediaControl.WinForms.SecondaryPresentationWindow>. They share the same shape:
+Each adapter has a window that holds a projector `MediaSurface`: <xref:FatzMedia.Video.Wpf.SecondaryPresentationWindow>, <xref:FatzMedia.Video.Avalonia.SecondaryPresentationWindow> and <xref:FatzMedia.Video.WinForms.SecondaryPresentationWindow>. They share the same shape:
 
 | Member | Meaning |
 | --- | --- |
@@ -35,7 +35,7 @@ var singer = new SecondaryPresentationWindow(player, "singer");
 singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
 ```
 
-<xref:FatzBomb.MediaControl.Wpf.PresentationScreen> describes a monitor. WPF has no screen type of its own, so the adapter enumerates the monitors:
+<xref:FatzMedia.Video.Wpf.PresentationScreen> describes a monitor. WPF has no screen type of its own, so the adapter enumerates the monitors:
 
 | Member | Meaning |
 | --- | --- |

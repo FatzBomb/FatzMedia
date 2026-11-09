@@ -65,8 +65,8 @@ graphics. See [Backgrounds](backgrounds.md).
 
 ## Changing how the graphics look
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer> has a `CdgVisuals` property of type
-<xref:FatzBomb.MediaControl.Controllers.CdgVisuals>. It has one setting.
+<xref:FatzMedia.Video.MediaControlPlayer> has a `CdgVisuals` property of type
+<xref:FatzMedia.Video.Controllers.CdgVisuals>. It has one setting.
 
 | Property | Values | Default | Effect |
 | --- | --- | --- | --- |
@@ -85,8 +85,8 @@ background colour is fully transparent, whatever `BackgroundOpacity` says. Hosts
 surface. Turn it off again and `BackgroundOpacity` applies again.
 
 > [!NOTE]
-> The setting is on <xref:FatzBomb.MediaControl.MediaControlPlayer>, not on
-> <xref:FatzBomb.MediaControl.IMediaControlSession>. The player inside a `KaraokeSurface` is a
+> The setting is on <xref:FatzMedia.Video.MediaControlPlayer>, not on
+> <xref:FatzMedia.Video.IMediaControlSession>. The player inside a `KaraokeSurface` is a
 > `MediaControlPlayer`, so `karaokeSurface.Session as MediaControlPlayer` reaches it.
 
 ## CD+G sync offset

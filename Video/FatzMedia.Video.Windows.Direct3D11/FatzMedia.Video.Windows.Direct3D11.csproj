@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Windows.Direct3D11</PackageId>
+    <AssemblyName>FatzMedia.Video.Windows.Direct3D11</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Windows.Direct3D11</RootNamespace>
+    <Description>Windows and Direct3D 11 integration bundle for FatzMedia.Video.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+</Project>

@@ -17,7 +17,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name TriviaBomb -Seconds 60 -Label trivia-1080p
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name FatzBomb.MediaControl.Player -Seconds 60 -Label player-1080p
+    powershell -ExecutionPolicy Bypass -File scripts\measure-process.ps1 -Name FatzMedia.Video.Sample.Player -Seconds 60 -Label player-1080p
 #>
 param(
     [string]$Name,

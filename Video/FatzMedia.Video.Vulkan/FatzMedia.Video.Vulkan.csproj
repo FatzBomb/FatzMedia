@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.Vulkan</PackageId>
+    <AssemblyName>FatzMedia.Video.Vulkan</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Vulkan</RootNamespace>
+    <Description>Vulkan renderer backend for FatzMedia.Video (preview: offscreen clear, BGRA and Vulkan-decoded backgrounds, wash, CDG and subtitle overlays).</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Text\FatzMedia.Video.Text.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
+  </ItemGroup>
+
+  <!-- SPIR-V compiled from Shaders/*.vert|*.frag by scripts/compile-vulkan-shaders.sh and committed
+       (CI has no glslang). -->
+  <ItemGroup>
+    <None Remove="Shaders\*.spv" />
+    <EmbeddedResource Include="Shaders\*.spv" LogicalName="FatzMedia.Video.Vulkan.Shaders.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzMedia.Video.Vulkan.Tests" />
+  </ItemGroup>
+
+</Project>

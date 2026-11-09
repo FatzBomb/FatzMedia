@@ -8,9 +8,9 @@ to a karaoke player, or the stage behind a singer.
 
 | Adapter | Class |
 | --- | --- |
-| WPF | <xref:FatzBomb.MediaControl.Wpf.BackgroundSurface> |
-| Avalonia | <xref:FatzBomb.MediaControl.Avalonia.BackgroundSurface> |
-| WinForms | <xref:FatzBomb.MediaControl.WinForms.BackgroundSurface> |
+| WPF | <xref:FatzMedia.Video.Wpf.BackgroundSurface> |
+| Avalonia | <xref:FatzMedia.Video.Avalonia.BackgroundSurface> |
+| WinForms | <xref:FatzMedia.Video.WinForms.BackgroundSurface> |
 
 ## What it shows
 
@@ -45,7 +45,7 @@ The platform factory is the same one you would give a `MediaControlPlayer`; on W
 </fbm:BackgroundSurface>
 ```
 
-with `xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Wpf;assembly=FatzBomb.MediaControl.Wpf"` on the
+with `xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"` on the
 root element.
 
 ```csharp
@@ -74,7 +74,7 @@ protected override void OnClosed(EventArgs e)
 </fbm:BackgroundSurface>
 ```
 
-with `xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"`
+with `xmlns:fbm="using:FatzMedia.Video.Avalonia"`
 on the root element.
 
 ```csharp

@@ -6,7 +6,7 @@ A renderer is the component that draws each composed frame (video, images, CD+G 
 
 | | Direct3D11 | Vulkan | Software |
 | --- | --- | --- | --- |
-| Package | `FatzBomb.MediaControl.Rendering.Direct3D11` | `FatzBomb.MediaControl.Rendering.Vulkan` | `FatzBomb.MediaControl.Rendering.Software` |
+| Package | `FatzMedia.Video.Direct3D11` | `FatzMedia.Video.Vulkan` | `FatzMedia.Video.Software` |
 | Platforms | Windows x64 (`net10.0-windows7.0`) | Linux and Windows (`net10.0`), needs a Vulkan loader and driver | Any (`net10.0`) |
 | Status | Full | Preview | Full, CPU only |
 | Draws into | Native window swap chains, managed frame sinks, shared GPU images | Managed frame sinks, shared GPU images (never native windows) | Managed frame sinks |
@@ -16,20 +16,20 @@ A renderer is the component that draws each composed frame (video, images, CD+G 
 | HDR tone mapping | GPU for hardware-decoded frames, CPU otherwise | GPU for Vulkan Video frames, CPU otherwise | CPU |
 | HDR output on an HDR display | Optional | No | No |
 
-Text subtitles and lyrics are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, a port of the DirectWrite one with the same layout, styles, karaoke wipe, countdown and title cards. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
+Text subtitles and lyrics are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzMedia.Video.Text`, a port of the DirectWrite one with the same layout, styles, karaoke wipe, countdown and title cards. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
 
 > [!NOTE]
-> With the Vulkan renderer, a frame that carries a non-identity <xref:FatzBomb.MediaControl.BaseVisualTransform> is refused. The player raises one warning in the `Vulkan` category (`Vulkan preview slice cannot draw this frame yet (...)`) and keeps the last picture.
+> With the Vulkan renderer, a frame that carries a non-identity <xref:FatzMedia.Video.BaseVisualTransform> is refused. The player raises one warning in the `Vulkan` category (`Vulkan preview slice cannot draw this frame yet (...)`) and keeps the last picture.
 
 ## How a host chooses a renderer
 
-A renderer is exposed as an `IMediaPresentationCoordinatorFactory`: <xref:FatzBomb.MediaControl.Rendering.Direct3D11.Direct3D11PresentationCoordinatorFactory>, <xref:FatzBomb.MediaControl.Rendering.Vulkan.VulkanPresentationCoordinatorFactory> or <xref:FatzBomb.MediaControl.Rendering.Software.SoftwarePresentationCoordinatorFactory>. A platform factory combines that with the operating-system services (native library loading, audio device monitoring, timers):
+A renderer is exposed as an `IMediaPresentationCoordinatorFactory`: <xref:FatzMedia.Video.Direct3D11.Direct3D11PresentationCoordinatorFactory>, <xref:FatzMedia.Video.Vulkan.VulkanPresentationCoordinatorFactory> or <xref:FatzMedia.Video.Software.SoftwarePresentationCoordinatorFactory>. A platform factory combines that with the operating-system services (native library loading, audio device monitoring, timers):
 
 | Platform | Factory |
 | --- | --- |
-| Windows with Direct3D11 | <xref:FatzBomb.MediaControl.WindowsDirect3D11MediaControlPlatformFactory> (one package for both) |
-| Windows with another renderer | `new` <xref:FatzBomb.MediaControl.WindowsMediaControlPlatformFactory>`(rendererFactory)` |
-| Linux | `new` <xref:FatzBomb.MediaControl.Linux.LinuxMediaControlPlatformFactory>`(rendererFactory, options)` |
+| Windows with Direct3D11 | <xref:FatzMedia.Video.WindowsDirect3D11MediaControlPlatformFactory> (one package for both) |
+| Windows with another renderer | `new` <xref:FatzMedia.Video.WindowsMediaControlPlatformFactory>`(rendererFactory)` |
+| Linux | `new` <xref:FatzMedia.Video.Linux.LinuxMediaControlPlatformFactory>`(rendererFactory, options)` |
 
 ```csharp
 // Windows, Direct3D11 on the GPU (falls back to WARP when there is no GPU device)
@@ -53,7 +53,7 @@ The renderer does not change after the player is built. To switch, dispose the p
 
 ## Picking the first usable renderer
 
-<xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory> takes an ordered list and uses the first renderer whose availability probe succeeds. The choice is made once, on first use, and the factory records what each probe found.
+<xref:FatzMedia.Video.Controllers.FallbackPresentationCoordinatorFactory> takes an ordered list and uses the first renderer whose availability probe succeeds. The choice is made once, on first use, and the factory records what each probe found.
 
 ```csharp
 var chain = new FallbackPresentationCoordinatorFactory(
@@ -74,7 +74,7 @@ Surface.PresentationMode = chosen.RequiresFrameSinkSurface
 var player = await Player.CreateAsync(configuration, nativePaths, new WindowsMediaControlPlatformFactory(chain));
 ```
 
-The probe result (<xref:FatzBomb.MediaControl.Controllers.MediaPresentationAvailability>) tells the host how to build the rest:
+The probe result (<xref:FatzMedia.Video.Controllers.MediaPresentationAvailability>) tells the host how to build the rest:
 
 | Property | Meaning |
 | --- | --- |
@@ -91,7 +91,7 @@ If no candidate is usable, the last one is used anyway so the player still start
 
 The default choice on Windows. It presents through DXGI swap chains in a native window, which gives the best video performance, and it draws hardware-decoded (D3D11VA) frames on the GPU into every target kind: swap chains, the managed frame sink (one GPU readback) and the shared textures an Avalonia compositor imports (no readback).
 
-Options live in <xref:FatzBomb.MediaControl.Rendering.Direct3D11.Direct3D11PresentationOptions>, passed to the factory when you create it:
+Options live in <xref:FatzMedia.Video.Direct3D11.Direct3D11PresentationOptions>, passed to the factory when you create it:
 
 | Option | Default | Meaning |
 | --- | --- | --- |

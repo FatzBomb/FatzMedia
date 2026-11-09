@@ -1,13 +1,13 @@
 # Surfaces
 
-A surface is the UI control that shows what the renderer draws. Each adapter has one, named `MediaSurface`: <xref:FatzBomb.MediaControl.Wpf.MediaSurface>, <xref:FatzBomb.MediaControl.Avalonia.MediaSurface> and <xref:FatzBomb.MediaControl.WinForms.MediaSurface>. You put it in your window, set its `Player`, and it attaches itself to the player, resizes with the layout and detaches when it goes away. The surface decides how frames get from the renderer onto the screen; this article explains the choices, how the adapter makes them and how to see what it chose.
+A surface is the UI control that shows what the renderer draws. Each adapter has one, named `MediaSurface`: <xref:FatzMedia.Video.Wpf.MediaSurface>, <xref:FatzMedia.Video.Avalonia.MediaSurface> and <xref:FatzMedia.Video.WinForms.MediaSurface>. You put it in your window, set its `Player`, and it attaches itself to the player, resizes with the layout and detaches when it goes away. The surface decides how frames get from the renderer onto the screen; this article explains the choices, how the adapter makes them and how to see what it chose.
 
 > [!NOTE]
 > A surface owns only its control and its input plumbing. Playback, timing, composition and the choice of renderer belong to the player. See [Renderers](../video/renderers.md).
 
 ## Presentation paths
 
-<xref:FatzBomb.MediaControl.MediaSurfacePresentationPath> names how frames reach the screen:
+<xref:FatzMedia.Video.MediaSurfacePresentationPath> names how frames reach the screen:
 
 | Path | What happens | Used by |
 | --- | --- | --- |
@@ -22,7 +22,7 @@ The Direct3D11 renderer can also use a DirectComposition target for layered over
 
 ### WPF
 
-<xref:FatzBomb.MediaControl.Wpf.WpfPresentationMode> decides. The default, `NativeHwndOverlay`, uses the `NativeWindow` path. `WpfComposited` uses the `FrameSink` path: the final Direct3D11 composition is read back into the WPF visual tree, so normal WPF clipping, transforms, opacity and z-order apply, at the cost of a synchronous GPU readback and a lower practical frame rate.
+<xref:FatzMedia.Video.Wpf.WpfPresentationMode> decides. The default, `NativeHwndOverlay`, uses the `NativeWindow` path. `WpfComposited` uses the `FrameSink` path: the final Direct3D11 composition is read back into the WPF visual tree, so normal WPF clipping, transforms, opacity and z-order apply, at the cost of a synchronous GPU readback and a lower practical frame rate.
 
 ```xaml
 <fbm:MediaSurface x:Name="Surface"
@@ -74,7 +74,7 @@ Surface.PresentationPathChanged += (_, _) =>
 
 | Member | Meaning |
 | --- | --- |
-| `PresentationPath` | The current <xref:FatzBomb.MediaControl.MediaSurfacePresentationPath>; `None` while detached. |
+| `PresentationPath` | The current <xref:FatzMedia.Video.MediaSurfacePresentationPath>; `None` while detached. |
 | `PresentationPathReason` | Why that path was chosen, or `null`. |
 | `PresentationPathChanged` | Raised on the UI thread when the path or the reason changes. |
 
@@ -99,7 +99,7 @@ The usual cause is a renderer/surface mismatch, such as the Software renderer wi
 
 ## Showing and hiding: AutoHide
 
-With `AutoHide` on (the default) the surface hides its video until there is something to show, and shows its background (black in WPF, `Background` in Avalonia, `BackColor` in WinForms) instead of a stale frame. The decision comes from <xref:FatzBomb.MediaControl.MediaSurfaceContentTracker>, so all three adapters behave alike:
+With `AutoHide` on (the default) the surface hides its video until there is something to show, and shows its background (black in WPF, `Background` in Avalonia, `BackColor` in WinForms) instead of a stale frame. The decision comes from <xref:FatzMedia.Video.MediaSurfaceContentTracker>, so all three adapters behave alike:
 
 - A load starts waiting. The content becomes visible when the first frame of the media is presented.
 - Stop, close, an error, or a natural end without looping hide the content again.

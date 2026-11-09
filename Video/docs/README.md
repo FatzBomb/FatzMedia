@@ -1,4 +1,4 @@
-# FatzBombMedia Docs
+# FatzMedia.Video Docs
 
 ## Active files
 

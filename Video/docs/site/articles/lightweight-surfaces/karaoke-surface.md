@@ -6,13 +6,13 @@ You give it a platform factory and a file; there is no player, no `MediaSurface`
 wiring to write. It exists in the WPF, Avalonia and WinForms adapters with the same behaviour
 and nearly the same properties. Use it to put karaoke in part of a window. If you need full
 control (a custom lyric style, a soundfont, a second screen, backgrounds), use your own
-<xref:FatzBomb.MediaControl.MediaControlPlayer> with a `MediaSurface`.
+<xref:FatzMedia.Video.MediaControlPlayer> with a `MediaSurface`.
 
 | Adapter | Class |
 | --- | --- |
-| WPF | <xref:FatzBomb.MediaControl.Wpf.KaraokeSurface> |
-| Avalonia | <xref:FatzBomb.MediaControl.Avalonia.KaraokeSurface> |
-| WinForms | <xref:FatzBomb.MediaControl.WinForms.KaraokeSurface> |
+| WPF | <xref:FatzMedia.Video.Wpf.KaraokeSurface> |
+| Avalonia | <xref:FatzMedia.Video.Avalonia.KaraokeSurface> |
+| WinForms | <xref:FatzMedia.Video.WinForms.KaraokeSurface> |
 
 ## What it plays
 
@@ -43,7 +43,7 @@ The factory is the same one you would give a `MediaControlPlayer`: on Windows
 ```xaml
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Wpf;assembly=FatzBomb.MediaControl.Wpf"
+        xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"
         x:Class="MyApp.MainWindow">
     <fbm:KaraokeSurface x:Name="Karaoke"
                         Source="C:\Karaoke\song.zip"
@@ -73,7 +73,7 @@ protected override void OnClosed(EventArgs e)
 ```xml
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"
+        xmlns:fbm="using:FatzMedia.Video.Avalonia"
         x:Class="MyApp.MainWindow">
     <fbm:KaraokeSurface x:Name="Karaoke"
                         Source="/karaoke/song.zip"

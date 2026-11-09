@@ -8,7 +8,7 @@ to style and time them.
 
 > [!NOTE]
 > Every renderer draws subtitle text. Direct3D11 uses DirectWrite; the Software and Vulkan
-> renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, which follows
+> renderers use the SkiaSharp rasterizer in `FatzMedia.Video.Text`, which follows
 > the same layout and style rules. Fonts come from the system: when the configured family is not
 > installed (Segoe UI on Linux, for example), the platform's default font is used.
 
@@ -57,11 +57,11 @@ subtitles are only looked for next to local video files.
 
 ## Listing and selecting tracks
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer> exposes:
+<xref:FatzMedia.Video.MediaControlPlayer> exposes:
 
 | Member | Meaning |
 | --- | --- |
-| `SubtitleTracks` | The tracks available now, as <xref:FatzBomb.MediaControl.Core.Subtitle.SubtitleTrack> records. |
+| `SubtitleTracks` | The tracks available now, as <xref:FatzMedia.Video.Core.Subtitle.SubtitleTrack> records. |
 | `SelectedSubtitleTrackId` | The selected track's id, or `null` when subtitles are off. |
 | `SelectSubtitleTrack(string? id)` | Selects a track and returns `true` if it exists. `null` turns subtitles off. |
 | `HasSubtitle` | `true` while a track is selected and showing. |
@@ -129,7 +129,7 @@ they are separate settings.
 ## Styling
 
 Subtitle text is drawn by the player with one style, set when the player is created in
-`MediaPlayerConfiguration.SubtitleStyle` (a <xref:FatzBomb.MediaControl.Core.Configuration.SubtitleTextStyle>).
+`MediaPlayerConfiguration.SubtitleStyle` (a <xref:FatzMedia.Video.Core.Configuration.SubtitleTextStyle>).
 It cannot be changed afterwards; create a new player to use another style. Colours are ARGB values
 (`0xAARRGGBB`).
 

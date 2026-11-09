@@ -1,6 +1,6 @@
 # Karaoke overview
 
-FatzBomb.MediaControl plays the common karaoke formats with the same player you use for
+FatzMedia.Video plays the common karaoke formats with the same player you use for
 everything else: CD+G graphics with an audio file, CD+G inside an archive, MIDI and KAR files
 with lyrics, and ordinary video with subtitles. You load the file, the library finds the pieces
 that belong together, and the result is shown on your `MediaSurface`. This article lists what is
@@ -33,7 +33,7 @@ if (await player.LoadAsync(@"C:\Karaoke\Artist - Song.mp3"))
 
 ## Two ways to put karaoke on screen
 
-**Your own player.** Create a <xref:FatzBomb.MediaControl.MediaControlPlayer>, attach it to a
+**Your own player.** Create a <xref:FatzMedia.Video.MediaControlPlayer>, attach it to a
 `MediaSurface` and load files into it. You decide the layout, the transport controls and the
 settings: sync offsets, CD+G opacity, a MIDI soundfont, the lyric font and colours, a second
 screen. Use this for a full karaoke or media player.

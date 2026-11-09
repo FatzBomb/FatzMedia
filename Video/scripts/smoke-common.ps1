@@ -80,7 +80,7 @@ $ShotsOut = Join-Path $OutDir 'screenshots'
 New-Item -ItemType Directory -Force -Path $OutDir, $LogsOut, $ShotsOut | Out-Null
 $ResultsFile = Join-Path $OutDir 'results.txt'
 
-$LogDir = Join-Path $env:TEMP 'FatzBombMedia'
+$LogDir = Join-Path $env:TEMP 'FatzMedia.Video'
 $LogNames = @{ Wpf = 'player-debug.log'; Ava = 'player-avalonia-debug.log'; WinForms = 'player-winforms-debug.log' }
 $PlayerNames = @{ Wpf = 'WPF player'; Ava = 'Avalonia player'; WinForms = 'WinForms player' }
 $Dxcap = Join-Path $env:WINDIR 'System32\dxcap.exe'

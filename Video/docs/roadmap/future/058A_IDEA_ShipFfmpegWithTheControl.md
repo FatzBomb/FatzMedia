@@ -9,7 +9,7 @@ the 023A policy; `docs/NATIVE_DEPENDENCIES.md` is rewritten with it.
 
 ## Scope
 
-1. **Runtime packages** `FatzBomb.MediaControl.Native.FFmpeg`, first for `win-x64` and `linux-x64`: the seven
+1. **Runtime packages** `FatzMedia.Video.Native.FFmpeg`, first for `win-x64` and `linux-x64`: the seven
    FFmpeg 9.0.x shared libraries under `runtimes/<rid>/native/`, copied to the output by the build
    (FatzAudio's model). The Windows and Linux platform packages reference them. First a pinned,
    repacked LGPL shared build with its archive URL, SHA-256 and configure line recorded (Linux: the

@@ -20,7 +20,7 @@ real Linux hardware with BASS. macOS and Linux hardware decode are later slices.
 
 ## Pinned Decisions
 
-1. `FatzBomb.MediaControl.Linux` targets `net10.0`, references Core only, and has no
+1. `FatzMedia.Video.Linux` targets `net10.0`, references Core only, and has no
    runtime OS branches; it shares no base class with the Windows package.
 2. Hosts own binaries. Search: host paths, then app folder, `native/`,
    `runtimes/linux-<arch>/native/`. No implicit system-directory search.

@@ -21,7 +21,7 @@ Linux CI). Swapchains, subtitles, transforms, OpenGL, and Metal are later slices
 
 ## Slice 1 (implemented)
 
-- Package `FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core only, Silk.NET.Vulkan).
+- Package `FatzMedia.Video.Vulkan` (net10.0, Core only, Silk.NET.Vulkan).
 - `VulkanPresentationCoordinatorFactory` (host-selectable like the software factory) and
   `IsSupported(out reason)` probe.
 - Device selection: discrete > integrated > virtual > CPU, requiring BGRA8 blit/transfer

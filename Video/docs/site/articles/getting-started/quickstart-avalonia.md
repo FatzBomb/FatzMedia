@@ -1,6 +1,6 @@
 # Quickstart for Avalonia
 
-This quickstart builds a small Avalonia window that plays a file on Windows and Linux: it creates the player without blocking the UI, shows the picture in a <xref:FatzBomb.MediaControl.Avalonia.MediaSurface>, loads and plays a file you choose, and disposes everything when the window closes. It uses the Software renderer, which works everywhere.
+This quickstart builds a small Avalonia window that plays a file on Windows and Linux: it creates the player without blocking the UI, shows the picture in a <xref:FatzMedia.Video.Avalonia.MediaSurface>, loads and plays a file you choose, and disposes everything when the window closes. It uses the Software renderer, which works everywhere.
 
 ## 1. Create the project
 
@@ -20,16 +20,16 @@ The Avalonia adapter targets `net10.0`, but the Windows platform package targets
   <PackageReference Include="Avalonia" Version="12.1.4" />
   <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
   <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
-  <PackageReference Include="FatzBomb.MediaControl.Avalonia" Version="0.1.0-alpha" />
-  <PackageReference Include="FatzBomb.MediaControl.Rendering.Software" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Avalonia" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Software" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' == 'windows'">
-  <PackageReference Include="FatzBomb.MediaControl.Windows.Direct3D11" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Windows.Direct3D11" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
-  <PackageReference Include="FatzBomb.MediaControl.Linux" Version="0.1.0-alpha" />
+  <PackageReference Include="FatzMedia.Video.Linux" Version="0.1.0-alpha" />
 </ItemGroup>
 
 <ItemGroup>
@@ -103,7 +103,7 @@ public partial class App : Application
 ```xaml
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"
+        xmlns:fbm="using:FatzMedia.Video.Avalonia"
         x:Class="Quickstart.MainWindow"
         Title="Quickstart" Width="960" Height="600">
   <Grid RowDefinitions="*,Auto">
@@ -125,10 +125,10 @@ public partial class App : Application
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using FatzBomb.MediaControl;
-using FatzBomb.MediaControl.Avalonia;
-using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Rendering.Software;
+using FatzMedia.Video;
+using FatzMedia.Video.Avalonia;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Software;
 using AvaloniaWindow = Avalonia.Controls.Window;
 
 namespace Quickstart;
@@ -150,7 +150,7 @@ public partial class MainWindow : AvaloniaWindow
 #if WINDOWS
         new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 #else
-        new FatzBomb.MediaControl.Linux.LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
+        new FatzMedia.Video.Linux.LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 #endif
 
     private async Task StartPlayerAsync()
@@ -237,7 +237,7 @@ public partial class MainWindow : AvaloniaWindow
 ## What the code does
 
 - **Platform.** The Avalonia adapter has no default platform factory. `CreatePlatform` picks the Windows services on a `net10.0-windows7.0` build and the Linux services otherwise, both paired with the Software renderer. That renderer presents CPU frames only and always decodes video in software; the configuration (`VideoDecodingMethod.Software`) makes that explicit.
-- **Create.** <xref:FatzBomb.MediaControl.Avalonia.Player.CreateAsync*> builds the player on a pool thread, because loading the native libraries blocks. The empty path list means "use the default folders": the platform package looks in `native` and `runtimes/<rid>/native` next to the application (see [Native dependencies](native-dependencies.md#where-the-engine-looks)).
+- **Create.** <xref:FatzMedia.Video.Avalonia.Player.CreateAsync*> builds the player on a pool thread, because loading the native libraries blocks. The empty path list means "use the default folders": the platform package looks in `native` and `runtimes/<rid>/native` next to the application (see [Native dependencies](native-dependencies.md#where-the-engine-looks)).
 - **Attach.** Setting `Surface.Player` attaches the surface. It sizes itself from its layout bounds and render scale, and detaches when you set `Player` to `null`.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads, so the handlers post to `Dispatcher.UIThread`. See [Threading and events](../concepts/threading-and-events.md).
 - **Load and play.** `LoadAsync` returns `false` if the file could not be opened.
@@ -245,13 +245,13 @@ public partial class MainWindow : AvaloniaWindow
 
 ## A faster renderer
 
-The Software renderer draws on the CPU. With the Direct3D11 or Vulkan renderer, use `MediaPlayerConfiguration.Auto` so the GPU can decode. On Windows, replace it with the Direct3D11 renderer from `FatzBomb.MediaControl.Windows.Direct3D11`: `new WindowsDirect3D11MediaControlPlatformFactory()` in place of the Windows branch of `CreatePlatform`. On both operating systems you can use the Vulkan renderer (`FatzBomb.MediaControl.Rendering.Vulkan`, `new VulkanPresentationCoordinatorFactory()`), which decodes on the GPU where the driver supports Vulkan Video. A surface presents through a shared GPU image when Avalonia's compositor and the renderer support it, and through a frame sink otherwise; `MediaSurface.PresentationPath` says which.
+The Software renderer draws on the CPU. With the Direct3D11 or Vulkan renderer, use `MediaPlayerConfiguration.Auto` so the GPU can decode. On Windows, replace it with the Direct3D11 renderer from `FatzMedia.Video.Windows.Direct3D11`: `new WindowsDirect3D11MediaControlPlatformFactory()` in place of the Windows branch of `CreatePlatform`. On both operating systems you can use the Vulkan renderer (`FatzMedia.Video.Vulkan`, `new VulkanPresentationCoordinatorFactory()`), which decodes on the GPU where the driver supports Vulkan Video. A surface presents through a shared GPU image when Avalonia's compositor and the renderer support it, and through a frame sink otherwise; `MediaSurface.PresentationPath` says which.
 
 > [!NOTE]
-> All three renderers draw subtitle and lyric text. On Linux the Software and Vulkan renderers draw it with SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`, which they bring in), using the system's fonts.
+> All three renderers draw subtitle and lyric text. On Linux the Software and Vulkan renderers draw it with SkiaSharp (`FatzMedia.Video.Text`, which they bring in), using the system's fonts.
 
 ## Next
 
-- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzBomb.MediaControl.Avalonia.SecondaryPresentationWindow>.
+- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzMedia.Video.Avalonia.SecondaryPresentationWindow>.
 - Ready-made karaoke and background controls: [Karaoke surface](../lightweight-surfaces/karaoke-surface.md) and [Background surface](../lightweight-surfaces/background-surface.md).
 - The player and its session: [Player and session](../concepts/player-and-session.md).

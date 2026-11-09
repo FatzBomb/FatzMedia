@@ -114,13 +114,13 @@ Linux sandbox (FatzAudio is a token-gated package: build its rc.1 from source an
 in `updates/037A_2`, then restore with a `nuget.config` outside the repo mapping `FatzAudio` to it):
 
 ```bash
-EnableWindowsTargeting=true dotnet build FatzBomb.MediaControl.sln -c Release
-dotnet test FatzBomb.MediaControl.Portable.Tests -c Release --no-build
+EnableWindowsTargeting=true dotnet build FatzMedia.Video.sln -c Release
+dotnet test FatzMedia.Video.Portable.Tests -c Release --no-build
 FATZBOMB_LINUX_FFMPEG_DIR=/opt/fatzbomb-native/ffmpeg/lib FATZBOMB_LINUX_SAMPLE_VIDEO=/opt/fatzbomb-native/media/h264_1080p.mp4 \
-  dotnet test FatzBomb.MediaControl.Linux.Tests -c Release --no-build
-dotnet test FatzBomb.MediaControl.Rendering.Vulkan.Tests -c Release --no-build
-dotnet test FatzBomb.MediaControl.Avalonia.Tests -c Release --no-build
-EnableWindowsTargeting=true dotnet format FatzBomb.MediaControl.sln --verify-no-changes
+  dotnet test FatzMedia.Video.Linux.Tests -c Release --no-build
+dotnet test FatzMedia.Video.Vulkan.Tests -c Release --no-build
+dotnet test FatzMedia.Video.Avalonia.Tests -c Release --no-build
+EnableWindowsTargeting=true dotnet format FatzMedia.Video.sln --verify-no-changes
 for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-presentation-parity; do
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```

@@ -8,27 +8,24 @@ on:
     branches: [main]
     paths:
       - 'Video/**'
+      - 'Audio/**'
       - '!Video/docs/**'
+      - '!Audio/docs/**'
       - '!**/*.md'
       - '.github/workflows/video-ci.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Video/**'
+      - 'Audio/**'
       - '!Video/docs/**'
+      - '!Audio/docs/**'
       - '!**/*.md'
       - '.github/workflows/video-ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  # The FatzAudio package (037A) is on GitHub Packages; this repository has Read under the
-  # package's "Manage Actions access", so the workflow's own token restores it.
-  packages: read
-
-env:
-  # Read by nuget.config as the FatzAudio source's password.
-  FATZAUDIO_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -56,13 +53,13 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore FatzBomb.MediaControl.sln
+        run: dotnet restore FatzMedia.Video.sln
 
       - name: Build (Release)
-        run: dotnet build FatzBomb.MediaControl.sln -c Release --no-restore
+        run: dotnet build FatzMedia.Video.sln -c Release --no-restore
 
       - name: Test
-        run: dotnet test FatzBomb.MediaControl.sln -c Release --no-build --no-restore
+        run: dotnet test FatzMedia.Video.sln -c Release --no-build --no-restore
 
       - name: Core boundary check
         shell: pwsh
@@ -81,7 +78,7 @@ jobs:
         run: ./scripts/check-presentation-parity.ps1
 
       - name: Format check
-        run: dotnet format FatzBomb.MediaControl.sln --verify-no-changes --no-restore
+        run: dotnet format FatzMedia.Video.sln --verify-no-changes --no-restore
 
   linux-portable:
     name: Linux portable build and tests
@@ -106,22 +103,31 @@ jobs:
       - name: Vulkan SPIR-V matches its GLSL source
         run: ./scripts/check-vulkan-shaders.sh
 
+      # FatzMedia.Audio's native library for the FatzAudio engine tests (Linux.Tests), built from Audio/.
+      - name: Build the FatzMedia.Audio native library
+        working-directory: Audio
+        run: |
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFA_BUILD_TESTS=OFF -DFA_BUILD_TOOLS=OFF
+          cmake --build build --parallel "$(nproc)"
+          echo "FatzAudioNativeDir=$GITHUB_WORKSPACE/Audio/build/bin" >> "$GITHUB_ENV"
+
       - name: Build portable, Linux, and Vulkan projects (Release)
         run: |
-          dotnet build FatzBomb.MediaControl.Portable.Tests/FatzBomb.MediaControl.Portable.Tests.csproj -c Release
-          dotnet build FatzBomb.MediaControl.Linux.Tests/FatzBomb.MediaControl.Linux.Tests.csproj -c Release
-          dotnet build FatzBomb.MediaControl.Rendering.Vulkan.Tests/FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj -c Release
-          dotnet build FatzBomb.MediaControl.Avalonia.Tests/FatzBomb.MediaControl.Avalonia.Tests.csproj -c Release
-          dotnet build FatzBomb.MediaControl.Player.Avalonia/FatzBomb.MediaControl.Player.Avalonia.csproj -c Release -f net10.0
+          dotnet build FatzMedia.Video.Portable.Tests/FatzMedia.Video.Portable.Tests.csproj -c Release
+          dotnet build FatzMedia.Video.Linux.Tests/FatzMedia.Video.Linux.Tests.csproj -c Release
+          dotnet build FatzMedia.Video.Vulkan.Tests/FatzMedia.Video.Vulkan.Tests.csproj -c Release
+          dotnet build FatzMedia.Video.Avalonia.Tests/FatzMedia.Video.Avalonia.Tests.csproj -c Release
+          dotnet build FatzMedia.Video.Sample.Player.Avalonia/FatzMedia.Video.Sample.Player.Avalonia.csproj -c Release -f net10.0
 
       - name: Portable tests
-        run: dotnet test FatzBomb.MediaControl.Portable.Tests/FatzBomb.MediaControl.Portable.Tests.csproj -c Release --no-build
+        run: dotnet test FatzMedia.Video.Portable.Tests/FatzMedia.Video.Portable.Tests.csproj -c Release --no-build
 
       - name: Linux platform tests
-        run: dotnet test FatzBomb.MediaControl.Linux.Tests/FatzBomb.MediaControl.Linux.Tests.csproj -c Release --no-build
+        run: dotnet test FatzMedia.Video.Linux.Tests/FatzMedia.Video.Linux.Tests.csproj -c Release --no-build
 
       - name: Vulkan renderer conformance (lavapipe)
-        run: dotnet test FatzBomb.MediaControl.Rendering.Vulkan.Tests/FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj -c Release --no-build
+        run: dotnet test FatzMedia.Video.Vulkan.Tests/FatzMedia.Video.Vulkan.Tests.csproj -c Release --no-build
 
       - name: Avalonia adapter tests (headless)
-        run: dotnet test FatzBomb.MediaControl.Avalonia.Tests/FatzBomb.MediaControl.Avalonia.Tests.csproj -c Release --no-build
+        run: dotnet test FatzMedia.Video.Avalonia.Tests/FatzMedia.Video.Avalonia.Tests.csproj -c Release --no-build

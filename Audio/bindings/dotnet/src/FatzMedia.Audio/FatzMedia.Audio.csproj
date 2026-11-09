@@ -55,6 +55,12 @@
           Pack="true" PackagePath="runtimes\win-x64\native\"
           Link="runtimes\win-x64\native\fatzaudio.dll"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- Linux and macOS libraries from a local CMake build, for apps in this repo that reference the
+         project (FatzMedia.Video); the package takes them from runtimes/<rid>/native instead. -->
+    <None Include="$(FatzAudioNativeDir)/libfatzaudio.so" Condition="Exists('$(FatzAudioNativeDir)/libfatzaudio.so')"
+          Pack="false" Link="libfatzaudio.so" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(FatzAudioNativeDir)/libfatzaudio.dylib" Condition="Exists('$(FatzAudioNativeDir)/libfatzaudio.dylib')"
+          Pack="false" Link="libfatzaudio.dylib" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FatzMedia.Video.Sample.Player</AssemblyName>
+    <RootNamespace>FatzMedia.Video.Sample.Player</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj" />
+    <ProjectReference Include="..\FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="native\**\*.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="native\**\*.sf2" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

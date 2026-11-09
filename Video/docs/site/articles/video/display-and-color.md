@@ -1,10 +1,10 @@
 # Display and color
 
-This article covers how the picture is fitted into the surface (<xref:FatzBomb.MediaControl.VideoDisplayMode>), how to adjust its color (<xref:FatzBomb.MediaControl.BaseVisualTransform>) and how HDR video is shown, on an ordinary SDR monitor and on an HDR monitor.
+This article covers how the picture is fitted into the surface (<xref:FatzMedia.Video.VideoDisplayMode>), how to adjust its color (<xref:FatzMedia.Video.BaseVisualTransform>) and how HDR video is shown, on an ordinary SDR monitor and on an HDR monitor.
 
 ## Display modes
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer.VideoDisplayMode> controls how primary video is mapped into the presentation surface. It is a runtime property of the player, takes effect on the next presented frame, and applies to every surface of the player.
+<xref:FatzMedia.Video.MediaControlPlayer.VideoDisplayMode> controls how primary video is mapped into the presentation surface. It is a runtime property of the player, takes effect on the next presented frame, and applies to every surface of the player.
 
 | Mode | Behavior |
 | --- | --- |
@@ -27,7 +27,7 @@ Each adapter's `MediaSurface` has a `VideoDisplayMode` property (default `Zoom`)
 
 ## Color adjustments
 
-<xref:FatzBomb.MediaControl.MediaControlPlayer.BaseVisualTransform> adjusts the color of the base visual layer: the video or image, not the overlays drawn on top of it (CD+G graphics, subtitles and lyrics) unless you ask for them. It is a value type; assign a new one to change it. `BaseVisualTransform.Identity` (the default) leaves the picture unchanged.
+<xref:FatzMedia.Video.MediaControlPlayer.BaseVisualTransform> adjusts the color of the base visual layer: the video or image, not the overlays drawn on top of it (CD+G graphics, subtitles and lyrics) unless you ask for them. It is a value type; assign a new one to change it. `BaseVisualTransform.Identity` (the default) leaves the picture unchanged.
 
 | Property | Range | Neutral value |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ The change event is raised on the thread that set the value (after `Reset`, on a
 
 HDR10 (PQ) and HLG video is tone mapped to SDR by default, using the BT.2390 curve, so that it is neither washed out nor clipped. A hardware-decoded frame is tone mapped on the GPU when the renderer can; software frames are tone mapped on the CPU. The decode diagnostic says which kind of video you have, for example `HDR10/PQ, tone mapped to SDR`.
 
-Tune it with <xref:FatzBomb.MediaControl.Core.Configuration.HdrToneMappingOptions> in the [configuration](../reference/configuration.md):
+Tune it with <xref:FatzMedia.Video.Core.Configuration.HdrToneMappingOptions> in the [configuration](../reference/configuration.md):
 
 | Option | Default | Meaning |
 | --- | --- | --- |

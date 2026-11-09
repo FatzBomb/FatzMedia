@@ -1,6 +1,6 @@
 # Native dependencies
 
-FatzBomb.MediaControl plays media through two native libraries: BASS for audio and FFmpeg for video decoding and demuxing. Neither is included in the packages. You download them, license them, ship them with your application and tell the engine where to find them. This page lists the files, the folders the engine searches, and your licensing responsibilities.
+FatzMedia.Video plays media through two native libraries: BASS for audio and FFmpeg for video decoding and demuxing. Neither is included in the packages. You download them, license them, ship them with your application and tell the engine where to find them. This page lists the files, the folders the engine searches, and your licensing responsibilities.
 
 ## What you need
 
@@ -35,19 +35,19 @@ Put all FFmpeg libraries in one directory. The engine preloads them in dependenc
 
 ### SkiaSharp
 
-The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzBomb.MediaControl.Rendering.Text`). Unlike BASS and FFmpeg it is not optional and you do not supply it: it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
+The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzMedia.Video.Text`). Unlike BASS and FFmpeg it is not optional and you do not supply it: it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
 
 ### What the optional pieces change
 
 - Each BASS add-on enables the file extensions it handles (`bass_aac`: `.aac`, `.m4a`, `.m4b`; `bass_ac3`: `.ac3`; `bassflac`: `.flac`; `bassmidi`: `.mid`, `.midi`, `.kar`, `.rmi`; `bassopus`: `.opus`; `basscd`: `.cda`).
 - When FFmpeg is loaded, audio formats whose add-on is missing (AAC, M4A, ALAC, FLAC, Opus, AC-3, WMA and others FFmpeg decodes) still open through an FFmpeg fallback that feeds the same BASS playback chain. MIDI needs `bassmidi` and has no fallback.
-- `OpenFileDialogFilter` on the player (<xref:FatzBomb.MediaControl.MediaControlPlayer.OpenFileDialogFilter>) lists what the loaded libraries accept, so your Open dialog matches the install.
+- `OpenFileDialogFilter` on the player (<xref:FatzMedia.Video.MediaControlPlayer.OpenFileDialogFilter>) lists what the loaded libraries accept, so your Open dialog matches the install.
 
 ### MIDI soundfont
 
 MIDI synthesis needs a soundfont. The engine uses, in this order:
 
-1. <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration.MidiSoundfontPath> when you set it (`.sf2`, `.sfz` or `.dls`).
+1. <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration.MidiSoundfontPath> when you set it (`.sf2`, `.sfz` or `.dls`).
 2. On Windows, the system `gm.dls` (converted to SF2 once and cached).
 3. The first that exists of `System32\drivers\sgm.sb` (Windows), and `soundfont.sf2`, `native/soundfont.sf2` and `native/TimGM6mb.sf2` under the application folder.
 
@@ -75,24 +75,24 @@ IReadOnlyList<string> nativePaths =
     @"C:\Program Files\MyHost\media-native\ffmpeg"
 ];
 
-var player = await FatzBomb.MediaControl.Wpf.Player.CreateAsync(
+var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
     MediaPlayerConfiguration.Auto,
     nativePaths,
     new WindowsDirect3D11MediaControlPlatformFactory());
 ```
 
-To use only the default folders, pass an empty list or <xref:FatzBomb.MediaControl.WindowsNativeLibraryPaths.GetDefaultSearchPaths>, which returns the default folders that exist.
+To use only the default folders, pass an empty list or <xref:FatzMedia.Video.WindowsNativeLibraryPaths.GetDefaultSearchPaths>, which returns the default folders that exist.
 
 > [!NOTE]
 > Native libraries load once per process. A later player created with the same paths reuses the result. If BASS was missing the first time, a later player created with different paths tries BASS again, and a player created with the same paths keeps the "no BASS" result without scanning again. FFmpeg, once loaded, stays loaded.
 
 ### The DLLPath settings
 
-<xref:FatzBomb.MediaControl.DLLPath> (`Bass`, `FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`), and `AudioOutputDevices` on Windows. A player you create yourself with a path list does not read it.
+<xref:FatzMedia.Video.DLLPath> (`Bass`, `FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`), and `AudioOutputDevices` on Windows. A player you create yourself with a path list does not read it.
 
 ## Startup report
 
-Read <xref:FatzBomb.MediaControl.MediaControlPlayer.NativeDependencies> (or `NativeDependencies` on the platform factory) to see what was found. It returns a <xref:FatzBomb.MediaControl.NativeDependencyReport> with one <xref:FatzBomb.MediaControl.NativeLibraryCheck> per library: exact file name, required or not, status (`Loaded`, `Missing`, `NotLoaded`, `FailedToLoad`), where it was found, and a hint. `Describe()` returns one readable line per problem, ready to show to a user.
+Read <xref:FatzMedia.Video.MediaControlPlayer.NativeDependencies> (or `NativeDependencies` on the platform factory) to see what was found. It returns a <xref:FatzMedia.Video.NativeDependencyReport> with one <xref:FatzMedia.Video.NativeLibraryCheck> per library: exact file name, required or not, status (`Loaded`, `Missing`, `NotLoaded`, `FailedToLoad`), where it was found, and a hint. `Describe()` returns one readable line per problem, ready to show to a user.
 
 When a required FFmpeg library fails, the player constructor throws, and the exception message includes the hints. The player does not exist then, so read the report from the platform factory you passed in:
 
@@ -100,7 +100,7 @@ When a required FFmpeg library fails, the player constructor throws, and the exc
 var platform = new WindowsDirect3D11MediaControlPlatformFactory();
 try
 {
-    player = await FatzBomb.MediaControl.Wpf.Player.CreateAsync(
+    player = await FatzMedia.Video.Wpf.Player.CreateAsync(
         MediaPlayerConfiguration.Auto, WindowsNativeLibraryPaths.GetDefaultSearchPaths(), platform);
 }
 catch (Exception ex)

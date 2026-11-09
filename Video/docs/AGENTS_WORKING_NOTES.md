@@ -1,4 +1,4 @@
-# FatzBombMedia Working Notes
+# FatzMedia.Video Working Notes
 
 > Superseded by the repo-root `AGENTS.md` (2026-10-24). Kept because completed stage records
 > reference it; do not update it.

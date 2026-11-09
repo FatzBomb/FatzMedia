@@ -21,9 +21,9 @@ if (!loaded)
     Console.WriteLine("Load failed; see MediaError and MediaDiagnostic.");
 ```
 
-The result is `true` when the media opened. On `false`, the reason arrives through `MediaError` (a <xref:FatzBomb.MediaControl.MediaErrorCode> such as `FileNotFound`, `UnsupportedFormat`, `OpenFailed` or `NativeLibraryMissing`) and `MediaDiagnostic`. Loading new media while other media is open stops and closes the old item first, so you see `MediaStopped` and `MediaClosed` for the old item before `MediaLoaded` for the new one.
+The result is `true` when the media opened. On `false`, the reason arrives through `MediaError` (a <xref:FatzMedia.Video.MediaErrorCode> such as `FileNotFound`, `UnsupportedFormat`, `OpenFailed` or `NativeLibraryMissing`) and `MediaDiagnostic`. Loading new media while other media is open stops and closes the old item first, so you see `MediaStopped` and `MediaClosed` for the old item before `MediaLoaded` for the new one.
 
-All overloads are members of <xref:FatzBomb.MediaControl.MediaControlPlayer>:
+All overloads are members of <xref:FatzMedia.Video.MediaControlPlayer>:
 
 | Overload | Use |
 |---|---|
@@ -42,7 +42,7 @@ The WPF `Player` adds overloads that take a WPF `ImageSource` (as a main image o
 
 ## Input sources
 
-<xref:FatzBomb.MediaControl.MediaInputSource> is the framework-neutral description of what to load. Create one with a factory method:
+<xref:FatzMedia.Video.MediaInputSource> is the framework-neutral description of what to load. Create one with a factory method:
 
 | Factory | Source |
 |---|---|
@@ -123,7 +123,7 @@ await player.LoadAsync(MediaInputSource.FromUri(new Uri("https://example.com/liv
 
 The `content` argument tells the engine whether the stream is audio or video. With `MediaNetworkContent.Auto` (the default) it looks at the extension of the address path: known video extensions and `.m3u8` playlists count as video, everything else as audio. Pass `Audio` or `Video` when the address has no useful extension.
 
-What you get depends on the stream. Read `player.CurrentSourceCapabilities` (a <xref:FatzBomb.MediaControl.MediaSourceCapabilities>) after loading:
+What you get depends on the stream. Read `player.CurrentSourceCapabilities` (a <xref:FatzMedia.Video.MediaSourceCapabilities>) after loading:
 
 | Stream | Seek | Duration | Loop |
 |---|---|---|---|
@@ -144,7 +144,7 @@ player.BufferingChanged += (_, e) => Console.WriteLine($"{e.IsBuffering} {e.Buff
 player.StreamMetadataChanged += (_, e) => Console.WriteLine($"{e.Artist} - {e.Title}");
 ```
 
-Retry, TLS and read-ahead are set when you create the player, in <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration>:
+Retry, TLS and read-ahead are set when you create the player, in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration>:
 
 ```csharp
 var configuration = new MediaPlayerConfiguration
@@ -155,7 +155,7 @@ var configuration = new MediaPlayerConfiguration
 };
 ```
 
-By default there is one attempt and no retry. See <xref:FatzBomb.MediaControl.NetworkRetryPolicy>, <xref:FatzBomb.MediaControl.NetworkTlsPolicy> and <xref:FatzBomb.MediaControl.NetworkReadAheadPolicy> for the limits.
+By default there is one attempt and no retry. See <xref:FatzMedia.Video.NetworkRetryPolicy>, <xref:FatzMedia.Video.NetworkTlsPolicy> and <xref:FatzMedia.Video.NetworkReadAheadPolicy> for the limits.
 
 > [!WARNING]
 > `NetworkTlsPolicy.AllowInvalidCertificates` turns off certificate checks for network video and for https and HLS audio. Use it only for servers you control.
@@ -177,7 +177,7 @@ With `PlayOnLoad` on and normalization enabled, playback waits up to two seconds
 
 | Event | When |
 |---|---|
-| `MediaLoaded` | A load succeeded, before any automatic playback. Carries <xref:FatzBomb.MediaControl.MediaSourceInfo> (name, path or address, content flags, capabilities) and the duration. |
+| `MediaLoaded` | A load succeeded, before any automatic playback. Carries <xref:FatzMedia.Video.MediaSourceInfo> (name, path or address, content flags, capabilities) and the duration. |
 | `MediaClosed` | The open item was closed, by `Close()` or because a new load replaced it. |
 | `MediaError` | A failure, with a typed code. |
 | `MediaDiagnostic` | Informational and warning messages, including why a load was refused. |
@@ -216,4 +216,4 @@ The synchronous `Load` methods take no token. They can be cancelled only by `Res
 - Loading does not start playback unless `PlayOnLoad` is set. Call `PlayAsync()` after `MediaLoaded` otherwise.
 - Which extensions load depends on the native libraries found at startup. A missing BASS plugin or FFmpeg library makes the matching formats fail with `UnsupportedFormat`. See [Supported formats](supported-formats.md).
 - Media with audio (audio files, MP3+G, MIDI, network audio) needs the BASS libraries. Without them the load fails with `NativeLibraryMissing`, while video (without sound), images and CD+G graphics without audio still load. See [Running without BASS](../getting-started/native-dependencies.md#running-without-bass).
-- A <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> other than `Full` refuses some kinds of media. See [Player modes](player-modes.md).
+- A <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> other than `Full` refuses some kinds of media. See [Player modes](player-modes.md).

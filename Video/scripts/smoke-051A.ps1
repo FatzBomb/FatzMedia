@@ -356,9 +356,9 @@ function Test-6 {
 # Main
 # ---------------------------------------------------------------------------------------------
 Clear-Host
-Write-Host 'FatzBomb.MediaControl smoke: stage 051A' -ForegroundColor Cyan
+Write-Host 'FatzMedia.Video smoke: stage 051A' -ForegroundColor Cyan
 Write-Host "Results folder: $OutDir"
-if (-not (Test-Path (Join-Path $Repo 'FatzBomb.MediaControl.sln'))) { throw "No FatzBomb.MediaControl.sln in $Repo. Pass -Repo <folder>." }
+if (-not (Test-Path (Join-Path $Repo 'FatzMedia.Video.sln'))) { throw "No FatzMedia.Video.sln in $Repo. Pass -Repo <folder>." }
 
 if (-not $SkipGit) {
     # Your own uncommitted changes would block the switch (or be mixed into the test): stop instead.
@@ -382,18 +382,17 @@ if (-not $SkipGit) {
 $branchNow = (& git -C $Repo rev-parse --abbrev-ref HEAD).Trim()
 $commit = (& git -C $Repo rev-parse --short HEAD).Trim()
 Say "Repo: $Repo  (branch $branchNow, commit $commit)"
-if (-not $env:FATZAUDIO_PACKAGES_TOKEN) { Say-Warn 'FATZAUDIO_PACKAGES_TOKEN is not set: the build cannot restore FatzAudio. Set it first (a classic PAT with read:packages).' }
 
 if (-not $SkipBuild) {
     Say 'Building the solution (Release). This takes a few minutes...'
-    & dotnet build (Join-Path $Repo 'FatzBomb.MediaControl.sln') -c Release -v minimal | Out-Host
+    & dotnet build (Join-Path $Repo 'FatzMedia.Video.sln') -c Release -v minimal | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'The build failed: see the output above.' }
 }
 
 $Exe = @{
-    Wpf      = Find-Exe 'FatzBomb.MediaControl.Player' 'FatzBomb.MediaControl.Player'
-    Ava      = Find-Exe 'FatzBomb.MediaControl.Player.Avalonia' 'FatzBomb.MediaControl.Player.Avalonia'
-    WinForms = Find-Exe 'FatzBomb.MediaControl.Player.WinForms' 'FatzBomb.MediaControl.Player.WinForms'
+    Wpf      = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player'
+    Ava      = Find-Exe 'FatzMedia.Video.Sample.Player.Avalonia' 'FatzMedia.Video.Sample.Player.Avalonia'
+    WinForms = Find-Exe 'FatzMedia.Video.Sample.Player.WinForms' 'FatzMedia.Video.Sample.Player.WinForms'
 }
 
 $all = 1..6
@@ -428,7 +427,7 @@ if ($selected -contains 5) {
 }
 
 $gpuNames = (@(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | ForEach-Object { '{0} (driver {1})' -f $_.Name, $_.DriverVersion }) -join '; ')
-Add-Result 'FatzBomb.MediaControl smoke 051A results'
+Add-Result 'FatzMedia.Video smoke 051A results'
 Add-Result ('Date: {0}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'))
 Add-Result "Repo: branch $branchNow, commit $commit"
 Add-Result "Machine: $env:COMPUTERNAME; GPU: $gpuNames"

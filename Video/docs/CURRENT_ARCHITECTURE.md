@@ -2,28 +2,28 @@
 
 ## Projects
 
-- `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
-- `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
-- `FatzBomb.MediaControl.Rendering.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
-- `FatzBomb.MediaControl.Rendering.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
-- `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
-- `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
-- `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
-- `FatzBomb.MediaControl.Audio.FatzAudio`: opt-in FatzAudio audio engine for files and archive
+- `FatzMedia.Video`: OS- and UI-agnostic Core media-control engine (`net10.0`).
+- `FatzMedia.Video.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
+- `FatzMedia.Video.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
+- `FatzMedia.Video.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
+- `FatzMedia.Video.Windows`: Windows platform composition, native integration, and hardware-decode policy.
+- `FatzMedia.Video.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
+- `FatzMedia.Video.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
+- `FatzMedia.Video.Audio`: opt-in FatzAudio audio engine for files and archive
   entries (`net10.0`, Core and the exact-pinned `FatzAudio` 1.0.0-rc.1 package; 037A slice 2).
-- `FatzBomb.MediaControl.Player`: WPF validation host. The Avalonia and WinForms test players
+- `FatzMedia.Video.Sample.Player`: WPF validation host. The Avalonia and WinForms test players
   (`.Player.Avalonia`, `.Player.WinForms`) bind the same view model,
-  `FatzBomb.MediaControl.Player.Shared` (`net10.0`, Core only; Stage 044A).
+  `FatzMedia.Video.Sample.Player.Shared` (`net10.0`, Core only; Stage 044A).
 
 UI adapters, renderer backends, and platform services are separate projects using the same
 package pattern. Status as of 2026-10-16:
 
-- UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
-  `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
-- Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
+- UI adapters: `FatzMedia.Video.Avalonia` (composited frame-sink, preview) and
+  `FatzMedia.Video.WinForms` (HWND) implemented; `FatzMedia.Video.WinUI` planned.
+- Renderer backends: `FatzMedia.Video.Vulkan` (headless offscreen preview,
   frame-sink and shared-image surfaces, any number of them) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
-- Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
-  `FatzBomb.MediaControl.MacOS` planned.
+- Platform services: `FatzMedia.Video.Linux` (baseline) implemented;
+  `FatzMedia.Video.MacOS` planned.
 
 See
 `roadmap/complete/024A_COMPLETED_SoftwareRenderer.md`,
@@ -38,12 +38,12 @@ native media-engine services for the current operating system. Core owns session
 lifecycle and Core-service composition through `MediaControlServiceProvider`; an OS
 package owns native-library loading, platform-specific registrations through
 `IMediaControlPlatformServices`, and the concrete factory.
-`WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`.
+`WindowsMediaControlPlatformFactory` now lives in `FatzMedia.Video.Windows`.
 Windows accesses Core only through public platform contracts.
 
 Renderer selection is independent of operating-system selection. The Player host
 currently injects `WindowsDirect3D11MediaControlPlatformFactory` from the thin
-Windows+Direct3D11 integration bundle. `FatzBomb.MediaControl.Windows` references
+Windows+Direct3D11 integration bundle. `FatzMedia.Video.Windows` references
 Core only, and the WPF adapter contains no renderer types. Hosts can inject another
 `IMediaPresentationCoordinatorFactory` — including the portable software renderer's
 `SoftwarePresentationCoordinatorFactory` — without changing WPF, Core playback, or the
@@ -60,12 +60,12 @@ swap-chain present mode defaults to VSync; Immediate remains an explicit diagnos
 
 ### Software Renderer (Stage 024A)
 
-`FatzBomb.MediaControl.Rendering.Software` is a portable, deterministic renderer
-package (`net10.0`) that references Core and `FatzBomb.MediaControl.Rendering.Text` and implements the same public
+`FatzMedia.Video.Software` is a portable, deterministic renderer
+package (`net10.0`) that references Core and `FatzMedia.Video.Text` and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
-`SkiaSubtitleRasterizer` (`FatzBomb.MediaControl.Rendering.Text`, also used by Vulkan) styled by
+`SkiaSubtitleRasterizer` (`FatzMedia.Video.Text`, also used by Vulkan) styled by
 the configuration's `SubtitleStyle` and `KaraokeStyle`, and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
@@ -511,7 +511,7 @@ the positive proof of visual output — never file extensions or content flags:
   surface for their inner media layer; their solid-color / canvas fallbacks are
   independent of inner-media AutoHide.
 - Internal pure `SurfaceAutoHidePolicy` (`Idle → PendingShow → Shown → Hidden`),
-  since Stage 046A in Core (`FatzBomb.MediaControl/Api/SurfaceAutoHidePolicy.cs`) behind the
+  since Stage 046A in Core (`FatzMedia.Video/Api/SurfaceAutoHidePolicy.cs`) behind the
   public `MediaSurfaceContentTracker` that every adapter uses (see "Adapter Parity" below);
   originally consumed by the WPF `MediaSurface` (the `MediaSurface.AutoHide.cs` partial) with marshaled,
   coalesced dispatcher transitions. Load only arms `PendingShow`; the surface
@@ -535,7 +535,7 @@ the positive proof of visual output — never file extensions or content flags:
   replaced item (visual-capability flag 0 or old generation) cannot reveal a new
   audio-only session.
 - The Wpf project exposes the internal policy via
-  `InternalsVisibleTo("FatzBomb.MediaControl.Tests")`; the Tests project added a
+  `InternalsVisibleTo("FatzMedia.Video.Tests")`; the Tests project added a
   Wpf reference and `SurfaceAutoHidePolicyTests` covers the policy
   deterministically. The `scripts/check-core-boundary.ps1` allow-list was updated
   for the new references. The Player host enables AutoHide by default and exposes
@@ -615,7 +615,7 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 
 Slice 3 (`updates/046A_3`):
 
-- The test players share their view helpers in `FatzBomb.MediaControl.Player.Shared`
+- The test players share their view helpers in `FatzMedia.Video.Sample.Player.Shared`
   (`Presentation/`): the full-screen chrome controller (2.5 s auto-hide of bars and cursor), the
   process sampler, frame counter and stats line, and the second-screen screen rule over screen
   rectangles; plus the neutral renderer request (`PlayerRendererRequest`) with the GPU-first
@@ -693,7 +693,7 @@ the base visual with identity and apply the transform exactly once to the final
 buffer, never double-applying it. `IncludeOverlays = true` with all-neutral
 color math stays byte-identical (identity bypass, no extra pass).
 
-**Software exact reference** — `FatzBomb.MediaControl.Rendering.Software`'s
+**Software exact reference** — `FatzMedia.Video.Software`'s
 `SoftwareBaseVisualTransform` mirrors the Core reference math exactly
 (unpremultiply to straight sRGB → YIQ hue rotation → Rec.709 saturation →
 TV-style contrast gain (`rgb *= Contrast`, black stays black) → brightness
@@ -974,7 +974,7 @@ See `roadmap/complete/039A_COMPLETED_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 
-`FatzBomb.MediaControl.Linux` (net10.0, references Core only) supplies
+`FatzMedia.Video.Linux` (net10.0, references Core only) supplies
 `LinuxMediaControlPlatformFactory` and the `IMediaControlPlatformServices`
 registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
 ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
@@ -987,7 +987,7 @@ systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 
 ## Vulkan Renderer Preview (Stage 026A, slice 1)
 
-`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core and Rendering.Text, Silk.NET.Vulkan) offers
+`FatzMedia.Video.Vulkan` (net10.0, Core and Rendering.Text, Silk.NET.Vulkan) offers
 `VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
 1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
 blit using the software renderer's placement rules, and readback. Transform and
@@ -1001,7 +1001,7 @@ See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 
 ## Avalonia Adapter (Stage 027A, slice 1)
 
-`FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
+`FatzMedia.Video.Avalonia` (net10.0, Core only) provides a composited
 `MediaSurface` that attaches one managed frame-sink surface to any
 `IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
 final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
@@ -1077,7 +1077,7 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
   throws. Audio availability is still BASS's (`IsAudioAvailable`): without BASS the player has no
   audio, whichever engine is configured. The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
   to `FatzAudioEngineFactory` in their host engine factories.
-- **Package:** `FatzBomb.MediaControl.Audio.FatzAudio` references Core and the `FatzAudio`
+- **Package:** `FatzMedia.Video.Audio` references Core and the `FatzAudio`
   package only. It implements Core's internal seams, so it is Core's one non-test
   `InternalsVisibleTo` friend (lockstep versioning); `check-core-boundary.ps1` pins that, the
   project's place in the DAG, the exact package pin, and that Core never references FatzAudio.
@@ -1136,7 +1136,7 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 - Supported automatic archive backgrounds include MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, and standalone CDG+image/video.
 - Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
-`FatzBomb.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.
+`FatzMedia.Video.Wpf.Player` derives from Core `MediaControlPlayer`.
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 

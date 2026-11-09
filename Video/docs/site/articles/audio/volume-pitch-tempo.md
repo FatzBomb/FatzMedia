@@ -4,7 +4,7 @@ Volume, pitch and tempo are live controls on the player's effects object. They a
 
 ## The effects object
 
-`player.Effects` is a <xref:FatzBomb.MediaControl.Controllers.MediaEffects>:
+`player.Effects` is a <xref:FatzMedia.Video.Controllers.MediaEffects>:
 
 | Property | Type | Range | Default | Meaning |
 |---|---|---|---|---|

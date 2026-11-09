@@ -46,7 +46,7 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
   the position back for A/V sync. FatzAudio's push/packet streams with tempo and a clock replace
   it, but this is the timing-critical path: last, and gated by owner smoke.
 - Core must not reference FatzAudio. The engine lives in a new package
-  (`FatzBomb.MediaControl.Audio.FatzAudio`); `scripts/check-core-boundary.ps1` pins the
+  (`FatzMedia.Video.Audio`); `scripts/check-core-boundary.ps1` pins the
   reference DAG and is updated deliberately.
 
 ## Slices

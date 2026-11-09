@@ -2,7 +2,7 @@
 
 A player runs in one of three modes: `Full`, `Background` or `Audio`. The mode decides what the player builds and what it accepts, so a mode that does less also costs less. Use `Background` for a looping picture behind your UI, `Audio` for a player with no video output at all, and `Full` for everything else. You can switch the mode of a running player.
 
-The modes are the values of <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode>.
+The modes are the values of <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode>.
 
 ## What each mode does
 

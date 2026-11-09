@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<AssemblyName>FatzMedia.Video.Vulkan.Tests</AssemblyName>
+		<RootNamespace>FatzMedia.Video.Vulkan.Tests</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Guided smoke tests for the October 2026 code audit of FatzBomb.MediaControl.
+    Guided smoke tests for the October 2026 code audit of FatzMedia.Video.
 
 .DESCRIPTION
     Walks you through each test one at a time. The script builds the players, starts them,
@@ -286,7 +286,7 @@ function Test-8 {
         $code = 'still running'
         if ($exited) { $code = $p.ExitCode }
         Start-Sleep -Seconds 3
-        $left = @(Get-Process -Name 'FatzBomb.MediaControl.Player.Avalonia' -ErrorAction SilentlyContinue)
+        $left = @(Get-Process -Name 'FatzMedia.Video.Sample.Player.Avalonia' -ErrorAction SilentlyContinue)
         $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
             Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting') -and $_.Message -match 'FatzBomb' })
         $log = Save-RunLog 'Ava' '8a'
@@ -372,9 +372,9 @@ function Test-10 {
 # Main
 # ---------------------------------------------------------------------------------------------
 Clear-Host
-Write-Host 'FatzBomb.MediaControl audit smoke tests' -ForegroundColor Cyan
+Write-Host 'FatzMedia.Video audit smoke tests' -ForegroundColor Cyan
 Write-Host "Results folder: $OutDir"
-if (-not (Test-Path (Join-Path $Repo 'FatzBomb.MediaControl.sln'))) { throw "No FatzBomb.MediaControl.sln in $Repo. Pass -Repo <folder>." }
+if (-not (Test-Path (Join-Path $Repo 'FatzMedia.Video.sln'))) { throw "No FatzMedia.Video.sln in $Repo. Pass -Repo <folder>." }
 
 # Git: show where we are; offer to move to the latest main.
 $branch = (& git -C $Repo rev-parse --abbrev-ref HEAD).Trim()
@@ -394,14 +394,14 @@ if ((Ask-YesNo 'Switch to the latest main first? (recommended)') -eq 'yes') {
 
 if (-not $SkipBuild) {
     Say 'Building the players (Release). This takes a minute...'
-    & dotnet build (Join-Path $Repo 'FatzBomb.MediaControl.sln') -c Release -v minimal | Out-Host
+    & dotnet build (Join-Path $Repo 'FatzMedia.Video.sln') -c Release -v minimal | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'The build failed: see the output above.' }
 }
 
 $Exe = @{
-    Wpf      = Find-Exe 'FatzBomb.MediaControl.Player' 'FatzBomb.MediaControl.Player'
-    Ava      = Find-Exe 'FatzBomb.MediaControl.Player.Avalonia' 'FatzBomb.MediaControl.Player.Avalonia'
-    WinForms = Find-Exe 'FatzBomb.MediaControl.Player.WinForms' 'FatzBomb.MediaControl.Player.WinForms'
+    Wpf      = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player'
+    Ava      = Find-Exe 'FatzMedia.Video.Sample.Player.Avalonia' 'FatzMedia.Video.Sample.Player.Avalonia'
+    WinForms = Find-Exe 'FatzMedia.Video.Sample.Player.WinForms' 'FatzMedia.Video.Sample.Player.WinForms'
 }
 foreach ($k in $Exe.Keys) {
     $dir = Split-Path $Exe[$k]
@@ -454,7 +454,7 @@ if ($need['mkv']) { $Media.mkv = Select-Media 'a large MKV with SRT/ASS subtitle
 
 # Results header
 $gpuNames = (@(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | ForEach-Object { '{0} (driver {1})' -f $_.Name, $_.DriverVersion }) -join '; ')
-Add-Result 'FatzBomb.MediaControl audit smoke results'
+Add-Result 'FatzMedia.Video audit smoke results'
 Add-Result ('Date: {0}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'))
 Add-Result "Repo: branch $branch, commit $commit"
 Add-Result "GPU: $gpuNames"

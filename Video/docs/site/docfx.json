@@ -6,18 +6,18 @@
         {
           "src": "../..",
           "files": [
-            "FatzBomb.MediaControl/FatzBomb.MediaControl.csproj",
-            "FatzBomb.MediaControl.Rendering.Software/FatzBomb.MediaControl.Rendering.Software.csproj",
-            "FatzBomb.MediaControl.Rendering.Direct3D11/FatzBomb.MediaControl.Rendering.Direct3D11.csproj",
-            "FatzBomb.MediaControl.Rendering.Vulkan/FatzBomb.MediaControl.Rendering.Vulkan.csproj",
-            "FatzBomb.MediaControl.Rendering.Text/FatzBomb.MediaControl.Rendering.Text.csproj",
-            "FatzBomb.MediaControl.Windows/FatzBomb.MediaControl.Windows.csproj",
-            "FatzBomb.MediaControl.Windows.Direct3D11/FatzBomb.MediaControl.Windows.Direct3D11.csproj",
-            "FatzBomb.MediaControl.Linux/FatzBomb.MediaControl.Linux.csproj",
-            "FatzBomb.MediaControl.Wpf/FatzBomb.MediaControl.Wpf.csproj",
-            "FatzBomb.MediaControl.Avalonia/FatzBomb.MediaControl.Avalonia.csproj",
-            "FatzBomb.MediaControl.WinForms/FatzBomb.MediaControl.WinForms.csproj",
-            "FatzBomb.MediaControl.Audio.FatzAudio/FatzBomb.MediaControl.Audio.FatzAudio.csproj"
+            "FatzMedia.Video/FatzMedia.Video.csproj",
+            "FatzMedia.Video.Software/FatzMedia.Video.Software.csproj",
+            "FatzMedia.Video.Direct3D11/FatzMedia.Video.Direct3D11.csproj",
+            "FatzMedia.Video.Vulkan/FatzMedia.Video.Vulkan.csproj",
+            "FatzMedia.Video.Text/FatzMedia.Video.Text.csproj",
+            "FatzMedia.Video.Windows/FatzMedia.Video.Windows.csproj",
+            "FatzMedia.Video.Windows.Direct3D11/FatzMedia.Video.Windows.Direct3D11.csproj",
+            "FatzMedia.Video.Linux/FatzMedia.Video.Linux.csproj",
+            "FatzMedia.Video.Wpf/FatzMedia.Video.Wpf.csproj",
+            "FatzMedia.Video.Avalonia/FatzMedia.Video.Avalonia.csproj",
+            "FatzMedia.Video.WinForms/FatzMedia.Video.WinForms.csproj",
+            "FatzMedia.Video.Audio/FatzMedia.Video.Audio.csproj"
           ]
         }
       ],
@@ -36,8 +36,8 @@
     "output": "_site",
     "template": [ "default", "modern" ],
     "globalMetadata": {
-      "_appName": "FatzBomb.MediaControl",
-      "_appTitle": "FatzBomb.MediaControl",
+      "_appName": "FatzMedia.Video",
+      "_appTitle": "FatzMedia.Video",
       "_enableSearch": true,
       "_disableContribution": true,
       "pdf": false

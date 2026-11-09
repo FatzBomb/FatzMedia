@@ -1,27 +1,28 @@
 # Agent rules
 
-FatzBomb ecosystem repo, id `fatzvideo` (product: FatzBomb Video; code names still say `FatzBomb.MediaControl`).
-Ecosystem rules are in the global CLAUDE.md; the map is `D:\development\FatzBomb\shared\ECOSYSTEM.md`.
+The `Video\` folder of the FatzMedia repo (id `fatzmedia`; work output id `fatzvideo`): FatzMedia.Video, the
+video engine. Ecosystem rules are in the global CLAUDE.md; the map is `D:\development\FatzBomb\shared\ECOSYSTEM.md`.
 
-- Needs FatzAudio, which lives in `..\Audio` of this repo (FatzMedia; see the root AGENTS.md).
+- Needs FatzMedia.Audio from `..\Audio` of this repo, by project reference; its native library comes
+  from Audio's CMake build (`docs/NATIVE_DEPENDENCIES.md`). See the root AGENTS.md.
 - Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzvideo\`,
   never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzvideo` (read-only).
 - Don't add Claude or Copilot review workflows to .github/workflows/. Code review is done with /code-review before opening a PR.
 - The rules below were written for the repo's earlier setup. Where they conflict with this block or the global CLAUDE.md,
   the global CLAUDE.md wins on workflow (commit each verified step on a feature branch, one PR per feature, squash merge).
-## FatzBomb.MediaControl
+## FatzMedia.Video
 .NET 10 media engine: UI-agnostic Core, renderer packages, platform packages, UI adapters, and
 test hosts. Read `docs/CURRENT_ARCHITECTURE.md`, `docs/VALIDATION.md`,
 `docs/NATIVE_DEPENDENCIES.md` and `docs/roadmap/STAGE_MANIFEST.md` when the task touches them,
 not up front.
 
 ## Build
-- `dotnet build FatzBomb.MediaControl.sln`. Release treats warnings as errors. Shared settings
+- `dotnet build FatzMedia.Video.sln`. Release treats warnings as errors. Shared settings
   live in `Directory.Build.props` (C# 14, nullable, implicit usings).
 - Windows projects target x64 (`net10.0-windows7.0`); Core, the Software and Vulkan renderers,
   Linux and Avalonia are `net10.0`.
 - No native binaries are tracked. To run a host, put the x64 BASS and FFmpeg DLLs in the host's
-  `native/` folder: `FatzBomb.MediaControl.Player`, `.Player.Avalonia` or `.Player.WinForms`.
+  `native/` folder: `FatzMedia.Video.Sample.Player`, `.Sample.Player.Avalonia` or `.Sample.Player.WinForms`.
   Details are in `docs/NATIVE_DEPENDENCIES.md`.
 - After editing Vulkan `Shaders/*.vert|*.frag`, run `scripts/compile-vulkan-shaders.sh` and
   commit the `.spv` files; CI checks them.
@@ -56,21 +57,21 @@ not up front.
   `AsyncLocal`). Work that drops the execution context (`ExecutionContext.SuppressFlow`,
   native callbacks) must re-enter the owner; process-wide work must not capture one.
 - The WPF, Avalonia and WinForms test players bind one view model, `PlayerViewModel` in
-  `FatzBomb.MediaControl.Player.Shared` (CommunityToolkit.Mvvm, Core only; hosts supply UI thread,
+  `FatzMedia.Video.Sample.Player.Shared` (CommunityToolkit.Mvvm, Core only; hosts supply UI thread,
   dialogs and engine through its `Hosting/` interfaces). Player logic goes there; hosts keep
   code-behind for view behaviour, surfaces and HWND interop.
 
 ## Tests and validation
 - Test pure logic, plus player behaviour through the existing doubles (`TestPlatformFactory`,
   `TestMediaEngine`). Hardware, timing, native and UI paths get manual smoke steps instead.
-- Keep portable tests in `FatzBomb.MediaControl.Tests`; `Portable.Tests` compiles them by link.
+- Keep portable tests in `FatzMedia.Video.Tests`; `Portable.Tests` compiles them by link.
   A Windows-only test file needs a `D3D11*`/`Direct3D11*` name or an entry in the `Exclude` list
   of `Portable.Tests`. Tests that mutate `FileTypes` use `[Collection("File type registry")]`.
 - Linux native playback in the sandbox: `scripts/setup-linux-native.sh` installs FFmpeg 9.0 LGPL libraries and
   test media under `/opt/fatzbomb-native` and prints `FATZBOMB_LINUX_FFMPEG_DIR` (BASS is not available).
 - Linux sandbox: build with `EnableWindowsTargeting=true`; run `Portable.Tests`, `Linux.Tests`,
   `Rendering.Vulkan.Tests` (needs `mesa-vulkan-drivers`) and `Avalonia.Tests` (headless).
-  `dotnet format FatzBomb.MediaControl.sln --verify-no-changes` works with
+  `dotnet format FatzMedia.Video.sln --verify-no-changes` works with
   `EnableWindowsTargeting=true`. Run the boundary scripts with the PowerShell dotnet tool:
   `dotnet tool install --global PowerShell`, then
   `DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -File scripts/<script>.ps1`.
