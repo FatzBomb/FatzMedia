@@ -2,9 +2,11 @@ name: build
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Audio/**'
       - '!Audio/docs/**'
+      - '!Audio/tools/dotnet-apps/**'
       - '!**/*.md'
       - '.github/workflows/build.yml'
   push:
@@ -12,6 +14,7 @@ on:
     paths:
       - 'Audio/**'
       - '!Audio/docs/**'
+      - '!Audio/tools/dotnet-apps/**'
       - '!**/*.md'
       - '.github/workflows/build.yml'
   workflow_dispatch:
@@ -50,6 +53,7 @@ jobs:
         # Linux builds on 22.04 so the packaged libfatzaudio.so needs only glibc 2.35.
         os: [windows-latest, macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -190,6 +194,7 @@ jobs:
   # and its imports, not run.
   windows-arm64:
     runs-on: windows-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -228,6 +233,7 @@ jobs:
   # under qemu-user; a smoke subset keeps the minutes down (all of it runs in android-test arm64).
   linux-arm64:
     runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -270,6 +276,7 @@ jobs:
   package:
     needs: [build, windows-arm64, linux-arm64, android, ios]
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     permissions:
       contents: read
       packages: write
@@ -353,6 +360,7 @@ jobs:
     # 22.04 like the Linux build: on ubuntu-latest (24.04) this apt install alone
     # took 15 minutes, on 22.04 about 20 seconds.
     runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -387,6 +395,7 @@ jobs:
   # and libdl and exports only fa_*.
   android:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -445,6 +454,7 @@ jobs:
         abi: [x86_64, arm64-v8a]
     # Pinned: on ubuntu-latest (26.04) qemu-user-static is only a virtual package.
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14
@@ -464,6 +474,7 @@ jobs:
   # fatzaudio.xcframework for iOS devices and the simulator.
   ios:
     runs-on: macos-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2.14

@@ -8,6 +8,7 @@ name: dotnet-apps
 # plain devices.yml jobs are not started by it); every push to main that touches them, and a manual run, too.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Audio/bindings/**'
       - 'Audio/tools/dotnet-apps/**'
@@ -41,6 +42,7 @@ jobs:
   # local HTTPS server (its CA trusted by the simulator, as in devices.yml).
   ios-app:
     runs-on: macos-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +96,7 @@ jobs:
   # CA trusted by the app's network security config.
   android-app:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -124,6 +127,7 @@ jobs:
       - name: Run the app on an Android 14 emulator
         uses: reactivecircus/android-emulator-runner@v2.33.0
         with:
+          working-directory: Audio
           api-level: 34
           arch: x86_64
           target: google_apis
