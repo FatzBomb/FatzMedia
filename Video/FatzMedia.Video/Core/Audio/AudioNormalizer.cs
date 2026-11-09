@@ -27,7 +27,7 @@ sealed class AudioNormalizer
     // Guards the FX handle and the reused parameter object: the gain is applied from the
     // analysis thread and from the Normalize setter, and the handle is replaced on open.
     readonly Lock _gainFxLock = new();
-    int _gainFxHandle = 0;
+    int _gainFxHandle;
 
     #endregion
 

@@ -410,7 +410,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
     {
         FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpeg);
         var demuxer = new SharedDemuxer();
-        var options = new FfmpegNetworkOptions(NetworkRetryPolicy.Default, CancellationToken.None, NetworkTlsPolicy.Default, policy);
+        var options = new FfmpegNetworkOptions(NetworkRetryPolicy.Default, NetworkTlsPolicy.Default, policy, CancellationToken.None);
         Assert.True(demuxer.Open(uri.AbsoluteUri, options), demuxer.LastNetworkError);
         video = demuxer.SelectVideoStream();
         demuxer.RegisterVideoStream(video);

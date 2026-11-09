@@ -17,7 +17,6 @@ sealed class SkiaFontFace
 {
     readonly List<SKTypeface> _typefaces = [];
     readonly Dictionary<int, int> _fallbacks = [];
-    readonly SKFontStyle _style;
     readonly string _family;
     readonly int _weight;
     readonly bool _italic;
@@ -25,14 +24,17 @@ sealed class SkiaFontFace
     public SkiaFontFace(string family, int weight, bool italic)
     {
         _family = family;
-        _style = new SKFontStyle(weight, (int)SKFontStyleWidth.Normal, italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
-        var primary = SKFontManager.Default.MatchFamily(family, _style)
-            ?? SKTypeface.FromFamilyName(family, _style)
+        using var style = CreateStyle(weight, italic);
+        var primary = SKFontManager.Default.MatchFamily(family, style)
+            ?? SKTypeface.FromFamilyName(family, style)
             ?? SKTypeface.Default;
         _typefaces.Add(primary);
         _weight = weight;
         _italic = italic;
     }
+
+    static SKFontStyle CreateStyle(int weight, bool italic) =>
+        new(weight, (int)SKFontStyleWidth.Normal, italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
 
     public int TypefaceCount => _typefaces.Count;
 
@@ -54,7 +56,8 @@ sealed class SkiaFontFace
             }
         }
 
-        if (index == 0 && SKFontManager.Default.MatchCharacter(_family, _style, null, codePoint) is { } matched)
+        using var style = CreateStyle(_weight, _italic);
+        if (index == 0 && SKFontManager.Default.MatchCharacter(_family, style, null, codePoint) is { } matched)
         {
             index = _typefaces.IndexOf(matched);
             if (index < 0)

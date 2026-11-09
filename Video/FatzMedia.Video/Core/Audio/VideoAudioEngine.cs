@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
@@ -439,7 +440,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
         // Streamed straight to the scratch file: no in-memory copies of the whole entry.
         var tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
-        var normalizationCacheKey = $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
+        var normalizationCacheKey = $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}";
         var success = OpenFile(tempPath, normalizationCacheKey);
         if (success)
             lock (_sync)

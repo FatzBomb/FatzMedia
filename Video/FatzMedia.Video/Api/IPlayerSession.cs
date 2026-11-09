@@ -34,6 +34,7 @@ namespace FatzMedia.Video;
 /// callback, a task) is outside it once it runs on another thread or after the handler returned.
 /// </para>
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716", Justification = "Stop is the natural name; a C#-only API where the VB keyword clash does not matter and a rename would break every host.")]
 public interface IPlayerSession : IDisposable
 {
     /// <summary>Gets codec, container, and hardware-decode capabilities for the active platform.</summary>

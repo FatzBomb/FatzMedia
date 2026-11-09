@@ -61,7 +61,7 @@ public sealed class RetainedFrameBufferTests
 /// Stage 010A: compositions present the retained background without a per-frame snapshot copy,
 /// and a new background frame never overwrites pixels a composition is still presenting.
 /// </summary>
-[Collection(MediaPresentationCoordinatorCollection.Name)]
+[Collection(MediaPresentationCoordinatorGroup.Name)]
 public sealed class CompositionBackgroundSharingTests
 {
     [Fact]

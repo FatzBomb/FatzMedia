@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Graphics.Composition;
 /// established upload/draw flow and single final present path.
 /// </summary>
 [Flags]
-public enum MediaCompositionLayerDirtyFlags
+public enum MediaCompositionLayerChanges
 {
     None = 0,
     Activated = 1 << 0,

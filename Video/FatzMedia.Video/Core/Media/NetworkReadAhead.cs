@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Core.Media;
@@ -852,7 +853,7 @@ sealed unsafe class NetworkReadAhead : IDisposable
     }
 
     static string FormatTime(double seconds) =>
-        seconds is >= 0 and < double.MaxValue ? TimeSpan.FromSeconds(Math.Floor(seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss") : "?";
+        seconds is >= 0 and < double.MaxValue ? TimeSpan.FromSeconds(Math.Floor(seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss", CultureInfo.InvariantCulture) : "?";
 
     /// <summary>
     /// Queues a packet of a registered stream. Returns how long the network was lost when this

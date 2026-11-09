@@ -368,7 +368,7 @@ sealed class AudioStreamManager : IDisposable
         var acceptsRanges = headers.Any(static header =>
             header.StartsWith("Accept-Ranges:", StringComparison.OrdinalIgnoreCase)
             && header.Contains("bytes", StringComparison.OrdinalIgnoreCase));
-        var hasIcy = icyHeaders.Count > 0
+        var hasIcy = icyHeaders.Length > 0
             || headers.Any(static header => header.StartsWith("icy-", StringComparison.OrdinalIgnoreCase));
         _networkContentLength = contentLength;
         return new NetworkStreamProbe(contentLength, acceptsRanges, hasIcy);
@@ -427,7 +427,7 @@ sealed class AudioStreamManager : IDisposable
     /// <summary>Gets the handle that receives network syncs (the connected source stream).</summary>
     public int NetworkSyncHandle => IsNetworkSource ? _sourceHandle : 0;
 
-    static IReadOnlyList<string> ReadMultiStringTag(int handle, TagType tagType, bool utf8 = false)
+    static string[] ReadMultiStringTag(int handle, TagType tagType, bool utf8 = false)
     {
         var pointer = MBass.ChannelGetTags(handle, tagType);
         if (pointer == IntPtr.Zero)

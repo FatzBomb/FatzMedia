@@ -17,7 +17,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// is real time, so waits are generous. Linux only, like the rest of this project; Windows and a
 /// real device are the owner's smoke.
 /// </summary>
-[Collection(FatzAudioNativeCollection.Name)]
+[Collection(FatzAudioNativeGroup.Name)]
 public sealed class FatzAudioEngineNativeTests : IDisposable
 {
     static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -401,7 +401,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 }
 
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class FatzAudioNativeCollection
+public sealed class FatzAudioNativeGroup
 {
     public const string Name = "FatzAudio native";
 }

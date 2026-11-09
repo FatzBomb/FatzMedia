@@ -1668,6 +1668,10 @@ sealed partial class VideoPipeline(
         }
     }
 
+    // The timeline origin of the media's first decoder, carried across decoder swaps (and
+    // across failed swap attempts) until the media closes.
+    double? _swapTimelineOrigin;
+
     /// <summary>
     /// Replaces the live decoder with a new one using <paramref name="method"/>, reopened at the
     /// current transport position. Mirrors the seek stop-reposition-restart dance and is serialized
@@ -1675,10 +1679,6 @@ sealed partial class VideoPipeline(
     /// deliberately left running — only the video decoder is swapped. Bumping the generation drops any
     /// in-flight frames that referenced the old (lost) device.
     /// </summary>
-    // The timeline origin of the media's first decoder, carried across decoder swaps (and
-    // across failed swap attempts) until the media closes.
-    double? _swapTimelineOrigin;
-
     bool SwapVideoDecoder(VideoDecodingMethod method, string path)
     {
         lock (_transportGate)

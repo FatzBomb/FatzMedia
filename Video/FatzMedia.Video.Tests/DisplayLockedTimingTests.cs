@@ -525,7 +525,7 @@ public sealed class DisplayLockedTimingTests
     }
 
     /// <summary>Places where an alternating hold pattern (3,2,3,2) repeats or changes length.</summary>
-    static int CountBrokenAlternations(IReadOnlyList<int> holds)
+    static int CountBrokenAlternations(List<int> holds)
     {
         var broken = 0;
         for (var index = 1; index < holds.Count; index++)

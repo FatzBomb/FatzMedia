@@ -42,7 +42,7 @@ public sealed class SurfaceAutoHidePolicyTests
         var policy = CreateShownPolicy();
 
         Assert.False(policy.MediaStarted());
-        Assert.False(policy.MediaPaused());
+        Assert.False(SurfaceAutoHidePolicy.MediaPaused());
         Assert.False(policy.MediaEnded(isLooping: true));
         Assert.False(policy.MediaLooped());
         Assert.True(policy.IsContentVisible);

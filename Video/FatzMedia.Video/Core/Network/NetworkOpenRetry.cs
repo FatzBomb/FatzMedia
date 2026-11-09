@@ -34,17 +34,17 @@ enum NetworkOpenOutcome
 static class NetworkOpenRetry
 {
     /// <param name="policy">The bounded retry policy.</param>
-    /// <param name="cancellation">Cancels the attempt in progress and any pending delay.</param>
     /// <param name="attempt">Makes one attempt (1-based number).</param>
     /// <param name="beforeRetry">Called before each retry delay with the retry number (1-based) and the delay.</param>
     /// <param name="wait">Waits for a delay; returns <see langword="true"/> when cancelled. Defaults to the token's wait handle.</param>
     /// <param name="attempts">The number of attempts made.</param>
+    /// <param name="cancellation">Cancels the attempt in progress and any pending delay.</param>
     public static NetworkOpenOutcome Run(
         NetworkRetryPolicy policy,
-        CancellationToken cancellation,
         Func<int, NetworkAttemptResult> attempt,
         Action<int, TimeSpan>? beforeRetry,
         out int attempts,
+        CancellationToken cancellation,
         Func<TimeSpan, CancellationToken, bool>? wait = null)
     {
         ArgumentNullException.ThrowIfNull(policy);

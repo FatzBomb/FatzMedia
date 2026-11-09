@@ -9,11 +9,11 @@ readonly record struct SilenceScanResult(
 /// engine-neutral <see cref="IAudioLevelSource"/> (037A slice 1; BASS:
 /// <see cref="BassChannelLevelSource"/>).
 /// </summary>
-sealed class AudioSilenceAnalyzer
+static class AudioSilenceAnalyzer
 {
     internal const double BlockDurationSeconds = 0.1;
 
-    public Task<SilenceScanResult> ScanAsync(
+    public static Task<SilenceScanResult> ScanAsync(
         IAudioLevelSource? source,
         double sourceDuration,
         double thresholdDecibels,

@@ -547,7 +547,7 @@ public sealed class VulkanConformanceTests
         if (compositor is null)
             return;
 
-        var expected = new SoftwareCompositionRenderer().Render(frame, width, height);
+        var expected = SoftwareCompositionRenderer.Render(frame, width, height);
         Assert.True(expected.IsRendered, expected.Message);
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(frame));
         var actual = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));

@@ -145,8 +145,8 @@ public sealed class NetworkVideoPolicyTests
         List<TimeSpan> delays = [];
 
         var outcome = NetworkOpenRetry.Run(
-            policy, CancellationToken.None, number => number == 3 ? NetworkAttemptResult.Opened : NetworkAttemptResult.Failed,
-            (_, delay) => delays.Add(delay), out var attempts, wait: (_, _) => false);
+            policy, number => number == 3 ? NetworkAttemptResult.Opened : NetworkAttemptResult.Failed,
+            (_, delay) => delays.Add(delay), out var attempts, CancellationToken.None, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Opened, outcome);
         Assert.Equal(3, attempts);
@@ -157,7 +157,7 @@ public sealed class NetworkVideoPolicyTests
     public void Retry_DefaultPolicy_MakesOneAttempt()
     {
         var outcome = NetworkOpenRetry.Run(
-            NetworkRetryPolicy.Default, CancellationToken.None, _ => NetworkAttemptResult.Failed, null, out var attempts, wait: (_, _) => false);
+            NetworkRetryPolicy.Default, _ => NetworkAttemptResult.Failed, null, out var attempts, CancellationToken.None, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Failed, outcome);
         Assert.Equal(1, attempts);
@@ -167,7 +167,7 @@ public sealed class NetworkVideoPolicyTests
     public void Retry_UnusableContent_IsNotRetried()
     {
         var outcome = NetworkOpenRetry.Run(
-            new NetworkRetryPolicy { MaxRetries = 3 }, CancellationToken.None, _ => NetworkAttemptResult.Unusable, null, out var attempts, wait: (_, _) => false);
+            new NetworkRetryPolicy { MaxRetries = 3 }, _ => NetworkAttemptResult.Unusable, null, out var attempts, CancellationToken.None, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Failed, outcome);
         Assert.Equal(1, attempts);
@@ -180,13 +180,13 @@ public sealed class NetworkVideoPolicyTests
         var calls = 0;
 
         var outcome = NetworkOpenRetry.Run(
-            new NetworkRetryPolicy { MaxRetries = 3 }, cancellation.Token,
+            new NetworkRetryPolicy { MaxRetries = 3 },
             _ =>
             {
                 calls++;
                 return NetworkAttemptResult.Failed;
             },
-            null, out var attempts,
+            null, out var attempts, cancellation.Token,
             wait: (_, _) =>
             {
                 cancellation.Cancel();
@@ -204,13 +204,13 @@ public sealed class NetworkVideoPolicyTests
         using var cancellation = new CancellationTokenSource();
 
         var outcome = NetworkOpenRetry.Run(
-            new NetworkRetryPolicy { MaxRetries = 3 }, cancellation.Token,
+            new NetworkRetryPolicy { MaxRetries = 3 },
             _ =>
             {
                 cancellation.Cancel();
                 return NetworkAttemptResult.Failed;
             },
-            null, out _, wait: (_, _) => false);
+            null, out _, cancellation.Token, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Cancelled, outcome);
     }

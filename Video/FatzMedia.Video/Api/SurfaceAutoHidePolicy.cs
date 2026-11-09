@@ -27,7 +27,7 @@ sealed class SurfaceAutoHidePolicy
     public bool MediaStarted() => State == SurfaceAutoHideState.Hidden
         && TransitionTo(SurfaceAutoHideState.PendingShow);
 
-    public bool MediaPaused() => false;
+    public static bool MediaPaused() => false;
 
     public bool MediaLooped() => State == SurfaceAutoHideState.Hidden
         && TransitionTo(SurfaceAutoHideState.PendingShow);

@@ -38,8 +38,7 @@ public sealed class D3D11CdgParityTests
             CdgOverlay = snapshot
         };
 
-        var software = new SoftwareCompositionRenderer()
-            .Render(frame, CdgConstants.FrameWidth, CdgConstants.FrameHeight)
+        var software = SoftwareCompositionRenderer.Render(frame, CdgConstants.FrameWidth, CdgConstants.FrameHeight)
             .Pixels.ToArray();
 
         using var bridge = D3D11MultiTargetTests.CreateWarpBridge();

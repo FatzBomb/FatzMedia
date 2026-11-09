@@ -7,7 +7,7 @@ public readonly record struct CompositionTargetUpdate(
     int Height,
     string BackendName,
     long Revision,
-    CompositionTargetDirtyFlags DirtyFlags,
+    CompositionTargetChanges DirtyFlags,
     CompositionTargetUpdateAction Action,
     bool IsActive,
     long CaptureSequence)

@@ -5,7 +5,7 @@ using FatzMedia.Video.Core.Files;
 namespace FatzMedia.Video.Tests;
 
 [CollectionDefinition("File type registry", DisableParallelization = true)]
-public sealed class FileTypeRegistryCollection
+public sealed class FileTypeRegistryGroup
 {
 }
 

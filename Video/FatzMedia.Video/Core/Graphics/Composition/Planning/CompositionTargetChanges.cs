@@ -1,7 +1,7 @@
 namespace FatzMedia.Video.Core.Graphics.Composition.Planning;
 
 [Flags]
-public enum CompositionTargetDirtyFlags
+public enum CompositionTargetChanges
 {
     None = 0,
     Activated = 1 << 0,

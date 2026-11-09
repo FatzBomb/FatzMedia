@@ -82,9 +82,11 @@ public sealed class MediaSurfacePresentationModeTests
         Dispatcher.PushFrame(frame);
     }
 
-    sealed class TestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class TestPlatformFactory(TestMediaEngine engine) : IPlatformFactory, IDisposable
     {
         readonly NullPresentationCoordinator _coordinator = new();
+
+        public void Dispose() => _coordinator.Dispose();
 
         public string LastNativeLoadMessage => string.Empty;
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);

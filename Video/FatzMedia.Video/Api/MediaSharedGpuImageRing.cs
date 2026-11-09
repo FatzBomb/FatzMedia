@@ -24,7 +24,7 @@ public readonly record struct MediaSharedGpuImageWrite(int BufferIndex, ulong Ac
 /// when <see cref="MediaSharedGpuImageWrite.WaitForConsumerRelease"/> is set), writes, releases
 /// <see cref="ConsumerKey"/> (or signals render-complete) and calls <see cref="CompleteWrite"/>.
 /// The consumer acquires <see cref="ConsumerKey"/>, reads, releases <see cref="ProducerKey"/> and
-/// calls <see cref="Release"/> with <c>consumed: true</c>. An image the consumer never used comes
+/// calls <see cref="Release(long, int, bool)"/> with <c>consumed: true</c>. An image the consumer never used comes
 /// back with <c>consumed: false</c>: its mutex still holds <see cref="ConsumerKey"/>, which the
 /// producer then acquires instead, and no semaphore signal is pending. No image is written while
 /// the consumer may read it, so the compositor never samples a half-written frame.

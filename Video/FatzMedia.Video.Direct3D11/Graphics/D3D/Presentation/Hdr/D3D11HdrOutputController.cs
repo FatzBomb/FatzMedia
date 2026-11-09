@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
 /// Applies <see cref="HdrOutputPolicy"/> to the primary target before each frame is drawn (Stage
 /// 042A slice 2): reads the cached HDR state of the primary window's monitor, decides, switches
 /// the swap chain when the mode changes and reports each change once (<c>D3D11.HdrOutput</c>).
-/// Off unless <see cref="Rendering.Direct3D11.Direct3D11PresentationOptions.HdrOutput"/> is set:
+/// Off unless <c>Direct3D11PresentationOptions.HdrOutput</c> is set:
 /// then it never queries Windows and every target stays SDR. Called under the renderer's
 /// presentation lock.
 /// </summary>

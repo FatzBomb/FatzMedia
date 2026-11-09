@@ -33,6 +33,7 @@ namespace FatzMedia.Video.Avalonia;
 /// every frame once per surface at that surface's size; each surface picks its own path.
 /// </para>
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "FollowSession(null) detaches the tracker when the surface leaves the tree; the control is not IDisposable.")]
 public class MediaSurface : Control
 {
     /// <summary>The diagnostic category of the surface's path decisions.</summary>

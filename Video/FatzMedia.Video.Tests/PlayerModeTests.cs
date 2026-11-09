@@ -288,9 +288,11 @@ public sealed class PlayerModeTests
         return [.. captured];
     }
 
-    sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory, IDisposable
     {
         readonly NullPresentationCoordinator _coordinator = new();
+
+        public void Dispose() => _coordinator.Dispose();
 
         public RecordingAudioDeviceMonitor Monitor { get; } = new();
 

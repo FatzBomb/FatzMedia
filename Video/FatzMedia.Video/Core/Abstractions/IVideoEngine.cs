@@ -44,6 +44,8 @@ public sealed class VideoFrameEventArgs : EventArgs
     internal Core.Graphics.Composition.MediaCompositionTargetFilter? Targets { get; init; }
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716", Justification = "Stop is the natural name; a C#-only API where the VB keyword clash does not matter and a rename would break every host.")]
+
 public interface IVideoEngine : IDisposable
 {
     bool Open(string path);

@@ -1,3 +1,4 @@
+using System.Globalization;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
@@ -467,7 +468,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
                 Category,
-                $"Silence detection complete: first audible {silence.FirstAudibleTime?.TotalSeconds.ToString("F3") ?? "none"}s, last audible {silence.LastAudibleTime?.TotalSeconds.ToString("F3") ?? "none"}s, playable {result.PlayableStart:F3}-{result.PlayableEnd:F3}s ({silence.Mode} {silence.ThresholdDb:F0} dBFS{(silence.FromCache ? ", cached" : string.Empty)})",
+                $"Silence detection complete: first audible {silence.FirstAudibleTime?.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture) ?? "none"}s, last audible {silence.LastAudibleTime?.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture) ?? "none"}s, playable {result.PlayableStart:F3}-{result.PlayableEnd:F3}s ({silence.Mode} {silence.ThresholdDb:F0} dBFS{(silence.FromCache ? ", cached" : string.Empty)})",
                 sourcePath: label);
             return MediaAnalysisResultValidator.IsValid(result) ? result : null;
         }

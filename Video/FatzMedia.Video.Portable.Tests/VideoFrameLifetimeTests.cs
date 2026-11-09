@@ -14,7 +14,7 @@ namespace FatzMedia.Video.Tests;
 /// <see cref="VideoFrameEventArgs.PixelDataCanBeRetained"/>; the consumer copies what it keeps
 /// and never retains the event object.
 /// </summary>
-[Collection(MediaPresentationCoordinatorCollection.Name)]
+[Collection(MediaPresentationCoordinatorGroup.Name)]
 public sealed class VideoFrameLifetimeTests
 {
     [Fact]

@@ -17,6 +17,7 @@ public interface IPlayerDispatcher
 }
 
 /// <summary>A UI-thread timer created by <see cref="IPlayerDispatcher.CreateTimer"/>.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716", Justification = "Stop is the natural name; a C#-only API where the VB keyword clash does not matter and a rename would break every host.")]
 public interface IPlayerTimer : IDisposable
 {
     void Start();

@@ -28,7 +28,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     [Fact]
     public async Task EmbeddedTracksArrivingLater_AreAddedAndSelected_WithoutBlockingTheOpen()
     {
-        var decoder = new GatedDecoder(EmbeddedTracks);
+        using var decoder = new GatedDecoder(EmbeddedTracks);
         using var coordinator = CreateCoordinator(decoder.Decode);
         var changes = 0;
         coordinator.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref changes);
@@ -49,7 +49,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     [Fact]
     public async Task EmbeddedTracksArrivingLater_TakePrecedenceOverTheAutoSelectedSidecar()
     {
-        var decoder = new GatedDecoder(EmbeddedTracks);
+        using var decoder = new GatedDecoder(EmbeddedTracks);
         using var coordinator = CreateCoordinator(decoder.Decode);
 
         Assert.True(coordinator.OpenVideo("movie.mkv", _sidecar));
@@ -67,7 +67,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     [InlineData(null)]
     public async Task EmbeddedTracksArrivingLater_NeverOverrideTheTrackTheUserChose(string? chosen)
     {
-        var decoder = new GatedDecoder(EmbeddedTracks);
+        using var decoder = new GatedDecoder(EmbeddedTracks);
         using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv", _sidecar));
 
@@ -88,7 +88,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
             .. EmbeddedTracks,
             new(3, "ASS", [new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "Second")]),
         ];
-        var decoder = new GatedDecoder(tracks);
+        using var decoder = new GatedDecoder(tracks);
         using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv"));
 
@@ -104,8 +104,8 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     {
         // The first scan ignores its token and returns its tracks after the next open, as a decoder
         // already past its last packet would.
-        var first = new GatedDecoder(EmbeddedTracks, honourCancellation: false);
-        var second = new GatedDecoder([]);
+        using var first = new GatedDecoder(EmbeddedTracks, honourCancellation: false);
+        using var second = new GatedDecoder([]);
         using var coordinator = CreateCoordinator((path, token) =>
             path == "first.mkv" ? first.Decode(path, token) : second.Decode(path, token));
         var changes = 0;
@@ -131,7 +131,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     [Fact]
     public async Task Close_CancelsScan_AndACancelledDecoderEndsQuietly()
     {
-        var decoder = new GatedDecoder(EmbeddedTracks);
+        using var decoder = new GatedDecoder(EmbeddedTracks);
         using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv"));
         Assert.True(decoder.Started.Wait(Timeout));
@@ -204,7 +204,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     }
 
     /// <summary>A decoder that blocks until released, then returns its tracks or, when cancelled, throws.</summary>
-    sealed class GatedDecoder(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool honourCancellation = true)
+    sealed class GatedDecoder(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool honourCancellation = true) : IDisposable
     {
         readonly ManualResetEventSlim _release = new();
 
@@ -213,6 +213,12 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         public CancellationToken Token { get; private set; }
 
         public void Release() => _release.Set();
+
+        public void Dispose()
+        {
+            _release.Dispose();
+            Started.Dispose();
+        }
 
         public IReadOnlyList<EmbeddedSubtitleTrack> Decode(string path, CancellationToken token)
         {
@@ -225,7 +231,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
             }
             else
             {
-                _ = _release.Wait(Timeout);
+                _ = _release.Wait(Timeout, CancellationToken.None);
             }
 
             return tracks;

@@ -54,7 +54,7 @@ public sealed class AudioLevelSourceSeamTests
 
         Assert.Equal(0, await normalizer.AnalyzePeakQuickAsync(null));
         Assert.Equal(0, await normalizer.AnalyzePeakAsync(null));
-        var scan = await new AudioSilenceAnalyzer().ScanAsync(null, 10, -60, CancellationToken.None);
+        var scan = await AudioSilenceAnalyzer.ScanAsync(null, 10, -60, CancellationToken.None);
         Assert.Equal(10, scan.SourceDuration);
         Assert.Empty(scan.SilenceRegions);
     }
@@ -64,7 +64,7 @@ public sealed class AudioLevelSourceSeamTests
     {
         var source = new FakeLevelSource(durationSeconds: 0.25, peaks: [0.5, 0, 0.5]);
 
-        var scan = await new AudioSilenceAnalyzer().ScanAsync(source, 0.25, -60, CancellationToken.None);
+        var scan = await AudioSilenceAnalyzer.ScanAsync(source, 0.25, -60, CancellationToken.None);
 
         Assert.Equal(
             ["SeekStart", "Position", "Read:0.1", "Position", "Position", "Read:0.1", "Position", "Position", "Read:0.05", "Position", "Position"],
@@ -79,7 +79,7 @@ public sealed class AudioLevelSourceSeamTests
         var source = new FakeLevelSource(durationSeconds: 1, peaks: [0.5]) { FailSeekToStart = true };
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new AudioSilenceAnalyzer().ScanAsync(source, 1, -60, CancellationToken.None));
+            () => AudioSilenceAnalyzer.ScanAsync(source, 1, -60, CancellationToken.None));
 
         Assert.Equal("Unable to seek the analysis stream to its start: Handle", error.Message);
     }

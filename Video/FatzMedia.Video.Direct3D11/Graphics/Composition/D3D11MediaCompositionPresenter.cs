@@ -25,7 +25,7 @@ namespace FatzMedia.Video.Core.Graphics.Composition;
 /// An scRGB (FP16) target (HDR output, Stage 042A slice 2) gets HDR video as scRGB and every SDR
 /// layer linearized and scaled to the SDR white level, blended in linear light.
 /// </summary>
-sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics = false, bool enableCompositionDiagnostics = false)
+sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics = false, bool enableCompositionDiagnostics = false) : IDisposable
 {
     const int CompositionDiagnosticInterval = 120;
 
@@ -1731,5 +1731,10 @@ float4 PSMain(VertexOut input) : SV_TARGET
 }
 ";
 
-    public void Dispose() => Reset();
+    /// <summary>Releases every GPU resource and the layer textures; the presenter is not used afterwards.</summary>
+    public void Dispose()
+    {
+        Reset();
+        _layerCache.Dispose();
+    }
 }

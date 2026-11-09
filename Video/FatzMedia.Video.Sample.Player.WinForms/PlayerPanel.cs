@@ -180,7 +180,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
             _chrome.Exit();
     }
 
-    Control BuildTopBar()
+    TableLayoutPanel BuildTopBar()
     {
         var bar = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 4, RowCount = 1, Padding = new Padding(4) };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -207,7 +207,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return bar;
     }
 
-    Control BuildBottom()
+    TableLayoutPanel BuildBottom()
     {
         var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 5 };
         bottom.Controls.Add(BuildSeekRow(), 0, 0);
@@ -220,7 +220,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return bottom;
     }
 
-    Control BuildSeekRow()
+    TableLayoutPanel BuildSeekRow()
     {
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, RowCount = 1 };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
@@ -237,7 +237,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return row;
     }
 
-    Control BuildTransportRow()
+    FlowLayoutPanel BuildTransportRow()
     {
         var row = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
         var play = new Button { Text = "Play", AutoSize = true };
@@ -285,7 +285,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return tabs;
     }
 
-    Control BuildSyncTab()
+    FlowLayoutPanel BuildSyncTab()
     {
         var panel = Flow();
         foreach ((var label, var key, var text, var property) in new (string, string, Func<string>, string)[]
@@ -336,7 +336,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    Control BuildVideoTab()
+    FlowLayoutPanel BuildVideoTab()
     {
         var panel = Flow();
         AddSlider(panel, "HUE", () => _viewModel.HueDegrees, value => _viewModel.HueDegrees = value, nameof(PlayerViewModel.HueDegrees), -180, 180, 1, "+0;-0;0", "°");
@@ -356,7 +356,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    Control BuildAudioTab()
+    FlowLayoutPanel BuildAudioTab()
     {
         var panel = Flow();
         AddSlider(panel, "PITCH", () => _viewModel.Pitch, value => _viewModel.Pitch = (int)Math.Round(value), nameof(PlayerViewModel.Pitch), -12, 12, 1, "+0;-0;0", " st");
@@ -397,7 +397,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    Control BuildAVTab()
+    FlowLayoutPanel BuildAVTab()
     {
         var panel = Flow();
         var checks = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
@@ -411,7 +411,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    Control BuildNextTab()
+    FlowLayoutPanel BuildNextTab()
     {
         var panel = Flow();
         var choose = SmallButton("Choose...");
@@ -444,7 +444,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    Control BuildLogTab()
+    TableLayoutPanel BuildLogTab()
     {
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
