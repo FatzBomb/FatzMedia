@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Buffers;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;

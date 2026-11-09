@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Diagnostics;
+using System.Globalization;
 using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Core.Media;

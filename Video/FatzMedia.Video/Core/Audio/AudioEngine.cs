@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
