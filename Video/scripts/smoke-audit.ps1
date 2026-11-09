@@ -7,7 +7,7 @@
     measures CPU/GPU, forces GPU resets, resizes windows, takes screenshots and reads the logs
     itself. You only follow the short on-screen instructions and answer a few questions.
 
-    Everything is saved to a folder in work\fatzvideo\test-results (FatzBomb-smoke-<date>), and at the end the
+    Everything is saved to a folder in work\fatzmedia\Video\test-results (FatzBomb-smoke-<date>), and at the end the
     results are copied to your clipboard so you can paste them into the chat.
 
     Run it from the repository folder in any PowerShell window (Windows PowerShell 5.1 or 7):

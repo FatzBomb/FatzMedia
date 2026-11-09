@@ -8,7 +8,7 @@
     right flags, reads their logs for the expected lines, measures CPU, takes screenshots, serves a
     local web file, and writes PASS/FAIL per check. You watch, and answer only what needs eyes or ears.
 
-    Everything is saved to a folder in work\fatzvideo\test-results (FatzBomb-backlog-<date>); at the end the results
+    Everything is saved to a folder in work\fatzmedia\Video\test-results (FatzBomb-backlog-<date>); at the end the results
     are copied to your clipboard so you can paste them into the chat.
 
     Run it from the repository folder:
