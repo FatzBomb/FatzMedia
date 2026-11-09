@@ -491,9 +491,11 @@ public sealed class PlayerThreadingContractTests
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reported = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Only this test's report: a handler failure raised without an owner (another test class,
+        // in parallel) is process-wide and reaches every player.
         player.MediaDiagnostic += (_, e) =>
         {
-            if (e.Category == "HostEvent")
+            if (e.Category == "HostEvent" && e.Message.StartsWith("MediaStopped", StringComparison.Ordinal))
                 reported.TrySetResult(e.Message);
         };
         player.MediaStopped += (_, _) => throw new InvalidOperationException("host bug");

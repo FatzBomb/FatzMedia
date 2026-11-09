@@ -245,8 +245,9 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             Assert.InRange(engine.NormalizationGain, 1.9, 2.1);
         }
 
-        // The scan went to the cache folder; a new engine (a new run) reads it back at open.
-        Assert.NotEmpty(Directory.GetFiles(cache, "*.loudness"));
+        // The scan went to the cache folder (one shared file, loudness.fac, since FatzAudio rc.4);
+        // a new engine (a new run) reads it back at open.
+        Assert.True(File.Exists(Path.Combine(cache, "loudness.fac")));
         using (FatzAudioEngine engine = CreateEngine(configuration with { Normalization = configuration.Normalization with { TargetLufs = -20 } }))
         {
             var gains = new BlockingCollection<double>();
