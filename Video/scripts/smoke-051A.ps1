@@ -8,7 +8,7 @@
     UI-thread numbers (047A's before numbers) and writes PASS/FAIL per check. You only do what needs
     hands or eyes (dropping a file, watching the A/B swap demo); the script tells you exactly what.
 
-    Everything is saved to a folder in work\fatzvideo\test-results (FatzBomb-051A-<date>); at the end the results are
+    Everything is saved to a folder in work\fatzmedia\Video\test-results (FatzBomb-051A-<date>); at the end the results are
     copied to your clipboard so you can paste them into the chat.
 
     Run it from the repository folder, in PowerShell:

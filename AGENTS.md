@@ -5,8 +5,8 @@ FatzBomb ecosystem repo, id `fatzmedia`: FatzMedia.Audio in `Audio/` (was the Fa
 
 - Each folder keeps its own rules: `Audio/AGENTS.md` and `Video/AGENTS.md`. Work in one folder at a time
   unless the task names both; a change that needs both lands in one branch and one PR.
-- Output (test results, logs, scratch) goes in `D:\development\FatzBomb\work\fatzaudio\` or
-  `work\fatzvideo\`, never in the repo.
+- Output (test results, logs, scratch) goes in `D:\development\FatzBomb\work\fatzmedia\Audio\` or
+  `work\fatzmedia\Video\`, never in the repo.
 - Video uses Audio's .NET binding (`FatzMedia.Audio`) by project reference; its native library comes
   from Audio's CMake build (`Audio\build\bin\Release` by default). `FatzMedia.sln` at the root opens both.
 - The native library and C API keep the FatzAudio names (`fatzaudio.dll`, `fa_*`); the .NET names are

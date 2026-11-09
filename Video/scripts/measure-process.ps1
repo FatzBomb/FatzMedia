@@ -6,7 +6,7 @@
 .DESCRIPTION
     Start the program and get it into the state to measure (video playing, screens open), then run
     this script with the process name or id. It samples once a second for -Seconds and writes a CSV
-    and a summary (average and maximum) to work\fatzvideo\test-results. Nothing is changed on the program.
+    and a summary (average and maximum) to work\fatzmedia\Video\test-results. Nothing is changed on the program.
 
     Columns: CPU as % of all cores and as cores used, working set and private memory (MB), threads,
     handles, GPU utilization (all engines, %) and GPU dedicated and shared memory (MB). The GPU columns
@@ -44,7 +44,7 @@ if ($Id -gt 0) {
 
 $pidText = $proc.Id
 $cores = [Environment]::ProcessorCount
-$desktop = Join-Path $PSScriptRoot '..\..\..\work\fatzvideo\test-results'
+$desktop = Join-Path $PSScriptRoot '..\..\..\work\fatzmedia\Video\test-results'
 New-Item -ItemType Directory -Force -Path $desktop | Out-Null
 if (-not $desktop) { $desktop = [IO.Path]::GetTempPath() }
 $outDir = Join-Path $desktop ("FatzBomb-measure-{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmm'))

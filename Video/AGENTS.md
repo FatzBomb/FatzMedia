@@ -5,8 +5,8 @@ video engine.
 
 - Needs FatzMedia.Audio from `..\Audio` of this repo, by project reference; its native library comes
   from Audio's CMake build (`docs/NATIVE_DEPENDENCIES.md`). See the root AGENTS.md.
-- Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzvideo\`,
-  never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzvideo` (read-only).
+- Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzmedia\Video\`,
+  never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzmedia\Video` (read-only).
 ## FatzMedia.Video
 .NET 10 media engine: UI-agnostic Core, renderer packages, platform packages, UI adapters, and
 test hosts. Read `docs/CURRENT_ARCHITECTURE.md`, `docs/VALIDATION.md`,
