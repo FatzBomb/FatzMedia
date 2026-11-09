@@ -944,6 +944,8 @@ public partial class PlayerCore : IPlayerSession
     /// <paramref name="configuration"/> (Reset, and SetModeAsync with another mode). The host's
     /// surfaces are held meanwhile and reattached to the new graph.
     /// </summary>
+    /// <param name="configuration">The configuration the new graph is built from.</param>
+    /// <param name="resolvedNativeLibraryPaths">The folders searched for the native libraries.</param>
     /// <param name="keepOperationQueue">
     /// Keeps the control queue: a mode switch runs on it, and the calls queued behind the switch
     /// must run after it. Reset replaces it.
@@ -1274,6 +1276,8 @@ public partial class PlayerCore : IPlayerSession
         FreeSessionGraph(stopPlayback: true);
     }
 
+    /// <param name="RequestedSeconds">The position the caller asked for.</param>
+    /// <param name="TargetSeconds">The position the seek was sent to: the seek is complete once the engine is there.</param>
     /// <param name="DuringScrub">
     /// The seek was requested during a scrub, so a video settle may land on the previewed frame
     /// rather than the target (035A).

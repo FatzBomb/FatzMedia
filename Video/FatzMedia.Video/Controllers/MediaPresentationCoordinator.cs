@@ -126,6 +126,11 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     {
     }
 
+    /// <param name="rendererBackend">The renderer that presents the composition.</param>
+    /// <param name="subtitleRasterizer">Draws subtitle text into pixels.</param>
+    /// <param name="mediaEngine">The engine whose frames and position are presented.</param>
+    /// <param name="configuration">The player's configuration.</param>
+    /// <param name="precisionWaiterFactory">Creates the precise waiters used to pace presents.</param>
     /// <param name="timeProvider">Drives the device-health timer and the stall detector (ENG-039).</param>
     internal MediaPresentationCoordinator(
         IMediaRendererBackend rendererBackend,

@@ -75,6 +75,8 @@ static class HostEventDispatcher
         }
     }
 
+    /// <param name="eventName">The name of the event whose handler failed.</param>
+    /// <param name="exception">The exception the handler threw.</param>
     /// <param name="report">
     /// <see langword="false"/> for the diagnostic event itself: reporting its failure as a
     /// diagnostic would raise it again.

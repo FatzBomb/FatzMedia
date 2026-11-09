@@ -15,6 +15,9 @@ sealed class VideoPipelineFactory : IVideoEngineFactory
     readonly RendererVideoDecodeServices _hardwareAccelerationServices;
     readonly bool _audioAvailable;
 
+    /// <param name="precisionWaiterFactory">Creates the precise waiters that pace frame presentation.</param>
+    /// <param name="platformServices">The platform's timing and device services for the pipeline.</param>
+    /// <param name="hardwareAccelerationServices">What the renderer offers for decoding on its own device.</param>
     /// <param name="audioAvailable">
     /// False when the audio engine's native libraries (BASS) did not load: video then plays its
     /// picture on the playback clock, as in Background mode, and never touches BASS.

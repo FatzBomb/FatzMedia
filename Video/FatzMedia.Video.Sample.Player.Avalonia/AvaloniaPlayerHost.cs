@@ -96,6 +96,9 @@ sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPlayerFileP
 /// otherwise; <c>--decoding=software</c> forces software for CPU comparisons). The engine is the
 /// adapter's <see cref="FatzMedia.Video.Avalonia.Player"/> (Stage 046A slice 3).
 /// </summary>
+/// <param name="renderer">The renderer picked in the toolbar: its kind, its decoding and the details logged at start.</param>
+/// <param name="nativePaths">The folders searched for the native libraries.</param>
+/// <param name="label">The player's short name (for example "P1") at the start of its log lines.</param>
 /// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
 sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label, IReadOnlyList<string> startupWarnings) : IPlayerEngineFactory
 {

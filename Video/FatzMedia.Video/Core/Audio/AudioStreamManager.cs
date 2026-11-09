@@ -496,6 +496,7 @@ sealed class AudioStreamManager : IDisposable
     /// Sets the current position in seconds on the playback handle.
     /// </summary>
     /// <param name="seconds">Target position in seconds</param>
+    /// <param name="flush">Whether to flush the buffered audio so the new position is heard at once</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetCurrentPosition(double seconds, bool flush = false)
     {

@@ -150,6 +150,10 @@ public static class PlayerStatsLine
     /// Gets <c>{label} {state} | {fps} fps | CPU {n}% ({cores} of {count} cores) | managed {n} MB,
     /// working set {n} MB (whole process) | surface {surface}</c>, invariant culture.
     /// </summary>
+    /// <param name="label">The player's name, shown first.</param>
+    /// <param name="state">The player's transport state.</param>
+    /// <param name="framesPerSecond">The video frames presented per second.</param>
+    /// <param name="process">The latest CPU and memory reading of this process.</param>
     /// <param name="surface">What the host's surface does, usually <see cref="DescribeSurface"/>.</param>
     /// <param name="processorCount">The machine's logical processors; <see cref="Environment.ProcessorCount"/> when null.</param>
     public static string Format(string label, MediaPlayerState state, double framesPerSecond, ProcessSample process, string surface, int? processorCount = null) =>

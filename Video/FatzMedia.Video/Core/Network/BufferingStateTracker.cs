@@ -19,6 +19,7 @@ sealed class BufferingStateTracker(double enterThreshold = 0.05, double exitThre
     /// <param name="bufferedBytes">Bytes downloaded ahead of the decode position.</param>
     /// <param name="targetBytes">Configured network buffer size in bytes.</param>
     /// <param name="downloadComplete">Whether the whole source has been downloaded.</param>
+    /// <param name="fill">The buffer fill from 0 to 1 (1 once the download is complete).</param>
     public bool Update(long bufferedBytes, long targetBytes, bool downloadComplete, out double fill)
     {
         fill = downloadComplete

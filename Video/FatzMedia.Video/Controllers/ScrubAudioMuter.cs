@@ -33,6 +33,8 @@ sealed class ScrubAudioMuter : IDisposable
     bool _disposed;
 
     /// <param name="setMuted">Applies the mute (<see langword="true"/>) or unmute with the given ramp.</param>
+    /// <param name="timeProvider">Drives the quiet-period timer; the system clock when null.</param>
+    /// <param name="quietPeriod">How long without a seek before audio comes back; the default quiet period when null.</param>
     public ScrubAudioMuter(Action<bool, TimeSpan> setMuted, TimeProvider? timeProvider = null, TimeSpan? quietPeriod = null)
     {
         ArgumentNullException.ThrowIfNull(setMuted);

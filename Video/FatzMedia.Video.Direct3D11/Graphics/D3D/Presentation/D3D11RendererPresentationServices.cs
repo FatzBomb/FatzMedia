@@ -262,6 +262,8 @@ sealed class D3D11RendererPresentationServices
     public string? LastPresentFailureReason { get; private set; }
 
     /// <param name="isDisposed">Read live: the owner can be disposed while a present is in flight.</param>
+    /// <param name="frame">The composition frame to present on the visible surface.</param>
+    /// <param name="framePresented">Called with the width and height of the frame once it has been presented.</param>
     public bool PresentMediaCompositionVisible(
         Func<bool> isDisposed,
         MediaCompositionFrame frame,

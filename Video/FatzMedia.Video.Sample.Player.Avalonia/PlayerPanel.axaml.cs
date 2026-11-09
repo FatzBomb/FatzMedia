@@ -38,10 +38,15 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     {
     }
 
+    /// <param name="index">The player's number, starting at 1: names the panel and decides which player gets the second screen.</param>
     /// <param name="atStartup">
     /// Whether this panel is part of the window's first build: only then does player 1 open the
     /// <c>--second-screen=</c> screen (rebuilt players start empty, as in the WPF and WinForms players).
     /// </param>
+    /// <param name="renderer">The renderer picked in the toolbar for this player's engine.</param>
+    /// <param name="nativePaths">The folders searched for the native libraries.</param>
+    /// <param name="options">The command-line options this player starts with.</param>
+    /// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
     internal PlayerPanel(int index, bool atStartup, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options, IReadOnlyList<string> startupWarnings)
     {
         _index = index;

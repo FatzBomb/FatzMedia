@@ -267,6 +267,8 @@ sealed class PlayerOperationQueue : IDisposable
         }
     }
 
+    /// <param name="parent">The scope this one is nested in, or <see langword="null"/> for an outermost scope.</param>
+    /// <param name="queue">The queue whose operation this is, or <see langword="null"/> for an event handler.</param>
     /// <param name="threadId">The only thread the scope applies on, or 0 for any thread.</param>
     internal sealed class OperationScope(OperationScope? parent, PlayerOperationQueue? queue, int threadId)
     {

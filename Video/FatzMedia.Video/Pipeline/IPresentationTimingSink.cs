@@ -6,6 +6,9 @@ namespace FatzMedia.Video.Pipeline;
 /// The presentation surfaces on one display and that display's vertical-blank timing (Stage
 /// 017A slices 4 and 5). Surfaces on the same monitor share a group, so they present together.
 /// </summary>
+/// <param name="Timing">The display's vertical-blank timing.</param>
+/// <param name="IncludesPrimary">Whether the primary surface is on this display.</param>
+/// <param name="SurfaceIds">The ids of the secondary surfaces on this display.</param>
 /// <param name="Targets">
 /// The group's surfaces as a composition filter; null when every surface is in this one group.
 /// </param>

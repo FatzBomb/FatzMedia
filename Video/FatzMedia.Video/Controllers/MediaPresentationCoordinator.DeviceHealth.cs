@@ -448,6 +448,9 @@ public sealed partial class MediaPresentationCoordinator
             preferLocal: false);
     }
 
+    /// <param name="Width">The background frame's width in pixels.</param>
+    /// <param name="Height">The background frame's height in pixels.</param>
+    /// <param name="StretchMode">How the background is stretched to the surface.</param>
     /// <param name="Revision">The background revision the frame was handed over with.</param>
     readonly record struct GpuBackground(int Width, int Height, MediaCompositionStretchMode StretchMode, long Revision);
 

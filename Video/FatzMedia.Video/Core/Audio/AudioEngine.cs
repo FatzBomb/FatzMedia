@@ -93,6 +93,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     /// <param name="normalizer">Custom normalizer implementation</param>
     /// <param name="streamManager">Custom stream manager implementation</param>
     /// <param name="outputLatencyProvider">Provider for BASS-reported output latency</param>
+    /// <param name="silenceTrim">Which leading and trailing silence to skip</param>
+    /// <param name="analysisCache">Cache of analysis results per file; the shared cache when null</param>
+    /// <param name="networkRetry">Retry policy for network sources; the default policy when null</param>
     internal AudioEngine(
         AudioNormalizer normalizer,
         AudioStreamManager streamManager,

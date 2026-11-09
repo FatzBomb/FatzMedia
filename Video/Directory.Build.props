@@ -3,8 +3,6 @@
   <PropertyGroup>
     <!-- true once this repo builds with 0 warnings: Release then fails on any warning (build\FatzBomb.Common.props). -->
     <FatzBombStrict>false</FatzBombStrict>
-    <!-- Partial <param> docs are deliberate (only notable parameters are documented). -->
-    <NoWarn>$(NoWarn);CS1573</NoWarn>
   </PropertyGroup>
 
   <!-- Shared FatzBomb settings, synced from shared\style; repo settings go below. -->

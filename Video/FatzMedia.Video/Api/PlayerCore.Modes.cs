@@ -246,6 +246,7 @@ public partial class PlayerCore
     /// pitch/tempo reset), then restores its sync offsets, position and transport state: after a
     /// mode switch, and after a GPU device recovery (ENG-039). On the control queue.
     /// </summary>
+    /// <param name="state">The state captured before the switch: the load to reopen and the settings to restore.</param>
     /// <param name="diagnosticCategory">The category of the warning when it cannot be reopened.</param>
     /// <param name="context">Who could not reopen it, for that warning (for example "Audio mode").</param>
     void ReopenMedia(ModeSwitchState state, string diagnosticCategory, string context)

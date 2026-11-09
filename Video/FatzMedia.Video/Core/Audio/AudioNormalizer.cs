@@ -52,6 +52,7 @@ sealed class AudioNormalizer
     /// Optimized for speed over accuracy.
     /// </summary>
     /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
+    /// <param name="updateGain">Whether to update the normalization gain from the measured peak</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
     public async Task<double> AnalyzePeakQuickAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default)
@@ -69,6 +70,7 @@ sealed class AudioNormalizer
     /// May take longer but provides more reliable results.
     /// </summary>
     /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
+    /// <param name="updateGain">Whether to update the normalization gain from the measured peak</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
     public async Task<double> AnalyzePeakAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default) =>
