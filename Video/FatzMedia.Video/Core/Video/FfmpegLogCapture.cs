@@ -10,18 +10,18 @@ namespace FatzMedia.Video.Core.Video;
 /// Network reads (Stage 039A) also route the warnings FFmpeg logs on the reading thread, such as
 /// an HTTP reconnect, to an observer set for the duration of the read.
 /// </summary>
-internal static unsafe class FfmpegLogCapture
+static unsafe class FfmpegLogCapture
 {
-    private const int MaxLinesPerContext = 6;
-    private const int LineBufferBytes = 1024;
-    private static readonly Lock Gate = new();
-    private static readonly Dictionary<nint, List<string>> Captures = [];
+    const int MaxLinesPerContext = 6;
+    const int LineBufferBytes = 1024;
+    static readonly Lock Gate = new();
+    static readonly Dictionary<nint, List<string>> Captures = [];
     // Kept alive for the life of the process: FFmpeg holds the function pointer.
-    private static av_log_set_callback_callback? _callback;
+    static av_log_set_callback_callback? _callback;
 
     // The observer of the network read running on this thread (Stage 039A), or null.
     [ThreadStatic]
-    private static Action<int, string>? t_networkObserver;
+    static Action<int, string>? _networkObserver;
 
     public static void Begin(void* context)
     {
@@ -48,18 +48,18 @@ internal static unsafe class FfmpegLogCapture
     /// </summary>
     public static NetworkObserverScope ObserveNetwork(Action<int, string> observer)
     {
-        Action<int, string>? previous = t_networkObserver;
-        t_networkObserver = observer;
+        var previous = _networkObserver;
+        _networkObserver = observer;
         return new NetworkObserverScope(previous);
     }
 
     /// <summary>Restores the previous observer of this thread.</summary>
     public readonly struct NetworkObserverScope(Action<int, string>? previous) : IDisposable
     {
-        public void Dispose() => t_networkObserver = previous;
+        public void Dispose() => _networkObserver = previous;
     }
 
-    private static void EnsureInstalledCore()
+    static void EnsureInstalledCore()
     {
         if (_callback != null)
             return;
@@ -74,7 +74,7 @@ internal static unsafe class FfmpegLogCapture
     public static IReadOnlyList<string> Peek(void* context)
     {
         lock (Gate)
-            return Captures.TryGetValue((nint)context, out List<string>? lines) ? [.. lines] : [];
+            return Captures.TryGetValue((nint)context, out var lines) ? [.. lines] : [];
     }
 
     public static void End(void* context)
@@ -83,7 +83,7 @@ internal static unsafe class FfmpegLogCapture
             _ = Captures.Remove((nint)context);
     }
 
-    private static void OnLog(void* context, int level, string format, byte* arguments)
+    static void OnLog(void* context, int level, string format, byte* arguments)
     {
         if (level <= ffmpeg.AV_LOG_WARNING && context != null && TryReserveLine(context))
         {
@@ -97,7 +97,7 @@ internal static unsafe class FfmpegLogCapture
             return;
         }
 
-        if (level <= ffmpeg.AV_LOG_WARNING && t_networkObserver is { } observer)
+        if (level <= ffmpeg.AV_LOG_WARNING && _networkObserver is { } observer)
         {
             var buffer = stackalloc byte[LineBufferBytes];
             var printPrefix = 1;
@@ -121,16 +121,16 @@ internal static unsafe class FfmpegLogCapture
         ffmpeg.av_log_default_callback(context, level, format, arguments);
     }
 
-    private static bool TryReserveLine(void* context)
+    static bool TryReserveLine(void* context)
     {
         lock (Gate)
-            return Captures.TryGetValue((nint)context, out List<string>? lines) && lines.Count < MaxLinesPerContext;
+            return Captures.TryGetValue((nint)context, out var lines) && lines.Count < MaxLinesPerContext;
     }
 
-    private static void AddLine(void* context, string line)
+    static void AddLine(void* context, string line)
     {
         lock (Gate)
-            if (Captures.TryGetValue((nint)context, out List<string>? lines) && lines.Count < MaxLinesPerContext && !lines.Contains(line))
+            if (Captures.TryGetValue((nint)context, out var lines) && lines.Count < MaxLinesPerContext && !lines.Contains(line))
                 lines.Add(line);
     }
 }

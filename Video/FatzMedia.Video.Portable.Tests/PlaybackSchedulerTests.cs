@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Portable.Tests;
 /// </summary>
 public sealed class PlaybackSchedulerTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
     public void Restarts_RunOnTheSameThread()
@@ -205,7 +205,7 @@ public sealed class PlaybackSchedulerTests
         _ = Assert.Throws<ObjectDisposedException>(() => scheduler.Start(_ => { }));
     }
 
-    private static void InterlockedMax(ref int target, int value)
+    static void InterlockedMax(ref int target, int value)
     {
         var current = Volatile.Read(ref target);
         while (value > current)

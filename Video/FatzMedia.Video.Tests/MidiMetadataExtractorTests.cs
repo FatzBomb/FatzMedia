@@ -7,7 +7,7 @@ public sealed class MidiMetadataExtractorTests
     [Fact]
     public void ParseMarkerMetadata_UsesSoftKaraokeTitleFallbacks()
     {
-        MidiMetadataExtractor.ParsedMarkerMetadata metadata = MidiMetadataExtractor.ParseMarkerMetadata(
+        var metadata = MidiMetadataExtractor.ParseMarkerMetadata(
             ["@TMy Song", "@TThe Artist", "@T(c) 2026 Some Label"]);
 
         Assert.Equal("My Song", metadata.Title);
@@ -19,7 +19,7 @@ public sealed class MidiMetadataExtractorTests
     [Fact]
     public void ParseMarkerMetadata_ParsesLabeledInformation()
     {
-        MidiMetadataExtractor.ParsedMarkerMetadata metadata = MidiMetadataExtractor.ParseMarkerMetadata(
+        var metadata = MidiMetadataExtractor.ParseMarkerMetadata(
         [
             "@I title: My Song",
             "@I artist: The Artist",
@@ -46,7 +46,7 @@ public sealed class MidiMetadataExtractorTests
     [Fact]
     public void ParseMarkerMetadata_DeduplicatesAdditionalInformation()
     {
-        MidiMetadataExtractor.ParsedMarkerMetadata metadata = MidiMetadataExtractor.ParseMarkerMetadata(
+        var metadata = MidiMetadataExtractor.ParseMarkerMetadata(
             ["@IRandom note", "@irandom note", "@I2025", "plain lyric", "@T"]);
 
         Assert.Equal("2025", metadata.Year);
@@ -56,7 +56,7 @@ public sealed class MidiMetadataExtractorTests
     [Fact]
     public void ParseMarkerMetadata_UsesThirdTitleAsAdditionalInformationWhenNotCopyright()
     {
-        MidiMetadataExtractor.ParsedMarkerMetadata metadata = MidiMetadataExtractor.ParseMarkerMetadata(
+        var metadata = MidiMetadataExtractor.ParseMarkerMetadata(
             ["@TFirst", "@TSecond", "@TThird"]);
 
         Assert.Equal("First", metadata.Title);

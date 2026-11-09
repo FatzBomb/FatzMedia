@@ -13,10 +13,10 @@ namespace FatzMedia.Video.Sample.Player.Hosting;
 /// (<see cref="App.RendererSelection"/>, Stage 036A; a presentation factory per player) and the
 /// Windows platform package.
 /// </summary>
-internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
+sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
 {
-    private PlayerRendererSelection? _selection;
-    private IPlatformFactory? _platformFactory;
+    PlayerRendererSelection? _selection;
+    IPlatformFactory? _platformFactory;
 
     // --native= directories first, then the Windows defaults (or the app's native/ drop folder).
     public IReadOnlyList<string> NativeLibraryPaths { get; } =
@@ -26,7 +26,7 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
 
     public async Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        PlayerRendererSelection selection = await App.RendererSelection.ConfigureAwait(false);
+        var selection = await App.RendererSelection.ConfigureAwait(false);
         _selection = selection;
         // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
         return selection.ToRendererInfo(App.StartupOptions);
@@ -34,7 +34,7 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
 
     public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
-        PlayerRendererSelection selection = _selection
+        var selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         _platformFactory = new WindowsPlatformFactory(selection.CreateFactory());
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.

@@ -24,7 +24,7 @@ public enum CompatibilityLevel
 /// </summary>
 public static class DirectoryScanner
 {
-    private static readonly EnumerationOptions EnumerateFilesRecursive = new()
+    static readonly EnumerationOptions EnumerateFilesRecursive = new()
     {
         RecurseSubdirectories = true,
         IgnoreInaccessible = true,
@@ -32,7 +32,7 @@ public static class DirectoryScanner
         MatchCasing = MatchCasing.CaseInsensitive
     };
 
-    private static readonly EnumerationOptions EnumerateFilesNoRecurse = new()
+    static readonly EnumerationOptions EnumerateFilesNoRecurse = new()
     {
         RecurseSubdirectories = false,
         IgnoreInaccessible = true,
@@ -40,7 +40,7 @@ public static class DirectoryScanner
         MatchCasing = MatchCasing.CaseInsensitive
     };
 
-    private static readonly EnumerationOptions EnumerateDirsNoRecurse = new()
+    static readonly EnumerationOptions EnumerateDirsNoRecurse = new()
     {
         RecurseSubdirectories = false,
         IgnoreInaccessible = true,
@@ -55,7 +55,7 @@ public static class DirectoryScanner
     /// </summary>
     /// <param name="files">Collection of file names to analyze.</param>
     /// <returns>A pattern string representing the common extension, or "*" if no common extension exists.</returns>
-    private static string CommonExtension(IEnumerable<string> files)
+    static string CommonExtension(IEnumerable<string> files)
     {
         string? ext = null;
         foreach (var file in files)
@@ -149,7 +149,7 @@ public static class DirectoryScanner
         return null;
     }
 
-    private static void TraceScanSkip(string operation, string path, Exception exception) =>
+    static void TraceScanSkip(string operation, string path, Exception exception) =>
         Trace.WriteLine($"[DirectoryScanner] Skipped {operation} in '{path}': {exception.GetType().Name}: {exception.Message}");
 
     /// <summary>
@@ -169,12 +169,12 @@ public static class DirectoryScanner
         if (!rootPaths.Any() || !fileNames.Any()) return new(StringComparer.OrdinalIgnoreCase);
 
         var pattern = CommonExtension(fileNames);
-        HashSet<string> targets = CleanList(fileNames);
+        var targets = CleanList(fileNames);
 
         if (targets.Count == 0) return new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, string> found = new(StringComparer.OrdinalIgnoreCase);
 
-        EnumerationOptions opts = subDirectories ? EnumerateFilesRecursive : EnumerateFilesNoRecurse;
+        var opts = subDirectories ? EnumerateFilesRecursive : EnumerateFilesNoRecurse;
 
         foreach (var dir in rootPaths)
         {
@@ -206,7 +206,7 @@ public static class DirectoryScanner
     {
         if (compatibility == CompatibilityLevel.All) return true;
 
-        CompatibilityInfo compat = BinaryCompatibility.Analyze(file);
+        var compat = BinaryCompatibility.Analyze(file);
         return compat.IsCompatible;
     }
 }

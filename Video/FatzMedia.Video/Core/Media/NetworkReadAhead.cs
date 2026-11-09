@@ -1,5 +1,5 @@
-using FFmpeg.AutoGen;
 using System.Diagnostics;
+using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Core.Media;
 
@@ -42,77 +42,77 @@ namespace FatzMedia.Video.Core.Media;
 /// playback goes on where the buffer ran out. Only when the window passes does the stream end.
 /// </para>
 /// </remarks>
-internal sealed unsafe class NetworkReadAhead : IDisposable
+sealed unsafe class NetworkReadAhead : IDisposable
 {
-    private const string DiagnosticCategory = "Network";
-    private const int HardByteCapMultiplier = 2;
+    const string DiagnosticCategory = "Network";
+    const int HardByteCapMultiplier = 2;
     // AVPacket and its buffer reference, on top of the payload.
-    private const long PacketOverheadBytes = 192;
-    private static readonly TimeSpan ConsumerWaitSlice = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan ReaderIdleSlice = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan ReaderJoinWarning = TimeSpan.FromSeconds(2);
+    const long PacketOverheadBytes = 192;
+    static readonly TimeSpan ConsumerWaitSlice = TimeSpan.FromMilliseconds(50);
+    static readonly TimeSpan ReaderIdleSlice = TimeSpan.FromMilliseconds(250);
+    static readonly TimeSpan ReaderJoinWarning = TimeSpan.FromSeconds(2);
     // An end this far before the duration, with network failures logged, is a dropped network.
-    private const double EarlyEndToleranceSeconds = 1.0;
-    private const double FirstReconnectDelaySeconds = 0.5;
-    private const double MaxReconnectDelaySeconds = 2.0;
+    const double EarlyEndToleranceSeconds = 1.0;
+    const double FirstReconnectDelaySeconds = 0.5;
+    const double MaxReconnectDelaySeconds = 2.0;
     // A reconnect counts once this much new media was read: bytes FFmpeg had already received
     // before the drop do not end it.
-    private const double ReconnectedAfterSeconds = 1.0;
+    const double ReconnectedAfterSeconds = 1.0;
 
     // The calling thread's wait limits (WaitScope): a Stopwatch deadline (0 = none), a token and a condition.
-    [ThreadStatic] private static long t_waitDeadline;
-    [ThreadStatic] private static CancellationToken t_waitCancellation;
-    [ThreadStatic] private static Func<bool>? t_waitAbandon;
-    // How long reads on this thread have waited for packets in total (Stopwatch ticks).
-    [ThreadStatic] private static long t_waitedTicks;
+    [ThreadStatic] static long _waitDeadline;
+    [ThreadStatic] static CancellationToken _waitCancellation;
+    [ThreadStatic] static Func<bool>? _waitAbandon;
 
-    private readonly MediaDemuxer _demuxer;
-    private readonly string? _sourcePath;
-    private readonly bool _reportSeekFailures;
-    private readonly object? _diagnosticOwner;
-    private readonly double _maxSeconds;
-    private readonly long _maxBytes;
-    private readonly double _resumeSeconds;
-    private readonly Lock _sync = new();
-    private readonly ReadAheadBuffer<nint> _buffer = new(ReleasePacket);
-    private readonly ManualResetEventSlim _readerWake = new(false);
+    // How long reads on this thread have waited for packets in total (Stopwatch ticks).
+
+    readonly MediaDemuxer _demuxer;
+    readonly string? _sourcePath;
+    readonly bool _reportSeekFailures;
+    readonly object? _diagnosticOwner;
+    readonly double _maxSeconds;
+    readonly long _maxBytes;
+    readonly double _resumeSeconds;
+    readonly Lock _sync = new();
+    readonly ReadAheadBuffer<nint> _buffer = new(ReleasePacket);
+    readonly ManualResetEventSlim _readerWake = new(false);
     // One data-arrived event per registered stream (ENG-034: with a shared one, a consumer that
     // reset it could swallow the other's wake-up). Changed under _sync; the array is replaced, not
     // mutated, so the lock-free signals (Abort, a superseded wait) can read it.
-    private readonly Dictionary<int, ManualResetEventSlim> _arrivals = [];
-    private ManualResetEventSlim[] _arrivalEvents = [];
+    readonly Dictionary<int, ManualResetEventSlim> _arrivals = [];
+    ManualResetEventSlim[] _arrivalEvents = [];
     // Streams to discard again (an unregistered consumer), applied by the reader between reads.
-    private readonly List<int> _pendingDiscards = [];
-    private Thread? _thread;
-    private bool _stopping;
-    private bool _disposed;
-    private volatile bool _aborted;
-    private bool _atEnd;
-    private bool _readerPaused;
-    private bool _hardCapReported;
+    readonly List<int> _pendingDiscards = [];
+    Thread? _thread;
+    bool _stopping;
+    bool _disposed;
+    volatile bool _aborted;
+    bool _atEnd;
+    bool _readerPaused;
+    bool _hardCapReported;
     // The reader thread ran and returned (an abort or a failure): no one serves a seek any more.
-    private bool _readerExited;
+    bool _readerExited;
     // Bumped by every seek the reader must make; the reader's I/O for an older one is given up.
-    private int _generation;
-    private int _readerGeneration;
-    private SeekRequest? _pendingSeek;
-    private long _supersededBefore;
-    private readonly double _reconnectSeconds;
-    private readonly double _endSeconds;
+    int _generation;
+    int _readerGeneration;
+    SeekRequest? _pendingSeek;
+    long _supersededBefore;
+    readonly double _reconnectSeconds;
+    readonly double _endSeconds;
     // Reader state for reconnecting, under _sync. The last packet queued per stream since the
     // reader's last seek; after a reconnect, per stream, the timestamp up to which packets are
     // already queued; when the drop started (Stopwatch ticks, 0 = none) and the retries so far.
-    private readonly Dictionary<int, LastPacket> _lastQueued = [];
-    private readonly Dictionary<int, long> _queuedUpTo = [];
-    private int _failuresAtSeek;
+    readonly Dictionary<int, LastPacket> _lastQueued = [];
+    readonly Dictionary<int, long> _queuedUpTo = [];
+    int _failuresAtSeek;
     // The reader's last seek: where a reconnect goes when nothing was queued since (a seek during
     // the outage). Before any seek, the start.
-    private SeekRequest _lastSeek = new(-1, 0, ffmpeg.AVSEEK_FLAG_BACKWARD);
-    private long _dropStarted;
+    SeekRequest _lastSeek = new(-1, 0, ffmpeg.AVSEEK_FLAG_BACKWARD);
+    long _dropStarted;
     // Reader thread only: the next read is the reconnect's first (bounded by its window).
-    private bool _boundNextReadToReconnectWindow;
-    private double _droppedAt;
-    private int _reconnectAttempts;
+    bool _boundNextReadToReconnectWindow;
+    double _droppedAt;
+    int _reconnectAttempts;
 
     /// <param name="demuxer">The open network source; the reader takes over its I/O.</param>
     /// <param name="policy">The caps and the resume threshold.</param>
@@ -214,7 +214,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     /// <see cref="Stopwatch"/> duration in ticks. A time-budgeted decode subtracts it, so its budget
     /// measures decoding rather than the download (a seek to a target outside the buffer).
     /// </summary>
-    public static long WaitedTicksOnThisThread => t_waitedTicks;
+    [field: ThreadStatic]
+    public static long WaitedTicksOnThisThread { get; private set; }
 
     /// <summary>Reads and seeks on this thread do not wait for the network until the scope ends.</summary>
     public static WaitScope NoWait() => new(1, CancellationToken.None);
@@ -267,7 +268,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         lock (_sync)
         {
             _buffer.Unregister(streamIndex);
-            if (_arrivals.Remove(streamIndex, out ManualResetEventSlim? arrival))
+            if (_arrivals.Remove(streamIndex, out var arrival))
             {
                 Volatile.Write(ref _arrivalEvents, [.. _arrivals.Values]);
                 // A consumer still waiting finds its stream gone and ends.
@@ -288,9 +289,9 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     }
 
     /// <summary>Where the track of <paramref name="streamIndex"/> ends on the container timeline, or null when unknown.</summary>
-    private double? StreamEndSeconds(int streamIndex)
+    double? StreamEndSeconds(int streamIndex)
     {
-        AVStream* stream = _demuxer.GetStream(streamIndex);
+        var stream = _demuxer.GetStream(streamIndex);
         if (stream == null || stream->duration <= 0 || stream->duration == ffmpeg.AV_NOPTS_VALUE)
             return null;
 
@@ -471,9 +472,9 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         _demuxer.SetOperationCancellation(null);
     }
 
-    private bool IsReaderOperationStale() => Volatile.Read(ref _readerGeneration) != Volatile.Read(ref _generation);
+    bool IsReaderOperationStale() => Volatile.Read(ref _readerGeneration) != Volatile.Read(ref _generation);
 
-    private void RequestReaderSeekNoLock(SeekRequest request)
+    void RequestReaderSeekNoLock(SeekRequest request)
     {
         // A reader that exited cannot seek: leave the queues empty at the end rather than queue a
         // request that reads would wait on forever.
@@ -486,25 +487,25 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         _readerWake.Set();
     }
 
-    private bool ShouldGiveUpWait(long waitStarted, long now) =>
+    bool ShouldGiveUpWait(long waitStarted, long now) =>
         waitStarted < Interlocked.Read(ref _supersededBefore)
-        || (t_waitDeadline != 0 && now >= t_waitDeadline)
-        || t_waitCancellation.IsCancellationRequested
-        || t_waitAbandon?.Invoke() == true;
+        || (_waitDeadline != 0 && now >= _waitDeadline)
+        || _waitCancellation.IsCancellationRequested
+        || _waitAbandon?.Invoke() == true;
 
     /// <summary>Wakes every waiting consumer. Lock-free.</summary>
-    private void SignalAllArrivals()
+    void SignalAllArrivals()
     {
-        foreach (ManualResetEventSlim arrival in Volatile.Read(ref _arrivalEvents))
+        foreach (var arrival in Volatile.Read(ref _arrivalEvents))
             arrival.Set();
     }
 
-    private static void WaitForData(ManualResetEventSlim arrival)
+    static void WaitForData(ManualResetEventSlim arrival)
     {
         var timeout = ConsumerWaitSlice;
-        if (t_waitDeadline != 0)
+        if (_waitDeadline != 0)
         {
-            TimeSpan remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), t_waitDeadline);
+            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _waitDeadline);
             if (remaining < timeout)
                 timeout = remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
@@ -512,17 +513,17 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
-            _ = arrival.Wait(timeout, t_waitCancellation);
+            _ = arrival.Wait(timeout, _waitCancellation);
         }
         catch (OperationCanceledException)
         {
             // Checked again by the caller.
         }
 
-        t_waitedTicks += Stopwatch.GetTimestamp() - started;
+        WaitedTicksOnThisThread += Stopwatch.GetTimestamp() - started;
     }
 
-    private void EnsureReaderStartedNoLock()
+    void EnsureReaderStartedNoLock()
     {
         if (_thread is not null || _stopping)
             return;
@@ -531,7 +532,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         _thread.Start();
     }
 
-    private bool ShouldPauseNoLock(out bool reportHardCap)
+    bool ShouldPauseNoLock(out bool reportHardCap)
     {
         reportHardCap = false;
         if (_buffer.Bytes >= _maxBytes * HardByteCapMultiplier)
@@ -544,10 +545,10 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         return _buffer.IsFull(_maxSeconds, _maxBytes) && !_buffer.HasStarvedStream;
     }
 
-    private void Run()
+    void Run()
     {
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        var packet = ffmpeg.av_packet_alloc();
         try
         {
             if (packet != null)
@@ -578,7 +579,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         }
     }
 
-    private void ReadLoop(AVPacket* packet)
+    void ReadLoop(AVPacket* packet)
     {
         while (true)
         {
@@ -710,7 +711,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         }
     }
 
-    private void EndNoLock()
+    void EndNoLock()
     {
         _atEnd = true;
         _buffer.AddEndOfStream();
@@ -724,7 +725,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     /// fetch and then ends) or before anything was read. After a reconnect the count starts
     /// again, so a source whose real end falls short of its duration ends after one try.
     /// </summary>
-    private bool IsDroppedNoLock()
+    bool IsDroppedNoLock()
     {
         if (_reconnectSeconds <= 0)
             return false;
@@ -739,7 +740,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             return true;
 
         var readUpTo = 0.0;
-        foreach (LastPacket last in _lastQueued.Values)
+        foreach (var last in _lastQueued.Values)
             readUpTo = Math.Max(readUpTo, last.EndSeconds);
         return readUpTo < _endSeconds - EarlyEndToleranceSeconds;
     }
@@ -750,7 +751,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     /// 2 s) within the reconnect window. Returns true to read on (it reconnected, or a consumer
     /// seek or a stop took over), false when the window passed.
     /// </summary>
-    private bool Reconnect(int generation)
+    bool Reconnect(int generation)
     {
         var now = Stopwatch.GetTimestamp();
         bool firstDrop;
@@ -760,7 +761,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         lock (_sync)
         {
             resumeAt = double.MaxValue;
-            foreach (LastPacket last in _lastQueued.Values)
+            foreach (var last in _lastQueued.Values)
                 resumeAt = Math.Min(resumeAt, last.StartSeconds);
             target = _lastQueued.Count > 0
                 ? new SeekRequest(-1, (long)(Math.Max(0, resumeAt) * ffmpeg.AV_TIME_BASE), ffmpeg.AVSEEK_FLAG_BACKWARD)
@@ -824,7 +825,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     }
 
     /// <summary>Waits <paramref name="seconds"/>; false as soon as a stop or a newer seek needs the reader.</summary>
-    private bool SleepUnlessInterrupted(double seconds, int generation)
+    bool SleepUnlessInterrupted(double seconds, int generation)
     {
         var deadline = Stopwatch.GetTimestamp() + (long)(seconds * Stopwatch.Frequency);
         while (true)
@@ -840,7 +841,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         }
     }
 
-    private void ForgetQueuedNoLock(SeekRequest seek)
+    void ForgetQueuedNoLock(SeekRequest seek)
     {
         _lastSeek = seek;
         _lastQueued.Clear();
@@ -850,14 +851,14 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         _reconnectAttempts = 0;
     }
 
-    private static string FormatTime(double seconds) =>
+    static string FormatTime(double seconds) =>
         seconds is >= 0 and < double.MaxValue ? TimeSpan.FromSeconds(Math.Floor(seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss") : "?";
 
     /// <summary>
     /// Queues a packet of a registered stream. Returns how long the network was lost when this
     /// packet completes a reconnect (see <see cref="ReconnectedAfterSeconds"/>), otherwise null.
     /// </summary>
-    private double? EnqueueNoLock(AVPacket* packet)
+    double? EnqueueNoLock(AVPacket* packet)
     {
         var streamIndex = packet->stream_index;
         var timestamp = packet->dts != ffmpeg.AV_NOPTS_VALUE ? packet->dts : packet->pts;
@@ -868,14 +869,14 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             return null;
         }
 
-        AVPacket* copy = ffmpeg.av_packet_alloc();
+        var copy = ffmpeg.av_packet_alloc();
         if (copy == null)
         {
             ffmpeg.av_packet_unref(packet);
             return null;
         }
 
-        ReadAheadPacketInfo info = Describe(packet);
+        var info = Describe(packet);
         _ = _queuedUpTo.Remove(streamIndex);
         if (timestamp != ffmpeg.AV_NOPTS_VALUE && (info.DecodeSeconds ?? info.PresentationSeconds) is { } start)
             _lastQueued[streamIndex] = new LastPacket(timestamp, start, start + info.DurationSeconds);
@@ -893,14 +894,14 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         _ = _buffer.Add((nint)copy, info);
         if (_buffer.StreamEndsQueued != endsBefore)
             SignalAllArrivals();
-        else if (_arrivals.TryGetValue(streamIndex, out ManualResetEventSlim? arrival))
+        else if (_arrivals.TryGetValue(streamIndex, out var arrival))
             arrival.Set();
         return resumedAfter;
     }
 
-    private ReadAheadPacketInfo Describe(AVPacket* packet)
+    ReadAheadPacketInfo Describe(AVPacket* packet)
     {
-        AVStream* stream = _demuxer.GetStream(packet->stream_index);
+        var stream = _demuxer.GetStream(packet->stream_index);
         var timeBase = stream != null ? ffmpeg.av_q2d(stream->time_base) : 0;
         double? presentation = packet->pts != ffmpeg.AV_NOPTS_VALUE && timeBase > 0 ? packet->pts * timeBase : null;
         double? decode = packet->dts != ffmpeg.AV_NOPTS_VALUE && timeBase > 0 ? packet->dts * timeBase : null;
@@ -914,24 +915,24 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             (packet->flags & ffmpeg.AV_PKT_FLAG_KEY) != 0);
     }
 
-    private double ToSeconds(int streamIndex, long timestamp)
+    double ToSeconds(int streamIndex, long timestamp)
     {
         if (streamIndex < 0)
             return timestamp / (double)ffmpeg.AV_TIME_BASE;
 
-        AVStream* stream = _demuxer.GetStream(streamIndex);
+        var stream = _demuxer.GetStream(streamIndex);
         return stream != null ? timestamp * ffmpeg.av_q2d(stream->time_base) : double.NaN;
     }
 
-    private static void ReleasePacket(nint handle)
+    static void ReleasePacket(nint handle)
     {
         var packet = (AVPacket*)handle;
         ffmpeg.av_packet_free(&packet);
     }
 
-    private readonly record struct SeekRequest(int StreamIndex, long Timestamp, int Flags);
+    readonly record struct SeekRequest(int StreamIndex, long Timestamp, int Flags);
 
-    private readonly record struct LastPacket(long Timestamp, double StartSeconds, double EndSeconds);
+    readonly record struct LastPacket(long Timestamp, double StartSeconds, double EndSeconds);
 
     /// <summary>
     /// Limits how long consumer reads on the current thread wait for the network (see
@@ -942,23 +943,23 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     /// </summary>
     internal readonly struct WaitScope : IDisposable
     {
-        private readonly bool _active;
-        private readonly long _previousDeadline;
-        private readonly CancellationToken _previousCancellation;
-        private readonly Func<bool>? _previousAbandon;
+        readonly bool _active;
+        readonly long _previousDeadline;
+        readonly CancellationToken _previousCancellation;
+        readonly Func<bool>? _previousAbandon;
 
         public WaitScope(long deadline, CancellationToken cancellation, Func<bool>? abandon = null)
         {
             _active = true;
-            _previousDeadline = t_waitDeadline;
-            _previousCancellation = t_waitCancellation;
-            _previousAbandon = t_waitAbandon;
+            _previousDeadline = _waitDeadline;
+            _previousCancellation = _waitCancellation;
+            _previousAbandon = _waitAbandon;
             if (abandon is not null)
-                t_waitAbandon = abandon;
-            if (deadline != 0 && (t_waitDeadline == 0 || deadline < t_waitDeadline))
-                t_waitDeadline = deadline;
+                _waitAbandon = abandon;
+            if (deadline != 0 && (_waitDeadline == 0 || deadline < _waitDeadline))
+                _waitDeadline = deadline;
             if (cancellation.CanBeCanceled)
-                t_waitCancellation = cancellation;
+                _waitCancellation = cancellation;
         }
 
         public void Dispose()
@@ -966,9 +967,9 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             if (!_active)
                 return;
 
-            t_waitDeadline = _previousDeadline;
-            t_waitCancellation = _previousCancellation;
-            t_waitAbandon = _previousAbandon;
+            _waitDeadline = _previousDeadline;
+            _waitCancellation = _previousCancellation;
+            _waitAbandon = _previousAbandon;
         }
     }
 }

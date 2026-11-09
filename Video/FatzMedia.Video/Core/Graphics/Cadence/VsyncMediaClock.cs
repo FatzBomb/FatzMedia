@@ -19,7 +19,7 @@ namespace FatzMedia.Video.Core.Graphics.Cadence;
 /// position. Single-threaded: the presentation loop owns it.
 /// </para>
 /// </remarks>
-internal sealed class VsyncMediaClock(long stopwatchFrequency)
+sealed class VsyncMediaClock(long stopwatchFrequency)
 {
     /// <summary>An error this large is a jump, not jitter: the filter restarts there.</summary>
     internal const double JumpThresholdSeconds = 0.040;
@@ -33,23 +33,22 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
     /// </summary>
     internal const double MinRefreshGapSeconds = 0.002;
 
-    private const double PositionGain = 0.1;
-    private const double RateGain = 0.004;
-    private const double MinRate = 0.05;
-    private const double MaxRate = 8.0;
+    const double PositionGain = 0.1;
+    const double RateGain = 0.004;
+    const double MinRate = 0.05;
+    const double MaxRate = 8.0;
 
-    private readonly double _frequency = stopwatchFrequency > 0
+    readonly double _frequency = stopwatchFrequency > 0
         ? stopwatchFrequency
         : throw new ArgumentOutOfRangeException(nameof(stopwatchFrequency));
 
-    private bool _hasState;
-    private long _vsync;
-    private double _position;
-    private double _rate = 1.0;
-    private long _samples;
+    bool _hasState;
+    long _vsync;
+    double _position;
+    long _samples;
 
     /// <summary>Gets the filtered playback rate (media seconds per wall second).</summary>
-    public double Rate => _rate;
+    public double Rate { get; private set; } = 1.0;
 
     /// <summary>Gets how many times the filter restarted (seek, loop, pause or a large jump).</summary>
     public long Restarts { get; private set; }
@@ -58,7 +57,7 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
     public void Reset()
     {
         _hasState = false;
-        _rate = 1.0;
+        Rate = 1.0;
     }
 
     /// <summary>
@@ -84,7 +83,7 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
         if (elapsed <= 0 || elapsed > MaxRefreshGapSeconds)
             return Restart(vsyncTimestamp, observedPosition);
 
-        var predicted = _position + (_rate * elapsed);
+        var predicted = _position + (Rate * elapsed);
         var error = observedPosition - predicted;
         if (Math.Abs(error) > JumpThresholdSeconds)
             return Restart(vsyncTimestamp, observedPosition);
@@ -99,11 +98,11 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
 
         _vsync = vsyncTimestamp;
         _position = predicted + (positionGain * error);
-        _rate = Math.Clamp(_rate + (rateGain * error / elapsed), MinRate, MaxRate);
+        Rate = Math.Clamp(Rate + (rateGain * error / elapsed), MinRate, MaxRate);
         return _position;
     }
 
-    private double Restart(long vsyncTimestamp, double observedPosition)
+    double Restart(long vsyncTimestamp, double observedPosition)
     {
         if (_hasState)
             Restarts++;
@@ -112,7 +111,7 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
         // the warm-up gains. A restart straight after a restart means that guess was wrong (a
         // rate far off would otherwise restart the filter on every refresh): start from 1.
         if (_hasState && _samples <= 1)
-            _rate = 1.0;
+            Rate = 1.0;
 
         _hasState = true;
         _samples = 1;

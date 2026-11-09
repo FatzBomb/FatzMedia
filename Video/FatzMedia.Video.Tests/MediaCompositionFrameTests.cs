@@ -8,7 +8,7 @@ public class MediaCompositionFrameTests
     public void BackgroundLayerCarriesOnlyBaseVisualTransform()
     {
         var transform = new BaseVisualTransform { Brightness = 0.25f };
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             BackgroundBgra = new byte[4],
             BackgroundWidth = 1,
@@ -45,7 +45,7 @@ public class MediaCompositionFrameTests
             SubtitleRevision = 7
         };
 
-        MediaCompositionLayer layer = Assert.Single(frame.EnumerateLayers());
+        var layer = Assert.Single(frame.EnumerateLayers());
 
         Assert.Equal(MediaCompositionLayerId.Subtitle, layer.Id);
         Assert.Equal(MediaCompositionLayerSourceKind.BgraPixels, layer.SourceKind);

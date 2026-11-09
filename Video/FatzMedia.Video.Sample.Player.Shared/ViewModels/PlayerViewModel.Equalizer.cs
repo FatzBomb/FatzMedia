@@ -33,7 +33,7 @@ public sealed class EqualizerBandViewModel(string label, Action changed) : Obser
 /// </summary>
 public partial class PlayerViewModel
 {
-    private bool _suppressEqualizerApply;
+    bool _suppressEqualizerApply;
 
     public IReadOnlyList<EqualizerBandViewModel> EqualizerBands { get; private set; } = [];
 
@@ -49,7 +49,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private void InitializeEqualizerControls()
+    void InitializeEqualizerControls()
     {
         EqualizerBands = [.. AudioEqualizerSettings.Graphic10BandCentersHz.Select(center => new EqualizerBandViewModel(FormatBandLabel(center), ApplyEqualizer))];
         FlattenEqualizerCommand = new RelayCommand(FlattenEqualizer);
@@ -65,11 +65,11 @@ public partial class PlayerViewModel
         _suppressEqualizerApply = false;
     }
 
-    private AudioEqualizerSettings BuildEqualizerSettings() => EqualizerEnabled
+    AudioEqualizerSettings BuildEqualizerSettings() => EqualizerEnabled
         ? AudioEqualizerSettings.CreateGraphic10Band([.. EqualizerBands.Select(static band => band.GainDb)])
         : AudioEqualizerSettings.Disabled;
 
-    private void ApplyEqualizer()
+    void ApplyEqualizer()
     {
         if (_suppressEqualizerApply || Player is not { } player)
             return;
@@ -77,10 +77,10 @@ public partial class PlayerViewModel
         player.Equalizer = BuildEqualizerSettings();
     }
 
-    private void FlattenEqualizer()
+    void FlattenEqualizer()
     {
         _suppressEqualizerApply = true;
-        foreach (EqualizerBandViewModel band in EqualizerBands)
+        foreach (var band in EqualizerBands)
             band.GainDb = 0;
 
         _suppressEqualizerApply = false;
@@ -88,7 +88,7 @@ public partial class PlayerViewModel
         StatusText = "Equalizer flattened.";
     }
 
-    private static string FormatBandLabel(double centerHz) => centerHz >= 1000
+    static string FormatBandLabel(double centerHz) => centerHz >= 1000
         ? $"{centerHz / 1000:0.#}k"
         : $"{Math.Floor(centerHz):0}";
 }

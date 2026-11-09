@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Graphics;
@@ -5,20 +6,18 @@ using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Direct3D11;
 
-internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
+sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 {
-    private readonly D3D11DeviceResources _deviceResources;
-    private readonly D3D11RendererPresentationServices _presentation;
-    private readonly Lock _lock = new();
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
-    private readonly MonitorVblankClocks _vblankClocks = new();
-    private bool _disposed;
-    private bool _videoSupportRefusalReported;
+    readonly D3D11DeviceResources _deviceResources;
+    readonly Lock _lock = new();
+    readonly MediaPlayerConfiguration _configuration;
+    readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
+    readonly MonitorVblankClocks _vblankClocks = new();
+    bool _disposed;
+    bool _videoSupportRefusalReported;
 
     public NativeD3D11PresentationBridge(
         MediaPlayerConfiguration configuration,
@@ -26,7 +25,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         _configuration = configuration;
         _deviceResources = new D3D11DeviceResources(options.DeviceSelection);
-        _presentation = new D3D11RendererPresentationServices(
+        PresentationServices = new D3D11RendererPresentationServices(
             configuration,
             options,
             _deviceResources);
@@ -35,11 +34,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     public event EventHandler? FramePresented;
 
     /// <summary>Gets the presentation services (tests).</summary>
-    internal D3D11RendererPresentationServices PresentationServices => _presentation;
+    internal D3D11RendererPresentationServices PresentationServices { get; }
 
     public nint NativeDeviceHandle => _deviceResources.NativeDevicePointer;
 
-    public string BackendName => _presentation.PresentationBackend;
+    public string BackendName => PresentationServices.PresentationBackend;
 
     public string DeviceLostDiagnosticCategory => "D3D11.DeviceLost";
 
@@ -55,7 +54,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     public bool ProbeDeviceLost(out string? reason)
     {
         reason = null;
-        if (Volatile.Read(ref _disposed) || !_deviceResources.ProbeDeviceRemoved(out SharpGen.Runtime.Result removed))
+        if (Volatile.Read(ref _disposed) || !_deviceResources.ProbeDeviceRemoved(out var removed))
             return false;
 
         reason = $"Direct3D11 {D3D11DeviceLostClassifier.Describe(removed, swapChain: null)}";
@@ -71,11 +70,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.InitializeDevice(_disposed);
+            return PresentationServices.InitializeDevice(_disposed);
         }
     }
 
-    private bool InitializeFromNativeDevice(nint devicePointer, nint deviceContextPointer)
+    bool InitializeFromNativeDevice(nint devicePointer, nint deviceContextPointer)
     {
         if (_disposed || devicePointer == IntPtr.Zero)
         {
@@ -84,11 +83,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.InitializeFromNativeDevice(_disposed, devicePointer, deviceContextPointer);
+            return PresentationServices.InitializeFromNativeDevice(_disposed, devicePointer, deviceContextPointer);
         }
     }
 
-    private bool CreateNativeHwndSurface(nint hwnd, int width, int height)
+    bool CreateNativeHwndSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -97,11 +96,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateNativeHwndSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
+            return PresentationServices.CreateNativeHwndSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
         }
     }
 
-    private bool CreateDirectCompositionSurface(nint hwnd, int width, int height)
+    bool CreateDirectCompositionSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -110,11 +109,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateDirectCompositionSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
+            return PresentationServices.CreateDirectCompositionSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
         }
     }
 
-    private bool CreateSecondaryNativeHwndSurface(string targetId, nint hwnd, int width, int height)
+    bool CreateSecondaryNativeHwndSurface(string targetId, nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -123,11 +122,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateSecondaryNativeHwndSurface(_disposed, targetId, hwnd, width, height);
+            return PresentationServices.CreateSecondaryNativeHwndSurface(_disposed, targetId, hwnd, width, height);
         }
     }
 
-    private bool CreateManagedFrameSinkSurface(
+    bool CreateManagedFrameSinkSurface(
         IMediaPresentationFrameSink sink,
         int width,
         int height)
@@ -137,7 +136,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.CreateManagedFrameSinkSurface(
+            return PresentationServices.CreateManagedFrameSinkSurface(
                 _disposed,
                 sink,
                 width,
@@ -146,7 +145,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateSharedTextureSurface(IMediaSharedGpuImageConsumer consumer, int width, int height)
+    bool CreateSharedTextureSurface(IMediaSharedGpuImageConsumer consumer, int width, int height)
     {
         if (_disposed)
             return false;
@@ -163,7 +162,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             }
             else
             {
-                created = _presentation.CreateSharedTextureSurface(_disposed, consumer, width, height, NotifyPresentedWithSync, out reason);
+                created = PresentationServices.CreateSharedTextureSurface(_disposed, consumer, width, height, NotifyPresentedWithSync, out reason);
             }
         }
 
@@ -176,16 +175,16 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return created;
     }
 
-    private bool CreateSecondaryManagedFrameSinkSurface(string targetId, IMediaPresentationFrameSink sink, int width, int height)
+    bool CreateSecondaryManagedFrameSinkSurface(string targetId, IMediaPresentationFrameSink sink, int width, int height)
     {
         if (_disposed)
             return false;
 
         lock (_lock)
-            return _presentation.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
+            return PresentationServices.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
     }
 
-    private bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
+    bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
     {
         if (_disposed)
             return false;
@@ -193,7 +192,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         bool created;
         string? reason;
         lock (_lock)
-            created = _presentation.CreateSecondarySharedTextureSurface(_disposed, targetId, consumer, width, height, out reason);
+            created = PresentationServices.CreateSecondarySharedTextureSurface(_disposed, targetId, consumer, width, height, out reason);
 
         if (!created)
         {
@@ -204,19 +203,19 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return created;
     }
 
-    private bool RemoveSecondaryPresentationTarget(string targetId)
+    bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
         {
-            return _presentation.RemoveSecondaryPresentationTarget(targetId);
+            return PresentationServices.RemoveSecondaryPresentationTarget(targetId);
         }
     }
 
-    private void SetNativeLiveResizeInProgress(bool isResizing)
+    void SetNativeLiveResizeInProgress(bool isResizing)
     {
         lock (_lock)
         {
-            _presentation.SetNativeLiveResizeInProgress(isResizing);
+            PresentationServices.SetNativeLiveResizeInProgress(isResizing);
         }
     }
 
@@ -224,23 +223,23 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.SetNativePresentationStretch(stretchMode);
+            PresentationServices.SetNativePresentationStretch(stretchMode);
         }
     }
 
-    private void QueueNativeHwndPresentationResize(int width, int height)
+    void QueueNativeHwndPresentationResize(int width, int height)
     {
         lock (_lock)
         {
-            _presentation.QueueNativeHwndResize(_disposed, width, height);
+            PresentationServices.QueueNativeHwndResize(_disposed, width, height);
         }
     }
 
-    private void QueueDirectCompositionPresentationResize(int width, int height)
+    void QueueDirectCompositionPresentationResize(int width, int height)
     {
         lock (_lock)
         {
-            _presentation.QueueDirectCompositionResize(_disposed, width, height);
+            PresentationServices.QueueDirectCompositionResize(_disposed, width, height);
         }
     }
 
@@ -252,7 +251,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (TryAttachOffscreenSurface(surface, out var offscreenAttached))
             return offscreenAttached;
 
-        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+        if (!TryGetWin32Hwnd(surface, out var hwnd))
             return false;
 
         var attached = surface.Role == MediaPresentationSurfaceRole.Primary
@@ -269,7 +268,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             // HDR output (Stage 042A slice 2) follows the primary window's monitor; a no-op
             // unless the option is on.
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
-                _presentation.HdrOutput.PrimeDisplay(hwnd);
+                PresentationServices.HdrOutput.PrimeDisplay(hwnd);
         }
 
         return attached;
@@ -281,7 +280,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     /// picked up within a second. Managed frame-sink surfaces have no monitor: null.
     /// </summary>
     public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) =>
-        !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out nint hwnd) ? _refreshRates.Get(hwnd) : null;
+        !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out var hwnd) ? _refreshRates.Get(hwnd) : null;
 
     /// <summary>
     /// The vertical-blank timing of the monitor showing a native-window surface (Stage 017A slice
@@ -291,7 +290,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         timing = default;
         return !Volatile.Read(ref _disposed)
-            && TryGetWin32Hwnd(surface, out nint hwnd)
+            && TryGetWin32Hwnd(surface, out var hwnd)
             && _vblankClocks.TryGet(hwnd, _refreshRates.Get(hwnd), out timing);
     }
 
@@ -304,7 +303,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (TryAttachOffscreenSurface(surface, out var offscreenResized))
             return offscreenResized;
 
-        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+        if (!TryGetWin32Hwnd(surface, out var hwnd))
             return false;
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
@@ -316,7 +315,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
                 surface.PixelHeight);
         }
 
-        if (_presentation.IsDirectCompositionActive)
+        if (PresentationServices.IsDirectCompositionActive)
         {
             QueueDirectCompositionPresentationResize(surface.PixelWidth, surface.PixelHeight);
         }
@@ -353,10 +352,10 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     /// offscreen primary backend, any other role as its own secondary target (Stage 027A slice
     /// 5). Returns false when the surface is of neither kind.
     /// </summary>
-    private bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
+    bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
     {
         var isPrimary = surface.Role == MediaPresentationSurfaceRole.Primary;
-        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out var sink))
         {
             attached = isPrimary
                 ? CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight)
@@ -364,7 +363,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return true;
         }
 
-        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out var consumer))
         {
             attached = isPrimary
                 ? CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight)
@@ -376,7 +375,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return false;
     }
 
-    private static bool TryGetWin32Hwnd(
+    static bool TryGetWin32Hwnd(
         MediaPresentationSurfaceDescriptor? surface,
         out nint hwnd)
     {
@@ -393,11 +392,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return false;
         }
 
-        if (TryGetWin32Hwnd(surface, out nint hwnd))
+        if (TryGetWin32Hwnd(surface, out var hwnd))
         {
             _refreshRates.Remove(hwnd);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
-                _presentation.HdrOutput.ForgetDisplay(hwnd);
+                PresentationServices.HdrOutput.ForgetDisplay(hwnd);
         }
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
@@ -409,11 +408,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return true;
     }
 
-    private void DetachPrimarySurface()
+    void DetachPrimarySurface()
     {
         lock (_lock)
         {
-            _presentation.CleanupPrimarySurfaces();
+            PresentationServices.CleanupPrimarySurfaces();
         }
     }
 
@@ -427,7 +426,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            return _presentation.PresentHardwareFrame(
+            return PresentationServices.PresentHardwareFrame(
                 _disposed,
                 resource.ResourceHandle,
                 resource.SubresourceIndex,
@@ -485,7 +484,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.ClearCompositionBackgroundFrame();
+            PresentationServices.ClearCompositionBackgroundFrame();
         }
     }
 
@@ -493,7 +492,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            return _presentation.PresentMediaCompositionVisible(() => _disposed, frame, RaisePresentedEvent);
+            return PresentationServices.PresentMediaCompositionVisible(() => _disposed, frame, RaisePresentedEvent);
         }
     }
 
@@ -502,7 +501,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         get
         {
             lock (_lock)
-                return _presentation.LastPresentFailureReason;
+                return PresentationServices.LastPresentFailureReason;
         }
     }
 
@@ -510,19 +509,19 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            _presentation.CleanupResources();
+            PresentationServices.CleanupResources();
         }
     }
 
-    private void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
+    void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
 
-    private bool NotifyPresentedResult(int _width, int _height) => NotifyPresentedCore();
+    bool NotifyPresentedResult(int _width, int _height) => NotifyPresentedCore();
 
-    private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
+    void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
 
-    private bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
+    bool NotifyPresentedCore(bool syncImmediate = false) => PresentationServices.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
 
-    private void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
+    void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {
@@ -533,12 +532,12 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         lock (_lock)
         {
-            _presentation.CleanupResources();
+            PresentationServices.CleanupResources();
             _disposed = true;
         }
 
         _refreshRates.Clear();
-        _presentation.HdrOutput.Clear();
+        PresentationServices.HdrOutput.Clear();
         _vblankClocks.Dispose();
 
         if (_configuration.EnableLogging)

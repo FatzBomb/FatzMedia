@@ -3,24 +3,24 @@ using System.Diagnostics;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class AudioPresentationClock
+sealed class AudioPresentationClock
 {
-    private const double DefaultRate = 1.0;
-    private const double MinimumRate = 0.05;
-    private const double MaximumRate = 4.0;
-    private const double MinimumRateSampleSeconds = 0.08;
-    private const double SoftCorrectionThresholdSeconds = 0.012;
-    private const double HardCorrectionThresholdSeconds = 0.09;
-    private const double SoftCorrectionRatio = 0.12;
-    private const double RateSmoothingRatio = 0.08;
+    const double DefaultRate = 1.0;
+    const double MinimumRate = 0.05;
+    const double MaximumRate = 4.0;
+    const double MinimumRateSampleSeconds = 0.08;
+    const double SoftCorrectionThresholdSeconds = 0.012;
+    const double HardCorrectionThresholdSeconds = 0.09;
+    const double SoftCorrectionRatio = 0.12;
+    const double RateSmoothingRatio = 0.08;
 
-    private bool _isRunning;
-    private double _anchorPositionSeconds;
-    private long _anchorTimestamp;
-    private double _lastSamplePositionSeconds;
-    private long _lastSampleTimestamp;
-    private double _lastReturnedPositionSeconds;
-    private double _rate = DefaultRate;
+    bool _isRunning;
+    double _anchorPositionSeconds;
+    long _anchorTimestamp;
+    double _lastSamplePositionSeconds;
+    long _lastSampleTimestamp;
+    double _lastReturnedPositionSeconds;
+    double _rate = DefaultRate;
 
     public void Reset(double positionSeconds)
     {
@@ -71,7 +71,7 @@ internal sealed class AudioPresentationClock
         return ClampMonotonic(estimate, durationSeconds);
     }
 
-    private void UpdateRate(double audioPosition, long now)
+    void UpdateRate(double audioPosition, long now)
     {
         var elapsed = Stopwatch.GetElapsedTime(_lastSampleTimestamp, now).TotalSeconds;
         if (elapsed >= MinimumRateSampleSeconds)
@@ -88,15 +88,15 @@ internal sealed class AudioPresentationClock
         }
     }
 
-    private double EstimatePosition(long now) => _anchorPositionSeconds + (Stopwatch.GetElapsedTime(_anchorTimestamp, now).TotalSeconds * _rate);
+    double EstimatePosition(long now) => _anchorPositionSeconds + (Stopwatch.GetElapsedTime(_anchorTimestamp, now).TotalSeconds * _rate);
 
-    private void Reanchor(double positionSeconds, long now)
+    void Reanchor(double positionSeconds, long now)
     {
         _anchorPositionSeconds = Clean(positionSeconds);
         _anchorTimestamp = now;
     }
 
-    private double ClampMonotonic(double positionSeconds, double durationSeconds)
+    double ClampMonotonic(double positionSeconds, double durationSeconds)
     {
         var clamped = Clamp(positionSeconds, durationSeconds);
         if (clamped + 0.001 < _lastReturnedPositionSeconds)
@@ -108,11 +108,11 @@ internal sealed class AudioPresentationClock
         return clamped;
     }
 
-    private static double Clamp(double seconds, double durationSeconds)
+    static double Clamp(double seconds, double durationSeconds)
     {
         var clean = Clean(seconds);
         return durationSeconds > 0 ? Math.Clamp(clean, 0, durationSeconds) : clean;
     }
 
-    private static double Clean(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+    static double Clean(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Network;
 /// does for network video; FFmpeg decodes it and the audio engine's output plays it. Plain http
 /// stays on BASS. HLS playlists (<c>.m3u8</c>) open through FFmpeg too: BASS has no HLS support.
 /// </remarks>
-internal static class NetworkAudioPolicy
+static class NetworkAudioPolicy
 {
     /// <summary>
     /// Whether network audio at <paramref name="uri"/> opens through FFmpeg instead of the audio
@@ -30,7 +30,7 @@ internal static class NetworkAudioPolicy
     /// </summary>
     public static MediaSourceCapabilities Resolve(NetworkVideoProbe probe)
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(probe);
+        var row = NetworkVideoPolicy.Resolve(probe);
         return row with { HasStreamMetadata = !probe.IsSegmented && (row.IsLive || probe.HasIcyMetadata) };
     }
 }

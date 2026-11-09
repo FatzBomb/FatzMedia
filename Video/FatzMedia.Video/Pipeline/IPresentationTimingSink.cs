@@ -6,24 +6,27 @@ namespace FatzMedia.Video.Pipeline;
 /// The presentation surfaces on one display and that display's vertical-blank timing (Stage
 /// 017A slices 4 and 5). Surfaces on the same monitor share a group, so they present together.
 /// </summary>
+/// <param name="Timing">The display's vertical-blank timing.</param>
+/// <param name="IncludesPrimary">Whether the primary surface is on this display.</param>
+/// <param name="SurfaceIds">The ids of the secondary surfaces on this display.</param>
 /// <param name="Targets">
 /// The group's surfaces as a composition filter; null when every surface is in this one group.
 /// </param>
-internal readonly record struct PresentationTimingGroup(
+readonly record struct PresentationTimingGroup(
     PresentationVsyncTiming Timing,
     bool IncludesPrimary,
     IReadOnlyList<string> SurfaceIds,
     MediaCompositionTargetFilter? Targets = null);
 
 /// <summary>Fills <paramref name="destination"/> (cleared by the caller) with the current groups.</summary>
-internal delegate void PresentationTimingSource(List<PresentationTimingGroup> destination);
+delegate void PresentationTimingSource(List<PresentationTimingGroup> destination);
 
 /// <summary>
 /// Lets the presentation coordinator hand the video pipeline the vertical-blank timing of the
 /// displays showing its surfaces, for <see cref="VideoFrameTiming.DisplayLocked"/> timing.
 /// Internal so the public engine contract does not change.
 /// </summary>
-internal interface IPresentationTimingSink
+interface IPresentationTimingSink
 {
     /// <summary>
     /// Sets the source of display timing groups, or clears it with null. Called from the video
@@ -33,7 +36,7 @@ internal interface IPresentationTimingSink
 }
 
 /// <summary>Selects how the video presentation loop times frames (Stage 017A slice 4).</summary>
-internal interface IVideoFrameTimingControl
+interface IVideoFrameTimingControl
 {
     VideoFrameTiming FrameTiming { get; set; }
 }

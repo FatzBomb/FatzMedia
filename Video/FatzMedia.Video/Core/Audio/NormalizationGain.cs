@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// up to 8x for a moment. The deep pass decides the boost from the louder of the two peaks, so a
 /// transient the quick pass saw is never lost to the deep pass's sampling.
 /// </summary>
-internal static class NormalizationGainPolicy
+static class NormalizationGainPolicy
 {
     /// <summary>The most the quick pass may apply: no boost.</summary>
     public const double MaxQuickPassGain = 1.0;
@@ -29,14 +29,14 @@ internal static class NormalizationGainPolicy
 /// the key), shared by every player in the process so a file is analyzed once. Bounded: the least
 /// recently used entry is dropped past <see cref="DefaultCapacity"/>.
 /// </summary>
-internal sealed class NormalizationGainCache(int capacity = NormalizationGainCache.DefaultCapacity)
+sealed class NormalizationGainCache(int capacity = NormalizationGainCache.DefaultCapacity)
 {
     public const int DefaultCapacity = 1024;
 
-    private readonly Lock _gate = new();
-    private readonly Dictionary<string, LinkedListNode<(string Key, double Gain)>> _entries = new(StringComparer.OrdinalIgnoreCase);
-    private readonly LinkedList<(string Key, double Gain)> _usageOrder = [];
-    private readonly int _capacity = capacity >= 1 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+    readonly Lock _gate = new();
+    readonly Dictionary<string, LinkedListNode<(string Key, double Gain)>> _entries = new(StringComparer.OrdinalIgnoreCase);
+    readonly LinkedList<(string Key, double Gain)> _usageOrder = [];
+    readonly int _capacity = capacity >= 1 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
 
     public static NormalizationGainCache Shared { get; } = new();
 
@@ -53,7 +53,7 @@ internal sealed class NormalizationGainCache(int capacity = NormalizationGainCac
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(key, out LinkedListNode<(string Key, double Gain)>? node))
+            if (!_entries.TryGetValue(key, out var node))
             {
                 gain = 0;
                 return false;
@@ -71,7 +71,7 @@ internal sealed class NormalizationGainCache(int capacity = NormalizationGainCac
         ArgumentNullException.ThrowIfNull(key);
         lock (_gate)
         {
-            if (_entries.TryGetValue(key, out LinkedListNode<(string Key, double Gain)>? existing))
+            if (_entries.TryGetValue(key, out var existing))
             {
                 _usageOrder.Remove(existing);
                 existing.Value = (key, gain);

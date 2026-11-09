@@ -4,11 +4,11 @@ namespace FatzMedia.Video.Core.Audio;
 /// Applies host-configurable output-latency compensation for devices that report
 /// implausibly low latency. The policy is independent of any audio backend.
 /// </summary>
-internal static class OutputLatencyHeuristic
+static class OutputLatencyHeuristic
 {
-    private const double LowReportThresholdSeconds = 0.010;
-    private const double UsbDacOffsetSeconds = 0.050;
-    private const double BluetoothOffsetSeconds = 0.150;
+    const double LowReportThresholdSeconds = 0.010;
+    const double UsbDacOffsetSeconds = 0.050;
+    const double BluetoothOffsetSeconds = 0.150;
 
     /// <summary>
     /// Gets whether the backend should query the current device name before applying
@@ -28,6 +28,6 @@ internal static class OutputLatencyHeuristic
                         ? BluetoothOffsetSeconds
                         : ContainsIgnoreCase(deviceName, "usb") ? UsbDacOffsetSeconds : reportedSeconds;
 
-    private static bool ContainsIgnoreCase(string haystack, string needle) =>
+    static bool ContainsIgnoreCase(string haystack, string needle) =>
         haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
 }

@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// <summary>
 /// Internal transport clock for media that has no audio stream to provide timing.
 /// </summary>
-internal interface IClockSource
+interface IClockSource
 {
     double DurationSeconds { get; set; }
     double PositionSeconds { get; }
@@ -20,7 +20,7 @@ internal interface IClockSource
 /// <summary>
 /// Exposes the clock-backed transport to internal controllers without treating it as audio.
 /// </summary>
-internal interface IClockBackedMediaEngine
+interface IClockBackedMediaEngine
 {
     IClockSource ClockSource { get; }
 }

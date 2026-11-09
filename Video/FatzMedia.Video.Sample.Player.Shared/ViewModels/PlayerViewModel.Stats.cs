@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using FatzMedia.Video.Core.Abstractions;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Sample.Player.Shared.Presentation;
 
 namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// <summary>The per-player stats line (Stage 046A slice 3: one line in every test player).</summary>
 public partial class PlayerViewModel
 {
-    private readonly PresentedFrameCounter _frameCounter = new();
+    readonly PresentedFrameCounter _frameCounter = new();
 
     /// <summary>
     /// Gets the stats line (<see cref="PlayerStatsLine.Format"/>): state, presented frames per
@@ -39,8 +39,8 @@ public partial class PlayerViewModel
         }
     }
 
-    private int _statsTraceCount;
-    private MediaPlayerState? _statsTracedState;
+    int _statsTraceCount;
+    MediaPlayerState? _statsTracedState;
 
     // The status line goes to the debug log as well ("Loaded: ...", "Could not load: ..."), for scripts.
     partial void OnStatusTextChanged(string value) =>

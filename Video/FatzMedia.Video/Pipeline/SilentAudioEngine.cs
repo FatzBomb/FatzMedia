@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Pipeline;
 /// nothing, and accepts volume, pitch, tempo and normalization settings without effect. Such a
 /// player never opens audio, so the engine only fills the audio slot of the media-engine graph.
 /// </summary>
-internal sealed class SilentAudioEngine : IAudioEngine
+sealed class SilentAudioEngine : IAudioEngine
 {
     public AudioEngineState State => AudioEngineState.Stopped;
     public int PlayHandle => 0;

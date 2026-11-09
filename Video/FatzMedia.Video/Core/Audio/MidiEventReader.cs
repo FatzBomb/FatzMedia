@@ -1,7 +1,7 @@
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>The MIDI text and signature events the lyric and metadata builders read.</summary>
-internal enum MidiMarkKind
+enum MidiMarkKind
 {
     /// <summary>Lyric events (meta event 5).</summary>
     Lyric,
@@ -27,10 +27,10 @@ internal enum MidiMarkKind
 /// BASS, ticks for a file); only its order and <see cref="IMidiEventReader.PositionToSeconds"/>
 /// give it meaning.
 /// </summary>
-internal readonly record struct MidiMark(long Position, int Track, string? Text);
+readonly record struct MidiMark(long Position, int Track, string? Text);
 
 /// <summary>A tempo change (meta event 81): microseconds per quarter note at <see cref="Position"/>.</summary>
-internal readonly record struct MidiTempoEvent(long Position, int MicrosecondsPerQuarterNote);
+readonly record struct MidiTempoEvent(long Position, int MicrosecondsPerQuarterNote);
 
 /// <summary>
 /// Engine-neutral reader of the text, signature and tempo events of one MIDI source (037A slice 1).
@@ -42,7 +42,7 @@ internal readonly record struct MidiTempoEvent(long Position, int MicrosecondsPe
 /// The builders call the members in a fixed order and each at most as often as they did on BASS
 /// before this seam, so the BASS reader makes the same native calls in the same order.
 /// </remarks>
-internal interface IMidiEventReader
+interface IMidiEventReader
 {
     /// <summary>
     /// Returns the events of <paramref name="kind"/> in chronological order (lowest track first
@@ -64,7 +64,7 @@ internal interface IMidiEventReader
 /// Audio-engine capability (037A slice 1): reads the MIDI events of the media the engine has open.
 /// An engine without it is read through its BASS source handle, as before this seam.
 /// </summary>
-internal interface IMidiEventReaderSource
+interface IMidiEventReaderSource
 {
     /// <summary>
     /// Returns a reader over the open media's MIDI events, or <see langword="null"/> when the

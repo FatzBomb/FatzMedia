@@ -2,7 +2,7 @@ using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Windows.Video;
 
-internal static class DxvaProfileGuids
+static class DxvaProfileGuids
 {
     public static readonly Guid H264_VLD_NoFGT = new("1b81be68-a0c7-11d3-b984-00c04f2e73c5");
     public static readonly Guid H264_VLD_FGT = new("1b81be69-a0c7-11d3-b984-00c04f2e73c5");

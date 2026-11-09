@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
 {
-    private static readonly string Media = Path.Combine(LinuxNativeTestPlayer.MediaDir, "subtitles2.mkv");
+    static readonly string Media = Path.Combine(LinuxNativeTestPlayer.MediaDir, "subtitles2.mkv");
 
     [Fact]
     public void ChosenTrackAndOff_StayChosen_AfterTheScanAndASeek()
@@ -21,7 +21,7 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
             return;
 
         using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-        PlayerCore player = test.Player;
+        var player = test.Player;
         var scans = 0;
         player.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref scans);
 
@@ -48,7 +48,7 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
             return;
 
         using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-        PlayerCore player = test.Player;
+        var player = test.Player;
         Assert.True(player.Load(Media));
         Assert.True(player.SelectSubtitleTrack(null));
         Assert.True(player.Play());

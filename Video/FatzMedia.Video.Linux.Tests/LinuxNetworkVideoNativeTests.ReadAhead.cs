@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Media;
 using FFmpeg.AutoGen;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -14,7 +14,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// </summary>
 public sealed partial class LinuxNetworkVideoNativeTests
 {
-    private const string BestVariant = "hls_multi/v2/";
+    const string BestVariant = "hls_multi/v2/";
 
     [Fact]
     public void ReadAhead_StopsAtTheDurationCap_AndResumesAsPacketsAreTaken()
@@ -25,9 +25,9 @@ public sealed partial class LinuxNetworkVideoNativeTests
         using var server = new LocalHttpMediaServer(media);
         server.Plan = SegmentDelay(SegmentRoundTrip);
         var policy = new NetworkReadAheadPolicy { MaxDuration = TimeSpan.FromSeconds(6) };
-        using SharedDemuxer demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), policy, withAudio: true, out var video, out _);
+        using var demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), policy, withAudio: true, out var video, out _);
         var afterOpen = server.Requests.Count;
-        NetworkReadAhead readAhead = demuxer.ReadAhead!;
+        var readAhead = demuxer.ReadAhead!;
 
         Assert.Equal(1, TakePackets(demuxer, video, 1));
         Assert.True(SpinWait.SpinUntil(() => readAhead.IsReaderPaused, TimeSpan.FromSeconds(20)), "the reader never stopped");
@@ -54,17 +54,17 @@ public sealed partial class LinuxNetworkVideoNativeTests
             return;
 
         using var server = new LocalHttpMediaServer(media);
-        const long cap = 2L << 20;
-        var policy = new NetworkReadAheadPolicy { MaxBytes = cap };
-        using SharedDemuxer demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), policy, withAudio: true, out var video, out _);
-        NetworkReadAhead readAhead = demuxer.ReadAhead!;
+        const long Cap = 2L << 20;
+        var policy = new NetworkReadAheadPolicy { MaxBytes = Cap };
+        using var demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), policy, withAudio: true, out var video, out _);
+        var readAhead = demuxer.ReadAhead!;
 
         Assert.Equal(1, TakePackets(demuxer, video, 1));
         Assert.True(SpinWait.SpinUntil(() => readAhead.IsReaderPaused, TimeSpan.FromSeconds(20)), "the reader never stopped");
 
-        output.WriteLine($"byte cap 2 MB: stopped at {readAhead.BufferedBytes / 1024} KB, {readAhead.BufferedSeconds:F2} s");
-        // At most one packet past the cap (the reader checks before each read).
-        Assert.InRange(readAhead.BufferedBytes, cap, cap + (512 * 1024));
+        output.WriteLine($"byte Cap 2 MB: stopped at {readAhead.BufferedBytes / 1024} KB, {readAhead.BufferedSeconds:F2} s");
+        // At most one packet past the Cap (the reader checks before each read).
+        Assert.InRange(readAhead.BufferedBytes, Cap, Cap + (512 * 1024));
         Assert.InRange(readAhead.BufferedSeconds, 1, 6);
     }
 
@@ -79,8 +79,8 @@ public sealed partial class LinuxNetworkVideoNativeTests
         using var process = Process.GetCurrentProcess();
         process.Refresh();
         var before = process.WorkingSet64;
-        using SharedDemuxer demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), NetworkReadAheadPolicy.Default, withAudio: true, out var video, out _);
-        NetworkReadAhead readAhead = demuxer.ReadAhead!;
+        using var demuxer = OpenShared(ffmpeg, server.UriFor(MultiVariantPlaylist), NetworkReadAheadPolicy.Default, withAudio: true, out var video, out _);
+        var readAhead = demuxer.ReadAhead!;
 
         Assert.Equal(1, TakePackets(demuxer, video, 1));
         Assert.True(SpinWait.SpinUntil(() => readAhead.IsReaderPaused, TimeSpan.FromSeconds(20)), "the reader never stopped");
@@ -106,7 +106,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
             return;
 
         using var server = new LocalHttpMediaServer(media);
-        using SharedDemuxer demuxer = OpenShared(ffmpegDirectory, server.UriFor(source), NetworkReadAheadPolicy.Default, withAudio: true, out var video, out var audio);
+        using var demuxer = OpenShared(ffmpegDirectory, server.UriFor(source), NetworkReadAheadPolicy.Default, withAudio: true, out var video, out var audio);
         Assert.True(audio >= 0, "no audio stream");
         var afterOpen = server.Requests.Count;
 
@@ -114,7 +114,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         bool videoEnded = false, audioEnded = false;
         unsafe
         {
-            AVPacket* packet = ffmpeg.av_packet_alloc();
+            var packet = ffmpeg.av_packet_alloc();
             try
             {
                 var clock = Stopwatch.StartNew();
@@ -397,16 +397,16 @@ public sealed partial class LinuxNetworkVideoNativeTests
         Assert.True(close.Elapsed < TimeSpan.FromSeconds(1), $"close took {close.Elapsed}");
     }
 
-    private static Func<HttpRequestRecord, HttpResponsePlan> SegmentDelay(TimeSpan delay) =>
+    static Func<HttpRequestRecord, HttpResponsePlan> SegmentDelay(TimeSpan delay) =>
         request => request.Path.EndsWith(".ts", StringComparison.Ordinal) ? new HttpResponsePlan(DelayBeforeResponse: delay) : new HttpResponsePlan();
 
-    private static List<string> Segments(IEnumerable<HttpRequestRecord> requests) =>
+    static List<string> Segments(IEnumerable<HttpRequestRecord> requests) =>
         [.. requests.Where(request => request.Path.EndsWith(".ts", StringComparison.Ordinal)).Select(request => request.Path)];
 
-    private static int SegmentNumber(string path) =>
+    static int SegmentNumber(string path) =>
         int.Parse(Path.GetFileNameWithoutExtension(path).AsSpan("seg".Length), System.Globalization.CultureInfo.InvariantCulture);
 
-    private static SharedDemuxer OpenShared(string ffmpeg, Uri uri, NetworkReadAheadPolicy policy, bool withAudio, out int video, out int audio)
+    static SharedDemuxer OpenShared(string ffmpeg, Uri uri, NetworkReadAheadPolicy policy, bool withAudio, out int video, out int audio)
     {
         FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpeg);
         var demuxer = new SharedDemuxer();
@@ -421,9 +421,9 @@ public sealed partial class LinuxNetworkVideoNativeTests
         return demuxer;
     }
 
-    private static unsafe int TakePackets(SharedDemuxer demuxer, int stream, int count)
+    static unsafe int TakePackets(SharedDemuxer demuxer, int stream, int count)
     {
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         try
         {
             var taken = 0;

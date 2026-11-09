@@ -13,7 +13,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void ReleaseSeekAtTheLastDragPosition_IsIgnored()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
 
         Assert.True(controls.BeginScrub());
@@ -34,7 +34,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void ReleaseSeekAtANewPosition_Seeks()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
 
         Assert.True(controls.BeginScrub());
@@ -48,7 +48,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void ScrubDoesNotPauseOrRaiseTransportEvents()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
         var events = new List<string>();
         controls.MediaPaused += (_, _) => events.Add("paused");
@@ -66,7 +66,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void RepeatedSeekOutsideAScrub_StillSeeks()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
 
         Assert.True(controls.Seek(30));
@@ -79,7 +79,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void FirstSeekOfAScrub_AlwaysSeeks()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
         Assert.True(controls.Seek(30));
         engine.Position = 33;
@@ -93,7 +93,7 @@ public sealed class SeekScrubTests
     [Fact]
     public void CancelScrub_EndsTheScrub()
     {
-        TestMediaEngine engine = CreatePlayingEngine();
+        var engine = CreatePlayingEngine();
         var controls = new MediaControls(engine);
         Assert.True(controls.BeginScrub());
         Assert.True(controls.Seek(30));
@@ -117,7 +117,7 @@ public sealed class SeekScrubTests
         Assert.False(controls.EndScrub());
     }
 
-    private static TestMediaEngine CreatePlayingEngine()
+    static TestMediaEngine CreatePlayingEngine()
     {
         var engine = new TestMediaEngine();
         _ = engine.Open(MediaInputSource.FromFile("song.mp3"));

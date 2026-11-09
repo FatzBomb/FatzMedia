@@ -4,7 +4,7 @@ namespace FatzMedia.Video.Tests;
 
 public class CdgStateMachineTests
 {
-    private static byte[] MakePacket(byte instruction, ReadOnlySpan<byte> data)
+    static byte[] MakePacket(byte instruction, ReadOnlySpan<byte> data)
     {
         var packet = new byte[CdgConstants.PacketSize];
         packet[0] = (byte)CdgConstants.Command.Graphic;
@@ -14,9 +14,9 @@ public class CdgStateMachineTests
         return packet;
     }
 
-    private static byte[] MakePacket(byte instruction, params byte[] data) => MakePacket(instruction, (ReadOnlySpan<byte>)data);
+    static byte[] MakePacket(byte instruction, params byte[] data) => MakePacket(instruction, (ReadOnlySpan<byte>)data);
 
-    private static byte[] GetColorIndices(CdgStateMachine sm)
+    static byte[] GetColorIndices(CdgStateMachine sm)
     {
         var indices = new byte[CdgConstants.TotalPixels];
         sm.CopyColorIndices(indices);
@@ -107,10 +107,10 @@ public class CdgStateMachineTests
         Assert.All(indices, b => Assert.Equal(5, b));
     }
 
-    private static byte[] Preset(byte color, byte repeat) =>
+    static byte[] Preset(byte color, byte repeat) =>
         MakePacket((byte)CdgConstants.Instruction.MemoryPreset, color, repeat);
 
-    private static byte[] Tile(byte color0, byte color1, byte row, byte col) =>
+    static byte[] Tile(byte color0, byte color1, byte row, byte col) =>
         MakePacket((byte)CdgConstants.Instruction.TileBlockNormal, color0, color1, row, col, 0xFF);
 
     [Fact]
@@ -131,13 +131,13 @@ public class CdgStateMachineTests
     {
         var sm = new CdgStateMachine();
         _ = sm.ProcessPacket(Preset(3, 0));
-        CdgRenderSnapshot first = sm.CreateSnapshot();
+        var first = sm.CreateSnapshot();
         var revision = sm.Revision;
 
         Assert.False(sm.ProcessPacket(Preset(3, 1)));
         Assert.False(sm.ProcessPacket(Preset(3, 2)));
 
-        CdgRenderSnapshot after = sm.CreateSnapshot();
+        var after = sm.CreateSnapshot();
         Assert.Equal(revision, sm.Revision);
         Assert.False(after.HasDirtyRegions);
         Assert.True(first.ColorIndices.Span.SequenceEqual(after.ColorIndices.Span));
@@ -171,7 +171,7 @@ public class CdgStateMachineTests
     {
         var sm = new CdgStateMachine();
         _ = sm.ProcessPacket(Preset(3, 0));
-        CdgReplayCheckpoint checkpoint = sm.CaptureReplayCheckpoint();
+        var checkpoint = sm.CaptureReplayCheckpoint();
 
         // Playing through: the repeat after the preset is skipped.
         Assert.False(sm.ProcessPacket(Preset(3, 1)));
@@ -229,12 +229,12 @@ public class CdgStateMachineTests
     public void TileBlockNormal_WritesTilePixelsFromRowBits()
     {
         var sm = new CdgStateMachine();
-        const byte color0 = 1;
-        const byte color1 = 2;
-        // All pixel bits set (6 bits per row, 12 rows) → every pixel = color1
+        const byte Color0 = 1;
+        const byte Color1 = 2;
+        // All pixel bits set (6 bits per row, 12 rows) → every pixel = Color1
         var data = new byte[16];
-        data[0] = color0;
-        data[1] = color1;
+        data[0] = Color0;
+        data[1] = Color1;
         data[2] = 0; // row 0
         data[3] = 0; // col 0
         for (var i = 0; i < 12; i++)
@@ -247,10 +247,10 @@ public class CdgStateMachineTests
         Assert.True(changed);
 
         var indices = GetColorIndices(sm);
-        // Tile is 6 wide × 12 tall at origin → all should be color1
+        // Tile is 6 wide × 12 tall at origin → all should be Color1
         for (var row = 0; row < CdgConstants.TileHeight; row++)
             for (var col = 0; col < CdgConstants.TileWidth; col++)
-                Assert.Equal(color1, indices[(row * CdgConstants.FrameWidth) + col]);
+                Assert.Equal(Color1, indices[(row * CdgConstants.FrameWidth) + col]);
         // Pixel just outside the tile should be 0
         Assert.Equal(0, indices[CdgConstants.TileWidth]);
     }
@@ -337,7 +337,7 @@ public class CdgStateMachineTests
     public void LoadColorTableLower_UpdatesPaletteInSnapshot()
     {
         var sm = new CdgStateMachine();
-        CdgRenderSnapshot snapshotBefore = sm.CreateSnapshot();
+        var snapshotBefore = sm.CreateSnapshot();
         var paletteBefore = snapshotBefore.PaletteArgb.ToArray();
 
         // 8 colors, 16 bytes. Each color: high byte (R[5:0] + G[1:0]), low byte (G[3:0] + B[3:0]).
@@ -350,7 +350,7 @@ public class CdgStateMachineTests
             (byte)CdgConstants.Instruction.LoadColorTableLower,
             colorData));
 
-        CdgRenderSnapshot snapshotAfter = sm.CreateSnapshot();
+        var snapshotAfter = sm.CreateSnapshot();
         var paletteAfter = snapshotAfter.PaletteArgb.ToArray();
 
         Assert.NotEqual(paletteBefore[0], paletteAfter[0]);
@@ -384,13 +384,13 @@ public class CdgStateMachineTests
     {
         var sm = new CdgStateMachine();
         _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x05, 0x00));
-        CdgRenderSnapshot first = sm.CreateSnapshot();
+        var first = sm.CreateSnapshot();
         Assert.Equal(-1, first.DirtyBaseRevision);
 
         _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x06, 0x00));
-        CdgRenderSnapshot peek = sm.CreateSnapshot(consumeDirtyRegions: false);
+        var peek = sm.CreateSnapshot(consumeDirtyRegions: false);
         _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x07, 0x00));
-        CdgRenderSnapshot second = sm.CreateSnapshot();
+        var second = sm.CreateSnapshot();
 
         Assert.Equal(first.Revision, peek.DirtyBaseRevision);
         Assert.Equal(first.Revision, second.DirtyBaseRevision);
@@ -405,10 +405,10 @@ public class CdgStateMachineTests
             (byte)CdgConstants.Instruction.MemoryPreset,
             0x05, 0x00));
 
-        CdgRenderSnapshot first = sm.CreateSnapshot(consumeDirtyRegions: true);
+        var first = sm.CreateSnapshot(consumeDirtyRegions: true);
         Assert.True(first.HasDirtyRegions);
 
-        CdgRenderSnapshot second = sm.CreateSnapshot(consumeDirtyRegions: true);
+        var second = sm.CreateSnapshot(consumeDirtyRegions: true);
         Assert.False(second.HasDirtyRegions);
     }
 
@@ -420,10 +420,10 @@ public class CdgStateMachineTests
             (byte)CdgConstants.Instruction.MemoryPreset,
             0x05, 0x00));
 
-        CdgRenderSnapshot first = sm.CreateSnapshot(consumeDirtyRegions: false);
+        var first = sm.CreateSnapshot(consumeDirtyRegions: false);
         Assert.True(first.HasDirtyRegions);
 
-        CdgRenderSnapshot second = sm.CreateSnapshot(consumeDirtyRegions: false);
+        var second = sm.CreateSnapshot(consumeDirtyRegions: false);
         Assert.True(second.HasDirtyRegions);
     }
 

@@ -1,10 +1,10 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -139,17 +139,17 @@ public sealed class PlayerModeTests
         var surface = new MediaPresentationSurfaceDescriptor(
             surfaceId,
             MediaPresentationSurfaceRole.Primary,
-            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x1234),
+            MediaNativeSurfaceDescriptor.Win32Hwnd(0x1234),
             640,
             360);
 
         // Slice 2: the surface is kept (for a switch to Full or Background), not rendered to.
-        List<MediaDiagnosticInfo> diagnostics = CaptureModeDiagnostics(() => Assert.True(player.AttachPresentationSurface(surface)));
+        var diagnostics = CaptureModeDiagnostics(() => Assert.True(player.AttachPresentationSurface(surface)));
 
         Assert.Equal(MediaPlayerMode.Audio, player.Mode);
         Assert.Equal(0, factory.CreatePresentationCoordinatorCount);
         Assert.True(factory.Monitor.Started);
-        MediaDiagnosticInfo notice = Assert.Single(diagnostics, info => info.Message.Contains(surfaceId, StringComparison.Ordinal));
+        var notice = Assert.Single(diagnostics, info => info.Message.Contains(surfaceId, StringComparison.Ordinal));
         Assert.Equal(MediaDiagnosticLevel.Info, notice.Level);
         Assert.True(player.ResizePresentationSurface(surfaceId, 800, 450));
         Assert.True(player.DetachPresentationSurface(surfaceId));
@@ -170,7 +170,7 @@ public sealed class PlayerModeTests
         Assert.True(player.LoopMedia);
         Assert.True(engine.LoopPlayback);
 
-        List<MediaDiagnosticInfo> diagnostics = CaptureModeDiagnostics(() => player.LoopMedia = false);
+        var diagnostics = CaptureModeDiagnostics(() => player.LoopMedia = false);
 
         Assert.True(player.LoopMedia);
         Assert.True(engine.LoopPlayback);
@@ -180,14 +180,14 @@ public sealed class PlayerModeTests
     [Fact]
     public void BackgroundMode_ServiceProviderNeverInitializesAudioOutput()
     {
-        IServiceProvider services = PlayerServiceProvider.Create(
+        var services = PlayerServiceProvider.Create(
             new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background },
             [],
             new EmptyPlatformServices());
 
-        IAudioEngine audio = services.GetRequiredService<IAudioEngine>();
+        var audio = services.GetRequiredService<IAudioEngine>();
 
-        SilentAudioEngine silent = Assert.IsType<SilentAudioEngine>(audio);
+        var silent = Assert.IsType<SilentAudioEngine>(audio);
         Assert.False(silent.Init());
         Assert.False(silent.Open("song.mp3"));
         Assert.False(silent.Play());
@@ -202,7 +202,7 @@ public sealed class PlayerModeTests
     [Fact]
     public void FromColor_FillsASmallStraightAlphaBgraImage()
     {
-        MediaInputSource source = MediaInputSource.FromColor(0x80FF4020);
+        var source = MediaInputSource.FromColor(0x80FF4020);
 
         Assert.Equal(MediaInputSourceKind.Bgra32Image, source.Kind);
         Assert.True(source.IsBgraImage);
@@ -210,7 +210,7 @@ public sealed class PlayerModeTests
         Assert.Equal(MediaInputSource.SolidColorSize, source.Height);
         Assert.Equal(source.Width * 4, source.Stride);
         Assert.Equal("Solid colour #80FF4020", source.DisplayName);
-        byte[] pixels = source.BgraPixels!;
+        var pixels = source.BgraPixels!;
         Assert.Equal(source.Stride * source.Height, pixels.Length);
         for (var i = 0; i < pixels.Length; i += 4)
             Assert.Equal(new byte[] { 0x20, 0x40, 0xFF, 0x80 }, pixels[i..(i + 4)]);
@@ -266,7 +266,7 @@ public sealed class PlayerModeTests
     public void Soundtrack_EndsAtDurationOrWhenAudioRunsOut(double position, double duration, double stalledSeconds, bool expected) =>
         Assert.Equal(expected, SoundtrackAudioEngine.HasReachedEnd(position, duration, stalledSeconds));
 
-    private static List<MediaDiagnosticInfo> CaptureModeDiagnostics(Action action)
+    static List<MediaDiagnosticInfo> CaptureModeDiagnostics(Action action)
     {
         var captured = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
@@ -288,9 +288,9 @@ public sealed class PlayerModeTests
         return [.. captured];
     }
 
-    private sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
-        private readonly NullPresentationCoordinator _coordinator = new();
+        readonly NullPresentationCoordinator _coordinator = new();
 
         public RecordingAudioDeviceMonitor Monitor { get; } = new();
 
@@ -310,7 +310,7 @@ public sealed class PlayerModeTests
             new MonitorServiceProvider(new TestServiceProvider(engine), Monitor);
     }
 
-    private sealed class MonitorServiceProvider(IServiceProvider inner, RecordingAudioDeviceMonitor monitor) : IServiceProvider
+    sealed class MonitorServiceProvider(IServiceProvider inner, RecordingAudioDeviceMonitor monitor) : IServiceProvider
     {
         public object? GetService(Type serviceType)
         {
@@ -322,7 +322,7 @@ public sealed class PlayerModeTests
         }
     }
 
-    private sealed class RecordingAudioDeviceMonitor : IAudioDeviceMonitor
+    sealed class RecordingAudioDeviceMonitor : IAudioDeviceMonitor
     {
         public bool Resolved { get; set; }
 
@@ -341,7 +341,7 @@ public sealed class PlayerModeTests
         }
     }
 
-    private sealed class EmptyPlatformServices : IPlatformServices
+    sealed class EmptyPlatformServices : IPlatformServices
     {
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {

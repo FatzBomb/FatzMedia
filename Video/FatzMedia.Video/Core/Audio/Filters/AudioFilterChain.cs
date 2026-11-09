@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Audio.Filters;
 /// analyzed gain and fades still act on the final signal; every stage is float, so boosts do
 /// not clip inside the chain.
 /// </remarks>
-internal static class AudioFilterStage
+static class AudioFilterStage
 {
     public const int EqualizerPriority = 2;
 
@@ -19,7 +19,7 @@ internal static class AudioFilterStage
 }
 
 /// <summary>What applying new equalizer settings must do to the native stage.</summary>
-internal enum EqualizerUpdateAction
+enum EqualizerUpdateAction
 {
     /// <summary>Nothing attached and nothing needed.</summary>
     None,
@@ -37,7 +37,7 @@ internal enum EqualizerUpdateAction
     Rebuild,
 }
 
-internal static class EqualizerUpdatePlanner
+static class EqualizerUpdatePlanner
 {
     /// <summary>
     /// Fraction of the sample rate below which a peaking band is placed. BASS_FX rejects centres

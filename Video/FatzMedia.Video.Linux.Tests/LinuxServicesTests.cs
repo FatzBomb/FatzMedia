@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
@@ -7,7 +8,6 @@ using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Linux.Threading;
 using FatzMedia.Video.Linux.Video;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -22,7 +22,7 @@ public sealed class LinuxPrecisionWaiterTests
 
         var start = Stopwatch.GetTimestamp();
         waiter.Wait(duration, never);
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+        var elapsed = Stopwatch.GetElapsedTime(start);
 
         Assert.True(waiter.IsHighResolution);
         Assert.True(elapsed >= duration, $"elapsed {elapsed.TotalMilliseconds:F3} ms");
@@ -73,7 +73,7 @@ public sealed class BassDeviceAudioMonitorTests
         _ = monitor.Poll();
         source.Snapshot = source.Snapshot with { DefaultDeviceName = "USB Audio" };
 
-        AudioDeviceChangeInfo? change = monitor.Poll();
+        var change = monitor.Poll();
 
         Assert.Equal(AudioDeviceChangeKind.DefaultDeviceChanged, change!.Kind);
         Assert.Same(change, raised);
@@ -110,7 +110,7 @@ public sealed class BassDeviceAudioMonitorTests
         Assert.False(monitor.IsRunning);
     }
 
-    private sealed class FakeSource(AudioOutputSnapshot snapshot) : IAudioOutputSnapshotSource
+    sealed class FakeSource(AudioOutputSnapshot snapshot) : IAudioOutputSnapshotSource
     {
         public AudioOutputSnapshot Snapshot { get; set; } = snapshot;
         public bool Readable { get; init; } = true;
@@ -150,7 +150,7 @@ public sealed class LinuxPlatformCompositionTests
             platform.EnsureNativeLibrariesLoaded([dir]);
             var services = new ServiceCollection();
             platform.AddPlatformServices(services, MediaPlayerConfiguration.Auto);
-            using ServiceProvider provider = services.BuildServiceProvider();
+            using var provider = services.BuildServiceProvider();
 
             Assert.True(platform.IsAudioAvailable);
             Assert.IsType<LinuxPrecisionWaiterFactory>(provider.GetRequiredService<IPrecisionWaiterFactory>());
@@ -172,7 +172,7 @@ public sealed class LinuxPlatformCompositionTests
         {
             var platform = new LinuxPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
 
-            IServiceProvider provider = PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [dir], platform);
+            var provider = PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [dir], platform);
 
             Assert.False(platform.IsAudioAvailable);
             Assert.Null(provider.GetService<IAudioDeviceMonitor>());
@@ -185,7 +185,7 @@ public sealed class LinuxPlatformCompositionTests
         }
     }
 
-    private static string CreateFakeLibraries(IEnumerable<string> fileNames)
+    static string CreateFakeLibraries(IEnumerable<string> fileNames)
     {
         var dir = Directory.CreateTempSubdirectory("fbm-linux-libs-").FullName;
         foreach (var fileName in fileNames)
@@ -201,7 +201,7 @@ public sealed class LinuxPlatformCompositionTests
         {
             var services = new LinuxPlatformServices(new LinuxNativeLibraryBootstrapper(new NoOperations(), empty, "linux-x64"), LinuxPlatformOptions.Default);
 
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => services.EnsureNativeLibrariesLoaded([empty]));
+            var exception = Assert.Throws<InvalidOperationException>(() => services.EnsureNativeLibrariesLoaded([empty]));
 
             Assert.Contains("libbass.so", exception.Message, StringComparison.Ordinal);
             Assert.Contains("FFmpeg", exception.Message, StringComparison.Ordinal);
@@ -229,7 +229,7 @@ public sealed class LinuxPlatformCompositionTests
     public void Factory_RejectsNullPresentationFactory() =>
         Assert.Throws<ArgumentNullException>(() => new LinuxPlatformFactory(null!));
 
-    private sealed class NoOperations : ILinuxNativeOperations
+    sealed class NoOperations : ILinuxNativeOperations
     {
         public bool TryLoad(string path, out IntPtr handle)
         {
@@ -247,7 +247,7 @@ public sealed class LinuxPlatformCompositionTests
     }
 
     /// <summary>Pretends every library loads, so no native code runs.</summary>
-    private sealed class LoadingOperations : ILinuxNativeOperations
+    sealed class LoadingOperations : ILinuxNativeOperations
     {
         public bool TryLoad(string path, out IntPtr handle)
         {
@@ -264,7 +264,7 @@ public sealed class LinuxPlatformCompositionTests
         }
     }
 
-    private sealed class RecordingPresentationFactory : IMediaPresentationCoordinatorFactory
+    sealed class RecordingPresentationFactory : IMediaPresentationCoordinatorFactory
     {
         public string BackendName => "Recording";
 

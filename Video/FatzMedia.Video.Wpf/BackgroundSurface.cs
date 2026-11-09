@@ -20,14 +20,14 @@ public sealed class BackgroundSurface : Grid, IDisposable
     /// <summary>The diagnostic category of this control's own notices (Stage 046A).</summary>
     public const string DiagnosticCategory = "Wpf.BackgroundSurface";
 
-    private readonly MediaSurface _surface;
-    private readonly LightweightPlayerController _playerController;
-    private readonly Border _colorLayer;
-    private readonly ContentPresenter _solidOverlay;
-    private bool _showingSolidColor = true;
-    private bool _restoringPlatformFactory;
-    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
-    private bool _disposed;
+    readonly MediaSurface _surface;
+    readonly LightweightPlayerController _playerController;
+    readonly Border _colorLayer;
+    readonly ContentPresenter _solidOverlay;
+    bool _showingSolidColor = true;
+    bool _restoringPlatformFactory;
+    WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
+    bool _disposed;
 
     public BackgroundSurface()
     {
@@ -75,7 +75,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         typeof(BackgroundSurface),
         new PropertyMetadata(true, OnAutoHideChanged));
 
-    private static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
+    static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
         DependencyProperty.RegisterReadOnly(
             nameof(IsContentVisible),
             typeof(bool),
@@ -203,10 +203,10 @@ public sealed class BackgroundSurface : Grid, IDisposable
     public Task<bool> PauseAsync() => _playerController.PauseAsync();
     public Task<bool> StopAsync() => _playerController.StopAsync();
 
-    private static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((BackgroundSurface)d)._playerController.AutoPlay = e.NewValue is true;
 
-    private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
         surface._surface.AutoHide = e.NewValue is true;
@@ -214,7 +214,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
             surface._surface.Visibility = Visibility.Collapsed;
     }
 
-    private static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
         if (surface._restoringPlatformFactory
@@ -237,7 +237,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
     }
 
-    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    static object CoercePresentationMode(DependencyObject d, object baseValue)
     {
         var surface = (BackgroundSurface)d;
         if (surface._playerController.IsMediaOpen)
@@ -257,7 +257,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return baseValue;
     }
 
-    private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
         if (surface._playerController.IsMediaOpen)
@@ -268,21 +268,21 @@ public sealed class BackgroundSurface : Grid, IDisposable
         surface.UpdateOverlayRoute();
     }
 
-    private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((BackgroundSurface)d).QueueSourceReload();
 
-    private static void OnBackgroundColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnBackgroundColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var control = (BackgroundSurface)d;
-        Color color = (Color)e.NewValue;
+        var color = (Color)e.NewValue;
         color.A = byte.MaxValue;
         control._colorLayer.Background = new SolidColorBrush(color);
     }
 
-    private static void OnOverlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnOverlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((BackgroundSurface)d).UpdateOverlayRoute();
 
-    private void QueueSourceReload()
+    void QueueSourceReload()
     {
         if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
@@ -290,7 +290,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         _ = Dispatcher.BeginInvoke(() => _playerController.RunQueuedReloadAsync(() => !_disposed && IsLoaded, ReloadSourceAsync));
     }
 
-    private async Task<bool> ReloadSourceAsync()
+    async Task<bool> ReloadSourceAsync()
     {
         // A newer Source abandons a load in progress: Core's controller checks after every await,
         // and a solid colour releases the player.
@@ -306,7 +306,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         };
     }
 
-    private bool ShowSolidColor(Color color)
+    bool ShowSolidColor(Color color)
     {
         color.A = byte.MaxValue;
         SetCurrentValue(BackgroundColorProperty, color);
@@ -318,7 +318,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return true;
     }
 
-    private async Task<bool> LoadMediaAsync(MediaInputSource source)
+    async Task<bool> LoadMediaAsync(MediaInputSource source)
     {
         // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
         Dispatcher.VerifyAccess();
@@ -333,7 +333,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return valid;
     }
 
-    private void ShowMediaLayer()
+    void ShowMediaLayer()
     {
         _showingSolidColor = false;
         _colorLayer.Visibility = Visibility.Visible;
@@ -342,9 +342,9 @@ public sealed class BackgroundSurface : Grid, IDisposable
         UpdateOverlayRoute();
     }
 
-    private void PrepareMediaLayerForLoad() => _surface.Visibility = Visibility.Visible;
+    void PrepareMediaLayerForLoad() => _surface.Visibility = Visibility.Visible;
 
-    private void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
+    void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = _surface.IsContentVisible;
         if (IsContentVisible == isVisible)
@@ -355,9 +355,9 @@ public sealed class BackgroundSurface : Grid, IDisposable
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
-    private void OnPlayerChanged(object? sender, EventArgs e)
+    void OnPlayerChanged(object? sender, EventArgs e)
     {
-        IPlayerSession? session = _playerController.Session;
+        var session = _playerController.Session;
         if (session is not null)
             _surface.PresentationMode = PresentationMode;
 
@@ -367,7 +367,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
     }
 
     // The player's event thread.
-    private void OnPlayerMediaClosed(object? sender, EventArgs e)
+    void OnPlayerMediaClosed(object? sender, EventArgs e)
     {
         if (Dispatcher.CheckAccess())
         {
@@ -382,7 +382,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         });
     }
 
-    private void UpdateOverlayRoute()
+    void UpdateOverlayRoute()
     {
         if (_showingSolidColor)
         {
@@ -399,12 +399,12 @@ public sealed class BackgroundSurface : Grid, IDisposable
         _surface.OverlayHitTestVisible = OverlayHitTestVisible;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    void OnLoaded(object sender, RoutedEventArgs e)
     {
         QueueSourceReload();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => _playerController.ReleasePlayer();
+    void OnUnloaded(object sender, RoutedEventArgs e) => _playerController.ReleasePlayer();
 
     public void Dispose()
     {

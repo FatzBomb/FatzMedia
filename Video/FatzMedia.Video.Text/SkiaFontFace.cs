@@ -13,20 +13,20 @@ namespace FatzMedia.Video.Text;
 /// Typefaces are not disposed: SkiaSharp shares one managed wrapper per native typeface across
 /// the process (an Avalonia host may hold the same one), and the font manager keeps them alive.
 /// </remarks>
-internal sealed class SkiaFontFace
+sealed class SkiaFontFace
 {
-    private readonly List<SKTypeface> _typefaces = [];
-    private readonly Dictionary<int, int> _fallbacks = [];
-    private readonly SKFontStyle _style;
-    private readonly string _family;
-    private readonly int _weight;
-    private readonly bool _italic;
+    readonly List<SKTypeface> _typefaces = [];
+    readonly Dictionary<int, int> _fallbacks = [];
+    readonly SKFontStyle _style;
+    readonly string _family;
+    readonly int _weight;
+    readonly bool _italic;
 
     public SkiaFontFace(string family, int weight, bool italic)
     {
         _family = family;
         _style = new SKFontStyle(weight, (int)SKFontStyleWidth.Normal, italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
-        SKTypeface primary = SKFontManager.Default.MatchFamily(family, _style)
+        var primary = SKFontManager.Default.MatchFamily(family, _style)
             ?? SKTypeface.FromFamilyName(family, _style)
             ?? SKTypeface.Default;
         _typefaces.Add(primary);
@@ -75,7 +75,7 @@ internal sealed class SkiaFontFace
     /// </summary>
     public SKFont CreateFont(int index, float size)
     {
-        SKTypeface typeface = _typefaces[index];
+        var typeface = _typefaces[index];
         return new SKFont(typeface, size)
         {
             Edging = SKFontEdging.Antialias,
@@ -87,7 +87,7 @@ internal sealed class SkiaFontFace
 
     /// <summary>The code point at <paramref name="index"/> and its UTF-16 length (lone surrogates count as U+FFFD).</summary>
     public static (int CodePoint, int Length) ReadCodePoint(string text, int index) =>
-        Rune.DecodeFromUtf16(text.AsSpan(index), out Rune rune, out var length) == System.Buffers.OperationStatus.Done
+        Rune.DecodeFromUtf16(text.AsSpan(index), out var rune, out var length) == System.Buffers.OperationStatus.Done
             ? (rune.Value, length)
             : (Rune.ReplacementChar.Value, 1);
 }

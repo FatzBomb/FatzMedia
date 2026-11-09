@@ -24,8 +24,8 @@ public static class TargetResourcePruning
             return 0;
 
         var removed = 0;
-        IEqualityComparer<string> comparer = resources.Comparer;
-        foreach (KeyValuePair<string, TResource> pair in resources)
+        var comparer = resources.Comparer;
+        foreach (var pair in resources)
         {
             if (IsLive(pair.Key, liveTargets, idOf, comparer))
                 continue;
@@ -39,7 +39,7 @@ public static class TargetResourcePruning
         return removed;
     }
 
-    private static bool IsLive<TTarget>(string key, IReadOnlyList<TTarget> liveTargets, Func<TTarget, string> idOf, IEqualityComparer<string> comparer)
+    static bool IsLive<TTarget>(string key, IReadOnlyList<TTarget> liveTargets, Func<TTarget, string> idOf, IEqualityComparer<string> comparer)
     {
         for (var i = 0; i < liveTargets.Count; i++)
         {

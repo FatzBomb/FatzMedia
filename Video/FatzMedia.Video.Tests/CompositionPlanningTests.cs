@@ -14,7 +14,7 @@ public sealed class CompositionPlanningTests
             FramesPerSecond = 59.94
         };
 
-        CompositionLayerSchedule schedule = CompositionLayerSchedule.From(layer);
+        var schedule = CompositionLayerSchedule.From(layer);
 
         Assert.Equal(CompositionLayerUpdateCadence.SourceRate, schedule.Cadence);
         Assert.Equal(CompositionLayerRenderTargetKind.RetainedOffscreenTexture, schedule.TargetKind);
@@ -35,19 +35,19 @@ public sealed class CompositionPlanningTests
             Revision: 1);
 
         registry.Capture([initial]);
-        CompositionTargetPlan activation = registry.CreatePlan();
+        var activation = registry.CreatePlan();
         Assert.Equal(1, activation.ActiveTargetCount);
         Assert.Equal(1, activation.ResizeTargetCount);
         Assert.True(activation.ShouldPresentTarget(initial.Id));
 
         registry.MarkPlanConsumed();
         registry.Capture([initial with { Width = 1920, Height = 1080, Revision = 2 }]);
-        CompositionTargetPlan resize = registry.CreatePlan();
+        var resize = registry.CreatePlan();
         Assert.Equal(1, resize.ResizeTargetCount);
 
         registry.MarkPlanConsumed();
         registry.Capture([]);
-        CompositionTargetPlan deactivation = registry.CreatePlan();
+        var deactivation = registry.CreatePlan();
         Assert.Equal(1, deactivation.DeactivatedTargetCount);
         Assert.Equal(0, deactivation.ActiveTargetCount);
     }

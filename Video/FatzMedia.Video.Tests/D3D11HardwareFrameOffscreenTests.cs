@@ -26,23 +26,23 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 {
-    private const int Width = 16;
-    private const int Height = 8;
+    const int Width = 16;
+    const int Height = 8;
 
-    private static readonly VideoColorSpace Bt709 = new(VideoColorMatrix.Bt709, VideoColorRange.Limited);
-    private static readonly VideoColorSpace Bt2020 = new(VideoColorMatrix.Bt2020, VideoColorRange.Limited);
+    static readonly VideoColorSpace Bt709 = new(VideoColorMatrix.Bt709, VideoColorRange.Limited);
+    static readonly VideoColorSpace Bt2020 = new(VideoColorMatrix.Bt2020, VideoColorRange.Limited);
 
     // Limited-range BT.709 YCbCr of pure red.
-    private const byte RedY = 63;
-    private const byte RedCb = 102;
-    private const byte RedCr = 240;
+    const byte RedY = 63;
+    const byte RedCb = 102;
+    const byte RedCr = 240;
 
     [Fact]
     public void Warp_CanStandInForADecoder()
     {
         // Says which tests below actually ran on this machine: without these capabilities they stop
         // after their setup (a machine limit, not a renderer failure; see the class summary).
-        using D3D11DeviceResources decoder = CreateWarpDevice();
+        using var decoder = CreateWarpDevice();
         output.WriteLine(decoder.HasVideoProcessorSupport
             ? $"WARP video processor: yes; NV12 input: {CanDecodeInto(decoder, Format.NV12)}; P010 sampling: {CanDecodeInto(decoder, Format.P010)}."
             : "WARP offers no Direct3D11 video processor on this machine: the hardware-frame tests in this class stop after their setup.");
@@ -53,30 +53,30 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     [Fact]
     public void AHardwareFrame_OnTheDecoderDevice_IsComposedIntoTheSharedTextures()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
-        using D3D11DeviceResources compositor = CreateWarpDevice();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var compositor = CreateWarpDevice();
         using var consumer = new ImportingConsumer(compositor);
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
-        MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor());
+        var primary = Primary(handle.CreateSurfaceDescriptor());
         Assert.True(bridge.AttachSurface(primary), string.Join("; ", consumer.Unavailable));
-        MediaSharedGpuImageSet onOwnDevice = Assert.Single(consumer.Sets);
+        var onOwnDevice = Assert.Single(consumer.Sets);
 
-        using D3D11DeviceResources decoder = CreateWarpDevice();
+        using var decoder = CreateWarpDevice();
         if (!CanDecodeInto(decoder, Format.NV12))
             return;
 
-        using ID3D11Texture2D pool = CreatePoolSlice(decoder, Format.NV12, Nv12(RedY, RedCb, RedCr));
-        VideoFrameEventArgs frame = HardwareFrame(decoder, pool, Bt709, toneMap: null);
+        using var pool = CreatePoolSlice(decoder, Format.NV12, Nv12(RedY, RedCb, RedCr));
+        var frame = HardwareFrame(decoder, pool, Bt709, toneMap: null);
         AdoptAndReattach(bridge, frame, decoder, primary);
 
         // The set exported on the renderer's own device is retired; the new one lives on the decoder's.
         Assert.True(onOwnDevice.IsRetired);
-        MediaSharedGpuImageSet onDecoderDevice = consumer.Sets.Last();
+        var onDecoderDevice = consumer.Sets.Last();
         Assert.NotEqual(onOwnDevice.Generation, onDecoderDevice.Generation);
         Assert.Empty(consumer.Unavailable);
 
         Assert.True(bridge.PresentNativeFrame(frame));
-        (MediaSharedGpuImageFrame shown, byte[] pixels) = consumer.LastFrame;
+        (var shown, var pixels) = consumer.LastFrame;
         Assert.Equal(onDecoderDevice.Generation, shown.Generation);
         AssertRed(pixels);
     }
@@ -84,18 +84,18 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     [Fact]
     public void AHardwareFrame_OnTheDecoderDevice_IsReadBackIntoTheFrameSink()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var sink = new D3D11MultiTargetTests.CopyingFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
-        MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor());
+        var primary = Primary(handle.CreateSurfaceDescriptor());
         Assert.True(bridge.AttachSurface(primary));
 
-        using D3D11DeviceResources decoder = CreateWarpDevice();
+        using var decoder = CreateWarpDevice();
         if (!CanDecodeInto(decoder, Format.NV12))
             return;
 
-        using ID3D11Texture2D pool = CreatePoolSlice(decoder, Format.NV12, Nv12(RedY, RedCb, RedCr));
-        VideoFrameEventArgs frame = HardwareFrame(decoder, pool, Bt709, toneMap: null);
+        using var pool = CreatePoolSlice(decoder, Format.NV12, Nv12(RedY, RedCb, RedCr));
+        var frame = HardwareFrame(decoder, pool, Bt709, toneMap: null);
         AdoptAndReattach(bridge, frame, decoder, primary);
 
         var frames = sink.Frames;
@@ -110,29 +110,29 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     {
         // HDR tone mapping (Stages 038A, 042A) on the shared-texture path: the shader writes SDR
         // into the private target, and the compositor's copy shows the same values as the CPU mapper.
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
-        using D3D11DeviceResources compositor = CreateWarpDevice();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var compositor = CreateWarpDevice();
         using var consumer = new ImportingConsumer(compositor);
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
-        MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor());
+        var primary = Primary(handle.CreateSurfaceDescriptor());
         Assert.True(bridge.AttachSurface(primary), string.Join("; ", consumer.Unavailable));
 
-        using D3D11DeviceResources decoder = CreateWarpDevice();
+        using var decoder = CreateWarpDevice();
         if (!CanDecodeInto(decoder, Format.P010))
             return;
 
-        const int y = 600, cb = 400, cr = 700;
+        const int Y = 600, Cb = 400, Cr = 700;
         var fallback = new HdrToneMapFallback();
         var request = new HdrToneMapRequest(1000, 203) { Fallback = fallback };
-        using ID3D11Texture2D pool = CreatePoolSlice(decoder, Format.P010, P010(y, cb, cr));
-        VideoFrameEventArgs frame = HardwareFrame(decoder, pool, Bt2020, request);
+        using var pool = CreatePoolSlice(decoder, Format.P010, P010(Y, Cb, Cr));
+        var frame = HardwareFrame(decoder, pool, Bt2020, request);
         AdoptAndReattach(bridge, frame, decoder, primary);
 
         Assert.True(bridge.PresentNativeFrame(frame));
         Assert.False(fallback.IsRequested, fallback.Reason);
         // What the engine's CPU path produces for the same YCbCr (R, G, B), against BGRA pixels.
-        byte[] rgb = D3D11HdrToneMapTests.Cpu(y, cb, cr, request);
-        byte[] pixels = consumer.LastFrame.Pixels;
+        var rgb = D3D11HdrToneMapTests.Cpu(Y, Cb, Cr, request);
+        var pixels = consumer.LastFrame.Pixels;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
             for (var channel = 0; channel < 3; channel++)
@@ -143,7 +143,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     // --- Helpers ---------------------------------------------------------------------------
 
     /// <summary>What Core does with a hardware frame from a new decoder device (MediaPresentationCoordinator.EnsureNativeFrameDevice).</summary>
-    private static void AdoptAndReattach(NativeD3D11PresentationBridge bridge, VideoFrameEventArgs frame, D3D11DeviceResources decoder, MediaPresentationSurfaceDescriptor primary)
+    static void AdoptAndReattach(NativeD3D11PresentationBridge bridge, VideoFrameEventArgs frame, D3D11DeviceResources decoder, MediaPresentationSurfaceDescriptor primary)
     {
         Assert.True(bridge.EnsureNativeFrameDevice(frame, out var adopted));
         Assert.True(adopted);
@@ -160,21 +160,21 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     /// renderer needs the video processor on the adopted device and the format as a texture; NV12
     /// goes through the video processor, P010 through the tone-map shader, which samples it.
     /// </summary>
-    private static bool CanDecodeInto(D3D11DeviceResources decoder, Format format)
+    static bool CanDecodeInto(D3D11DeviceResources decoder, Format format)
     {
         if (!decoder.HasVideoProcessorSupport)
             return false;
 
-        FormatSupport support = decoder.Device!.CheckFormatSupport(format);
-        FormatSupport needed = FormatSupport.Texture2D | (format == Format.P010 ? FormatSupport.ShaderSample : FormatSupport.VideoProcessorInput);
+        var support = decoder.Device!.CheckFormatSupport(format);
+        var needed = FormatSupport.Texture2D | (format == Format.P010 ? FormatSupport.ShaderSample : FormatSupport.VideoProcessorInput);
         return (support & needed) == needed;
     }
 
     /// <summary>A two-slice texture array like a decoder's pool, with <paramref name="planes"/> in slice 1.</summary>
-    private static ID3D11Texture2D CreatePoolSlice(D3D11DeviceResources decoder, Format format, byte[] planes)
+    static ID3D11Texture2D CreatePoolSlice(D3D11DeviceResources decoder, Format format, byte[] planes)
     {
-        ID3D11Device device = decoder.Device!;
-        ID3D11DeviceContext context = decoder.Context!;
+        var device = decoder.Device!;
+        var context = decoder.Context!;
         ID3D11Texture2D pool;
         try
         {
@@ -188,9 +188,9 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 
         // Planar data goes through a staging texture, as FFmpeg's D3D11VA upload does: the luma
         // rows, then the interleaved chroma rows, at one pitch.
-        using ID3D11Texture2D staging = device.CreateTexture2D(new Texture2DDescription(
+        using var staging = device.CreateTexture2D(new Texture2DDescription(
             format, Width, Height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Write));
-        MappedSubresource mapped = context.Map(staging, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        var mapped = context.Map(staging, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
             var rowBytes = planes.Length / (Height * 3 / 2);
@@ -206,7 +206,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
         return pool;
     }
 
-    private static byte[] Nv12(byte y, byte cb, byte cr)
+    static byte[] Nv12(byte y, byte cb, byte cr)
     {
         var planes = new byte[Width * Height * 3 / 2];
         planes.AsSpan(0, Width * Height).Fill(y);
@@ -216,7 +216,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
     }
 
     // P010: 10-bit codes in the high bits of little-endian 16-bit samples.
-    private static byte[] P010(int y, int cb, int cr)
+    static byte[] P010(int y, int cb, int cr)
     {
         var samples = new ushort[Width * Height * 3 / 2];
         samples.AsSpan(0, Width * Height).Fill((ushort)(y << 6));
@@ -225,7 +225,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
         return MemoryMarshal.AsBytes(samples.AsSpan()).ToArray();
     }
 
-    private static VideoFrameEventArgs HardwareFrame(D3D11DeviceResources decoder, ID3D11Texture2D pool, VideoColorSpace colorSpace, HdrToneMapRequest? toneMap) => new()
+    static VideoFrameEventArgs HardwareFrame(D3D11DeviceResources decoder, ID3D11Texture2D pool, VideoColorSpace colorSpace, HdrToneMapRequest? toneMap) => new()
     {
         Width = Width,
         Height = Height,
@@ -242,7 +242,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
         }
     };
 
-    private static void AssertRed(byte[] bgra)
+    static void AssertRed(byte[] bgra)
     {
         Assert.Equal(Width * Height * 4, bgra.Length);
         for (var offset = 0; offset < bgra.Length; offset += 4)
@@ -253,24 +253,24 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
         }
     }
 
-    private static D3D11DeviceResources CreateWarpDevice()
+    static D3D11DeviceResources CreateWarpDevice()
     {
         var device = new D3D11DeviceResources(Direct3D11DeviceSelection.Warp);
         Assert.True(device.Initialize(new MediaPlayerConfiguration()));
         return device;
     }
 
-    private static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native) =>
+    static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native) =>
         new(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, MediaPresentationSurfaceRole.Primary, native, Width, Height);
 
     /// <summary>
     /// Opens every exported texture on its own device, like Avalonia's compositor, and reads each
     /// announced frame under its keyed mutex (acquire the consumer key, release the producer key).
     /// </summary>
-    private sealed class ImportingConsumer(D3D11DeviceResources device) : IMediaSharedGpuImageConsumer, IDisposable
+    sealed class ImportingConsumer(D3D11DeviceResources device) : IMediaSharedGpuImageConsumer, IDisposable
     {
-        private readonly Dictionary<long, (ID3D11Texture2D Texture, IDXGIKeyedMutex Mutex)[]> _imports = [];
-        private readonly Dictionary<long, MediaSharedGpuImageSet> _sets = [];
+        readonly Dictionary<long, (ID3D11Texture2D Texture, IDXGIKeyedMutex Mutex)[]> _imports = [];
+        readonly Dictionary<long, MediaSharedGpuImageSet> _sets = [];
 
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<string> Unavailable { get; } = new();
@@ -284,15 +284,15 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 
         public void OnImagesCreated(MediaSharedGpuImageSet images)
         {
-            ID3D11Device d3d = device.Device!;
+            var d3d = device.Device!;
             var imports = new (ID3D11Texture2D, IDXGIKeyedMutex)[images.Buffers.Count];
             for (var i = 0; i < imports.Length; i++)
             {
-                nint shared = images.Buffers[i].ImageHandle;
+                var shared = images.Buffers[i].ImageHandle;
                 ID3D11Texture2D texture;
                 if (images.HandleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle)
                 {
-                    using ID3D11Device1 d3d1 = d3d.QueryInterface<ID3D11Device1>();
+                    using var d3d1 = d3d.QueryInterface<ID3D11Device1>();
                     texture = d3d1.OpenSharedResource1<ID3D11Texture2D>(shared);
                 }
                 else
@@ -311,9 +311,9 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 
         public void OnFrameReady(MediaSharedGpuImageFrame frame)
         {
-            (ID3D11Texture2D texture, IDXGIKeyedMutex mutex) = _imports[frame.Generation][frame.BufferIndex];
-            ID3D11DeviceContext context = device.Context!;
-            using ID3D11Texture2D staging = device.Device!.CreateTexture2D(new Texture2DDescription(
+            (var texture, var mutex) = _imports[frame.Generation][frame.BufferIndex];
+            var context = device.Context!;
+            using var staging = device.Device!.CreateTexture2D(new Texture2DDescription(
                 Format.B8G8R8A8_UNorm, Width, Height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
             // Through the vtable: Vortice's wrapper hides WAIT_TIMEOUT and WAIT_ABANDONED.
             Assert.Equal(0, D3D11SharedTextureBackend.AcquireSync(mutex, frame.AcquireKey, 1000));
@@ -321,7 +321,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
             mutex.ReleaseSync(frame.ReleaseKey);
 
             var pixels = new byte[Width * Height * 4];
-            MappedSubresource mapped = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+            var mapped = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
             try
             {
                 for (var row = 0; row < Height; row++)
@@ -340,7 +340,7 @@ public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 
         public void Dispose()
         {
-            foreach ((ID3D11Texture2D texture, IDXGIKeyedMutex mutex) in _imports.Values.SelectMany(static imports => imports))
+            foreach ((var texture, var mutex) in _imports.Values.SelectMany(static imports => imports))
             {
                 mutex.Dispose();
                 texture.Dispose();

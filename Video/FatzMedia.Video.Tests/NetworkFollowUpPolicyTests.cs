@@ -24,7 +24,7 @@ public sealed class NetworkFollowUpPolicyTests
     [Fact]
     public void NetworkAudioRow_LiveStream_IsLiveWithStreamMetadata()
     {
-        MediaSourceCapabilities row = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(false, null, false, 0));
+        var row = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(false, null, false, 0));
 
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.True(row.IsLive);
@@ -42,7 +42,7 @@ public sealed class NetworkFollowUpPolicyTests
     [InlineData(false, false)]
     public void NetworkAudioRow_File_CarriesStreamMetadataOnlyWithIcyHeaders(bool icy, bool expected)
     {
-        MediaSourceCapabilities row = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(false, 320_000, true, 20, icy));
+        var row = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(false, 320_000, true, 20, icy));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.True(row.IsSeekable);
@@ -53,8 +53,8 @@ public sealed class NetworkFollowUpPolicyTests
     [Fact]
     public void NetworkAudioRow_HlsPlaylist_FollowsTheVideoRuleWithoutStreamMetadata()
     {
-        MediaSourceCapabilities live = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(true, null, false, 0, HasIcyMetadata: true));
-        MediaSourceCapabilities vod = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(true, null, false, 30));
+        var live = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(true, null, false, 0, HasIcyMetadata: true));
+        var vod = NetworkAudioPolicy.Resolve(new NetworkVideoProbe(true, null, false, 30));
 
         Assert.Equal(MediaSourceClass.NetworkLive, live.SourceClass);
         Assert.False(live.HasStreamMetadata);
@@ -65,7 +65,7 @@ public sealed class NetworkFollowUpPolicyTests
     [Fact]
     public void NetworkVideoRow_IgnoresIcyHeaders()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, null, false, 0, HasIcyMetadata: true));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, null, false, 0, HasIcyMetadata: true));
 
         Assert.False(row.HasStreamMetadata);
     }
@@ -88,7 +88,7 @@ public sealed class NetworkFollowUpPolicyTests
     [Fact]
     public void ClockHold_StartsOnceThePictureHasNoFrameAndHasStarved()
     {
-        TimeSpan starved = NetworkClockHold.StarvedFor;
+        var starved = NetworkClockHold.StarvedFor;
 
         Assert.False(NetworkClockHold.ShouldHold(held: false, frameReady: true, starved * 4, resumeFill: 0, atEnd: false));
         Assert.False(NetworkClockHold.ShouldHold(held: false, frameReady: false, starved / 2, resumeFill: 0, atEnd: false));

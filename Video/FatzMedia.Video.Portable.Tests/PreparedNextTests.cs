@@ -1,14 +1,14 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Prepared;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
 public sealed class PreparedNextSlotTests : IDisposable
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-prepared-" + Guid.NewGuid().ToString("N"));
+    readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-prepared-" + Guid.NewGuid().ToString("N"));
 
     public PreparedNextSlotTests() => Directory.CreateDirectory(_directory);
 
@@ -23,7 +23,7 @@ public sealed class PreparedNextSlotTests : IDisposable
         using var slot = new PreparedNextSlot(_ => "id");
         var source = MediaInputSource.FromFile("next.mp3");
 
-        _ = slot.Begin(source, CancellationToken.None, out PreparedNextChange change);
+        _ = slot.Begin(source, CancellationToken.None, out var change);
 
         Assert.Equal(PreparedNextState.Empty, change.Previous.State);
         Assert.Equal(PreparedNextState.Analyzing, change.Current.State);
@@ -34,10 +34,10 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void TryComplete_CurrentGeneration_BecomesReadyWithAnalysis()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("next.mp3"), CancellationToken.None, out _);
-        MediaAnalysisResult analysis = CreateAnalysis();
+        var ticket = slot.Begin(MediaInputSource.FromFile("next.mp3"), CancellationToken.None, out _);
+        var analysis = CreateAnalysis();
 
-        Assert.True(slot.TryComplete(ticket.Generation, analysis, out PreparedNextChange change));
+        Assert.True(slot.TryComplete(ticket.Generation, analysis, out var change));
 
         Assert.Equal(PreparedNextState.Ready, change.Current.State);
         Assert.Same(analysis, slot.Snapshot.Analysis);
@@ -49,8 +49,8 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void Begin_ReplacesPreviousCandidateAndCancelsItsAnalysis()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket first = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
-        PreparedNextTicket second = slot.Begin(MediaInputSource.FromFile("b.mp3"), CancellationToken.None, out _);
+        var first = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var second = slot.Begin(MediaInputSource.FromFile("b.mp3"), CancellationToken.None, out _);
 
         Assert.True(first.Token.IsCancellationRequested);
         Assert.False(second.Token.IsCancellationRequested);
@@ -63,9 +63,9 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void Clear_CancelsAnalysisAndRejectsLateCompletion()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
 
-        Assert.True(slot.Clear(out PreparedNextChange change));
+        Assert.True(slot.Clear(out var change));
 
         Assert.Equal(PreparedNextState.Empty, change.Current.State);
         Assert.True(ticket.Token.IsCancellationRequested);
@@ -79,12 +79,12 @@ public sealed class PreparedNextSlotTests : IDisposable
     {
         using var slot = new PreparedNextSlot(_ => "id");
         using var cts = new CancellationTokenSource();
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), cts.Token, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), cts.Token, out _);
 
         cts.Cancel();
 
         Assert.True(ticket.Token.IsCancellationRequested);
-        Assert.True(slot.TryFail(ticket.Generation, out PreparedNextChange change));
+        Assert.True(slot.TryFail(ticket.Generation, out var change));
         Assert.Equal(PreparedNextState.Empty, change.Current.State);
     }
 
@@ -92,14 +92,14 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void Transition_ClaimsReadyThenEmpties()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
         _ = slot.TryComplete(ticket.Generation, null, out _);
 
-        Assert.True(slot.TryBeginTransition(null, out PreparedNextTransition? transition, out PreparedNextChange? claimed));
+        Assert.True(slot.TryBeginTransition(null, out var transition, out var claimed));
         Assert.Equal(PreparedNextState.Transitioning, claimed!.Value.Current.State);
         Assert.False(slot.TryBeginTransition(null, out _, out _));
 
-        Assert.True(slot.TryCompleteTransition(transition!.Generation, out PreparedNextChange done));
+        Assert.True(slot.TryCompleteTransition(transition!.Generation, out var done));
         Assert.Equal(PreparedNextState.Empty, done.Current.State);
     }
 
@@ -109,7 +109,7 @@ public sealed class PreparedNextSlotTests : IDisposable
         using var slot = new PreparedNextSlot(_ => "id");
         _ = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
 
-        Assert.False(slot.TryBeginTransition(null, out PreparedNextTransition? transition, out PreparedNextChange? change));
+        Assert.False(slot.TryBeginTransition(null, out var transition, out var change));
         Assert.Null(transition);
         Assert.Null(change);
     }
@@ -118,7 +118,7 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void Transition_ExpectedGenerationMismatch_IsRejected()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
         _ = slot.TryComplete(ticket.Generation, null, out _);
 
         Assert.False(slot.TryBeginTransition(ticket.Generation + 1, out _, out _));
@@ -130,11 +130,11 @@ public sealed class PreparedNextSlotTests : IDisposable
     {
         var identity = "v1";
         using var slot = new PreparedNextSlot(_ => identity);
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
         _ = slot.TryComplete(ticket.Generation, null, out _);
         identity = "v2";
 
-        Assert.False(slot.TryBeginTransition(null, out PreparedNextTransition? transition, out PreparedNextChange? change));
+        Assert.False(slot.TryBeginTransition(null, out var transition, out var change));
 
         Assert.Null(transition);
         Assert.Equal(PreparedNextState.Stale, change!.Value.Current.State);
@@ -146,9 +146,9 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void ReplacementDuringTransition_SurvivesTransitionCompletion()
     {
         using var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
         _ = slot.TryComplete(ticket.Generation, null, out _);
-        _ = slot.TryBeginTransition(null, out PreparedNextTransition? transition, out _);
+        _ = slot.TryBeginTransition(null, out var transition, out _);
 
         _ = slot.Begin(MediaInputSource.FromFile("b.mp3"), CancellationToken.None, out _);
 
@@ -161,7 +161,7 @@ public sealed class PreparedNextSlotTests : IDisposable
     public void Dispose_CancelsAndRejectsFurtherWork()
     {
         var slot = new PreparedNextSlot(_ => "id");
-        PreparedNextTicket ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
+        var ticket = slot.Begin(MediaInputSource.FromFile("a.mp3"), CancellationToken.None, out _);
 
         slot.Dispose();
 
@@ -194,8 +194,8 @@ public sealed class PreparedNextSlotTests : IDisposable
 
 public sealed class PreparedNextPlayerTests : IDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-prepared-player-" + Guid.NewGuid().ToString("N"));
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-prepared-player-" + Guid.NewGuid().ToString("N"));
 
     public PreparedNextPlayerTests() => Directory.CreateDirectory(_directory);
 
@@ -256,10 +256,10 @@ public sealed class PreparedNextPlayerTests : IDisposable
         var first = CreateFile("first.mp3");
         var second = CreateFile("second.mp3");
 
-        Task<bool> firstPrepare = player.PrepareNextAsync(first);
+        var firstPrepare = player.PrepareNextAsync(first);
         await analyzer.Started.Task.WaitAsync(Timeout);
         analyzer.Gate = null;
-        Task<bool> secondPrepare = player.PrepareNextAsync(second);
+        var secondPrepare = player.PrepareNextAsync(second);
 
         Assert.False(await firstPrepare.WaitAsync(Timeout));
         Assert.True(await secondPrepare.WaitAsync(Timeout));
@@ -272,7 +272,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
     {
         var analyzer = new FakeAnalyzer { Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
         using var player = CreatePlayer(new TestMediaEngine(), analyzer);
-        Task<bool> prepare = player.PrepareNextAsync(CreateFile("next.mp3"));
+        var prepare = player.PrepareNextAsync(CreateFile("next.mp3"));
         await analyzer.Started.Task.WaitAsync(Timeout);
 
         Assert.True(player.ClearPreparedNext());
@@ -306,7 +306,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
 
         Assert.True(await player.TransitionToPreparedNextAsync().WaitAsync(Timeout));
 
-        PreparedNextTransitionedEventArgs args = await transitioned.Task.WaitAsync(Timeout);
+        var args = await transitioned.Task.WaitAsync(Timeout);
         Assert.False(args.IsAutomatic);
         Assert.Equal(next, args.Source.FilePath);
         Assert.Equal(MediaPlayerState.Playing, engine.State);
@@ -407,7 +407,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
 
         engine.CompletePlayback();
 
-        PreparedNextTransitionedEventArgs args = await transitioned.Task.WaitAsync(Timeout);
+        var args = await transitioned.Task.WaitAsync(Timeout);
         Assert.True(args.IsAutomatic);
         Assert.Equal(["ended", "loaded", "transitioned"], order);
         Assert.Equal(2, engine.PlayCount);
@@ -505,7 +505,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         var analyzer = new FakeAnalyzer();
         using var player = CreatePlayer(new TestMediaEngine(), analyzer);
 
-        MediaAnalysisResult? result = await player.AnalyzeAsync(CreateFile("next.mp3")).WaitAsync(Timeout);
+        var result = await player.AnalyzeAsync(CreateFile("next.mp3")).WaitAsync(Timeout);
 
         Assert.Same(analyzer.Result, result);
         Assert.Equal(PreparedNextState.Empty, player.PreparedNext.State);
@@ -533,7 +533,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         Assert.Equal(PreparedNextState.Empty, player.PreparedNext.State);
     }
 
-    private static async Task DrainQueueAsync(PlayerCore player)
+    static async Task DrainQueueAsync(PlayerCore player)
     {
         // The auto transition is scheduled two queue hops after media end; each flush queues
         // behind everything queued so far.
@@ -541,17 +541,17 @@ public sealed class PreparedNextPlayerTests : IDisposable
             await player.FlushControlOperationsAsync().WaitAsync(Timeout);
     }
 
-    private string CreateFile(string name)
+    string CreateFile(string name)
     {
         var path = Path.Combine(_directory, name);
         File.WriteAllBytes(path, [1, 2, 3]);
         return path;
     }
 
-    private static PlayerCore CreatePlayer(TestMediaEngine engine, FakeAnalyzer analyzer) =>
+    static PlayerCore CreatePlayer(TestMediaEngine engine, FakeAnalyzer analyzer) =>
         new(new PreparedTestPlatformFactory(analyzer, engine), MediaPlayerConfiguration.Auto, []);
 
-    private sealed class FakeAnalyzer : IMediaFileAnalyzer
+    sealed class FakeAnalyzer : IMediaFileAnalyzer
     {
         public MediaAnalysisResult Result { get; } = PreparedNextSlotTests.CreateAnalysis();
         public ConcurrentQueue<string> Requests { get; } = new();
@@ -562,7 +562,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         public async Task<MediaAnalysisResult?> AnalyzeAsync(string filePath, CancellationToken cancellationToken)
         {
             Requests.Enqueue(filePath);
-            TaskCompletionSource? gate = Gate;
+            var gate = Gate;
             _ = Started.TrySetResult();
             if (gate is not null)
                 await gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -572,9 +572,9 @@ public sealed class PreparedNextPlayerTests : IDisposable
         }
     }
 
-    private sealed class PreparedTestPlatformFactory(FakeAnalyzer analyzer, params TestMediaEngine[] engines) : IPlatformFactory
+    sealed class PreparedTestPlatformFactory(FakeAnalyzer analyzer, params TestMediaEngine[] engines) : IPlatformFactory
     {
-        private readonly Queue<TestMediaEngine> _engines = new(engines);
+        readonly Queue<TestMediaEngine> _engines = new(engines);
 
         public string LastNativeLoadMessage => string.Empty;
 
@@ -589,9 +589,9 @@ public sealed class PreparedNextPlayerTests : IDisposable
             IReadOnlyList<string> nativeLibraryPaths) => new ServiceProvider(_engines.Dequeue(), analyzer);
     }
 
-    private sealed class ServiceProvider(TestMediaEngine engine, FakeAnalyzer analyzer) : IServiceProvider
+    sealed class ServiceProvider(TestMediaEngine engine, FakeAnalyzer analyzer) : IServiceProvider
     {
-        private readonly IArchiveService _archiveService = new NotSupportedArchiveService();
+        readonly IArchiveService _archiveService = new NotSupportedArchiveService();
 
         public object? GetService(Type serviceType) =>
             serviceType == typeof(IMediaEngine) ? engine

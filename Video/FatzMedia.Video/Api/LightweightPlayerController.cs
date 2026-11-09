@@ -27,16 +27,15 @@ namespace FatzMedia.Video;
 /// </remarks>
 public sealed class LightweightPlayerController : IDisposable
 {
-    private readonly Lock _gate = new();
-    private readonly Func<MediaPlayerConfiguration, IPlatformFactory, PlayerCore> _createPlayer;
-    private PlayerCore? _player;
-    private PlayerCore? _announcedPlayer;
-    private Task<PlayerCore?>? _creation;
-    private int _lifetime;
-    private int _reloadVersion;
-    private int _reloadQueued;
-    private bool _autoPlay = true;
-    private volatile bool _disposed;
+    readonly Lock _gate = new();
+    readonly Func<MediaPlayerConfiguration, IPlatformFactory, PlayerCore> _createPlayer;
+    PlayerCore? _player;
+    PlayerCore? _announcedPlayer;
+    Task<PlayerCore?>? _creation;
+    int _lifetime;
+    int _reloadVersion;
+    int _reloadQueued;
+    volatile bool _disposed;
 
     /// <param name="kind">Which control this is; decides the player's mode and the load rules.</param>
     /// <param name="diagnosticCategory">The category of the controller's notices (the control's).</param>
@@ -114,14 +113,14 @@ public sealed class LightweightPlayerController : IDisposable
     /// </summary>
     public bool AutoPlay
     {
-        get => Volatile.Read(ref _autoPlay);
+        get => Volatile.Read(ref field);
         set
         {
-            Volatile.Write(ref _autoPlay, value);
+            Volatile.Write(ref field, value);
             if (Player is { } player)
                 player.PlayOnLoad = value;
         }
-    }
+    } = true;
 
     /// <summary>
     /// Marks a source reload as queued. Returns <see langword="true"/> when the caller must schedule
@@ -247,7 +246,7 @@ public sealed class LightweightPlayerController : IDisposable
         ArgumentNullException.ThrowIfNull(source);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var reload = BeginReload();
-        PlayerCore? player = await EnsurePlayerAsync(platformFactory);
+        var player = await EnsurePlayerAsync(platformFactory);
         if (player is null || !IsCurrentReload(reload))
             return false;
 
@@ -345,12 +344,12 @@ public sealed class LightweightPlayerController : IDisposable
         ReleasePlayer();
     }
 
-    private async Task<PlayerCore?> CreateAndAdoptAsync(IPlatformFactory platformFactory, int lifetime)
+    async Task<PlayerCore?> CreateAndAdoptAsync(IPlatformFactory platformFactory, int lifetime)
     {
         PlayerCore? player = null;
         try
         {
-            MediaPlayerConfiguration configuration = LightweightPlayerPolicy.CreateConfiguration(Kind);
+            var configuration = LightweightPlayerPolicy.CreateConfiguration(Kind);
             // Always yields, so the caller (which holds the gate while it stores this task) never
             // runs the adoption below inline.
             player = await Task.Run(() => _createPlayer(configuration, platformFactory)).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
@@ -360,8 +359,7 @@ public sealed class LightweightPlayerController : IDisposable
         }
         catch (Exception ex)
         {
-            if (player is not null)
-                player.MediaClosed -= OnPlayerMediaClosed;
+            player?.MediaClosed -= OnPlayerMediaClosed;
             player?.Dispose();
             player = null;
 
@@ -398,7 +396,7 @@ public sealed class LightweightPlayerController : IDisposable
         return player;
     }
 
-    private void OnPlayerMediaClosed(object? sender, MediaClosedEventArgs e)
+    void OnPlayerMediaClosed(object? sender, MediaClosedEventArgs e)
     {
         if (!_disposed)
             MediaClosed?.Invoke(this, EventArgs.Empty);

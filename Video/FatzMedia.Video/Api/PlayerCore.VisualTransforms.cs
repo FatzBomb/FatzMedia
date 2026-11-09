@@ -12,7 +12,7 @@ public partial class PlayerCore
         get => _presentationCoordinator.BaseVisualTransform;
         set
         {
-            BaseVisualTransform previous = _presentationCoordinator.BaseVisualTransform;
+            var previous = _presentationCoordinator.BaseVisualTransform;
             if (previous == value)
             {
                 return;

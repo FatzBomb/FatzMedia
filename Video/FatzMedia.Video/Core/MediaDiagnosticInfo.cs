@@ -6,7 +6,7 @@ namespace FatzMedia.Video;
 /// diagnostic details from engine components to the host-facing
 /// <see cref="PlayerCore"/> without exposing internals publicly.
 /// </summary>
-internal sealed record MediaDiagnosticInfo(MediaDiagnosticLevel Level, string Category, string Message, string? SourcePath = null, Exception? InnerException = null)
+sealed record MediaDiagnosticInfo(MediaDiagnosticLevel Level, string Category, string Message, string? SourcePath = null, Exception? InnerException = null)
 {
     /// <summary>The player it came from (see <see cref="DiagnosticRouter.EnterOwner"/>); null for process-wide diagnostics.</summary>
     public object? Owner { get; init; }

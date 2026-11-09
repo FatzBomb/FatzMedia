@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Tests;
 /// <summary>ENG-039: the presentation-path bookkeeping the three adapters' media surfaces share.</summary>
 public sealed class MediaSurfaceBookkeepingTests
 {
-    private const string Category = "Test.MediaSurface";
+    const string Category = "Test.MediaSurface";
 
     [Theory]
     [InlineData(null, MediaPresentationSurfaceRole.Primary, MediaPresentationSurfaceDescriptor.PrimarySurfaceId)]
@@ -42,7 +42,7 @@ public sealed class MediaSurfaceBookkeepingTests
         Assert.Equal([true, false, true], changes);
         Assert.Equal(MediaSurfacePresentationPath.None, bookkeeping.Path);
         Assert.Null(bookkeeping.Reason);
-        MediaDiagnosticInfo info = Assert.Single(diagnostics);
+        var info = Assert.Single(diagnostics);
         Assert.Equal(MediaDiagnosticLevel.Info, info.Level);
         Assert.Equal(
             $"Surface #{bookkeeping.SurfaceNumber} 'primary': frame sink path (PreferNativeWindow is off)",
@@ -53,7 +53,7 @@ public sealed class MediaSurfaceBookkeepingTests
     public void AttachRefusal_WarnsOnceUntilReset()
     {
         var bookkeeping = new MediaSurfaceBookkeeping(Category);
-        (IPlayerSession session, _) = MediaSurfaceContentTrackerTests.TrackedSession.Create();
+        (var session, _) = MediaSurfaceContentTrackerTests.TrackedSession.Create();
 
         var diagnostics = Capture(() =>
         {
@@ -71,7 +71,7 @@ public sealed class MediaSurfaceBookkeepingTests
         });
     }
 
-    private static MediaDiagnosticInfo[] Capture(Action action)
+    static MediaDiagnosticInfo[] Capture(Action action)
     {
         var captured = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)

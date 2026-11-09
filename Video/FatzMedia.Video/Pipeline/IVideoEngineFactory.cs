@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Pipeline;
 /// Core orchestration depends on this seam rather than a concrete decoder/presenter,
 /// allowing Windows, macOS, and Linux implementations to be supplied independently.
 /// </summary>
-internal interface IVideoEngineFactory
+interface IVideoEngineFactory
 {
     IVideoEngine Create(
         IClockSource clock,

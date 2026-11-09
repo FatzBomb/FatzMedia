@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using FatzMedia.Video.Core.Subtitle;
 
 namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 
@@ -13,8 +12,8 @@ public sealed record SubtitleChoice(string? TrackId, string Label);
 /// </summary>
 public partial class PlayerViewModel
 {
-    private static readonly SubtitleChoice SubtitlesOff = new(null, "Off");
-    private bool _refreshingSubtitles;
+    static readonly SubtitleChoice SubtitlesOff = new(null, "Off");
+    bool _refreshingSubtitles;
 
     public ObservableCollection<SubtitleChoice> SubtitleChoices { get; } = [SubtitlesOff];
 
@@ -37,39 +36,39 @@ public partial class PlayerViewModel
         }
     } = SubtitlesOff;
 
-    private void StartSubtitleTracking(PlayerCore player)
+    void StartSubtitleTracking(PlayerCore player)
     {
         player.MediaLoaded += OnSubtitleMediaLoaded;
         player.MediaClosed += OnSubtitleMediaClosed;
         player.SubtitleTracksChanged += OnSubtitleTracksChanged;
     }
 
-    private void StopSubtitleTracking(PlayerCore player)
+    void StopSubtitleTracking(PlayerCore player)
     {
         player.MediaLoaded -= OnSubtitleMediaLoaded;
         player.MediaClosed -= OnSubtitleMediaClosed;
         player.SubtitleTracksChanged -= OnSubtitleTracksChanged;
     }
 
-    private void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
+    void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
-    private void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
+    void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
     // Embedded tracks are decoded in the background and arrive after MediaLoaded (ENG-039 P5-1).
-    private void OnSubtitleTracksChanged(object? sender, SubtitleTracksChangedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
+    void OnSubtitleTracksChanged(object? sender, SubtitleTracksChangedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
-    private void RefreshSubtitleChoices()
+    void RefreshSubtitleChoices()
     {
         _refreshingSubtitles = true;
         try
         {
             SubtitleChoices.Clear();
             SubtitleChoices.Add(SubtitlesOff);
-            SubtitleChoice selected = SubtitlesOff;
+            var selected = SubtitlesOff;
             if (Player is { IsOpen: true } player)
             {
                 var selectedId = player.SelectedSubtitleTrackId;
-                foreach (SubtitleTrack track in player.SubtitleTracks)
+                foreach (var track in player.SubtitleTracks)
                 {
                     var choice = new SubtitleChoice(track.Id, $"{track.DisplayName} ({(track.IsEmbedded ? "embedded" : "file")})");
                     SubtitleChoices.Add(choice);

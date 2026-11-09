@@ -17,7 +17,7 @@ public sealed class FatzAudioMappingsTests
     [Fact]
     public void Equalizer_MapsEachBandToAPeak_AndOffOrFlatToNoBands()
     {
-        Fa.EqualizerBand[] bands = FatzAudioMappings.ToEqualizerBands(AudioEqualizerSettings.CreateGraphic10Band(6, 0, -3));
+        var bands = FatzAudioMappings.ToEqualizerBands(AudioEqualizerSettings.CreateGraphic10Band(6, 0, -3));
 
         Assert.Equal(10, bands.Length);
         Assert.All(bands, static band => Assert.Equal(Fa.EqualizerBandType.Peak, band.Type));
@@ -41,7 +41,7 @@ public sealed class FatzAudioMappingsTests
     [Fact]
     public void SilenceOptions_KeepOurThresholdAndMinimum_WithRmsAnd200msSounds()
     {
-        Fa.SilenceOptions options = FatzAudioMappings.ToSilenceOptions(new SilenceTrimOptions
+        var options = FatzAudioMappings.ToSilenceOptions(new SilenceTrimOptions
         {
             Enabled = true,
             ThresholdDecibels = -42,

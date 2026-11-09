@@ -1,7 +1,7 @@
-using ManagedBass;
-using ManagedBass.Fx;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using ManagedBass;
+using ManagedBass.Fx;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -10,24 +10,24 @@ namespace FatzMedia.Video.Core.Audio;
 /// Handles audio peak analysis and normalization gain calculation.
 /// Thread-safe implementation optimized for real-time audio processing.
 /// </summary>
-internal sealed class AudioNormalizer
+sealed class AudioNormalizer
 {
     #region Constants and Static Fields
 
     // Normalization target level (0.8 = industry standard, can be configured)
-    private const double NormalizationTarget = 0.8;
+    const double NormalizationTarget = 0.8;
 
     #endregion
 
     #region Private Fields
 
     // Thread-safe normalization gain using Volatile operations
-    private double _normalizationGain = 1.0;
+    double _normalizationGain = 1.0;
 
     // Guards the FX handle and the reused parameter object: the gain is applied from the
     // analysis thread and from the Normalize setter, and the handle is replaced on open.
-    private readonly Lock _gainFxLock = new();
-    private int _gainFxHandle = 0;
+    readonly Lock _gainFxLock = new();
+    int _gainFxHandle = 0;
 
     #endregion
 
@@ -52,16 +52,17 @@ internal sealed class AudioNormalizer
     /// Optimized for speed over accuracy.
     /// </summary>
     /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
+    /// <param name="updateGain">Whether to update the normalization gain from the measured peak</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
     public async Task<double> AnalyzePeakQuickAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default)
     {
         if (source is null) return 0.0;
 
-        const float blockSeconds = 0.25f;
-        const int maxSamples = 24;
+        const float BlockSeconds = 0.25f;
+        const int MaxSamples = 24;
 
-        return await Task.Run(() => AnalyzePeakInternal(source, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => AnalyzePeakInternal(source, BlockSeconds, MaxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -69,6 +70,7 @@ internal sealed class AudioNormalizer
     /// May take longer but provides more reliable results.
     /// </summary>
     /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
+    /// <param name="updateGain">Whether to update the normalization gain from the measured peak</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
     public async Task<double> AnalyzePeakAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default) =>
@@ -124,7 +126,7 @@ internal sealed class AudioNormalizer
 
         try
         {
-            int fxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
+            var fxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
             lock (_gainFxLock)
                 _gainFxHandle = fxHandle;
 
@@ -146,7 +148,7 @@ internal sealed class AudioNormalizer
         }
     }
 
-    private readonly VolumeParameters _gainParam = new()
+    readonly VolumeParameters _gainParam = new()
     {
         fTarget = 1f,
         lChannel = FXChannelFlags.All,
@@ -159,13 +161,13 @@ internal sealed class AudioNormalizer
     /// Applies the current normalization gain to the FX handle.
     /// This is called when normalization is enabled/disabled or gain changes.
     /// </summary>
-    private void ApplyGainToFx(bool normalize)
+    void ApplyGainToFx(bool normalize)
     {
         lock (_gainFxLock)
             ApplyGainToFxCore(normalize);
     }
 
-    private void ApplyGainToFxCore(bool normalize)
+    void ApplyGainToFxCore(bool normalize)
     {
         if (_gainFxHandle == 0)
             return;
@@ -200,7 +202,7 @@ internal sealed class AudioNormalizer
 
     #region Private Methods
 
-    private double AnalyzePeakInternal(IAudioLevelSource source, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
+    double AnalyzePeakInternal(IAudioLevelSource source, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
     {
         var peak = 0.0;
 
@@ -225,16 +227,16 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
+    double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
     {
-        const double blockSeconds = 0.5;
-        const int maxWindows = 240;
+        const double BlockSeconds = 0.5;
+        const int MaxWindows = 240;
 
         double peak;
 
         peak = source.TryGetDuration(out var duration)
-            ? AnalyzePeakBySeek(source, duration, blockSeconds, maxWindows, cancellationToken)
-            : AnalyzePeakSequential(source, blockSeconds, maxWindows, cancellationToken);
+            ? AnalyzePeakBySeek(source, duration, BlockSeconds, MaxWindows, cancellationToken)
+            : AnalyzePeakSequential(source, BlockSeconds, MaxWindows, cancellationToken);
 
         if (updateGain)
             _ = SetNormalizationGainFromPeak(peak);
@@ -242,7 +244,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakBySeek(IAudioLevelSource source, double duration, double blockSeconds, int maxWindows,
+    static double AnalyzePeakBySeek(IAudioLevelSource source, double duration, double blockSeconds, int maxWindows,
         CancellationToken cancellationToken)
     {
         var stride = Math.Max(1, (int)Math.Ceiling(duration / (blockSeconds * maxWindows)));
@@ -265,7 +267,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakSequential(IAudioLevelSource source, double blockSeconds, int maxWindows,
+    static double AnalyzePeakSequential(IAudioLevelSource source, double blockSeconds, int maxWindows,
         CancellationToken cancellationToken)
     {
         var peak = 0.0;

@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Core.Graphics.Rendering;
 /// </summary>
 public sealed class RendererDiagnosticLatch
 {
-    private int _latched;
+    int _latched;
 
     /// <summary>Gets whether the current episode has already been reported.</summary>
     public bool IsLatched => Volatile.Read(ref _latched) != 0;

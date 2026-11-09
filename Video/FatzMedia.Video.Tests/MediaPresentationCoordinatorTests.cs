@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
@@ -6,7 +7,6 @@ using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Pipeline;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -24,7 +24,7 @@ public sealed class MediaPresentationCoordinatorTests
     {
         var backend = new RecordingRendererBackend();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine());
-        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1920, 1080);
+        var surface = CreatePrimarySurface(1920, 1080);
 
         Assert.True(coordinator.AttachPresentationSurface(surface));
         Assert.Equal(1, backend.InitializeCount);
@@ -35,7 +35,7 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.Equal((640, 480), (backend.ResizedSurfaces.Last().PixelWidth, backend.ResizedSurfaces.Last().PixelHeight));
         Assert.Equal("presentation surface resized", backend.PresentedFrames.Last().Reason);
 
-        int presentationCount = backend.PresentedFrames.Count;
+        var presentationCount = backend.PresentedFrames.Count;
         Assert.True(coordinator.SetPresentationSurfaceLiveResize(surface.Id, true));
         Assert.Equal(presentationCount, backend.PresentedFrames.Count);
         Assert.True(coordinator.SetPresentationSurfaceLiveResize(surface.Id, false));
@@ -85,12 +85,12 @@ public sealed class MediaPresentationCoordinatorTests
         coordinator.FramePresented += (_, _) => forwardedFrames++;
 
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
-        MediaCompositionFrame attached = backend.PresentedFrames.Last();
+        var attached = backend.PresentedFrames.Last();
         Assert.True(attached.RetainedRefresh);
         Assert.Equal("presentation surface attached", attached.Reason);
 
         coordinator.RefreshCurrentPosition();
-        MediaCompositionFrame refreshed = backend.PresentedFrames.Last();
+        var refreshed = backend.PresentedFrames.Last();
         Assert.False(refreshed.RetainedRefresh);
         Assert.Equal("current position refreshed", refreshed.Reason);
 
@@ -108,13 +108,13 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
 
         coordinator.RefreshCurrentPosition();
-        MediaCompositionFrame black = backend.PresentedFrames.Last();
+        var black = backend.PresentedFrames.Last();
         Assert.Equal(MediaCompositionClearMode.Black, black.ClearMode);
         Assert.Equal(0xFF000000u, black.ClearArgb);
 
         coordinator.TransparentBackground = true;
         coordinator.RefreshCurrentPosition();
-        MediaCompositionFrame transparent = backend.PresentedFrames.Last();
+        var transparent = backend.PresentedFrames.Last();
         Assert.Equal(MediaCompositionClearMode.Transparent, transparent.ClearMode);
         Assert.Equal(0u, transparent.ClearArgb);
         Assert.Equal((MediaCompositionClearMode.Black, 0xFF000000u), MediaPresentationCoordinator.ResolveContentClear(false));
@@ -263,10 +263,10 @@ public sealed class MediaPresentationCoordinatorTests
         var backend = new RecordingRendererBackend { RefreshRateHz = 59.94 };
         var video = new TestVideoEngine();
         var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
-        Func<double?> source = Assert.IsType<Func<double?>>(video.RendererRefreshRateSource);
+        var source = Assert.IsType<Func<double?>>(video.RendererRefreshRateSource);
         Assert.Null(source()); // no surface yet
 
-        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1920, 1080);
+        var surface = CreatePrimarySurface(1920, 1080);
         Assert.True(coordinator.AttachPresentationSurface(surface));
         Assert.Equal(59.94, source());
         Assert.Equal(surface, backend.LastRefreshRateSurface);
@@ -288,11 +288,11 @@ public sealed class MediaPresentationCoordinatorTests
         var backend = new RecordingRendererBackend { RefreshRateHz = 144 };
         var video = new TestVideoEngine();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
-        MediaPresentationSurfaceDescriptor oldPrimary = CreatePrimarySurface(1920, 1080);
+        var oldPrimary = CreatePrimarySurface(1920, 1080);
         var newPrimary = new MediaPresentationSurfaceDescriptor(
             "replacement-primary",
             MediaPresentationSurfaceRole.Primary,
-            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x5678),
+            MediaNativeSurfaceDescriptor.Win32Hwnd(0x5678),
             1920,
             1080);
 
@@ -320,7 +320,7 @@ public sealed class MediaPresentationCoordinatorTests
         var secondary = new MediaPresentationSurfaceDescriptor(
             "projector",
             MediaPresentationSurfaceRole.Projector,
-            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x9abc),
+            MediaNativeSurfaceDescriptor.Win32Hwnd(0x9abc),
             1280,
             720);
         Assert.True(coordinator.AttachPresentationSurface(secondary));
@@ -343,28 +343,28 @@ public sealed class MediaPresentationCoordinatorTests
         var backend = new RecordingRendererBackend();
         var video = new TestVideoEngine();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
-        MediaPresentationSurfaceDescriptor primary = CreatePrimarySurface(1920, 1080);
-        MediaPresentationSurfaceDescriptor sameMonitor = Secondary("preview", 0x2001);
-        MediaPresentationSurfaceDescriptor projector = Secondary("projector", 0x2002);
-        MediaPresentationSurfaceDescriptor noTiming = Secondary("frame-sink", 0x2003);
+        var primary = CreatePrimarySurface(1920, 1080);
+        var sameMonitor = Secondary("preview", 0x2001);
+        var projector = Secondary("projector", 0x2002);
+        var noTiming = Secondary("frame-sink", 0x2003);
         var display1 = new PresentationVsyncTiming(11, 1_000_000, 166_667);
         var display2 = new PresentationVsyncTiming(22, 1_000_500, 200_000);
         backend.VsyncTimings[primary.Id] = display1;
         backend.VsyncTimings[sameMonitor.Id] = display1;
         backend.VsyncTimings[projector.Id] = display2;
-        foreach (MediaPresentationSurfaceDescriptor surface in new[] { primary, sameMonitor, projector, noTiming })
+        foreach (var surface in new[] { primary, sameMonitor, projector, noTiming })
             Assert.True(coordinator.AttachPresentationSurface(surface));
 
-        List<PresentationTimingGroup> groups = QueryGroups(video);
+        var groups = QueryGroups(video);
 
         Assert.Equal(2, groups.Count);
-        PresentationTimingGroup first = groups[0];
+        var first = groups[0];
         Assert.True(first.IncludesPrimary);
         Assert.Equal(display1, first.Timing);
         Assert.Equal(new[] { noTiming.Id, primary.Id, sameMonitor.Id }.Order(), first.SurfaceIds.Order());
         Assert.True(first.Targets!.IncludesPrimary);
         Assert.Equal(new[] { noTiming.Id, sameMonitor.Id }.Order(), first.Targets.SecondarySurfaceIds.Order());
-        PresentationTimingGroup second = groups[1];
+        var second = groups[1];
         Assert.False(second.IncludesPrimary);
         Assert.Equal(display2, second.Timing);
         Assert.Equal(projector.Id, Assert.Single(second.SurfaceIds));
@@ -374,7 +374,7 @@ public sealed class MediaPresentationCoordinatorTests
 
         // The projector moves to the primary's monitor: one group, which needs no filter.
         backend.VsyncTimings[projector.Id] = display1;
-        PresentationTimingGroup only = Assert.Single(QueryGroups(video));
+        var only = Assert.Single(QueryGroups(video));
         Assert.Null(only.Targets);
         Assert.Equal(4, only.SurfaceIds.Count);
     }
@@ -385,7 +385,7 @@ public sealed class MediaPresentationCoordinatorTests
         var backend = new RecordingRendererBackend();
         var video = new TestVideoEngine();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
-        MediaPresentationSurfaceDescriptor projector = Secondary("projector", 0x2002);
+        var projector = Secondary("projector", 0x2002);
         backend.VsyncTimings[projector.Id] = new PresentationVsyncTiming(22, 1_000_000, 200_000);
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
         Assert.True(coordinator.AttachPresentationSurface(projector));
@@ -467,7 +467,7 @@ public sealed class MediaPresentationCoordinatorTests
 
         Assert.Equal(
             ["current position refreshed", "presentation started"],
-            backend.PresentedFrames.Skip(baseline).Take(2).Select(static frame => frame.Reason).ToArray());
+            [.. backend.PresentedFrames.Skip(baseline).Take(2).Select(static frame => frame.Reason)]);
     }
 
     [Fact]
@@ -506,7 +506,7 @@ public sealed class MediaPresentationCoordinatorTests
 
         Assert.Equal(
             ["current position refreshed", "presentation stopped"],
-            backend.PresentedFrames.Skip(baseline).Select(static frame => frame.Reason).ToArray());
+            [.. backend.PresentedFrames.Skip(baseline).Select(static frame => frame.Reason)]);
     }
 
     [Fact]
@@ -517,7 +517,7 @@ public sealed class MediaPresentationCoordinatorTests
         var time = new ManualTimeProvider();
         var backend = new RecordingRendererBackend();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle }, time);
-        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1280, 720);
+        var surface = CreatePrimarySurface(1280, 720);
         Assert.True(coordinator.AttachPresentationSurface(surface));
 
         using var entered = new ManualResetEventSlim();
@@ -643,7 +643,7 @@ public sealed class MediaPresentationCoordinatorTests
         var time = new ManualTimeProvider();
         var backend = new RecordingRendererBackend();
         using var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
-        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1280, 720);
+        var surface = CreatePrimarySurface(1280, 720);
         Assert.True(coordinator.AttachPresentationSurface(surface));
         Assert.True(coordinator.DetachPresentationSurface(surface.Id));
         backend.DeviceLost = true;
@@ -756,7 +756,7 @@ public sealed class MediaPresentationCoordinatorTests
         video.RaiseFrame(HardwareFrame(fallback));
 
         Assert.True(fallback.IsRequested);
-        string reason = Assert.Single(reasons);
+        var reason = Assert.Single(reasons);
         Assert.Contains("Test renderer", reason, StringComparison.Ordinal);
         Assert.Equal(0, backend.NativeFramePresents);
     }
@@ -912,7 +912,7 @@ public sealed class MediaPresentationCoordinatorTests
 
                 Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
 
-                MediaCompositionFrame attached = backend.PresentedFrames.Last();
+                var attached = backend.PresentedFrames.Last();
                 Assert.Equal("presentation surface attached", attached.Reason);
                 Assert.False(attached.UseRetainedBackground);
                 Assert.Empty(warnings);
@@ -929,14 +929,14 @@ public sealed class MediaPresentationCoordinatorTests
     {
         var engine = new TestMediaEngine();
         var decoding = new DecodeDeviceRendererBackend();
-        MediaPresentationCoordinator coordinator = CreateCoordinator(decoding, engine);
+        var coordinator = CreateCoordinator(decoding, engine);
         Assert.Same(decoding, engine.AttachedDecodeDevice);
 
         coordinator.Dispose();
         Assert.Null(engine.AttachedDecodeDevice);
 
         // A renderer without its own decode device attaches null: the platform's devices.
-        using MediaPresentationCoordinator plain = CreateCoordinator(new RecordingRendererBackend(), engine);
+        using var plain = CreateCoordinator(new RecordingRendererBackend(), engine);
         Assert.Equal(2, engine.DecodeDeviceAttachCount);
         Assert.Null(engine.AttachedDecodeDevice);
     }
@@ -950,12 +950,12 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
 
         engine.RaiseBackgroundFrame(HardwareFrame());
-        MediaCompositionFrame hardware = backend.PresentedFrames.Last();
+        var hardware = backend.PresentedFrames.Last();
         Assert.Equal("core hardware background frame", hardware.Reason);
 
         coordinator.RefreshCurrentPosition();
 
-        MediaCompositionFrame refreshed = backend.PresentedFrames.Last();
+        var refreshed = backend.PresentedFrames.Last();
         Assert.Equal("current position refreshed", refreshed.Reason);
         Assert.True(refreshed.UseRetainedBackground);
         Assert.Equal(hardware.BackgroundRevision, refreshed.BackgroundRevision);
@@ -978,7 +978,7 @@ public sealed class MediaPresentationCoordinatorTests
         engine.Content = MediaContent.Audio;
         coordinator.RefreshCurrentPosition();
 
-        MediaCompositionFrame refreshed = backend.PresentedFrames.Last();
+        var refreshed = backend.PresentedFrames.Last();
         Assert.Equal("current position refreshed", refreshed.Reason);
         Assert.False(refreshed.UseRetainedBackground);
     }
@@ -1030,20 +1030,20 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
 
         coordinator.RefreshCurrentPosition();
-        MediaCompositionFrame first = backend.PresentedFrames.Last();
+        var first = backend.PresentedFrames.Last();
         Assert.Equal(CountingSubtitleRasterizer.PixelBytes, first.SubtitleBgra.Length);
         Assert.All(first.SubtitleBgra.ToArray(), value => Assert.Equal(0x11, value));
 
         rasterizer.Fill = 0x22;
         subtitles.Cues = [new SubtitleCue(2, TimeSpan.Zero, TimeSpan.FromSeconds(10), "two")];
         coordinator.RefreshCurrentPosition();
-        MediaCompositionFrame second = backend.PresentedFrames.Last();
+        var second = backend.PresentedFrames.Last();
         Assert.Equal(2, rasterizer.TextCount);
         Assert.True(second.SubtitleRevision > first.SubtitleRevision);
         Assert.All(second.SubtitleBgra.ToArray(), value => Assert.Equal(0x22, value));
     }
 
-    private static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
+    static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
     {
         var changed = false;
         for (var i = 0; i < 16; i++)
@@ -1058,21 +1058,21 @@ public sealed class MediaPresentationCoordinatorTests
         return allocated;
     }
 
-    private static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
+    static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
     {
         var groups = new List<PresentationTimingGroup>();
         video.PresentationTimingSource!(groups);
         return groups;
     }
 
-    private static MediaPresentationSurfaceDescriptor Secondary(string id, nint hwnd) => new(
+    static MediaPresentationSurfaceDescriptor Secondary(string id, nint hwnd) => new(
         id,
         MediaPresentationSurfaceRole.Projector,
         MediaNativeSurfaceDescriptor.Win32Hwnd(hwnd),
         1280,
         720);
 
-    private static VideoFrameEventArgs HardwareFrame(MediaCompositionTargetFilter? targets) => new()
+    static VideoFrameEventArgs HardwareFrame(MediaCompositionTargetFilter? targets) => new()
     {
         Width = 1920,
         Height = 1080,
@@ -1085,7 +1085,7 @@ public sealed class MediaPresentationCoordinatorTests
         Targets = targets,
     };
 
-    private static VideoFrameEventArgs HardwareFrame(VideoDecodeFallback fallback) => new()
+    static VideoFrameEventArgs HardwareFrame(VideoDecodeFallback fallback) => new()
     {
         Width = 1920,
         Height = 1080,
@@ -1100,7 +1100,7 @@ public sealed class MediaPresentationCoordinatorTests
         },
     };
 
-    private static VideoFrameEventArgs HardwareFrame() => new()
+    static VideoFrameEventArgs HardwareFrame() => new()
     {
         Width = 1920,
         Height = 1080,
@@ -1112,7 +1112,7 @@ public sealed class MediaPresentationCoordinatorTests
             SubresourceIndex: 0),
     };
 
-    private static MediaPresentationCoordinator CreateCoordinator(
+    static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
         TestMediaEngine engine,
         TimeProvider? timeProvider = null,
@@ -1126,11 +1126,11 @@ public sealed class MediaPresentationCoordinatorTests
             timeProvider ?? new ManualTimeProvider());
 
     /// <summary>A clock that moves only when the test advances it; timers fire on the test thread.</summary>
-    private sealed class ManualTimeProvider : TimeProvider
+    sealed class ManualTimeProvider : TimeProvider
     {
-        private readonly Lock _gate = new();
-        private readonly List<ManualTimer> _timers = [];
-        private long _now;
+        readonly Lock _gate = new();
+        readonly List<ManualTimer> _timers = [];
+        long _now;
 
         public override long TimestampFrequency => 1_000;
 
@@ -1163,9 +1163,9 @@ public sealed class MediaPresentationCoordinatorTests
             Volatile.Write(ref _now, target);
         }
 
-        private sealed class ManualTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
+        sealed class ManualTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
         {
-            private long _period;
+            long _period;
 
             public long? DueAt { get; private set; }
 
@@ -1192,14 +1192,14 @@ public sealed class MediaPresentationCoordinatorTests
         }
     }
 
-    private static MediaPresentationSurfaceDescriptor CreatePrimarySurface(int width, int height) => new(
+    static MediaPresentationSurfaceDescriptor CreatePrimarySurface(int width, int height) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
         MediaPresentationSurfaceRole.Primary,
-        MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x1234),
+        MediaNativeSurfaceDescriptor.Win32Hwnd(0x1234),
         width,
         height);
 
-    private sealed class RecordingSharedImageConsumer : IMediaSharedGpuImageConsumer
+    sealed class RecordingSharedImageConsumer : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<string> UnavailableReasons { get; } = [];
 
@@ -1213,7 +1213,7 @@ public sealed class MediaPresentationCoordinatorTests
         public void OnUnavailable(string reason) => UnavailableReasons.Enqueue(reason);
     }
 
-    private sealed class StubSubtitleRasterizer : ISubtitleRasterizer
+    sealed class StubSubtitleRasterizer : ISubtitleRasterizer
     {
         public SubtitleRasterResult Render(string text, int width, int height) => default;
         public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height) => default;
@@ -1221,10 +1221,10 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     /// <summary>Counts raster calls and returns a small fixed raster through the base overloads.</summary>
-    private sealed class CountingSubtitleRasterizer : ISubtitleRasterizer
+    sealed class CountingSubtitleRasterizer : ISubtitleRasterizer
     {
         public const int PixelBytes = 4 * 4 * 2;
-        private readonly byte[] _pixels = new byte[PixelBytes];
+        readonly byte[] _pixels = new byte[PixelBytes];
 
         public int TextCount { get; private set; }
         public int KaraokeCount { get; private set; }
@@ -1246,14 +1246,14 @@ public sealed class MediaPresentationCoordinatorTests
 
         public void Dispose() { }
 
-        private SubtitleRasterResult Result(int width, int height)
+        SubtitleRasterResult Result(int width, int height)
         {
             Array.Fill(_pixels, Fill);
             return new SubtitleRasterResult(_pixels, 4, 2, 16, 0, 0, width, height);
         }
     }
 
-    private sealed class FixedSubtitleEngine(IReadOnlyList<SubtitleCue> cues) : ISubtitleEngine
+    sealed class FixedSubtitleEngine(IReadOnlyList<SubtitleCue> cues) : ISubtitleEngine
     {
         public IReadOnlyList<SubtitleCue> Cues { get; set; } = cues;
         public bool IsOpen => true;
@@ -1270,7 +1270,7 @@ public sealed class MediaPresentationCoordinatorTests
         }
     }
 
-    private sealed class DecodeDeviceRendererBackend : RecordingRendererBackend, IMediaRendererVideoDecodeDevice
+    sealed class DecodeDeviceRendererBackend : RecordingRendererBackend, IMediaRendererVideoDecodeDevice
     {
         public string? VideoDecodeDeviceType => "vulkan";
         public string? VideoDecodeUnavailableReason => null;
@@ -1286,7 +1286,7 @@ public sealed class MediaPresentationCoordinatorTests
         public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
     }
 
-    private class RecordingRendererBackend : IMediaRendererBackend
+    class RecordingRendererBackend : IMediaRendererBackend
     {
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> AttachedSurfaces { get; } = [];
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> ResizedSurfaces { get; } = [];

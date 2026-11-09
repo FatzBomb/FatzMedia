@@ -1,7 +1,7 @@
 namespace FatzMedia.Video.Core.Network;
 
 /// <summary>The result of one network open attempt.</summary>
-internal enum NetworkAttemptResult
+enum NetworkAttemptResult
 {
     /// <summary>Connected and opened.</summary>
     Opened,
@@ -14,7 +14,7 @@ internal enum NetworkAttemptResult
 }
 
 /// <summary>How a bounded network open ended.</summary>
-internal enum NetworkOpenOutcome
+enum NetworkOpenOutcome
 {
     /// <summary>An attempt connected.</summary>
     Opened,
@@ -31,7 +31,7 @@ internal enum NetworkOpenOutcome
 /// <see cref="NetworkRetryPolicy.MaxAttempts"/> attempts with the policy's delays between them.
 /// Unlike the 014A audio open, the delays and the attempts are cancellable.
 /// </summary>
-internal static class NetworkOpenRetry
+static class NetworkOpenRetry
 {
     /// <param name="policy">The bounded retry policy.</param>
     /// <param name="cancellation">Cancels the attempt in progress and any pending delay.</param>
@@ -59,7 +59,7 @@ internal static class NetworkOpenRetry
 
             if (number > 1)
             {
-                TimeSpan delay = policy.GetDelayBeforeRetry(number - 1);
+                var delay = policy.GetDelayBeforeRetry(number - 1);
                 beforeRetry?.Invoke(number - 1, delay);
                 if (delay > TimeSpan.Zero && wait(delay, cancellation))
                     return NetworkOpenOutcome.Cancelled;

@@ -13,12 +13,12 @@ namespace FatzMedia.Video.Core.Video;
 /// Uses FFmpeg's <c>filter_units</c> bitstream filter, which splits a packet into OBUs by
 /// their size fields without parsing their contents, so the malformed bytes are never read.
 /// </remarks>
-internal sealed unsafe class Av1MetadataObuFilter : IDisposable
+sealed unsafe class Av1MetadataObuFilter : IDisposable
 {
-    private const string RemovedObuTypes = "5";
-    private AVBSFContext* _context;
+    const string RemovedObuTypes = "5";
+    readonly AVBSFContext* _context;
 
-    private Av1MetadataObuFilter(AVBSFContext* context) => _context = context;
+    Av1MetadataObuFilter(AVBSFContext* context) => _context = context;
 
     /// <summary>
     /// Creates the filter for an AV1 stream, or returns null for other codecs or when this
@@ -29,7 +29,7 @@ internal sealed unsafe class Av1MetadataObuFilter : IDisposable
         if (parameters == null || parameters->codec_id != AVCodecID.AV_CODEC_ID_AV1)
             return null;
 
-        AVBitStreamFilter* filter = ffmpeg.av_bsf_get_by_name("filter_units");
+        var filter = ffmpeg.av_bsf_get_by_name("filter_units");
         if (filter == null)
             return null;
 

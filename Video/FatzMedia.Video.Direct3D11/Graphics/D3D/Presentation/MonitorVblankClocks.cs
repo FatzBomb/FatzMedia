@@ -14,13 +14,13 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// for primary and secondary windows. The thread runs only while timing is asked for
 /// (display-locked video): it stops after a few seconds without a query.
 /// </summary>
-internal sealed partial class MonitorVblankClocks : IDisposable
+sealed partial class MonitorVblankClocks : IDisposable
 {
-    private const uint MonitorDefaultToNearest = 2;
+    const uint MonitorDefaultToNearest = 2;
 
-    private readonly Lock _gate = new();
-    private readonly Dictionary<nint, Clock> _clocks = [];
-    private bool _disposed;
+    readonly Lock _gate = new();
+    readonly Dictionary<nint, Clock> _clocks = [];
+    bool _disposed;
 
     /// <summary>
     /// The timing of the monitor showing <paramref name="hwnd"/>. The first query for a monitor
@@ -65,30 +65,30 @@ internal sealed partial class MonitorVblankClocks : IDisposable
             _clocks.Clear();
         }
 
-        foreach (Clock clock in clocks)
+        foreach (var clock in clocks)
             clock.Dispose();
     }
 
     [LibraryImport("user32.dll")]
     private static partial nint MonitorFromWindow(nint hwnd, uint flags);
 
-    private sealed class Clock(nint monitor) : IDisposable
+    sealed class Clock(nint monitor) : IDisposable
     {
-        private static readonly long IdleTicks = Stopwatch.Frequency * 3;
-        private static readonly long RetryAfterFailureTicks = Stopwatch.Frequency * 5;
-        private const int MaxConsecutiveWaitFailures = 10;
-        private const int MaxReportedRestarts = 3;
+        static readonly long IdleTicks = Stopwatch.Frequency * 3;
+        static readonly long RetryAfterFailureTicks = Stopwatch.Frequency * 5;
+        const int MaxConsecutiveWaitFailures = 10;
+        const int MaxReportedRestarts = 3;
 
-        private readonly Lock _gate = new();
-        private readonly VblankGrid _grid = new(Stopwatch.Frequency);
-        private Thread? _thread;
-        private PresentationVsyncTiming _timing;
-        private double? _nominalRefreshHz;
-        private long _lastQuery;
-        private long _failedAt;
-        private bool _failureReported;
-        private int _reportedRestarts;
-        private bool _disposed;
+        readonly Lock _gate = new();
+        readonly VblankGrid _grid = new(Stopwatch.Frequency);
+        Thread? _thread;
+        PresentationVsyncTiming _timing;
+        double? _nominalRefreshHz;
+        long _lastQuery;
+        long _failedAt;
+        bool _failureReported;
+        int _reportedRestarts;
+        bool _disposed;
 
         public bool TryGet(double? nominalRefreshHz, out PresentationVsyncTiming timing)
         {
@@ -123,7 +123,7 @@ internal sealed partial class MonitorVblankClocks : IDisposable
             }
         }
 
-        private void Start()
+        void Start()
         {
             _timing = default;
             _thread = new Thread(Run)
@@ -135,7 +135,7 @@ internal sealed partial class MonitorVblankClocks : IDisposable
             _thread.Start();
         }
 
-        private void Run()
+        void Run()
         {
             IDXGIOutput? output = null;
             try
@@ -221,7 +221,7 @@ internal sealed partial class MonitorVblankClocks : IDisposable
             }
         }
 
-        private void Fail(string reason)
+        void Fail(string reason)
         {
             bool report;
             lock (_gate)
@@ -242,14 +242,14 @@ internal sealed partial class MonitorVblankClocks : IDisposable
             }
         }
 
-        private static IDXGIOutput? FindOutput(nint monitor)
+        static IDXGIOutput? FindOutput(nint monitor)
         {
-            using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            for (uint adapterIndex = 0; factory.EnumAdapters1(adapterIndex, out IDXGIAdapter1? adapter).Success; adapterIndex++)
+            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+            for (uint adapterIndex = 0; factory.EnumAdapters1(adapterIndex, out var adapter).Success; adapterIndex++)
             {
                 using (adapter)
                 {
-                    for (uint outputIndex = 0; adapter!.EnumOutputs(outputIndex, out IDXGIOutput? output).Success; outputIndex++)
+                    for (uint outputIndex = 0; adapter!.EnumOutputs(outputIndex, out var output).Success; outputIndex++)
                     {
                         if (output!.Description.Monitor == monitor)
                             return output;

@@ -8,9 +8,9 @@ namespace FatzMedia.Video.Vulkan.Tests;
 /// </summary>
 public sealed partial class D3D11InteropDeviceHealthTests
 {
-    private const int DriverTypeWarp = 5;
-    private const uint CreateDeviceBgraSupport = 0x20;
-    private const uint D3D11SdkVersion = 7;
+    const int DriverTypeWarp = 5;
+    const uint CreateDeviceBgraSupport = 0x20;
+    const uint D3D11SdkVersion = 7;
 
     [Fact]
     public unsafe void GetDeviceRemovedReason_HealthyDevice_IsSuccess()

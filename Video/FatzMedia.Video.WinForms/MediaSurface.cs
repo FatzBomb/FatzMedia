@@ -45,34 +45,22 @@ public class MediaSurface : Control
     public const string DiagnosticCategory = "WinForms.MediaSurface";
 
 
-    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
-    private readonly PresentationHost _host = new();
-    private readonly MediaSurfaceContentTracker _contentTracker = new();
-    private IPlayerSession? _player;
-    private IPlayerSession? _attachedSession;
-    private string? _attachedSurfaceId;
-    private (int Width, int Height) _attachedPixelSize;
-    private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
-    private MediaPresentationSurfaceRole _role = MediaPresentationSurfaceRole.Primary;
-    private string? _surfaceId;
-    private Form? _resizeForm;
-    private bool _isLiveResizing;
-    private int _contentStateQueued;
-    private bool _isContentVisible;
-    private bool _isPresentationSuspended;
-    private bool _presentationWindowShown;
-    private IPlayerSession? _frameSession;
-    private int _framePresentedSinceAttach;
-    private bool _preferNativeWindow = true;
-    private WinFormsFrameSink? _sink;
-    private bool _framesShown;
-    private int _firstFrameReadyLoad;
-    private Control? _overlayContent;
-    private bool _overlayHitTestVisible;
-    private MediaOverlayForm? _overlayForm;
-    private readonly List<Control> _overlayAnchors = [];
-    private bool _overlayAnchorsWatched;
-    private SolidBrush? _backgroundBrush;
+    readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
+    readonly PresentationHost _host = new();
+    readonly MediaSurfaceContentTracker _contentTracker = new();
+    IPlayerSession? _attachedSession;
+    string? _attachedSurfaceId;
+    (int Width, int Height) _attachedPixelSize;
+    Form? _resizeForm;
+    bool _isLiveResizing;
+    int _contentStateQueued;
+    IPlayerSession? _frameSession;
+    int _framePresentedSinceAttach;
+    int _firstFrameReadyLoad;
+    MediaOverlayForm? _overlayForm;
+    readonly List<Control> _overlayAnchors = [];
+    bool _overlayAnchorsWatched;
+    SolidBrush? _backgroundBrush;
 
     public MediaSurface()
     {
@@ -107,18 +95,18 @@ public class MediaSurface : Control
     [Browsable(false)]
     public IPlayerSession? Player
     {
-        get => _player;
+        get;
         set
         {
-            if (ReferenceEquals(_player, value))
+            if (ReferenceEquals(field, value))
                 return;
 
             Detach();
-            _player = value;
+            field = value;
             _bookkeeping.ResetAttachRefusal();
             _contentTracker.Session = value;
-            if (value is not null && _role == MediaPresentationSurfaceRole.Primary)
-                value.VideoDisplayMode = _videoDisplayMode;
+            if (value is not null && Role == MediaPresentationSurfaceRole.Primary)
+                value.VideoDisplayMode = VideoDisplayMode;
             AttachOrResize();
             UpdateContentState();
         }
@@ -131,14 +119,14 @@ public class MediaSurface : Control
     [DefaultValue(VideoDisplayMode.Zoom)]
     public VideoDisplayMode VideoDisplayMode
     {
-        get => _videoDisplayMode;
+        get;
         set
         {
-            _videoDisplayMode = value;
-            if (_player is not null && _role == MediaPresentationSurfaceRole.Primary)
-                _player.VideoDisplayMode = value;
+            field = value;
+            if (Player is not null && Role == MediaPresentationSurfaceRole.Primary)
+                Player.VideoDisplayMode = value;
         }
-    }
+    } = VideoDisplayMode.Zoom;
 
     /// <summary>
     /// Gets or sets the surface's role (default <see cref="MediaPresentationSurfaceRole.Primary"/>).
@@ -148,19 +136,19 @@ public class MediaSurface : Control
     [DefaultValue(MediaPresentationSurfaceRole.Primary)]
     public MediaPresentationSurfaceRole Role
     {
-        get => _role;
+        get;
         set
         {
-            if (_role == value)
+            if (field == value)
                 return;
 
             Detach();
-            _role = value;
-            if (_player is not null && value == MediaPresentationSurfaceRole.Primary)
-                _player.VideoDisplayMode = _videoDisplayMode;
+            field = value;
+            if (Player is not null && value == MediaPresentationSurfaceRole.Primary)
+                Player.VideoDisplayMode = VideoDisplayMode;
             AttachOrResize();
         }
-    }
+    } = MediaPresentationSurfaceRole.Primary;
 
     /// <summary>
     /// Gets or sets the surface id sent to the session. Unset, a primary surface uses
@@ -171,14 +159,14 @@ public class MediaSurface : Control
     [DefaultValue(null)]
     public string? SurfaceId
     {
-        get => _surfaceId;
+        get;
         set
         {
-            if (string.Equals(_surfaceId, value, StringComparison.Ordinal))
+            if (string.Equals(field, value, StringComparison.Ordinal))
                 return;
 
             Detach();
-            _surfaceId = value;
+            field = value;
             AttachOrResize();
         }
     }
@@ -191,17 +179,17 @@ public class MediaSurface : Control
     [DefaultValue(true)]
     public bool PreferNativeWindow
     {
-        get => _preferNativeWindow;
+        get;
         set
         {
-            if (_preferNativeWindow == value)
+            if (field == value)
                 return;
 
             Detach();
-            _preferNativeWindow = value;
+            field = value;
             AttachOrResize();
         }
-    }
+    } = true;
 
     /// <summary>
     /// Gets or sets a host control shown above the video (default <see langword="null"/>), for
@@ -215,14 +203,14 @@ public class MediaSurface : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Control? OverlayContent
     {
-        get => _overlayContent;
+        get;
         set
         {
-            if (ReferenceEquals(_overlayContent, value))
+            if (ReferenceEquals(field, value))
                 return;
 
             _overlayForm?.SetContent(null);
-            _overlayContent = value;
+            field = value;
             UpdateOverlay();
         }
     }
@@ -234,13 +222,13 @@ public class MediaSurface : Control
     [DefaultValue(false)]
     public bool OverlayHitTestVisible
     {
-        get => _overlayHitTestVisible;
+        get;
         set
         {
-            if (_overlayHitTestVisible == value)
+            if (field == value)
                 return;
 
-            _overlayHitTestVisible = value;
+            field = value;
             _overlayForm?.SetHitTestVisible(value);
         }
     }
@@ -267,7 +255,7 @@ public class MediaSurface : Control
 
     /// <summary>Gets whether auto-hide shows the content now (always false while <see cref="AutoHide"/> is off).</summary>
     [Browsable(false)]
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     /// <summary>
     /// Gets whether the surface shows only its background because nothing presents to it: the
@@ -275,7 +263,7 @@ public class MediaSurface : Control
     /// screen; frames show again once the session leaves Audio mode.
     /// </summary>
     [Browsable(false)]
-    public bool IsPresentationSuspended => _isPresentationSuspended;
+    public bool IsPresentationSuspended { get; private set; }
 
     /// <summary>
     /// Gets how frames reach the screen now: <see cref="MediaSurfacePresentationPath.NativeWindow"/>
@@ -291,7 +279,7 @@ public class MediaSurface : Control
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
     [Browsable(false)]
-    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(_surfaceId, _role, DefaultSecondarySurfaceId);
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     [Browsable(false)]
@@ -299,19 +287,19 @@ public class MediaSurface : Control
 
     /// <summary>Gets whether this surface is attached to a session as its primary surface.</summary>
     [Browsable(false)]
-    public bool IsPrimarySurfaceAttached => _attachedSession is not null && _role == MediaPresentationSurfaceRole.Primary;
+    public bool IsPrimarySurfaceAttached => _attachedSession is not null && Role == MediaPresentationSurfaceRole.Primary;
 
     /// <summary>The window the renderer presents into (tests).</summary>
     internal IntPtr PresentationHandle => _host.Handle;
 
     /// <summary>Whether the presentation window is shown now (tests).</summary>
-    internal bool IsPresentationWindowVisible => _presentationWindowShown;
+    internal bool IsPresentationWindowVisible { get; private set; }
 
     /// <summary>The frame sink while the frame-sink path is used (tests).</summary>
-    internal WinFormsFrameSink? FrameSink => _sink;
+    internal WinFormsFrameSink? FrameSink { get; private set; }
 
     /// <summary>Whether frame-sink frames are drawn now (tests).</summary>
-    internal bool AreFramesShown => _framesShown;
+    internal bool AreFramesShown { get; private set; }
 
     /// <summary>The overlay window while one exists (tests).</summary>
     internal Form? OverlayWindow => _overlayForm;
@@ -376,10 +364,10 @@ public class MediaSurface : Control
         // The child window is clipped out while it shows; this paints the background around and
         // instead of it. On the frame-sink path it is the frame's backdrop (frames may carry
         // alpha), painted into the same back buffer, so nothing flickers.
-        Graphics graphics = e.Graphics;
+        var graphics = e.Graphics;
         graphics.FillRectangle(GetBackgroundBrush(), ClientRectangle);
 
-        if (!_framesShown || _sink?.Bitmap is not { } frame)
+        if (!AreFramesShown || FrameSink?.Bitmap is not { } frame)
             return;
 
         // The renderer composed for this pixel size (letterboxing included); during a resize the
@@ -410,9 +398,9 @@ public class MediaSurface : Control
 
     // On the frame-sink path OnPaint runs per frame: one brush, recoloured when BackColor changes,
     // rather than a new one each paint (ENG-039).
-    private SolidBrush GetBackgroundBrush()
+    SolidBrush GetBackgroundBrush()
     {
-        Color color = BackColor;
+        var color = BackColor;
         if (_backgroundBrush is null)
             _backgroundBrush = new SolidBrush(color);
         else if (_backgroundBrush.Color != color)
@@ -421,9 +409,9 @@ public class MediaSurface : Control
         return _backgroundBrush;
     }
 
-    private void AttachOrResize()
+    void AttachOrResize()
     {
-        IPlayerSession? session = _player;
+        var session = Player;
         if (session is null || !IsHandleCreated || ClientSize.Width <= 0 || ClientSize.Height <= 0)
             return;
 
@@ -432,7 +420,7 @@ public class MediaSurface : Control
         if (_host.Bounds != ClientRectangle)
             _host.Bounds = ClientRectangle;
 
-        (int Width, int Height) pixelSize = (ClientSize.Width, ClientSize.Height);
+        var pixelSize = (ClientSize.Width, ClientSize.Height);
         if (ReferenceEquals(session, _attachedSession))
         {
             if (pixelSize != _attachedPixelSize
@@ -449,7 +437,7 @@ public class MediaSurface : Control
         var surfaceId = EffectiveSurfaceId;
 
         var attached = false;
-        if (_preferNativeWindow)
+        if (PreferNativeWindow)
         {
             // The child window has no pixels of its own until the renderer presents into it, so it
             // stays hidden (the control paints BackColor) until a frame arrives, whatever AutoHide
@@ -475,7 +463,7 @@ public class MediaSurface : Control
             WinFormsFrameSink? sink = null;
             Action publish = () => PublishFrame(sink!);
             sink = new WinFormsFrameSink(() => RequestFramePublish(sink!, publish));
-            _sink = sink;
+            FrameSink = sink;
             attached = session.AttachPresentationSurface(CreateDescriptor(surfaceId, sink.CreateSurfaceDescriptor(), pixelSize, scale));
             if (attached)
             {
@@ -483,13 +471,13 @@ public class MediaSurface : Control
                 SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
                 SetPath(
                     MediaSurfacePresentationPath.FrameSink,
-                    _preferNativeWindow
+                    PreferNativeWindow
                         ? "the renderer did not accept the window handle (it presents only through frame sinks)"
                         : "PreferNativeWindow is off");
             }
             else
             {
-                _sink = null;
+                FrameSink = null;
                 sink.Dispose();
             }
         }
@@ -503,13 +491,13 @@ public class MediaSurface : Control
         UpdateContentState();
     }
 
-    private MediaPresentationSurfaceDescriptor CreateDescriptor(
+    MediaPresentationSurfaceDescriptor CreateDescriptor(
         string surfaceId,
         MediaNativeSurfaceDescriptor nativeSurface,
         (int Width, int Height) pixelSize,
-        double scale) => new(surfaceId, _role, nativeSurface, pixelSize.Width, pixelSize.Height, scale, scale);
+        double scale) => new(surfaceId, Role, nativeSurface, pixelSize.Width, pixelSize.Height, scale, scale);
 
-    private void OnAttached(IPlayerSession session, string surfaceId, (int Width, int Height) pixelSize)
+    void OnAttached(IPlayerSession session, string surfaceId, (int Width, int Height) pixelSize)
     {
         _attachedSession = session;
         _attachedSurfaceId = surfaceId;
@@ -519,9 +507,9 @@ public class MediaSurface : Control
             _ = session.SetPresentationSurfaceLiveResize(surfaceId, true);
     }
 
-    private void Detach()
+    void Detach()
     {
-        IPlayerSession? session = _attachedSession;
+        var session = _attachedSession;
         var surfaceId = _attachedSurfaceId;
         _attachedSession = null;
         _attachedSurfaceId = null;
@@ -534,12 +522,12 @@ public class MediaSurface : Control
         }
 
         // The renderer no longer calls the sink once the surface is detached.
-        WinFormsFrameSink? sink = _sink;
-        _sink = null;
+        var sink = FrameSink;
+        FrameSink = null;
         sink?.Dispose();
-        if (_framesShown)
+        if (AreFramesShown)
         {
-            _framesShown = false;
+            AreFramesShown = false;
             Invalidate();
         }
 
@@ -550,7 +538,7 @@ public class MediaSurface : Control
     }
 
     // The presentation thread, when a frame waits in the sink: publish it on the UI thread.
-    private void RequestFramePublish(WinFormsFrameSink sink, Action publish)
+    void RequestFramePublish(WinFormsFrameSink sink, Action publish)
     {
         if (!IsHandleCreated)
         {
@@ -569,18 +557,18 @@ public class MediaSurface : Control
         }
     }
 
-    private void PublishFrame(WinFormsFrameSink sink)
+    void PublishFrame(WinFormsFrameSink sink)
     {
-        if (!ReferenceEquals(sink, _sink) || !sink.Publish())
+        if (!ReferenceEquals(sink, FrameSink) || !sink.Publish())
             return;
 
         PaintPublishedFrame();
         RaiseFirstFrameReadyIfDue();
     }
 
-    private void PaintPublishedFrame()
+    void PaintPublishedFrame()
     {
-        if (!_framesShown)
+        if (!AreFramesShown)
             return;
 
         Invalidate();
@@ -592,7 +580,7 @@ public class MediaSurface : Control
     }
 
     // UI thread: after the content state changed or the sink published a frame (Stage 051A).
-    private void RaiseFirstFrameReadyIfDue()
+    void RaiseFirstFrameReadyIfDue()
     {
         var load = _contentTracker.FirstFrameLoad;
         if (load == 0 || load == _firstFrameReadyLoad || _attachedSession is null || IsDisposed)
@@ -600,7 +588,7 @@ public class MediaSurface : Control
 
         if (PresentationPath == MediaSurfacePresentationPath.FrameSink)
         {
-            if (_sink is not { } sink || !_framesShown)
+            if (FrameSink is not { } sink || !AreFramesShown)
                 return;
 
             // The renderer hands the frame to the sink before it announces it, so a frame still
@@ -610,7 +598,7 @@ public class MediaSurface : Control
             if (sink.Bitmap is null)
                 return;
         }
-        else if (!_presentationWindowShown)
+        else if (!IsPresentationWindowVisible)
         {
             return;
         }
@@ -619,30 +607,28 @@ public class MediaSurface : Control
         FirstFrameReady?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ShowPresentationWindow(bool show)
+    void ShowPresentationWindow(bool show)
     {
-        if (_presentationWindowShown == show)
+        if (IsPresentationWindowVisible == show)
             return;
 
-        _presentationWindowShown = show;
+        IsPresentationWindowVisible = show;
         _host.Visible = show;
         Invalidate();
     }
 
-    private void WatchPresentedFrames(IPlayerSession? session)
+    void WatchPresentedFrames(IPlayerSession? session)
     {
-        if (_frameSession is not null)
-            _frameSession.PresentationFramePresented -= OnPresentationFramePresented;
+        _frameSession?.PresentationFramePresented -= OnPresentationFramePresented;
 
         Volatile.Write(ref _framePresentedSinceAttach, 0);
         Volatile.Write(ref _frameSession, session);
-        if (session is not null)
-            session.PresentationFramePresented += OnPresentationFramePresented;
+        session?.PresentationFramePresented += OnPresentationFramePresented;
     }
 
     // The render thread, once per presented frame: only the first after an attach (or after Audio
     // mode) asks the UI thread to show the child window.
-    private void OnPresentationFramePresented(object? sender, EventArgs e)
+    void OnPresentationFramePresented(object? sender, EventArgs e)
     {
         if (sender is not null && !ReferenceEquals(sender, Volatile.Read(ref _frameSession)))
             return;
@@ -653,9 +639,9 @@ public class MediaSurface : Control
         OnContentTrackerChanged(this, EventArgs.Empty);
     }
 
-    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
+    string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
-    private void SetPath(MediaSurfacePresentationPath path, string? reason)
+    void SetPath(MediaSurfacePresentationPath path, string? reason)
     {
         if (_bookkeeping.SetPath(path, reason, _attachedSession, EffectiveSurfaceId))
             PresentationPathChanged?.Invoke(this, EventArgs.Empty);
@@ -663,7 +649,7 @@ public class MediaSurface : Control
 
     // Raised on the thread that changed the state (often Core's render or event thread): marshal,
     // coalesce, then read the tracker's current state.
-    private void OnContentTrackerChanged(object? sender, EventArgs e)
+    void OnContentTrackerChanged(object? sender, EventArgs e)
     {
         // Without a handle there is nothing to show yet (and no thread to marshal to);
         // OnHandleCreated applies the current state.
@@ -694,21 +680,21 @@ public class MediaSurface : Control
         }
     }
 
-    private void UpdateContentState()
+    void UpdateContentState()
     {
         if (IsDisposed)
             return;
 
-        IPlayerSession? session = _contentTracker.Session;
+        var session = _contentTracker.Session;
         var suspended = session is not null && !_contentTracker.HasPresentation;
-        if (suspended != _isPresentationSuspended)
+        if (suspended != IsPresentationSuspended)
         {
-            _isPresentationSuspended = suspended;
+            IsPresentationSuspended = suspended;
             if (suspended)
             {
                 // The renderer that drew into the child is gone; its replacement presents anew.
                 Volatile.Write(ref _framePresentedSinceAttach, 0);
-                _sink?.Clear();
+                FrameSink?.Clear();
                 DiagnosticRouter.Raise(
                     session,
                     MediaDiagnosticLevel.Info,
@@ -727,19 +713,19 @@ public class MediaSurface : Control
 
         // The frame-sink path draws only while content shows; hidden content is dropped, so a
         // later load shows its own first frame, not this one (as the Avalonia surface does).
-        var framesShown = _sink is not null && PresentationPath == MediaSurfacePresentationPath.FrameSink && showsContent;
-        if (framesShown != _framesShown)
+        var framesShown = FrameSink is not null && PresentationPath == MediaSurfacePresentationPath.FrameSink && showsContent;
+        if (framesShown != AreFramesShown)
         {
             if (!framesShown)
-                _sink?.Clear();
-            _framesShown = framesShown;
+                FrameSink?.Clear();
+            AreFramesShown = framesShown;
             Invalidate();
         }
 
         var isContentVisible = _contentTracker.IsContentVisible;
-        if (isContentVisible != _isContentVisible)
+        if (isContentVisible != IsContentVisible)
         {
-            _isContentVisible = isContentVisible;
+            IsContentVisible = isContentVisible;
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -748,9 +734,9 @@ public class MediaSurface : Control
 
     // The renderer may skip work during a live resize (as the WPF surface tells it from
     // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE): follow the parent form's resize loop.
-    private void WatchFormResize() => WatchFormResize(FindForm());
+    void WatchFormResize() => WatchFormResize(FindForm());
 
-    private void WatchFormResize(Form? form)
+    void WatchFormResize(Form? form)
     {
         if (ReferenceEquals(form, _resizeForm))
             return;
@@ -770,15 +756,15 @@ public class MediaSurface : Control
         }
     }
 
-    private void OnFormResizeBegin(object? sender, EventArgs e) => SetLiveResize(true);
+    void OnFormResizeBegin(object? sender, EventArgs e) => SetLiveResize(true);
 
-    private void OnFormResizeEnd(object? sender, EventArgs e)
+    void OnFormResizeEnd(object? sender, EventArgs e)
     {
         SetLiveResize(false);
         AttachOrResize();
     }
 
-    private void SetLiveResize(bool isResizing)
+    void SetLiveResize(bool isResizing)
     {
         if (_isLiveResizing == isResizing)
             return;
@@ -788,14 +774,14 @@ public class MediaSurface : Control
             _ = session.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
     }
 
-    private void UpdateOverlay()
+    void UpdateOverlay()
     {
-        Control? content = _overlayContent;
+        var content = OverlayContent;
         if (content is null && _overlayForm is null && !_overlayAnchorsWatched)
             return;
 
         // The top-level form: an MDI child or an embedded form cannot own a window.
-        Form? owner = IsHandleCreated && !IsDisposed ? TopLevelControl as Form : null;
+        var owner = IsHandleCreated && !IsDisposed ? TopLevelControl as Form : null;
         if (content is null || owner is null)
         {
             CloseOverlay();
@@ -815,8 +801,8 @@ public class MediaSurface : Control
             _overlayForm.DpiChanged += OnOverlayDpiChanged;
         }
 
-        MediaOverlayForm overlay = _overlayForm;
-        overlay.SetHitTestVisible(_overlayHitTestVisible);
+        var overlay = _overlayForm;
+        overlay.SetHitTestVisible(OverlayHitTestVisible);
         overlay.SetContent(content);
         var show = Visible
             && owner.Visible
@@ -830,16 +816,16 @@ public class MediaSurface : Control
             return;
         }
 
-        Rectangle bounds = RectangleToScreen(ClientRectangle);
+        var bounds = RectangleToScreen(ClientRectangle);
         if (overlay.Bounds != bounds)
             overlay.Bounds = bounds;
         if (!overlay.Visible)
             overlay.Show();
     }
 
-    private void CloseOverlay()
+    void CloseOverlay()
     {
-        MediaOverlayForm? overlay = _overlayForm;
+        var overlay = _overlayForm;
         if (overlay is null)
             return;
 
@@ -851,7 +837,7 @@ public class MediaSurface : Control
     }
 
     // Closed by its owner closing (or by the user): it disposes itself and hands the content back.
-    private void OnOverlayFormClosed(object? sender, FormClosedEventArgs e)
+    void OnOverlayFormClosed(object? sender, FormClosedEventArgs e)
     {
         if (sender is not MediaOverlayForm overlay || !ReferenceEquals(overlay, _overlayForm))
             return;
@@ -863,7 +849,7 @@ public class MediaSurface : Control
 
     // A move to a monitor of another DPI makes the form take Windows' suggested bounds after this
     // event: put it back over the surface once that is done.
-    private void OnOverlayDpiChanged(object? sender, DpiChangedEventArgs e)
+    void OnOverlayDpiChanged(object? sender, DpiChangedEventArgs e)
     {
         if (!IsHandleCreated || IsDisposed)
             return;
@@ -878,7 +864,7 @@ public class MediaSurface : Control
         }
     }
 
-    private void RewatchOverlayAnchors()
+    void RewatchOverlayAnchors()
     {
         if (_overlayAnchorsWatched)
             WatchOverlayAnchors(false);
@@ -888,9 +874,9 @@ public class MediaSurface : Control
 
     // The overlay window follows the surface on screen: a move of any ancestor (the form, a
     // panel whose row changed) moves the surface without a move of its own.
-    private void WatchOverlayAnchors(bool watch)
+    void WatchOverlayAnchors(bool watch)
     {
-        foreach (Control anchor in _overlayAnchors)
+        foreach (var anchor in _overlayAnchors)
         {
             anchor.Move -= OnOverlayAnchorChanged;
             anchor.Resize -= OnOverlayAnchorChanged;
@@ -902,7 +888,7 @@ public class MediaSurface : Control
         if (!watch)
             return;
 
-        for (Control? anchor = Parent; anchor is not null; anchor = anchor.Parent)
+        for (var anchor = Parent; anchor is not null; anchor = anchor.Parent)
         {
             anchor.Move += OnOverlayAnchorChanged;
             anchor.Resize += OnOverlayAnchorChanged;
@@ -911,18 +897,18 @@ public class MediaSurface : Control
         }
     }
 
-    private void OnOverlayAnchorChanged(object? sender, EventArgs e) => UpdateOverlay();
+    void OnOverlayAnchorChanged(object? sender, EventArgs e) => UpdateOverlay();
 
-    private void OnOverlayAnchorParentChanged(object? sender, EventArgs e) => RewatchOverlayAnchors();
+    void OnOverlayAnchorParentChanged(object? sender, EventArgs e) => RewatchOverlayAnchors();
 
     /// <summary>
     /// The child window the renderer presents into. It never paints (the renderer owns its
     /// pixels), never takes focus, and passes mouse input to the <see cref="MediaSurface"/>.
     /// </summary>
-    private sealed class PresentationHost : Control
+    sealed class PresentationHost : Control
     {
-        private const int WmNcHitTest = 0x0084;
-        private const int HtTransparent = -1;
+        const int WmNcHitTest = 0x0084;
+        const int HtTransparent = -1;
 
         public PresentationHost()
         {

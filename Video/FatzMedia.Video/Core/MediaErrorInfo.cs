@@ -6,4 +6,4 @@ namespace FatzMedia.Video;
 /// communicate typed failure details from the pipeline to the host-facing
 /// <see cref="PlayerCore"/> without exposing pipeline internals publicly.
 /// </summary>
-internal sealed record MediaErrorInfo(MediaErrorCode Code, string Message, string? SourcePath = null, Exception? InnerException = null);
+sealed record MediaErrorInfo(MediaErrorCode Code, string Message, string? SourcePath = null, Exception? InnerException = null);

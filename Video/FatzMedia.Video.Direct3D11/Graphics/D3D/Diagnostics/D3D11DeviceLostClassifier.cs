@@ -1,7 +1,7 @@
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
-using ResultCode = Vortice.DXGI.ResultCode;
 using IDXGISwapChain = Vortice.DXGI.IDXGISwapChain;
+using ResultCode = Vortice.DXGI.ResultCode;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 
@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 /// lost (removed, reset, hung, or a driver-internal error) versus a generic/transient
 /// failure. Detection only — this does not attempt any recovery or rebuild.
 /// </summary>
-internal static class D3D11DeviceLostClassifier
+static class D3D11DeviceLostClassifier
 {
     /// <summary>
     /// Returns true when <paramref name="result"/> corresponds to one of the DXGI
@@ -36,10 +36,10 @@ internal static class D3D11DeviceLostClassifier
         {
             try
             {
-                using ID3D11Device? device = swapChain.GetDevice<ID3D11Device>();
+                using var device = swapChain.GetDevice<ID3D11Device>();
                 if (device != null)
                 {
-                    Result reason = device.DeviceRemovedReason;
+                    var reason = device.DeviceRemovedReason;
                     if (reason.Failure)
                     {
                         reasonSuffix = $" (removed reason: {reason})";
@@ -77,7 +77,7 @@ internal static class D3D11DeviceLostClassifier
         return removed.Failure ? $"{message} ({Describe(removed, swapChain: null)})" : message;
     }
 
-    private static string ClassificationName(Result result) =>
+    static string ClassificationName(Result result) =>
         result == ResultCode.DeviceRemoved
             ? "Device removed"
             : result == ResultCode.DeviceReset

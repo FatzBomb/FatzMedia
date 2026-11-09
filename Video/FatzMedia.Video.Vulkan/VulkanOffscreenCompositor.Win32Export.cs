@@ -20,11 +20,11 @@ namespace FatzMedia.Video.Vulkan;
 /// NT handles stay with the renderer (importers open their own references) and are closed when
 /// both sides are done with the set.
 /// </summary>
-internal sealed unsafe partial class VulkanOffscreenCompositor
+sealed unsafe partial class VulkanOffscreenCompositor
 {
-    private const string ExternalMemoryWin32Extension = "VK_KHR_external_memory_win32";
-    private const string ExternalSemaphoreWin32Extension = "VK_KHR_external_semaphore_win32";
-    private const string Win32KeyedMutexExtension = "VK_KHR_win32_keyed_mutex";
+    const string ExternalMemoryWin32Extension = "VK_KHR_external_memory_win32";
+    const string ExternalSemaphoreWin32Extension = "VK_KHR_external_semaphore_win32";
+    const string Win32KeyedMutexExtension = "VK_KHR_win32_keyed_mutex";
 
     /// <summary>
     /// How long a submission waits for an image's keyed mutex before it fails (ms). The ring hands
@@ -33,13 +33,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// </summary>
     internal const uint KeyedMutexTimeoutMilliseconds = 50;
 
-    private delegate* unmanaged<Device, MemoryGetWin32HandleInfoKHR*, nint*, Result> _getMemoryWin32Handle;
-    private delegate* unmanaged<Device, SemaphoreGetWin32HandleInfoKHR*, nint*, Result> _getSemaphoreWin32Handle;
-    private delegate* unmanaged<Device, ExternalMemoryHandleTypeFlags, nint, MemoryWin32HandlePropertiesKHR*, Result> _getMemoryWin32HandleProperties;
-    private bool _exportWin32MemoryCandidate;
-    private bool _exportWin32SemaphoreCandidate;
-    private bool _importD3D11Candidate;
-    private nint _d3d11Device;
+    delegate* unmanaged<Device, MemoryGetWin32HandleInfoKHR*, nint*, Result> _getMemoryWin32Handle;
+    delegate* unmanaged<Device, SemaphoreGetWin32HandleInfoKHR*, nint*, Result> _getSemaphoreWin32Handle;
+    delegate* unmanaged<Device, ExternalMemoryHandleTypeFlags, nint, MemoryWin32HandlePropertiesKHR*, Result> _getMemoryWin32HandleProperties;
+    bool _exportWin32MemoryCandidate;
+    bool _exportWin32SemaphoreCandidate;
+    bool _importD3D11Candidate;
+    nint _d3d11Device;
 
     /// <summary>Gets whether images can be exported as opaque Win32 NT handles.</summary>
     public bool CanExportMemoryWin32 { get; private set; }
@@ -54,7 +54,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// Checks the selected device for the Windows export paths and returns the device extensions
     /// to enable. Each path is optional; the reason covers the case where neither is available.
     /// </summary>
-    private string[] ProbeWin32ExportSupport()
+    string[] ProbeWin32ExportSupport()
     {
         if (!_vk.IsDeviceExtensionPresent(_physicalDevice, ExternalMemoryWin32Extension))
         {
@@ -71,7 +71,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         }
 
         List<string> extensions = [ExternalMemoryWin32Extension];
-        ExternalMemoryFeatureFlags opaque = QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags.OpaqueWin32Bit, ExportUsage);
+        var opaque = QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags.OpaqueWin32Bit, ExportUsage);
         _exportWin32MemoryCandidate = (opaque & ExternalMemoryFeatureFlags.ExportableBit) != 0 && (opaque & ExternalMemoryFeatureFlags.ImportableBit) != 0;
         if (_exportWin32MemoryCandidate && _vk.IsDeviceExtensionPresent(_physicalDevice, ExternalSemaphoreWin32Extension))
         {
@@ -90,7 +90,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         }
 
         // Keyed-mutex textures from Direct3D11 are only written by the blit.
-        ExternalMemoryFeatureFlags d3d11 = QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags.D3D11TextureBit, D3D11ImageUsage);
+        var d3d11 = QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags.D3D11TextureBit, D3D11ImageUsage);
         _importD3D11Candidate = (d3d11 & ExternalMemoryFeatureFlags.ImportableBit) != 0
             && _vk.IsDeviceExtensionPresent(_physicalDevice, Win32KeyedMutexExtension)
             && DeviceLuid.Length == 8;
@@ -107,9 +107,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         return [.. extensions];
     }
 
-    private const ImageUsageFlags D3D11ImageUsage = ImageUsageFlags.TransferDstBit | ImageUsageFlags.ColorAttachmentBit;
+    const ImageUsageFlags D3D11ImageUsage = ImageUsageFlags.TransferDstBit | ImageUsageFlags.ColorAttachmentBit;
 
-    private ExternalMemoryFeatureFlags QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags handleType, ImageUsageFlags usage)
+    ExternalMemoryFeatureFlags QueryExternalImageFeatures(ExternalMemoryHandleTypeFlags handleType, ImageUsageFlags usage)
     {
         var externalInfo = new PhysicalDeviceExternalImageFormatInfo
         {
@@ -133,7 +133,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     }
 
     /// <summary>Resolves the Win32 export entry points of the enabled extensions.</summary>
-    private void LoadWin32ExportFunctions()
+    void LoadWin32ExportFunctions()
     {
         if (_exportWin32MemoryCandidate || _importD3D11Candidate)
         {
@@ -154,9 +154,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     }
 
     /// <summary>An exportable image whose memory leaves as an opaque NT handle, with optional exported semaphores.</summary>
-    private VulkanExportedImage CreateWin32ExportedImage(uint width, uint height, bool withSemaphores)
+    VulkanExportedImage CreateWin32ExportedImage(uint width, uint height, bool withSemaphores)
     {
-        VkImage image = CreateExternalImage(width, height, ExternalMemoryHandleTypeFlags.OpaqueWin32Bit, ExportUsage);
+        var image = CreateExternalImage(width, height, ExternalMemoryHandleTypeFlags.OpaqueWin32Bit, ExportUsage);
         DeviceMemory memory = default;
         nint memoryHandle = 0;
         VkSemaphore renderComplete = default;
@@ -212,7 +212,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         }
     }
 
-    private (VkSemaphore Semaphore, nint Handle) CreateWin32ExportedSemaphore()
+    (VkSemaphore Semaphore, nint Handle) CreateWin32ExportedSemaphore()
     {
         var exportInfo = new ExportSemaphoreCreateInfo
         {
@@ -229,7 +229,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             HandleType = ExternalSemaphoreHandleTypeFlags.OpaqueWin32Bit,
         };
         nint handle = 0;
-        Result result = _getSemaphoreWin32Handle(_device, &getHandle, &handle);
+        var result = _getSemaphoreWin32Handle(_device, &getHandle, &handle);
         if (result != Result.Success)
         {
             _vk.DestroySemaphore(_device, semaphore, null);
@@ -243,7 +243,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// A keyed-mutex Direct3D11 shared texture on the Vulkan device's adapter, imported as this
     /// image's memory. The NT handle goes to the compositor, which opens the same texture.
     /// </summary>
-    private VulkanExportedImage CreateD3D11SharedImage(uint width, uint height)
+    VulkanExportedImage CreateD3D11SharedImage(uint width, uint height)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Direct3D11 shared textures need Windows.");
@@ -255,7 +255,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 throw new InvalidOperationException(failure);
         }
 
-        (nint texture, nint handle) = VulkanD3D11Interop.CreateSharedTexture(_d3d11Device, (int)width, (int)height);
+        (var texture, var handle) = VulkanD3D11Interop.CreateSharedTexture(_d3d11Device, (int)width, (int)height);
         VkImage image = default;
         DeviceMemory memory = default;
         try
@@ -303,7 +303,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     }
 
     /// <summary>Releases what the Windows export holds outside Vulkan (the Direct3D11 device). Disposal only (after the probe gate closed).</summary>
-    private void DestroyWin32ExportResources()
+    void DestroyWin32ExportResources()
     {
         if (_d3d11Device != 0 && OperatingSystem.IsWindows())
             VulkanD3D11Interop.Release(_d3d11Device);

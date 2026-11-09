@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Pipeline;
 /// the seek path begins recovery while the presentation loop reads it. Values and rules are
 /// unchanged from the original inline code.
 /// </summary>
-internal sealed class PostSeekRecovery
+sealed class PostSeekRecovery
 {
     public const int RecoveryMilliseconds = 450;
     public const int UnderfilledRecoveryMilliseconds = 700;
@@ -19,8 +19,8 @@ internal sealed class PostSeekRecovery
     public const int MinimumBufferedFrames = 3;
     public const int AdaptiveSuppressionWindows = 2;
 
-    private long _recoveryUntilTimestamp;
-    private int _suppressionWindowsRemaining;
+    long _recoveryUntilTimestamp;
+    int _suppressionWindowsRemaining;
 
     /// <summary>What a diagnostics window does with the adaptive lead controller.</summary>
     public enum WindowAction

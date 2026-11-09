@@ -1,4 +1,3 @@
-using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkPipeline = Silk.NET.Vulkan.Pipeline;
@@ -13,21 +12,21 @@ namespace FatzMedia.Video.Vulkan;
 /// buffer: fragment-stage push constants past offset 0 misread on Mesa lavapipe
 /// (<see cref="VulkanOverlayPipelines"/>).
 /// </summary>
-internal sealed unsafe class VulkanVideoPipeline : IDisposable
+sealed unsafe class VulkanVideoPipeline : IDisposable
 {
-    private const uint PushConstantSize = 4 * sizeof(float);
+    const uint PushConstantSize = 4 * sizeof(float);
 
-    private readonly Vk _vk;
-    private readonly Device _device;
-    private RenderPass _renderPass;
-    private DescriptorSetLayout _setLayout;
-    private PipelineLayout _layout;
-    private DescriptorPool _descriptorPool;
-    private DescriptorSet _set;
-    private Sampler _sampler;
-    private VkPipeline _pipeline;
+    readonly Vk _vk;
+    readonly Device _device;
+    RenderPass _renderPass;
+    DescriptorSetLayout _setLayout;
+    PipelineLayout _layout;
+    DescriptorPool _descriptorPool;
+    DescriptorSet _set;
+    Sampler _sampler;
+    VkPipeline _pipeline;
 
-    private VulkanVideoPipeline(Vk vk, Device device)
+    VulkanVideoPipeline(Vk vk, Device device)
     {
         _vk = vk;
         _device = device;
@@ -107,7 +106,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
         };
         _vk.CmdBeginRenderPass(commandBuffer, &begin, SubpassContents.Inline);
         _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _pipeline);
-        DescriptorSet set = _set;
+        var set = _set;
         _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _layout, 0, 1, &set, 0, null);
         var viewport = new Viewport(0, 0, width, height, 0f, 1f);
         var scissor = new Rect2D(new Offset2D(0, 0), new Extent2D(width, height));
@@ -142,7 +141,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
         _renderPass = default;
     }
 
-    private void Build(Format targetFormat)
+    void Build(Format targetFormat)
     {
         // Every pixel is written, so the old contents are not loaded; barriers outside the pass
         // move the layer between colour attachment and transfer source.

@@ -4,7 +4,7 @@ using FatzMedia.Video.Sample.Player.Shared.Hosting;
 
 namespace FatzMedia.Video.Sample.Player.WinForms;
 
-internal static class Program
+static class Program
 {
     /// <summary>Gets the debug log file: every diagnostic of this run (see <see cref="PlayerDebugLog"/>).</summary>
     public static string LogFilePath { get; } = PlayerDebugLog.DefaultPath("player-winforms-debug.log");
@@ -21,11 +21,11 @@ internal static class Program
         RendererSelection = PlayerRendererSelection.ResolveInBackground(options, request);
 
     [STAThread]
-    private static void Main(string[] args)
+    static void Main(string[] args)
     {
         // The flags every test player shares (see PlayerStartupOptions); this player has none of its own.
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(args);
-        using PlayerDebugLog debugLog = PlayerDebugLog.Attach(LogFilePath, "Player.WinForms");
+        var options = PlayerStartupOptions.Parse(args);
+        using var debugLog = PlayerDebugLog.Attach(LogFilePath, "Player.WinForms");
         UseRenderer(options, options.RendererRequest);
 
         // Per-monitor DPI so the surface's ClientSize is in device pixels (see the adapter README).

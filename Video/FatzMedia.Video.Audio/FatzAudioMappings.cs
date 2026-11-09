@@ -5,7 +5,7 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Audio;
 
 /// <summary>How MediaControl's audio settings map onto FatzAudio's (037A slice 2). Pure functions.</summary>
-internal static class FatzAudioMappings
+static class FatzAudioMappings
 {
     /// <summary>
     /// The shortest audible run that counts as sound, not silence (FatzAudio's default, agreed in

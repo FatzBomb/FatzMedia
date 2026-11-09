@@ -4,19 +4,19 @@ using System.Windows.Interop;
 
 namespace FatzMedia.Video.Wpf;
 
-internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHost
+sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHost
 {
-    private const int WS_CHILD = 0x40000000;
-    private const int WS_VISIBLE = 0x10000000;
-    private const int WS_CLIPSIBLINGS = 0x04000000;
-    private const int WS_CLIPCHILDREN = 0x02000000;
-    private const int WM_PAINT = 0x000F;
-    private const int WM_ERASEBKGND = 0x0014;
-    private const int WM_SIZE = 0x0005;
-    private const int WM_WINDOWPOSCHANGED = 0x0047;
-    private int _lastHostWidth;
-    private int _lastHostHeight;
-    private bool _boundsUpdateQueued;
+    const int WS_CHILD = 0x40000000;
+    const int WS_VISIBLE = 0x10000000;
+    const int WS_CLIPSIBLINGS = 0x04000000;
+    const int WS_CLIPCHILDREN = 0x02000000;
+    const int WM_PAINT = 0x000F;
+    const int WM_ERASEBKGND = 0x0014;
+    const int WM_SIZE = 0x0005;
+    const int WM_WINDOWPOSCHANGED = 0x0047;
+    int _lastHostWidth;
+    int _lastHostHeight;
+    bool _boundsUpdateQueued;
 
     public IntPtr WindowHandle { get; private set; }
 
@@ -92,7 +92,7 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
 
         if (msg == WM_PAINT)
         {
-            var hdc = NativeMethods.BeginPaint(hwnd, out NativeMethods.PAINTSTRUCT paint);
+            var hdc = NativeMethods.BeginPaint(hwnd, out var paint);
 
             if (hdc != IntPtr.Zero)
                 try
@@ -115,7 +115,7 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
         return IntPtr.Zero;
     }
 
-    private void QueueBoundsChanged()
+    void QueueBoundsChanged()
     {
         if (WindowHandle == IntPtr.Zero || _boundsUpdateQueued)
             return;
@@ -134,9 +134,9 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
         }));
     }
 
-    private (int width, int height) GetCurrentClientSize()
+    (int width, int height) GetCurrentClientSize()
     {
-        if (WindowHandle != IntPtr.Zero && NativeMethods.GetClientRect(WindowHandle, out NativeMethods.RECT rect))
+        if (WindowHandle != IntPtr.Zero && NativeMethods.GetClientRect(WindowHandle, out var rect))
             return (
                 Math.Max(1, rect.Right - rect.Left),
                 Math.Max(1, rect.Bottom - rect.Top));
@@ -146,9 +146,9 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
             Math.Max(1, (int)Math.Round(ActualHeight)));
     }
 
-    private static void FillNativeBackground(IntPtr hwnd, IntPtr hdc)
+    static void FillNativeBackground(IntPtr hwnd, IntPtr hdc)
     {
-        if (hwnd == IntPtr.Zero || hdc == IntPtr.Zero || !NativeMethods.GetClientRect(hwnd, out NativeMethods.RECT rect))
+        if (hwnd == IntPtr.Zero || hdc == IntPtr.Zero || !NativeMethods.GetClientRect(hwnd, out var rect))
             return;
 
         // The stock black brush: nothing to create or delete per paint (ENG-039).

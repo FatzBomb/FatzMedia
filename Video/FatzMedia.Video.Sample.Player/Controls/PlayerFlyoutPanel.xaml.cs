@@ -25,13 +25,13 @@ public partial class PlayerFlyoutPanel : UserControl
         set => SetValue(IsSecondaryOutputOpenProperty, value);
     }
 
-    private static void OnIsSecondaryOutputOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnIsSecondaryOutputOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is PlayerFlyoutPanel panel && panel.SecondaryWindowCheckBox != null)
             panel.SecondaryWindowCheckBox.IsChecked = (bool)e.NewValue;
     }
 
-    private void SecondaryWindowCheckBox_Click(object sender, RoutedEventArgs e)
+    void SecondaryWindowCheckBox_Click(object sender, RoutedEventArgs e)
     {
         SecondaryWindowToggleRequested?.Invoke(this, EventArgs.Empty);
         e.Handled = true;

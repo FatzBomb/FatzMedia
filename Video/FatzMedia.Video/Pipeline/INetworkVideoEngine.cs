@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Pipeline;
 /// Network video support of the video pipeline (Stage 039A): an http/https open through FFmpeg's
 /// network path, the probed capability row, and buffering changes.
 /// </summary>
-internal interface INetworkVideoEngine
+interface INetworkVideoEngine
 {
     /// <summary>
     /// Makes one attempt to open <paramref name="url"/> (retries belong to the caller). Bounded by

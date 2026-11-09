@@ -10,15 +10,11 @@ public readonly record struct SilenceTrimOptions
     public const double DefaultMinimumSilenceSeconds = 0.5;
     public const double DefaultPaddingSeconds = 0.1;
 
-    private const double MinimumThresholdDecibels = -96;
-    private const double MaximumThresholdDecibels = 0;
-    private const double MaximumDurationSeconds = 30;
-
-    private readonly double _thresholdOffset;
-    private readonly double _minimumSilenceOffset;
-    private readonly double _paddingOffset;
-    private readonly bool _preserveLeadingSilence;
-    private readonly bool _preserveTrailingSilence;
+    const double MinimumThresholdDecibels = -96;
+    const double MaximumThresholdDecibels = 0;
+    const double MaximumDurationSeconds = 30;
+    readonly double _minimumSilenceOffset;
+    readonly double _paddingOffset;
 
     /// <summary>
     /// Gets whether analyzed silence should affect the playable window.
@@ -30,8 +26,8 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public double ThresholdDecibels
     {
-        get => DefaultThresholdDecibels + _thresholdOffset;
-        init => _thresholdOffset = Normalize(
+        get => DefaultThresholdDecibels + field;
+        init => field = Normalize(
             value,
             MinimumThresholdDecibels,
             MaximumThresholdDecibels,
@@ -69,8 +65,8 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public bool TrimLeading
     {
-        get => !_preserveLeadingSilence;
-        init => _preserveLeadingSilence = !value;
+        get => !field;
+        init => field = !value;
     }
 
     /// <summary>
@@ -78,10 +74,10 @@ public readonly record struct SilenceTrimOptions
     /// </summary>
     public bool TrimTrailing
     {
-        get => !_preserveTrailingSilence;
-        init => _preserveTrailingSilence = !value;
+        get => !field;
+        init => field = !value;
     }
 
-    private static double Normalize(double value, double minimum, double maximum, double fallback)
+    static double Normalize(double value, double minimum, double maximum, double fallback)
         => double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : fallback;
 }

@@ -21,7 +21,7 @@ public static class DiagnosticRouter
     // The player a diagnostic belongs to. Set while a player builds its engine, so it flows (with
     // the execution context) into every thread and task that player starts; native callbacks
     // and process-wide code (native loading) raise without one.
-    private static readonly AsyncLocal<object?> CurrentOwner = new();
+    static readonly AsyncLocal<object?> CurrentOwner = new();
 
     /// <summary>The owner diagnostics raised on this execution context are attributed to, or null.</summary>
     internal static object? Owner => CurrentOwner.Value;

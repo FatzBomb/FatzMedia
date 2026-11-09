@@ -6,10 +6,10 @@ namespace FatzMedia.Video;
 /// Thread-safe registry that strongly roots managed objects while they are exposed to unmanaged
 /// code as an opaque, nonzero, never-reused token. Backs the frame-sink and shared-image handles.
 /// </summary>
-internal sealed class OpaqueTokenRegistry<T>(string exhaustedMessage) where T : class
+sealed class OpaqueTokenRegistry<T>(string exhaustedMessage) where T : class
 {
-    private readonly ConcurrentDictionary<long, T> _entries = new();
-    private long _nextToken;
+    readonly ConcurrentDictionary<long, T> _entries = new();
+    long _nextToken;
 
     /// <summary>Registers <paramref name="value"/> and returns its fresh token.</summary>
     public long Register(T value)

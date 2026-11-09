@@ -1,7 +1,7 @@
-using FatzMedia.Video.Controllers;
-using FatzMedia.Video.Core.Threading;
-using FatzMedia.Video.Core.Abstractions;
 using System.Diagnostics;
+using FatzMedia.Video.Controllers;
+using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Threading;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
@@ -13,25 +13,25 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore
 {
-    private const string DeviceRecoveryDiagnosticCategory = "DeviceRecovery";
+    const string DeviceRecoveryDiagnosticCategory = "DeviceRecovery";
 
     // Set while a reopen is queued: several recoveries before it runs reopen once.
-    private int _deviceRecoveryReopenQueued;
+    int _deviceRecoveryReopenQueued;
 
     // Raised on the coordinator's recovery thread.
-    private void OnPresentationDeviceRecovered(object? sender, EventArgs e)
+    void OnPresentationDeviceRecovered(object? sender, EventArgs e)
     {
         if (_disposed || Interlocked.Exchange(ref _deviceRecoveryReopenQueued, 1) != 0)
             return;
 
-        Task queued = _controlOperations.Enqueue(ReopenAfterDeviceRecovery);
+        var queued = _controlOperations.Enqueue(ReopenAfterDeviceRecovery);
         if (queued.IsFaulted)
             Volatile.Write(ref _deviceRecoveryReopenQueued, 0);
     }
 
     // Raised on the coordinator's recovery thread, once per failed recovery (ENG-050): the host decides
     // whether to recreate the player with another renderer.
-    private void OnPresentationDeviceRecoveryFailed(object? sender, EventArgs e)
+    void OnPresentationDeviceRecoveryFailed(object? sender, EventArgs e)
     {
         if (_disposed || MediaError is not { } handler)
             return;
@@ -43,13 +43,13 @@ public partial class PlayerCore
     }
 
     /// <summary>On the control queue: reopens the open media when it shows video (its own, or a video background).</summary>
-    private void ReopenAfterDeviceRecovery()
+    void ReopenAfterDeviceRecovery()
     {
         Volatile.Write(ref _deviceRecoveryReopenQueued, 0);
         if (_disposed || _sessionGraphFreed || File.CurrentLoad is not { } load || !ShowsVideo())
             return;
 
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
             DiagnosticRouter.Raise(
@@ -69,7 +69,7 @@ public partial class PlayerCore
         }
     }
 
-    private bool ShowsVideo() =>
+    bool ShowsVideo() =>
         _mediaEngine.Content.HasFlag(MediaContent.Video)
         || _mediaEngine.Background is { Kind: MediaBackgroundKind.Video };
 }

@@ -3,11 +3,11 @@ using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Subtitle;
+using SharpGen.Runtime;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using SharpGen.Runtime;
 using Vortice.WIC;
 
 namespace FatzMedia.Video.Direct3D11.Subtitle;
@@ -18,34 +18,34 @@ namespace FatzMedia.Video.Direct3D11.Subtitle;
 /// (ENG-039 P5-2): an entry not used by a frame is disposed at the end of it, so a steady wipe
 /// reuses everything while a scaling transition only keeps what its current frame drew.
 /// </summary>
-internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null) : ISubtitleRasterizer
+sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null) : ISubtitleRasterizer
 {
-    private static readonly Func<int, Memory<byte>> AllocatePixels = static length => new byte[length];
+    static readonly Func<int, Memory<byte>> AllocatePixels = static length => new byte[length];
 
     // A frame whose EndDraw fails is drawn once more on a new render target (ENG-042).
-    private const int MaxFrameAttempts = 2;
+    const int MaxFrameAttempts = 2;
 
     // Presentation may request a fresh cue from multiple scheduler paths; the coordinator serializes
     // calls, and the factory is multi-threaded to keep that usage valid if a future preview path is added.
-    private readonly ID2D1Factory1 _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(Vortice.Direct2D1.FactoryType.MultiThreaded);
-    private readonly IDWriteFactory _writeFactory = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
-    private readonly IWICImagingFactory _wicFactory = new();
-    private readonly SubtitleTextStyle _style = (style ?? new SubtitleTextStyle()).Normalize();
-    private readonly KaraokeTextStyle _karaokeStyle = (karaokeStyle ?? new KaraokeTextStyle()).Normalize();
+    readonly ID2D1Factory1 _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(Vortice.Direct2D1.FactoryType.MultiThreaded);
+    readonly IDWriteFactory _writeFactory = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
+    readonly IWICImagingFactory _wicFactory = new();
+    readonly SubtitleTextStyle _style = (style ?? new SubtitleTextStyle()).Normalize();
+    readonly KaraokeTextStyle _karaokeStyle = (karaokeStyle ?? new KaraokeTextStyle()).Normalize();
 
     // The caches are used by one frame at a time.
-    private readonly Lock _gate = new();
-    private readonly Dictionary<FormatKey, CacheEntry<IDWriteTextFormat>> _formats = [];
-    private readonly Dictionary<LayoutKey, CacheEntry<IDWriteTextLayout>> _layouts = [];
-    private readonly Dictionary<Color4, CacheEntry<ID2D1SolidColorBrush>> _brushes = [];
-    private readonly List<IDWriteTextLayout> _lineLayouts = [];
-    private long _generation;
-    private IWICBitmap? _bitmap;
-    private ID2D1RenderTarget? _target;
-    private int _targetWidth;
-    private int _targetHeight;
-    private Result _lastEndDrawResult;
-    private bool _disposed;
+    readonly Lock _gate = new();
+    readonly Dictionary<FormatKey, CacheEntry<IDWriteTextFormat>> _formats = [];
+    readonly Dictionary<LayoutKey, CacheEntry<IDWriteTextLayout>> _layouts = [];
+    readonly Dictionary<Color4, CacheEntry<ID2D1SolidColorBrush>> _brushes = [];
+    readonly List<IDWriteTextLayout> _lineLayouts = [];
+    long _generation;
+    IWICBitmap? _bitmap;
+    ID2D1RenderTarget? _target;
+    int _targetWidth;
+    int _targetHeight;
+    Result _lastEndDrawResult;
+    bool _disposed;
 
     public SubtitleRasterResult Render(string text, int width, int height) =>
         Render(text, width, height, AllocatePixels);
@@ -132,20 +132,20 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
     }
 
-    private SubtitleRasterResult? RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
+    SubtitleRasterResult? RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
     {
-        IDWriteTextLayout layout = GetLayout(
+        var layout = GetLayout(
             text,
             new FormatKey(_style.FontFamily, FontWeight.Bold, FontStyle.Normal, _style.FontSize),
             width * 0.85f,
             height * 0.3f,
             TextAlignment.Center);
-        TextMetrics metrics = layout.Metrics;
+        var metrics = layout.Metrics;
         var canvasOrigin = new Vector2(
             width * 0.075f,
             Math.Max(0, height - metrics.Height - (height * 0.08f)));
         var textLeft = canvasOrigin.X + Math.Max(0, ((width * 0.85f) - metrics.Width) / 2);
-        RenderBounds bounds = CreateBounds(
+        var bounds = CreateBounds(
             textLeft,
             canvasOrigin.Y,
             textLeft + metrics.Width,
@@ -156,11 +156,11 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             _style.ShadowOffsetX,
             _style.ShadowOffsetY);
 
-        ID2D1RenderTarget target = GetTarget(bounds.Width, bounds.Height);
-        ID2D1SolidColorBrush textBrush = GetBrush(ToColor(_style.TextArgb));
-        ID2D1SolidColorBrush outlineBrush = GetBrush(ToColor(_style.OutlineArgb));
-        ID2D1SolidColorBrush shadowBrush = GetBrush(ToColor(_style.ShadowArgb));
-        Vector2 origin = canvasOrigin - new Vector2(bounds.Left, bounds.Top);
+        var target = GetTarget(bounds.Width, bounds.Height);
+        var textBrush = GetBrush(ToColor(_style.TextArgb));
+        var outlineBrush = GetBrush(ToColor(_style.OutlineArgb));
+        var shadowBrush = GetBrush(ToColor(_style.ShadowArgb));
+        var origin = canvasOrigin - new Vector2(bounds.Left, bounds.Top);
 
         target.BeginDraw();
         target.Clear(new Color4(0f, 0f, 0f, 0f));
@@ -186,7 +186,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return CopyPixels(bounds, width, height, rentPixels);
     }
 
-    private SubtitleRasterResult? RenderKaraokeFrame(
+    SubtitleRasterResult? RenderKaraokeFrame(
         KaraokeCueTiming timing,
         TimeSpan position,
         KaraokeLayerStyle baseStyle,
@@ -197,14 +197,14 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     {
         var lyricFormat = new FormatKey(_karaokeStyle.FontFamily, FontWeight.Bold, FontStyle.Normal, _karaokeStyle.FontSize);
         var countdownFormat = new FormatKey(_karaokeStyle.FontFamily, FontWeight.Bold, FontStyle.Normal, _karaokeStyle.FontSize * 0.5f);
-        IDWriteTextLayout countdownArrowLayout = GetLayout("▶", countdownFormat, width, height * 0.2f, TextAlignment.Leading);
+        var countdownArrowLayout = GetLayout("▶", countdownFormat, width, height * 0.2f, TextAlignment.Leading);
         var layoutWidth = width * 0.85f;
         var wipeDuration = TimeSpan.FromMilliseconds(_karaokeStyle.WipeTransitionMilliseconds);
 
         // Current page lines first, then the outgoing page's, as one list.
-        IReadOnlyList<KaraokeLineTiming> lines = timing.Lines;
-        IReadOnlyList<KaraokeLineTiming> outgoingLines = timing.OutgoingPageLines;
-        List<IDWriteTextLayout> allLayouts = _lineLayouts;
+        var lines = timing.Lines;
+        var outgoingLines = timing.OutgoingPageLines;
+        var allLayouts = _lineLayouts;
         allLayouts.Clear();
         for (var i = 0; i < lines.Count; i++)
             allLayouts.Add(GetLayout(lines[i].Text, lyricFormat, layoutWidth, height * 0.2f, TextAlignment.Center));
@@ -227,7 +227,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var padding = (int)Math.Ceiling(Math.Max(
             Math.Max(_karaokeStyle.OutlineWidth, _karaokeStyle.WipeOutlineWidth),
             Math.Max(Math.Abs(_karaokeStyle.ShadowOffsetX), Math.Abs(_karaokeStyle.ShadowOffsetY))));
-        TextMetrics countdownArrowMetrics = countdownArrowLayout.Metrics;
+        var countdownArrowMetrics = countdownArrowLayout.Metrics;
         var countdownArrowGap = _karaokeStyle.FontSize * 0.12f;
         var countdownWidth = (countdownArrowMetrics.Width * 4) + (countdownArrowGap * 3);
         var maxLineHeight = float.MinValue; // max scale is 1.0
@@ -236,8 +236,8 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var anyCountdownVisible = false;
         for (var i = 0; i < allLayouts.Count; i++)
         {
-            TextMetrics metrics = allLayouts[i].Metrics;
-            KaraokeLineTiming line = i < lines.Count ? lines[i] : outgoingLines[i - lines.Count];
+            var metrics = allLayouts[i].Metrics;
+            var line = i < lines.Count ? lines[i] : outgoingLines[i - lines.Count];
             var textLeft = (width * 0.075f) + Math.Max(0, (layoutWidth - metrics.Width) / 2);
             var textRight = textLeft + metrics.Width;
             maxLineHeight = Math.Max(maxLineHeight, metrics.Height * 1.0f);
@@ -258,7 +258,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var countdownTopExtension = anyCountdownVisible
             ? countdownArrowMetrics.Height + (_karaokeStyle.FontSize * 0.1f)
             : 0;
-        RenderBounds bounds = hasFullCanvasOverlay
+        var bounds = hasFullCanvasOverlay
             ? new RenderBounds(0, 0, width, height)
             : CreateBounds(
                 minTextLeft,
@@ -271,7 +271,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
                 _karaokeStyle.ShadowOffsetX,
                 _karaokeStyle.ShadowOffsetY);
 
-        ID2D1RenderTarget target = GetTarget(bounds.Width, bounds.Height);
+        var target = GetTarget(bounds.Width, bounds.Height);
         target.BeginDraw();
         target.Clear(new Color4(0f, 0f, 0f, 0f));
         if (introMetadataOpacity > 0
@@ -409,9 +409,9 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     /// then holds a partial frame or the previous frame's pixels, and the cached render target must
     /// not be used again. Returns false after releasing it, so the caller redraws on a new one.
     /// </summary>
-    private bool TryEndDraw(ID2D1RenderTarget target)
+    bool TryEndDraw(ID2D1RenderTarget target)
     {
-        Result result = target.EndDraw();
+        var result = target.EndDraw();
         if (result.Success)
             return true;
 
@@ -420,10 +420,10 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return false;
     }
 
-    private InvalidOperationException CreateEndDrawException() =>
+    InvalidOperationException CreateEndDrawException() =>
         new($"Direct2D could not draw the subtitle frame: EndDraw failed with 0x{_lastEndDrawResult.Code:X8}.");
 
-    private void DrawKaraokeLine(
+    void DrawKaraokeLine(
         ID2D1RenderTarget target,
         IDWriteTextLayout countdownArrowLayout,
         KaraokeLineTiming line,
@@ -451,17 +451,17 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var scaledLayoutWidth = layoutWidth * totalScale;
         var scaledLayoutHeight = height * 0.2f * totalScale;
         var scaledFormat = new FormatKey(_karaokeStyle.FontFamily, FontWeight.Bold, FontStyle.Normal, effectiveFontSize);
-        IDWriteTextLayout scaledLayout = GetLayout(
+        var scaledLayout = GetLayout(
             line.Text,
             scaledFormat,
             scaledLayoutWidth,
             scaledLayoutHeight,
             TextAlignment.Center);
-        TextMetrics metrics = scaledLayout.Metrics;
+        var metrics = scaledLayout.Metrics;
         var lineHeight = metrics.Height;
         var y = centerY - (lineHeight / 2);
         var canvasOrigin = new Vector2((width - scaledLayoutWidth) / 2, y);
-        Vector2 origin = canvasOrigin - new Vector2(bounds.Left, bounds.Top);
+        var origin = canvasOrigin - new Vector2(bounds.Left, bounds.Top);
         var left = canvasOrigin.X + Math.Max(0, (scaledLayoutWidth - metrics.Width) / 2);
         var descenderPadding = effectiveFontSize * 0.35f;
         var layerLeft = Math.Max(0, left - bounds.Left - padding);
@@ -590,7 +590,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     /// excluded), read from the line's own layout by hit-testing instead of building a prefix
     /// layout per frame. A wrapped line measures a real prefix layout, which wraps on its own.
     /// </summary>
-    private float MeasurePrefixWidth(
+    float MeasurePrefixWidth(
         IDWriteTextLayout layout,
         in TextMetrics metrics,
         string text,
@@ -601,7 +601,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     {
         if (metrics.LineCount > 1)
         {
-            using IDWriteTextLayout prefixLayout = _writeFactory.CreateTextLayout(text[..length], GetFormat(format), maxWidth, maxHeight);
+            using var prefixLayout = _writeFactory.CreateTextLayout(text[..length], GetFormat(format), maxWidth, maxHeight);
             return prefixLayout.Metrics.Width;
         }
 
@@ -611,12 +611,12 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         if (end == 0)
             return 0;
 
-        _ = layout.HitTestTextPosition(0, false, out Vector2 start);
-        _ = layout.HitTestTextPosition((uint)(end - 1), true, out Vector2 stop);
+        _ = layout.HitTestTextPosition(0, false, out var start);
+        _ = layout.HitTestTextPosition((uint)(end - 1), true, out var stop);
         return Math.Max(0, stop.X - start.X);
     }
 
-    private void DrawMetadataCard(
+    void DrawMetadataCard(
         ID2D1RenderTarget target,
         KaraokeMetadata metadata,
         float opacity,
@@ -637,8 +637,8 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
 
         var boxWidth = canvasWidth * (metadata.IsFallback ? 0.5f : 0.72f);
         var textWidth = boxWidth - (_karaokeStyle.FontSize * 0.9f);
-        IDWriteTextLayout titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, canvasHeight * 0.15f, TextAlignment.Center);
-        IDWriteTextLayout artistLayout = GetLayout(
+        var titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, canvasHeight * 0.15f, TextAlignment.Center);
+        var artistLayout = GetLayout(
             string.IsNullOrEmpty(metadata.Artist) ? "" : metadata.Artist,
             artistFormat,
             textWidth,
@@ -646,13 +646,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             TextAlignment.Center);
 
         var infoText = BuildMetadataDetails(metadata, isEndCard);
-        IDWriteTextLayout infoLayout = GetLayout(infoText, infoFormat, textWidth, canvasHeight * 0.24f, TextAlignment.Center);
-        IDWriteTextLayout copyrightLayout = GetLayout(metadata.Copyright, copyrightFormat, textWidth, canvasHeight * 0.08f, TextAlignment.Center);
+        var infoLayout = GetLayout(infoText, infoFormat, textWidth, canvasHeight * 0.24f, TextAlignment.Center);
+        var copyrightLayout = GetLayout(metadata.Copyright, copyrightFormat, textWidth, canvasHeight * 0.08f, TextAlignment.Center);
 
-        TextMetrics titleMetrics = titleLayout.Metrics;
-        TextMetrics artistMetrics = artistLayout.Metrics;
-        TextMetrics infoMetrics = infoLayout.Metrics;
-        TextMetrics copyrightMetrics = copyrightLayout.Metrics;
+        var titleMetrics = titleLayout.Metrics;
+        var artistMetrics = artistLayout.Metrics;
+        var infoMetrics = infoLayout.Metrics;
+        var copyrightMetrics = copyrightLayout.Metrics;
 
         var gap = _karaokeStyle.FontSize * 0.13f;
         var sectionGap = _karaokeStyle.FontSize * 0.2f;
@@ -670,11 +670,11 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
 
         var textY = boxTop + padding;
         var textX = boxLeft + ((boxWidth - textWidth) / 2) - bounds.Left;
-        ID2D1SolidColorBrush shadowBrush = GetBrush(ToColor(0xD0000000, opacity));
-        ID2D1SolidColorBrush titleBrush = GetBrush(ToColor(0xFFFFF4DC, opacity));
-        ID2D1SolidColorBrush artistBrush = GetBrush(ToColor(0xFF78DCE8, opacity));
-        ID2D1SolidColorBrush infoBrush = GetBrush(ToColor(0xFFD5DCE6, opacity));
-        ID2D1SolidColorBrush copyrightBrush = GetBrush(ToColor(0xFFB8A87A, opacity));
+        var shadowBrush = GetBrush(ToColor(0xD0000000, opacity));
+        var titleBrush = GetBrush(ToColor(0xFFFFF4DC, opacity));
+        var artistBrush = GetBrush(ToColor(0xFF78DCE8, opacity));
+        var infoBrush = GetBrush(ToColor(0xFFD5DCE6, opacity));
+        var copyrightBrush = GetBrush(ToColor(0xFFB8A87A, opacity));
         DrawMetadataText(target, titleLayout, new Vector2(textX, textY - bounds.Top), titleBrush, shadowBrush, 2.2f);
         textY += titleMetrics.Height;
 
@@ -699,7 +699,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
     }
 
-    private void DrawSplitMetadataBands(
+    void DrawSplitMetadataBands(
         ID2D1RenderTarget target,
         KaraokeMetadata metadata,
         float opacity,
@@ -719,15 +719,15 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var secondaryFormat = new FormatKey(_karaokeStyle.FontFamily, FontWeight.SemiBold, FontStyle.Normal, secondarySize);
         var detailFormat = new FormatKey(_karaokeStyle.FontFamily, FontWeight.Normal, FontStyle.Normal, detailSize);
         var textWidth = canvasWidth * 0.88f;
-        IDWriteTextLayout titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, topHeight * 0.55f, TextAlignment.Center);
+        var titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, topHeight * 0.55f, TextAlignment.Center);
         var secondary = string.Join("  •  ", new[] { metadata.Artist, metadata.Year }.Where(static value => !string.IsNullOrWhiteSpace(value)));
-        IDWriteTextLayout secondaryLayout = GetLayout(secondary, secondaryFormat, textWidth, topHeight * 0.32f, TextAlignment.Center);
-        IDWriteTextLayout bottomLayout = GetLayout(BuildBandDetails(metadata), detailFormat, textWidth, bottomHeight * 0.82f, TextAlignment.Center);
+        var secondaryLayout = GetLayout(secondary, secondaryFormat, textWidth, topHeight * 0.32f, TextAlignment.Center);
+        var bottomLayout = GetLayout(BuildBandDetails(metadata), detailFormat, textWidth, bottomHeight * 0.82f, TextAlignment.Center);
 
-        ID2D1SolidColorBrush shadowBrush = GetBrush(ToColor(0xD0000000, opacity));
-        ID2D1SolidColorBrush titleBrush = GetBrush(ToColor(0xFFFFF4DC, opacity));
-        ID2D1SolidColorBrush accentBrush = GetBrush(ToColor(0xFF78DCE8, opacity));
-        ID2D1SolidColorBrush detailBrush = GetBrush(ToColor(0xFFD5DCE6, opacity));
+        var shadowBrush = GetBrush(ToColor(0xD0000000, opacity));
+        var titleBrush = GetBrush(ToColor(0xFFFFF4DC, opacity));
+        var accentBrush = GetBrush(ToColor(0xFF78DCE8, opacity));
+        var detailBrush = GetBrush(ToColor(0xFFD5DCE6, opacity));
         var x = ((canvasWidth - textWidth) / 2f) - bounds.Left;
         var titleY = (topHeight * 0.12f) - bounds.Top;
         DrawMetadataText(target, titleLayout, new Vector2(x, titleY), titleBrush, shadowBrush, 1.8f);
@@ -736,7 +736,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         DrawMetadataText(target, bottomLayout, new Vector2(x, canvasHeight - bottomHeight + (bottomHeight * 0.14f) - bounds.Top), detailBrush, shadowBrush, 1f);
     }
 
-    private static string BuildMetadataDetails(KaraokeMetadata metadata, bool isEndCard)
+    static string BuildMetadataDetails(KaraokeMetadata metadata, bool isEndCard)
     {
         var lines = new List<string>();
         if (!isEndCard && !metadata.IsFallback)
@@ -759,7 +759,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return string.Join('\n', lines);
     }
 
-    private static string BuildBandDetails(KaraokeMetadata metadata)
+    static string BuildBandDetails(KaraokeMetadata metadata)
     {
         var lines = new List<string> { $"Length  {FormatDuration(metadata.Duration)}" };
         var music = BuildMusicDetails(metadata);
@@ -770,7 +770,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return string.Join('\n', lines);
     }
 
-    private static string BuildWriterCredits(KaraokeMetadata metadata) =>
+    static string BuildWriterCredits(KaraokeMetadata metadata) =>
         !string.IsNullOrWhiteSpace(metadata.Writer) && !string.IsNullOrWhiteSpace(metadata.Lyricist)
             ? string.Equals(metadata.Writer, metadata.Lyricist, StringComparison.OrdinalIgnoreCase)
                 ? $"Written By / Lyricist:  {metadata.Writer}"
@@ -779,7 +779,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
                 ? $"Written By:  {metadata.Writer}"
                 : string.IsNullOrWhiteSpace(metadata.Lyricist) ? string.Empty : $"Lyricist:  {metadata.Lyricist}";
 
-    private static string BuildMusicDetails(KaraokeMetadata metadata)
+    static string BuildMusicDetails(KaraokeMetadata metadata)
     {
         var details = new List<string>();
         if (!string.IsNullOrWhiteSpace(metadata.KeySignature))
@@ -791,16 +791,16 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return string.Join("  \u2022  ", details);
     }
 
-    private static string FormatDuration(TimeSpan duration) => duration.TotalHours >= 1
+    static string FormatDuration(TimeSpan duration) => duration.TotalHours >= 1
         ? $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}"
         : $"{(int)duration.TotalMinutes}:{duration.Seconds:00}";
 
-    private void DrawSmokedGlassPanel(ID2D1RenderTarget target, System.Drawing.RectangleF rect, float radius, float opacity, uint accentArgb)
+    void DrawSmokedGlassPanel(ID2D1RenderTarget target, System.Drawing.RectangleF rect, float radius, float opacity, uint accentArgb)
     {
-        ID2D1SolidColorBrush shadowBrush = GetBrush(new Color4(0f, 0f, 0f, 0.42f * opacity));
-        ID2D1SolidColorBrush glassBrush = GetBrush(new Color4(0.055f, 0.075f, 0.11f, 0.88f * opacity));
-        ID2D1SolidColorBrush sheenBrush = GetBrush(new Color4(0.2f, 0.34f, 0.44f, 0.12f * opacity));
-        ID2D1SolidColorBrush borderBrush = GetBrush(ToColor(accentArgb, 0.5f * opacity));
+        var shadowBrush = GetBrush(new Color4(0f, 0f, 0f, 0.42f * opacity));
+        var glassBrush = GetBrush(new Color4(0.055f, 0.075f, 0.11f, 0.88f * opacity));
+        var sheenBrush = GetBrush(new Color4(0.2f, 0.34f, 0.44f, 0.12f * opacity));
+        var borderBrush = GetBrush(ToColor(accentArgb, 0.5f * opacity));
         target.FillRoundedRectangle(new RoundedRectangle(new System.Drawing.RectangleF(rect.X + 8, rect.Y + 10, rect.Width, rect.Height), radius, radius), shadowBrush);
         var rounded = new RoundedRectangle(rect, radius, radius);
         target.FillRoundedRectangle(rounded, glassBrush);
@@ -808,24 +808,24 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         target.DrawRoundedRectangle(rounded, borderBrush, 1.5f);
     }
 
-    private void DrawSmokedGlassBand(ID2D1RenderTarget target, System.Drawing.RectangleF rect, float opacity, bool borderAtTop)
+    void DrawSmokedGlassBand(ID2D1RenderTarget target, System.Drawing.RectangleF rect, float opacity, bool borderAtTop)
     {
-        ID2D1SolidColorBrush baseBrush = GetBrush(new Color4(0.025f, 0.04f, 0.065f, 0.78f * opacity));
-        ID2D1SolidColorBrush sheenBrush = GetBrush(new Color4(0.12f, 0.2f, 0.27f, 0.16f * opacity));
-        ID2D1SolidColorBrush borderBrush = GetBrush(new Color4(0.3f, 0.8f, 0.9f, 0.45f * opacity));
+        var baseBrush = GetBrush(new Color4(0.025f, 0.04f, 0.065f, 0.78f * opacity));
+        var sheenBrush = GetBrush(new Color4(0.12f, 0.2f, 0.27f, 0.16f * opacity));
+        var borderBrush = GetBrush(new Color4(0.3f, 0.8f, 0.9f, 0.45f * opacity));
         target.FillRectangle(rect, baseBrush);
         target.FillRectangle(new System.Drawing.RectangleF(rect.X, rect.Y, rect.Width, rect.Height * 0.45f), sheenBrush);
         var y = borderAtTop ? rect.Top : rect.Bottom - 1;
         target.DrawLine(new Vector2(rect.Left, y), new Vector2(rect.Right, y), borderBrush, 1.5f);
     }
 
-    private static void DrawMetadataText(ID2D1RenderTarget target, IDWriteTextLayout layout, Vector2 origin, ID2D1SolidColorBrush textBrush, ID2D1SolidColorBrush shadowBrush, float shadowOffset)
+    static void DrawMetadataText(ID2D1RenderTarget target, IDWriteTextLayout layout, Vector2 origin, ID2D1SolidColorBrush textBrush, ID2D1SolidColorBrush shadowBrush, float shadowOffset)
     {
         target.DrawTextLayout(origin + new Vector2(shadowOffset, shadowOffset), layout, shadowBrush);
         target.DrawTextLayout(origin, layout, textBrush);
     }
 
-    private void DrawCountdownArrows(
+    void DrawCountdownArrows(
         ID2D1RenderTarget target,
         IDWriteTextLayout arrowLayout,
         KaraokeLineTiming line,
@@ -834,24 +834,24 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         float opacity,
         TimeSpan position)
     {
-        KaraokeCountdownState state = line.GetCountdownState(position);
+        var state = line.GetCountdownState(position);
         if (!state.IsVisible)
             return;
 
-        TextMetrics arrowMetrics = arrowLayout.Metrics;
+        var arrowMetrics = arrowLayout.Metrics;
         var arrowGap = _karaokeStyle.FontSize * 0.1f;
         var slotSpacing = arrowMetrics.Width + (_karaokeStyle.FontSize * 0.12f);
         var countdownOpacity = opacity * state.Opacity;
-        const uint redArgb = 0xFFFF0000;
-        const uint greenArgb = 0xFF00C000;
-        var activeArgb = LerpColor(redArgb, greenArgb, state.ActiveArrowProgress);
-        ID2D1SolidColorBrush redBrush = GetBrush(ToColor(redArgb, countdownOpacity));
-        ID2D1SolidColorBrush greenBrush = GetBrush(ToColor(greenArgb, countdownOpacity));
-        ID2D1SolidColorBrush activeBrush = GetBrush(ToColor(activeArgb, countdownOpacity));
+        const uint RedArgb = 0xFFFF0000;
+        const uint GreenArgb = 0xFF00C000;
+        var activeArgb = LerpColor(RedArgb, GreenArgb, state.ActiveArrowProgress);
+        var redBrush = GetBrush(ToColor(RedArgb, countdownOpacity));
+        var greenBrush = GetBrush(ToColor(GreenArgb, countdownOpacity));
+        var activeBrush = GetBrush(ToColor(activeArgb, countdownOpacity));
 
         for (var i = 0; i < 4; i++)
         {
-            ID2D1SolidColorBrush brush = i < state.CompletedArrowCount
+            var brush = i < state.CompletedArrowCount
                 ? greenBrush
                 : i == state.CompletedArrowCount && state.CompletedArrowCount < 4
                     ? activeBrush
@@ -863,7 +863,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
     }
 
-    private void DrawTextLayer(
+    void DrawTextLayer(
         ID2D1RenderTarget target,
         IDWriteTextLayout layout,
         Vector2 origin,
@@ -877,7 +877,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
 
         if (style.OutlineWidth > 0 && (style.OutlineArgb >> 24) != 0)
         {
-            ID2D1SolidColorBrush outlineBrush = GetBrush(ToColor(outlineArgb));
+            var outlineBrush = GetBrush(ToColor(outlineArgb));
             for (var x = -1; x <= 1; x++)
             {
                 for (var y = -1; y <= 1; y++)
@@ -891,7 +891,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         target.DrawTextLayout(origin, layout, GetBrush(ToColor(textArgb)));
     }
 
-    private (float CenterY, float Opacity) GetAnimatedLineState(
+    (float CenterY, float Opacity) GetAnimatedLineState(
         int relativeLine,
         float progress,
         float middleY,
@@ -918,7 +918,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
                 easedProgress));
     }
 
-    private float GetStableLineOpacity(int relativeLine) => relativeLine switch
+    float GetStableLineOpacity(int relativeLine) => relativeLine switch
     {
         0 => 1,
         -1 => 0.5f,
@@ -928,7 +928,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         _ => 0,
     };
 
-    private static float GetStableLineScale(int relativeLine) => relativeLine switch
+    static float GetStableLineScale(int relativeLine) => relativeLine switch
     {
         0 => 1.0f,
         -1 or 1 => 0.80f,
@@ -936,7 +936,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         _ => 0.40f,
     };
 
-    private static float GetLineScale(int relativeLine, float scrollProgress)
+    static float GetLineScale(int relativeLine, float scrollProgress)
     {
         var easedProgress = SmoothStep(scrollProgress);
         var previousScale = GetStableLineScale(relativeLine + 1);
@@ -944,16 +944,16 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return Lerp(previousScale, currentScale, easedProgress);
     }
 
-    private static float EaseInOutQuint(float t) =>
+    static float EaseInOutQuint(float t) =>
         t < 0.5f
             ? 16 * t * t * t * t * t
             : 1 - (MathF.Pow((-2 * t) + 2, 5) / 2);
 
-    private static float SmoothStep(float t) => t * t * (3 - (2 * t));
+    static float SmoothStep(float t) => t * t * (3 - (2 * t));
 
-    private static float Lerp(float start, float end, float amount) => start + ((end - start) * amount);
+    static float Lerp(float start, float end, float amount) => start + ((end - start) * amount);
 
-    private static RenderBounds CreateBounds(
+    static RenderBounds CreateBounds(
         float left,
         float top,
         float right,
@@ -972,19 +972,19 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return new RenderBounds(boundsLeft, boundsTop, boundsRight - boundsLeft, boundsBottom - boundsTop);
     }
 
-    private static Color4 ToColor(uint argb) => new(
+    static Color4 ToColor(uint argb) => new(
         ((argb >> 16) & 0xFF) / 255f,
         ((argb >> 8) & 0xFF) / 255f,
         (argb & 0xFF) / 255f,
         ((argb >> 24) & 0xFF) / 255f);
 
-    private static Color4 ToColor(uint argb, float opacity) => new(
+    static Color4 ToColor(uint argb, float opacity) => new(
         ((argb >> 16) & 0xFF) / 255f,
         ((argb >> 8) & 0xFF) / 255f,
         (argb & 0xFF) / 255f,
         ((argb >> 24) & 0xFF) / 255f * Math.Clamp(opacity, 0, 1));
 
-    private static uint LerpColor(uint from, uint to, float amount)
+    static uint LerpColor(uint from, uint to, float amount)
     {
         amount = Math.Clamp(amount, 0, 1);
         var fa = (byte)((from >> 24) & 0xFF);
@@ -1002,25 +1002,25 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return (uint)((a << 24) | (r << 16) | (g << 8) | b);
     }
 
-    private void BeginFrame()
+    void BeginFrame()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _generation++;
     }
 
     // Disposes what this frame did not use.
-    private void EndFrame()
+    void EndFrame()
     {
         Evict(_layouts);
         Evict(_formats);
         Evict(_brushes);
     }
 
-    private void Evict<TKey, TValue>(Dictionary<TKey, CacheEntry<TValue>> cache)
+    void Evict<TKey, TValue>(Dictionary<TKey, CacheEntry<TValue>> cache)
         where TKey : notnull
         where TValue : class, IDisposable
     {
-        foreach (KeyValuePair<TKey, CacheEntry<TValue>> pair in cache)
+        foreach (var pair in cache)
         {
             if (pair.Value.LastUsed == _generation)
                 continue;
@@ -1030,34 +1030,34 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
     }
 
-    private static void Clear<TKey, TValue>(Dictionary<TKey, CacheEntry<TValue>> cache)
+    static void Clear<TKey, TValue>(Dictionary<TKey, CacheEntry<TValue>> cache)
         where TKey : notnull
         where TValue : class, IDisposable
     {
-        foreach (CacheEntry<TValue> entry in cache.Values)
+        foreach (var entry in cache.Values)
             entry.Value?.Dispose();
         cache.Clear();
     }
 
-    private IDWriteTextFormat GetFormat(FormatKey key)
+    IDWriteTextFormat GetFormat(FormatKey key)
     {
-        ref CacheEntry<IDWriteTextFormat> entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_formats, key, out _);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_formats, key, out _);
         entry.Value ??= _writeFactory.CreateTextFormat(key.Family, null, key.Weight, key.Style, FontStretch.Normal, key.Size, "");
         entry.LastUsed = _generation;
         return entry.Value;
     }
 
-    private IDWriteTextLayout GetLayout(string text, FormatKey format, float maxWidth, float maxHeight, TextAlignment alignment)
+    IDWriteTextLayout GetLayout(string text, FormatKey format, float maxWidth, float maxHeight, TextAlignment alignment)
     {
         // The format is looked up on every use so it stays cached as long as its layouts do.
-        IDWriteTextFormat textFormat = GetFormat(format);
-        ref CacheEntry<IDWriteTextLayout> entry = ref CollectionsMarshal.GetValueRefOrAddDefault(
+        var textFormat = GetFormat(format);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(
             _layouts,
             new LayoutKey(text, format, maxWidth, maxHeight, alignment),
             out _);
         if (entry.Value is null)
         {
-            IDWriteTextLayout layout = _writeFactory.CreateTextLayout(text, textFormat, maxWidth, maxHeight);
+            var layout = _writeFactory.CreateTextLayout(text, textFormat, maxWidth, maxHeight);
             if (alignment != TextAlignment.Leading)
                 layout.TextAlignment = alignment;
             entry.Value = layout;
@@ -1067,9 +1067,9 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return entry.Value;
     }
 
-    private ID2D1SolidColorBrush GetBrush(Color4 color)
+    ID2D1SolidColorBrush GetBrush(Color4 color)
     {
-        ref CacheEntry<ID2D1SolidColorBrush> entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_brushes, color, out _);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_brushes, color, out _);
         entry.Value ??= _target!.CreateSolidColorBrush(color);
         entry.LastUsed = _generation;
         return entry.Value;
@@ -1077,7 +1077,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
 
     // One WIC bitmap and render target, kept while the raster size stays the same. Brushes belong
     // to the render target, so they go with it.
-    private ID2D1RenderTarget GetTarget(int width, int height)
+    ID2D1RenderTarget GetTarget(int width, int height)
     {
         if (_target is not null && _targetWidth == width && _targetHeight == height)
             return _target;
@@ -1092,7 +1092,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return _target;
     }
 
-    private void ReleaseTarget()
+    void ReleaseTarget()
     {
         Clear(_brushes);
         _target?.Dispose();
@@ -1103,11 +1103,11 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         _targetHeight = 0;
     }
 
-    private SubtitleRasterResult CopyPixels(RenderBounds bounds, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels)
+    SubtitleRasterResult CopyPixels(RenderBounds bounds, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels)
     {
         var stride = bounds.Width * 4;
         var length = checked(stride * bounds.Height);
-        Memory<byte> pixels = rentPixels(length)[..length];
+        var pixels = rentPixels(length)[..length];
         _bitmap!.CopyPixels((uint)stride, pixels.Span);
         return new SubtitleRasterResult(
             pixels,
@@ -1139,15 +1139,15 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         _d2dFactory.Dispose();
     }
 
-    private struct CacheEntry<T>
+    struct CacheEntry<T>
         where T : class
     {
         public T? Value;
         public long LastUsed;
     }
 
-    private readonly record struct FormatKey(string Family, FontWeight Weight, FontStyle Style, float Size);
-    private readonly record struct LayoutKey(string Text, FormatKey Format, float MaxWidth, float MaxHeight, TextAlignment Alignment);
-    private readonly record struct KaraokeLayerStyle(uint TextArgb, uint OutlineArgb, float OutlineWidth, uint ShadowArgb);
-    private readonly record struct RenderBounds(int Left, int Top, int Width, int Height);
+    readonly record struct FormatKey(string Family, FontWeight Weight, FontStyle Style, float Size);
+    readonly record struct LayoutKey(string Text, FormatKey Format, float MaxWidth, float MaxHeight, TextAlignment Alignment);
+    readonly record struct KaraokeLayerStyle(uint TextArgb, uint OutlineArgb, float OutlineWidth, uint ShadowArgb);
+    readonly record struct RenderBounds(int Left, int Top, int Width, int Height);
 }

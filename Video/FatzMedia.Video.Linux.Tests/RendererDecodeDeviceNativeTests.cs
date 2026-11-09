@@ -34,7 +34,7 @@ public sealed unsafe class RendererDecodeDeviceNativeTests
             var renderer = new SuppliedDevice(device);
             var services = new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance);
             services.Attach(renderer);
-            using VideoDecoder decoder = VideoDecoder.FromConfiguration(new MediaPlayerConfiguration(VideoDecodingMethod.Auto), services);
+            using var decoder = VideoDecoder.FromConfiguration(new MediaPlayerConfiguration(VideoDecodingMethod.Auto), services);
 
             Assert.True(decoder.Open(sample));
             Assert.Equal("vulkan", decoder.HardwareAccelerationMethod);
@@ -66,14 +66,14 @@ public sealed unsafe class RendererDecodeDeviceNativeTests
 
         var services = new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance);
         services.Attach(new NoDecodingDevice());
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(new MediaPlayerConfiguration(VideoDecodingMethod.Auto), services);
+        using var decoder = VideoDecoder.FromConfiguration(new MediaPlayerConfiguration(VideoDecodingMethod.Auto), services);
 
         Assert.True(decoder.Open(sample));
         Assert.Null(decoder.HardwareAccelerationMethod);
         Assert.Contains("in software", decoder.DescribeDecodePath(), StringComparison.Ordinal);
     }
 
-    private static bool TryLoadFfmpeg(out string sample)
+    static bool TryLoadFfmpeg(out string sample)
     {
         var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO") ?? string.Empty;
@@ -93,7 +93,7 @@ public sealed unsafe class RendererDecodeDeviceNativeTests
     }
 
     /// <summary>Hands out references to one FFmpeg Vulkan device context, as the Vulkan renderer does.</summary>
-    private sealed class SuppliedDevice(AVBufferRef* device) : IMediaRendererVideoDecodeDevice
+    sealed class SuppliedDevice(AVBufferRef* device) : IMediaRendererVideoDecodeDevice
     {
         public int ContextsCreated { get; private set; }
 
@@ -117,7 +117,7 @@ public sealed unsafe class RendererDecodeDeviceNativeTests
         public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
     }
 
-    private sealed class NoDecodingDevice : IMediaRendererVideoDecodeDevice
+    sealed class NoDecodingDevice : IMediaRendererVideoDecodeDevice
     {
         public string? VideoDecodeDeviceType => null;
 

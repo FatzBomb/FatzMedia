@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Pipeline;
 /// <summary>
 /// Why a video engine's last local open failed, where the caller can act on it.
 /// </summary>
-internal interface IVideoOpenOutcome
+interface IVideoOpenOutcome
 {
     /// <summary>
     /// The last local open failed because the file has no video stream (audio only, or only cover

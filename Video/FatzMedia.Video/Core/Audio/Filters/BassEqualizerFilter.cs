@@ -8,14 +8,14 @@ namespace FatzMedia.Video.Core.Audio.Filters;
 /// Parametric equalizer on BASS_FX <c>BASS_FX_BFX_PEAKEQ</c>: one native FX with one band per
 /// configured band. Native IIR processing (no managed per-sample callback, no added latency).
 /// </summary>
-internal sealed class BassEqualizerFilter
+sealed class BassEqualizerFilter
 {
-    private readonly Lock _gate = new();
-    private readonly PeakEQParameters _parameters = new() { lChannel = FXChannelFlags.All };
-    private AudioEqualizerSettings _settings = AudioEqualizerSettings.Disabled;
-    private int _playHandle;
-    private int _fxHandle;
-    private int _attachedBands;
+    readonly Lock _gate = new();
+    readonly PeakEQParameters _parameters = new() { lChannel = FXChannelFlags.All };
+    AudioEqualizerSettings _settings = AudioEqualizerSettings.Disabled;
+    int _playHandle;
+    int _fxHandle;
+    int _attachedBands;
 
     public AudioEqualizerSettings Settings
     {
@@ -57,7 +57,7 @@ internal sealed class BassEqualizerFilter
         }
     }
 
-    private bool ApplyLocked(int playHandle)
+    bool ApplyLocked(int playHandle)
     {
         if (playHandle != _playHandle)
         {
@@ -70,7 +70,7 @@ internal sealed class BassEqualizerFilter
         if (playHandle == 0)
             return false;
 
-        EqualizerUpdateAction action = EqualizerUpdatePlanner.Plan(_attachedBands, _fxHandle != 0, _settings);
+        var action = EqualizerUpdatePlanner.Plan(_attachedBands, _fxHandle != 0, _settings);
         switch (action)
         {
             case EqualizerUpdateAction.None:
@@ -96,8 +96,8 @@ internal sealed class BassEqualizerFilter
         var sampleRate = MBass.ChannelGetInfo(playHandle).Frequency;
         for (var band = 0; band < _settings.Bands.Count; band++)
         {
-            AudioEqualizerBand settings = _settings.Bands[band];
-            (double centerHz, double gainDb) = EqualizerUpdatePlanner.ForSampleRate(settings, sampleRate);
+            var settings = _settings.Bands[band];
+            (var centerHz, var gainDb) = EqualizerUpdatePlanner.ForSampleRate(settings, sampleRate);
             _parameters.lBand = band;
             _parameters.fCenter = (float)centerHz;
             _parameters.fGain = (float)gainDb;
@@ -112,7 +112,7 @@ internal sealed class BassEqualizerFilter
         return ok;
     }
 
-    private void RemoveLocked()
+    void RemoveLocked()
     {
         if (_fxHandle != 0 && _playHandle != 0)
             _ = MBass.ChannelRemoveFX(_playHandle, _fxHandle);

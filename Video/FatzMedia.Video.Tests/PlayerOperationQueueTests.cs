@@ -10,9 +10,9 @@ public class PlayerOperationQueueTests
         using var queue = new PlayerOperationQueue("test");
         var order = new List<string>();
 
-        Task<bool> first = queue.Enqueue(() => { order.Add("first"); return true; });
-        Task<bool> second = queue.Enqueue(() => { order.Add("second"); return true; });
-        Task<bool> third = queue.Enqueue(() => { order.Add("third"); return true; });
+        var first = queue.Enqueue(() => { order.Add("first"); return true; });
+        var second = queue.Enqueue(() => { order.Add("second"); return true; });
+        var third = queue.Enqueue(() => { order.Add("third"); return true; });
 
         await Task.WhenAll(first, second, third);
 
@@ -26,7 +26,7 @@ public class PlayerOperationQueueTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        Task<int> queued = queue.Enqueue(async () =>
+        var queued = queue.Enqueue(async () =>
         {
             started.SetResult();
             await release.Task.ConfigureAwait(false);
@@ -36,7 +36,7 @@ public class PlayerOperationQueueTests
         await started.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var executeRan = new ManualResetEventSlim(false);
-        Task<int> executeTask = Task.Run(() => queue.Execute(() => { executeRan.Set(); return 42; }));
+        var executeTask = Task.Run(() => queue.Execute(() => { executeRan.Set(); return 42; }));
 
         // The queued operation is still blocked, so Execute must not run yet.
         await Task.Delay(100);
@@ -53,17 +53,17 @@ public class PlayerOperationQueueTests
     public async Task Execute_WhenCalledFromWorkerContext_RunsDirectlyOnTheWorkerThread()
     {
         using var queue = new PlayerOperationQueue("test");
-        int outerThreadId = -1;
-        int innerThreadId = -2;
+        var outerThreadId = -1;
+        var innerThreadId = -2;
 
-        Task<int> outer = queue.Enqueue(() =>
+        var outer = queue.Enqueue(() =>
         {
             outerThreadId = Environment.CurrentManagedThreadId;
             innerThreadId = queue.Execute(() => Environment.CurrentManagedThreadId);
             return innerThreadId;
         });
 
-        int result = await outer.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var result = await outer.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         // Ran directly on the worker (no re-queueing, no deadlock).
         Assert.Equal(result, innerThreadId);
@@ -75,7 +75,7 @@ public class PlayerOperationQueueTests
     {
         using var queue = new PlayerOperationQueue("test");
 
-        Task<int> outer = queue.Enqueue(() => queue.Execute(() => queue.Execute(() => 5)));
+        var outer = queue.Enqueue(() => queue.Execute(() => queue.Execute(() => 5)));
 
         Assert.Equal(5, await outer.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
@@ -85,7 +85,7 @@ public class PlayerOperationQueueTests
     {
         using var queue = new PlayerOperationQueue("Test");
 
-        Task<int> operation = Task.Run(() => queue.Execute(() => queue.Execute(() => 42)));
+        var operation = Task.Run(() => queue.Execute(() => queue.Execute(() => 42)));
 
         Assert.Equal(42, await operation.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
@@ -96,7 +96,7 @@ public class PlayerOperationQueueTests
         using var queue = new PlayerOperationQueue("test");
         var expected = new InvalidOperationException("boom");
 
-        Task<int> executeTask = Task.Run(() => queue.Execute<int>(() => throw expected));
+        var executeTask = Task.Run(() => queue.Execute<int>(() => throw expected));
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() => executeTask.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Same(expected, actual);
@@ -108,7 +108,7 @@ public class PlayerOperationQueueTests
         using var queue = new PlayerOperationQueue("test");
         var order = new List<string>();
 
-        Task<bool> asyncOp = queue.Enqueue(async () =>
+        var asyncOp = queue.Enqueue(async () =>
         {
             order.Add("async-start");
             await Task.Delay(50).ConfigureAwait(false);
@@ -132,9 +132,9 @@ public class PlayerOperationQueueTests
     public void Execute_RunsOperationOnCallingThread()
     {
         using var queue = new PlayerOperationQueue("test");
-        int callingThreadId = Environment.CurrentManagedThreadId;
+        var callingThreadId = Environment.CurrentManagedThreadId;
 
-        int operationThreadId = queue.Execute(() => Environment.CurrentManagedThreadId);
+        var operationThreadId = queue.Execute(() => Environment.CurrentManagedThreadId);
 
         Assert.Equal(callingThreadId, operationThreadId);
     }
@@ -213,7 +213,7 @@ public class PlayerOperationQueueTests
             });
         };
 
-        Task<bool> operation = queue.Enqueue(async () =>
+        var operation = queue.Enqueue(async () =>
         {
             HostEventDispatcher.Raise(this, handler, "Test");
             handlerReturned.SetResult();
@@ -232,7 +232,7 @@ public class PlayerOperationQueueTests
         using var queue = new PlayerOperationQueue("test");
         var release = new ManualResetEventSlim();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<bool> blocking = queue.Enqueue(() =>
+        var blocking = queue.Enqueue(() =>
         {
             entered.SetResult();
             release.Wait();
@@ -240,7 +240,7 @@ public class PlayerOperationQueueTests
         });
         await entered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
-        PlayerOperationQueue.ExclusiveTurn turn = queue.BeginExclusiveTurn();
+        var turn = queue.BeginExclusiveTurn();
         Assert.False(turn.TryWait(TimeSpan.FromMilliseconds(50)));
         release.Set();
 
@@ -257,7 +257,7 @@ public class PlayerOperationQueueTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Task<int> task = queue.Enqueue(new Func<int>(() => throw new OperationCanceledException(cancellation.Token)));
+        var task = queue.Enqueue(new Func<int>(() => throw new OperationCanceledException(cancellation.Token)));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.True(task.IsCanceled);

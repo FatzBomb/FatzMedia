@@ -5,10 +5,10 @@ using ManagedBass;
 namespace FatzMedia.Video.Linux.Audio;
 
 /// <summary>One snapshot of the BASS output state.</summary>
-internal readonly record struct AudioOutputSnapshot(int SampleRate, int Device, string? DeviceName, string? DefaultDeviceName);
+readonly record struct AudioOutputSnapshot(int SampleRate, int Device, string? DeviceName, string? DefaultDeviceName);
 
 /// <summary>Reads BASS output state; replaced in tests.</summary>
-internal interface IAudioOutputSnapshotSource
+interface IAudioOutputSnapshotSource
 {
     bool TryRead(out AudioOutputSnapshot snapshot);
 }
@@ -18,18 +18,18 @@ internal interface IAudioOutputSnapshotSource
 /// through their ALSA plugins); the device flagged default stands in for the Windows default
 /// endpoint.
 /// </summary>
-internal sealed class BassAudioOutputSnapshotSource : IAudioOutputSnapshotSource
+sealed class BassAudioOutputSnapshotSource : IAudioOutputSnapshotSource
 {
     public bool TryRead(out AudioOutputSnapshot snapshot)
     {
         snapshot = default;
-        if (!Bass.GetInfo(out BassInfo info))
+        if (!Bass.GetInfo(out var info))
             return false;
 
         var device = Bass.CurrentDevice;
-        string? deviceName = Bass.GetDeviceInfo(device, out DeviceInfo current) ? current.Name : null;
+        var deviceName = Bass.GetDeviceInfo(device, out var current) ? current.Name : null;
         string? defaultName = null;
-        for (var index = 1; Bass.GetDeviceInfo(index, out DeviceInfo candidate); index++)
+        for (var index = 1; Bass.GetDeviceInfo(index, out var candidate); index++)
         {
             if (candidate.IsDefault)
             {
@@ -46,11 +46,11 @@ internal sealed class BassAudioOutputSnapshotSource : IAudioOutputSnapshotSource
 /// <summary>
 /// Polling output-device monitor built on BASS state and the portable Core change detector.
 /// </summary>
-internal sealed class BassDeviceAudioMonitor : IAudioDeviceMonitor
+sealed class BassDeviceAudioMonitor : IAudioDeviceMonitor
 {
-    private readonly IAudioOutputSnapshotSource _source;
-    private readonly PollingLoop _loop;
-    private AudioOutputSnapshot? _last;
+    readonly IAudioOutputSnapshotSource _source;
+    readonly PollingLoop _loop;
+    AudioOutputSnapshot? _last;
 
     public BassDeviceAudioMonitor(IAudioOutputSnapshotSource source, TimeSpan pollInterval)
     {
@@ -78,12 +78,12 @@ internal sealed class BassDeviceAudioMonitor : IAudioDeviceMonitor
         if (!_source.TryRead(out var current))
             return null;
 
-        AudioOutputSnapshot? previous = _last;
+        var previous = _last;
         _last = current;
         if (previous is not { } last)
             return null;
 
-        AudioDeviceChangeInfo? change = AudioDeviceChangeDetector.Detect(
+        var change = AudioDeviceChangeDetector.Detect(
             last.SampleRate, last.Device, last.DeviceName, null, last.DefaultDeviceName,
             current.SampleRate, current.Device, current.DeviceName, null, current.DefaultDeviceName);
         if (change is not null)

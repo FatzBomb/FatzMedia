@@ -31,7 +31,7 @@ public enum LightweightPlayerKind
 /// </summary>
 public static class LightweightPlayerPolicy
 {
-    private static readonly HashSet<string> MidiKaraokeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    static readonly HashSet<string> MidiKaraokeExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".kar", ".mid", ".midi", ".rmi"
     };

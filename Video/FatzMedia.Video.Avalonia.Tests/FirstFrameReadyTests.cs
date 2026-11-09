@@ -1,7 +1,7 @@
-using FatzMedia.Video.Core.Abstractions;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Avalonia.Tests;
 
@@ -11,14 +11,14 @@ namespace FatzMedia.Video.Avalonia.Tests;
 /// </summary>
 public sealed class FirstFrameReadyTests
 {
-    private static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
+    static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
 
     [AvaloniaTheory]
     [InlineData(true)]
     [InlineData(false)]
     public void TheFirstFrame_RaisesOnce_WithTheFrameInTheBitmap(bool autoHide)
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session, AutoHide = autoHide };
         var bitmapAtEvent = new List<bool>();
         surface.FirstFrameReady += (_, _) =>
@@ -26,7 +26,7 @@ public sealed class FirstFrameReadyTests
             Assert.True(Dispatcher.UIThread.CheckAccess());
             bitmapAtEvent.Add(surface.FrameSink?.Bitmap is not null);
         };
-        Window window = Show(surface);
+        var window = Show(surface);
         Assert.Empty(bitmapAtEvent);
 
         Present(recorder);
@@ -40,11 +40,11 @@ public sealed class FirstFrameReadyTests
     [AvaloniaFact]
     public void EachLoad_RaisesAgain_AndAudioOnlyMediaNever()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
-        Window window = Show(surface);
+        var window = Show(surface);
         Present(recorder);
         Assert.Equal(1, raised);
 
@@ -61,11 +61,11 @@ public sealed class FirstFrameReadyTests
     [AvaloniaFact]
     public void AnAnnouncedFrame_WaitsForTheBitmap()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
-        Window window = Show(surface);
+        var window = Show(surface);
 
         // The present notice without a frame in the sink (a frame for another surface).
         Task.Run(() => recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty)).Wait();
@@ -83,12 +83,12 @@ public sealed class FirstFrameReadyTests
     {
         // The startup media of a test player may load before its surface is in the tree (the
         // session is already open here): Core re-presents the current frame when the surface attaches.
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
 
-        Window window = Show(surface);
+        var window = Show(surface);
         Assert.Equal(0, raised);
         Present(recorder);
 
@@ -96,10 +96,10 @@ public sealed class FirstFrameReadyTests
         window.Close();
     }
 
-    private const int Width = 8;
-    private const int Height = 4;
+    const int Width = 8;
+    const int Height = 4;
 
-    private static void Load(RecordingSession recorder, bool hasVisualContent)
+    static void Load(RecordingSession recorder, bool hasVisualContent)
     {
         recorder.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(Source));
         recorder.HasVisualContent = hasVisualContent;
@@ -108,9 +108,9 @@ public sealed class FirstFrameReadyTests
     }
 
     // As a renderer does, on its own thread: the frame to the sink, then the present notice.
-    private static void Present(RecordingSession recorder)
+    static void Present(RecordingSession recorder)
     {
-        IMediaPresentationFrameSink sink = SinkOf(recorder);
+        var sink = SinkOf(recorder);
         Task.Run(() =>
         {
             sink.PresentFrame(new byte[Width * Height * 4], Width, Height, Width * 4);
@@ -119,14 +119,14 @@ public sealed class FirstFrameReadyTests
         Dispatcher.UIThread.RunJobs();
     }
 
-    private static IMediaPresentationFrameSink SinkOf(RecordingSession recorder)
+    static IMediaPresentationFrameSink SinkOf(RecordingSession recorder)
     {
-        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle));
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink));
+        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink));
         return sink!;
     }
 
-    private static Window Show(MediaSurface surface)
+    static Window Show(MediaSurface surface)
     {
         var window = new Window { Width = Width, Height = Height, Content = surface };
         window.Show();

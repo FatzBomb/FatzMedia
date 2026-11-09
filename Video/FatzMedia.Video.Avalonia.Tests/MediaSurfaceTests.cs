@@ -22,12 +22,12 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ShowingTheSurface_AttachesOnePrimaryFrameSinkSurface()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session, VideoDisplayMode = VideoDisplayMode.Stretch };
-        Window window = Show(surface, 320, 180);
+        var window = Show(surface, 320, 180);
 
         Assert.True(surface.IsPrimarySurfaceAttached);
-        MediaPresentationSurfaceDescriptor attached = recorder.LastAttached!;
+        var attached = recorder.LastAttached!;
         Assert.Equal(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, attached.Id);
         Assert.Equal(MediaPresentationSurfaceRole.Primary, attached.Role);
         Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, attached.NativeSurface.SurfaceTypeId);
@@ -39,9 +39,9 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ResizingTheWindow_ResizesThePresentationSurface()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 320, 180);
+        var window = Show(surface, 320, 180);
 
         window.Width = 640;
         window.Height = 360;
@@ -55,10 +55,10 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ChangingPlayer_DetachesOldAndAttachesNew()
     {
-        (IPlayerSession first, RecordingSession firstRecorder) = RecordingSession.Create();
-        (IPlayerSession second, RecordingSession secondRecorder) = RecordingSession.Create();
+        (var first, var firstRecorder) = RecordingSession.Create();
+        (var second, var secondRecorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = first };
-        Window window = Show(surface, 200, 100);
+        var window = Show(surface, 200, 100);
 
         surface.Player = second;
 
@@ -70,7 +70,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void RemovingFromTree_DetachesAndClearingPlayerDetaches()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var host = new ContentControl { Content = surface };
         var window = new Window { Width = 200, Height = 100, Content = host };
@@ -89,7 +89,7 @@ public sealed class MediaSurfaceTests
     public void NoPlayer_AttachesNothing()
     {
         var surface = new MediaSurface();
-        Window window = Show(surface, 200, 100);
+        var window = Show(surface, 200, 100);
 
         Assert.False(surface.IsPrimarySurfaceAttached);
         window.Close();
@@ -98,23 +98,23 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void PresentedFrame_IsDrawnByTheSurface()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 40, 20);
-        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle));
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink));
+        var window = Show(surface, 40, 20);
+        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink));
 
         // Premultiplied opaque red, presented from a background thread like a renderer would.
         var pixels = new byte[40 * 20 * 4];
         for (var offset = 0; offset < pixels.Length; offset += 4)
-            (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]) = ((byte)0, (byte)0, (byte)255, (byte)255);
+            (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]) = (0, 0, 255, 255);
         Task.Run(() => sink!.PresentFrame(pixels, 40, 20, 160)).Wait();
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(1, surface.FrameSink!.PublishedFrames);
-        WriteableBitmap? frame = window.CaptureRenderedFrame() as WriteableBitmap ?? ToWriteable(window.CaptureRenderedFrame());
+        var frame = window.CaptureRenderedFrame() ?? ToWriteable(window.CaptureRenderedFrame());
         Assert.NotNull(frame);
-        using ILockedFramebuffer framebuffer = frame.Lock();
+        using var framebuffer = frame.Lock();
         var center = ReadPixel(framebuffer, 20, 10);
         Assert.Equal((0, 0, 255, 255), center);
         window.Close();
@@ -123,11 +123,11 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void FrameBursts_PublishOnlyTheLatestFrame()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 4, 4);
-        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle);
-        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink);
+        var window = Show(surface, 4, 4);
+        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle);
+        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink);
 
         var frame = new byte[4 * 4 * 4];
         for (var i = 0; i < 5; i++)
@@ -141,11 +141,11 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void SteadyFrames_ReuseBuffersInsteadOfAllocating()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 4, 4);
-        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle);
-        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink);
+        var window = Show(surface, 4, 4);
+        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle);
+        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink);
 
         var frame = new byte[4 * 4 * 4];
         for (var i = 0; i < 10; i++)
@@ -159,7 +159,7 @@ public sealed class MediaSurfaceTests
         window.Close();
     }
 
-    private static Window Show(MediaSurface surface, double width, double height)
+    static Window Show(MediaSurface surface, double width, double height)
     {
         var window = new Window { Width = width, Height = height, Content = surface };
         window.Show();
@@ -167,18 +167,18 @@ public sealed class MediaSurfaceTests
         return window;
     }
 
-    private static WriteableBitmap? ToWriteable(Bitmap? bitmap)
+    static WriteableBitmap? ToWriteable(Bitmap? bitmap)
     {
         if (bitmap is null)
             return null;
 
         var copy = new WriteableBitmap(bitmap.PixelSize, bitmap.Dpi, PixelFormat.Bgra8888, AlphaFormat.Premul);
-        using (ILockedFramebuffer framebuffer = copy.Lock())
+        using (var framebuffer = copy.Lock())
             bitmap.CopyPixels(framebuffer);
         return copy;
     }
 
-    private static unsafe (int B, int G, int R, int A) ReadPixel(ILockedFramebuffer framebuffer, int x, int y)
+    static unsafe (int B, int G, int R, int A) ReadPixel(ILockedFramebuffer framebuffer, int x, int y)
     {
         var row = (byte*)framebuffer.Address + (y * framebuffer.RowBytes) + (x * 4);
         return framebuffer.Format == PixelFormat.Rgba8888
@@ -193,14 +193,14 @@ public sealed class AvaloniaMediaInputSourcesTests
     public unsafe void FromBitmap_ProducesStraightAlphaBgra()
     {
         using var bitmap = new WriteableBitmap(new PixelSize(2, 1), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
-        using (ILockedFramebuffer framebuffer = bitmap.Lock())
+        using (var framebuffer = bitmap.Lock())
         {
             var pixels = (byte*)framebuffer.Address;
-            (pixels[0], pixels[1], pixels[2], pixels[3]) = ((byte)10, (byte)20, (byte)30, (byte)255);
-            (pixels[4], pixels[5], pixels[6], pixels[7]) = ((byte)200, (byte)100, (byte)50, (byte)128);
+            (pixels[0], pixels[1], pixels[2], pixels[3]) = (10, 20, 30, 255);
+            (pixels[4], pixels[5], pixels[6], pixels[7]) = (200, 100, 50, 128);
         }
 
-        MediaInputSource source = AvaloniaMediaInputSources.FromBitmap(bitmap, "test");
+        var source = AvaloniaMediaInputSources.FromBitmap(bitmap, "test");
 
         Assert.True(source.IsBgraImage);
         Assert.Equal((2, 1, 8), (source.Width, source.Height, source.Stride));

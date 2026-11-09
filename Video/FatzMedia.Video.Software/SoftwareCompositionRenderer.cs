@@ -11,13 +11,13 @@ namespace FatzMedia.Video.Software;
 /// </summary>
 public sealed class SoftwareCompositionRenderer
 {
-    private const long ParallelPixelThreshold = 512 * 1024;
-    private const int MinRowsPerBand = 32;
+    const long ParallelPixelThreshold = 512 * 1024;
+    const int MinRowsPerBand = 32;
     // The owner's capture (20+ logical cores) showed one band per core costing about a fifth
     // of the drawing time in fork/join and thread-pool wakeups, with 21 workers each about 2%
     // busy; a few large bands already saturate memory bandwidth.
-    private const int MaxBands = 8;
-    private const long MinPixelsPerBand = 128 * 1024;
+    const int MaxBands = 8;
+    const long MinPixelsPerBand = 128 * 1024;
 
     public SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height)
     {
@@ -61,7 +61,7 @@ public sealed class SoftwareCompositionRenderer
                 "Native and retained backgrounds are not supported by the software renderer.");
         }
 
-        string? validationError = ValidateFrame(frame);
+        var validationError = ValidateFrame(frame);
         if (validationError != null)
         {
             return SoftwareRenderOutput.Failure(
@@ -128,7 +128,7 @@ public sealed class SoftwareCompositionRenderer
             null);
     }
 
-    private static string? ValidateFrame(MediaCompositionFrame frame)
+    static string? ValidateFrame(MediaCompositionFrame frame)
     {
         if (!frame.IsBackgroundWellFormed)
         {
@@ -152,7 +152,7 @@ public sealed class SoftwareCompositionRenderer
         return null;
     }
 
-    private static void DrawWash(SoftwareCompositionBuffer buffer, uint argb)
+    static void DrawWash(SoftwareCompositionBuffer buffer, uint argb)
     {
         var alpha = (byte)(argb >> 24);
         var red = (byte)(argb >> 16);
@@ -182,7 +182,7 @@ public sealed class SoftwareCompositionRenderer
         var width = buffer.Width;
         ForRowBands(0, buffer.Height, width, (top, bottom) =>
         {
-            Span<byte> bytes = MemoryMarshal.AsBytes(buffer.Pixels32[(top * width)..(bottom * width)]);
+            var bytes = MemoryMarshal.AsBytes(buffer.Pixels32[(top * width)..(bottom * width)]);
             var offset = 0;
             if (Vector.IsHardwareAccelerated)
             {
@@ -190,7 +190,7 @@ public sealed class SoftwareCompositionRenderer
                 var inverse = new Vector<ushort>((ushort)inverseAlpha);
                 for (; offset <= bytes.Length - Vector<byte>.Count; offset += Vector<byte>.Count)
                 {
-                    Vector.Widen(new Vector<byte>(bytes[offset..]), out Vector<ushort> low, out Vector<ushort> high);
+                    Vector.Widen(new Vector<byte>(bytes[offset..]), out var low, out var high);
                     Vector.Narrow(DivideBy255(addend + (low * inverse)), DivideBy255(addend + (high * inverse)))
                         .CopyTo(bytes[offset..]);
                 }
@@ -207,10 +207,10 @@ public sealed class SoftwareCompositionRenderer
 
     // Exact x / 255 for 0 <= x <= 255 * 255 + 127, the largest blend numerator (as the scalar
     // remainder above).
-    private static Vector<ushort> DivideBy255(Vector<ushort> value) =>
+    static Vector<ushort> DivideBy255(Vector<ushort> value) =>
         Vector.ShiftRightLogical(value + Vector<ushort>.One + Vector.ShiftRightLogical(value, 8), 8);
 
-    private static void DrawCdg(SoftwareCompositionBuffer buffer, CdgRenderSnapshot snapshot)
+    static void DrawCdg(SoftwareCompositionBuffer buffer, CdgRenderSnapshot snapshot)
     {
         if (snapshot.BackgroundColorIndex < 0)
             return;
@@ -229,13 +229,13 @@ public sealed class SoftwareCompositionRenderer
         mapping.MapColumns(columns.AsSpan(0, columnCount));
         ForRowBands(mapping.ClippedTop, mapping.ClippedBottom, columnCount, (top, bottom) =>
         {
-            ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
-            ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
-            Span<uint> pixels = buffer.Pixels32;
+            var indices = snapshot.ColorIndices.Span;
+            var palette = snapshot.PaletteArgb.Span;
+            var pixels = buffer.Pixels32;
             for (var y = top; y < bottom; y++)
             {
-                ReadOnlySpan<byte> sourceRow = indices.Slice(mapping.GetSourceY(y) * snapshot.Width, snapshot.Width);
-                Span<uint> destinationRow = pixels.Slice((y * buffer.Width) + mapping.ClippedLeft, columnCount);
+                var sourceRow = indices.Slice(mapping.GetSourceY(y) * snapshot.Width, snapshot.Width);
+                var destinationRow = pixels.Slice((y * buffer.Width) + mapping.ClippedLeft, columnCount);
                 for (var index = 0; index < columnCount; index++)
                 {
                     var paletteIndex = sourceRow[columns[index]];
@@ -251,9 +251,9 @@ public sealed class SoftwareCompositionRenderer
         });
     }
 
-    private static void DrawSubtitle(SoftwareCompositionBuffer buffer, MediaCompositionFrame frame)
+    static void DrawSubtitle(SoftwareCompositionBuffer buffer, MediaCompositionFrame frame)
     {
-        NearestSampledPlacement mapping = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
+        var mapping = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
             ? NearestSampledPlacement.CreateCanvasPlacement(
                 frame.SubtitleWidth,
                 frame.SubtitleHeight,
@@ -279,7 +279,7 @@ public sealed class SoftwareCompositionRenderer
             BaseVisualTransform.Identity);
     }
 
-    private static void DrawBgraLayer(
+    static void DrawBgraLayer(
         SoftwareCompositionBuffer buffer,
         ReadOnlyMemory<byte> source,
         int sourceWidth,
@@ -297,14 +297,14 @@ public sealed class SoftwareCompositionRenderer
         var identity = transform.IsIdentity;
         ForRowBands(mapping.ClippedTop, mapping.ClippedBottom, columnCount, (top, bottom) =>
         {
-            ReadOnlySpan<byte> sourcePixels = source.Span;
-            Span<uint> pixels = buffer.Pixels32;
+            var sourcePixels = source.Span;
+            var pixels = buffer.Pixels32;
             for (var y = top; y < bottom; y++)
             {
-                ReadOnlySpan<uint> sourceRow = MemoryMarshal.Cast<byte, uint>(
+                var sourceRow = MemoryMarshal.Cast<byte, uint>(
                     sourcePixels.Slice(mapping.GetSourceY(y) * sourceStride, sourceWidth * 4));
                 var destinationStart = (y * buffer.Width) + mapping.ClippedLeft;
-                Span<uint> destinationRow = pixels.Slice(destinationStart, columnCount);
+                var destinationRow = pixels.Slice(destinationStart, columnCount);
                 for (var index = 0; index < columnCount; index++)
                 {
                     var sourcePixel = sourceRow[columns[index]];
@@ -330,7 +330,7 @@ public sealed class SoftwareCompositionRenderer
                     var offset = (destinationStart + index) * 4;
                     if (!identity)
                     {
-                        (byte transformedBlue, byte transformedGreen, byte transformedRed, byte transformedAlpha) =
+                        (var transformedBlue, var transformedGreen, var transformedRed, var transformedAlpha) =
                             SoftwareBaseVisualTransform.ApplyStraightToPremultiplied(blue, green, red, alpha, transform);
                         buffer.BlendPremultipliedAt(offset, transformedBlue, transformedGreen, transformedRed, transformedAlpha);
                     }
@@ -347,7 +347,7 @@ public sealed class SoftwareCompositionRenderer
         });
     }
 
-    private static void Fill(SoftwareCompositionBuffer buffer, uint pixel)
+    static void Fill(SoftwareCompositionBuffer buffer, uint pixel)
     {
         var width = buffer.Width;
         ForRowBands(0, buffer.Height, width, (top, bottom) => buffer.Pixels32[(top * width)..(bottom * width)].Fill(pixel));
@@ -359,7 +359,7 @@ public sealed class SoftwareCompositionRenderer
     /// (ENG-017: one ultrawide frame is about 5 million pixels). Each band writes only its own rows and reads shared input, so
     /// the output is identical to one pass; small frames stay on the calling thread.
     /// </summary>
-    private static void ForRowBands(int top, int bottom, int width, Action<int, int> drawRows)
+    static void ForRowBands(int top, int bottom, int width, Action<int, int> drawRows)
     {
         var rows = bottom - top;
         var pixels = (long)rows * width;
@@ -380,12 +380,12 @@ public sealed class SoftwareCompositionRenderer
             top + (int)((long)rows * (band + 1) / bands)));
     }
 
-    private static void ApplyFinalTransform(SoftwareCompositionBuffer buffer, BaseVisualTransform transform)
+    static void ApplyFinalTransform(SoftwareCompositionBuffer buffer, BaseVisualTransform transform)
     {
         Span<byte> pixels = buffer.Pixels;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
-            (byte blue, byte green, byte red, byte alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
+            (var blue, var green, var red, var alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
                 pixels[offset],
                 pixels[offset + 1],
                 pixels[offset + 2],

@@ -4,7 +4,7 @@ namespace FatzMedia.Video.Tests;
 
 public class CdgSnapshotOwnershipTests
 {
-    private static byte[] MakePacket(CdgConstants.Instruction instruction, params byte[] data)
+    static byte[] MakePacket(CdgConstants.Instruction instruction, params byte[] data)
     {
         var packet = new byte[CdgConstants.PacketSize];
         packet[0] = (byte)CdgConstants.Command.Graphic;
@@ -14,7 +14,7 @@ public class CdgSnapshotOwnershipTests
         return packet;
     }
 
-    private static byte[] TilePacket(byte color0, byte color1, int row, int column, byte pattern)
+    static byte[] TilePacket(byte color0, byte color1, int row, int column, byte pattern)
     {
         var data = new byte[16];
         data[0] = color0;
@@ -26,7 +26,7 @@ public class CdgSnapshotOwnershipTests
         return MakePacket(CdgConstants.Instruction.TileBlockNormal, data);
     }
 
-    private static byte[] CurrentIndices(CdgStateMachine sm)
+    static byte[] CurrentIndices(CdgStateMachine sm)
     {
         var indices = new byte[CdgConstants.TotalPixels];
         sm.CopyColorIndices(indices);
@@ -37,9 +37,9 @@ public class CdgSnapshotOwnershipTests
     public void CreateSnapshot_UnchangedState_ReturnsPreviousInstanceWithoutCopying()
     {
         var sm = new CdgStateMachine();
-        CdgRenderSnapshot first = sm.CreateSnapshot();
-        CdgRenderSnapshot second = sm.CreateSnapshot();
-        CdgRenderSnapshot third = sm.CreateSnapshot();
+        var first = sm.CreateSnapshot();
+        var second = sm.CreateSnapshot();
+        var third = sm.CreateSnapshot();
 
         // The first snapshot consumes the reset's full-frame dirty region, so the second one
         // is a clean snapshot sharing the first one's buffers; idle requests then reuse it.
@@ -49,7 +49,7 @@ public class CdgSnapshotOwnershipTests
         Assert.True(first.ColorIndices.Equals(second.ColorIndices));
         Assert.Same(second, third);
 
-        CdgSnapshotStatistics stats = sm.SnapshotStatistics;
+        var stats = sm.SnapshotStatistics;
         Assert.Equal(2, stats.SnapshotsCreated);
         Assert.Equal(1, stats.ColorIndexCopies);
         Assert.Equal(1, stats.SnapshotsReused);
@@ -61,11 +61,11 @@ public class CdgSnapshotOwnershipTests
     {
         var sm = new CdgStateMachine();
         _ = sm.CreateSnapshot();
-        CdgRenderSnapshot before = sm.CreateSnapshot();
+        var before = sm.CreateSnapshot();
         var beforeIndices = before.ColorIndices.ToArray();
 
         Assert.True(sm.ProcessPacket(TilePacket(0, 7, row: 3, column: 4, pattern: 0x3F)));
-        CdgRenderSnapshot after = sm.CreateSnapshot();
+        var after = sm.CreateSnapshot();
 
         Assert.NotSame(before, after);
         Assert.True(after.Revision > before.Revision);
@@ -78,16 +78,16 @@ public class CdgSnapshotOwnershipTests
     public void CreateSnapshot_SharesPaletteUntilItChanges()
     {
         var sm = new CdgStateMachine();
-        CdgRenderSnapshot first = sm.CreateSnapshot();
+        var first = sm.CreateSnapshot();
         _ = sm.ProcessPacket(TilePacket(0, 3, row: 1, column: 1, pattern: 0x2A));
-        CdgRenderSnapshot second = sm.CreateSnapshot();
+        var second = sm.CreateSnapshot();
 
         Assert.True(first.PaletteArgb.Equals(second.PaletteArgb));
 
         var colorData = new byte[16];
         colorData[0] = 0x3C;
         _ = sm.ProcessPacket(MakePacket(CdgConstants.Instruction.LoadColorTableLower, colorData));
-        CdgRenderSnapshot third = sm.CreateSnapshot();
+        var third = sm.CreateSnapshot();
 
         Assert.False(second.PaletteArgb.Equals(third.PaletteArgb));
         Assert.NotEqual(second.PaletteArgb.Span[0], third.PaletteArgb.Span[0]);
@@ -100,10 +100,10 @@ public class CdgSnapshotOwnershipTests
     {
         var sm = new CdgStateMachine();
         _ = sm.CreateSnapshot();
-        CdgRenderSnapshot clean = sm.CreateSnapshot();
+        var clean = sm.CreateSnapshot();
 
         sm.BackgroundOverrideArgb = 0xFF102030;
-        CdgRenderSnapshot overridden = sm.CreateSnapshot();
+        var overridden = sm.CreateSnapshot();
 
         Assert.NotSame(clean, overridden);
         Assert.NotEqual(clean.BackgroundWashArgb, overridden.BackgroundWashArgb);
@@ -116,8 +116,8 @@ public class CdgSnapshotOwnershipTests
         var sm = new CdgStateMachine();
         _ = sm.ProcessPacket(MakePacket(CdgConstants.Instruction.MemoryPreset, 0x05, 0x00));
 
-        CdgRenderSnapshot first = sm.CreateSnapshot(consumeDirtyRegions: false);
-        CdgRenderSnapshot second = sm.CreateSnapshot(consumeDirtyRegions: false);
+        var first = sm.CreateSnapshot(consumeDirtyRegions: false);
+        var second = sm.CreateSnapshot(consumeDirtyRegions: false);
 
         Assert.NotSame(first, second);
         Assert.True(second.HasDirtyRegions);
@@ -129,10 +129,10 @@ public class CdgSnapshotOwnershipTests
     {
         var sm = new CdgStateMachine();
         _ = sm.CreateSnapshot();
-        CdgRenderSnapshot clean = sm.CreateSnapshot();
+        var clean = sm.CreateSnapshot();
 
         sm.Reset();
-        CdgRenderSnapshot reset = sm.CreateSnapshot();
+        var reset = sm.CreateSnapshot();
 
         Assert.NotSame(clean, reset);
         Assert.Contains(CdgDirtyRect.FullFrame, reset.DirtyRects);
@@ -164,7 +164,7 @@ public class CdgSnapshotOwnershipTests
             {
                 // Draw for the first 1.5 s of every 4 s window, idle otherwise.
                 var drawing = packetIndex % (4 * PacketsPerSecond) < (3 * PacketsPerSecond / 2);
-                byte[] packet = drawing
+                var packet = drawing
                     ? TilePacket(
                         0,
                         (byte)(1 + (packetIndex / PacketsPerSecond % 15)),
@@ -175,7 +175,7 @@ public class CdgSnapshotOwnershipTests
                 changedThisTick |= sm.ProcessPacket(packet);
             }
 
-            CdgRenderSnapshot snapshot = sm.CreateSnapshot();
+            var snapshot = sm.CreateSnapshot();
             Assert.Equal(sm.Revision, snapshot.Revision);
             Assert.Equal(CurrentIndices(sm), snapshot.ColorIndices.ToArray());
             if (changedThisTick)
@@ -184,7 +184,7 @@ public class CdgSnapshotOwnershipTests
                 idleTicks++;
         }
 
-        CdgSnapshotStatistics stats = sm.SnapshotStatistics;
+        var stats = sm.SnapshotStatistics;
         Assert.True(idleTicks > 0);
         Assert.Equal(Seconds * TicksPerSecond, stats.SnapshotsCreated + stats.SnapshotsReused);
 

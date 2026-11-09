@@ -1,5 +1,3 @@
-using FatzMedia.Video.Core.Cdg;
-
 namespace FatzMedia.Video.Core.Graphics.Composition;
 
 public readonly partial record struct MediaCompositionFrame
@@ -39,7 +37,7 @@ public readonly partial record struct MediaCompositionFrame
             yield return subtitle;
     }
 
-    private static long StableColorRevision(uint argb)
+    static long StableColorRevision(uint argb)
         => unchecked((long)(ulong)argb);
 
     public MediaCompositionLayer? TryGetBackgroundLayer() =>
@@ -95,7 +93,7 @@ public readonly partial record struct MediaCompositionFrame
 
     public MediaCompositionLayer? TryGetOverlayLayer()
     {
-        CdgRenderSnapshot? overlay = CdgOverlay;
+        var overlay = CdgOverlay;
         return HasCdgOverlay && overlay != null
             ? new MediaCompositionLayer
             {

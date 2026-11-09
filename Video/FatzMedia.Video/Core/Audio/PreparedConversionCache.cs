@@ -5,11 +5,11 @@ namespace FatzMedia.Video.Core.Audio;
 /// keep their own next item, so one player preparing does not evict another's; the oldest entry
 /// is dropped (and disposed) past <paramref name="capacity"/>. Thread-safe.
 /// </summary>
-internal sealed class PreparedConversionCache<T>(int capacity, Func<T, string> identityOf)
+sealed class PreparedConversionCache<T>(int capacity, Func<T, string> identityOf)
     where T : class, IDisposable
 {
-    private readonly Lock _gate = new();
-    private readonly List<T> _entries = []; // oldest first
+    readonly Lock _gate = new();
+    readonly List<T> _entries = []; // oldest first
 
     public int Count
     {
@@ -38,7 +38,7 @@ internal sealed class PreparedConversionCache<T>(int capacity, Func<T, string> i
         T kept;
         lock (_gate)
         {
-            T? existing = _entries.Find(candidate => identityOf(candidate) == identity);
+            var existing = _entries.Find(candidate => identityOf(candidate) == identity);
             if (existing is not null)
             {
                 kept = existing;
@@ -70,7 +70,7 @@ internal sealed class PreparedConversionCache<T>(int capacity, Func<T, string> i
             if (index < 0)
                 return null;
 
-            T entry = _entries[index];
+            var entry = _entries[index];
             _entries.RemoveAt(index);
             return entry;
         }

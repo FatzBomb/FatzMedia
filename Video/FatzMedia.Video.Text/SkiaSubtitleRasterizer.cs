@@ -19,31 +19,31 @@ namespace FatzMedia.Video.Text;
 /// </remarks>
 public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 {
-    private const int NormalWeight = 400;
-    private const int SemiBoldWeight = 600;
-    private const int BoldWeight = 700;
+    const int NormalWeight = 400;
+    const int SemiBoldWeight = 600;
+    const int BoldWeight = 700;
 
-    private static readonly Func<int, Memory<byte>> AllocatePixels = static length => new byte[length];
+    static readonly Func<int, Memory<byte>> AllocatePixels = static length => new byte[length];
 
-    private readonly SubtitleTextStyle _style;
-    private readonly KaraokeTextStyle _karaokeStyle;
+    readonly SubtitleTextStyle _style;
+    readonly KaraokeTextStyle _karaokeStyle;
 
     // The caches are used by one frame at a time.
-    private readonly Lock _gate = new();
-    private readonly Dictionary<FaceKey, SkiaFontFace> _faces = [];
-    private readonly Dictionary<LayoutKey, CacheEntry> _layouts = [];
-    private readonly List<SkiaTextLayout> _lineLayouts = [];
+    readonly Lock _gate = new();
+    readonly Dictionary<FaceKey, SkiaFontFace> _faces = [];
+    readonly Dictionary<LayoutKey, CacheEntry> _layouts = [];
+    readonly List<SkiaTextLayout> _lineLayouts = [];
     // Created by the first frame, so a missing native SkiaSharp library fails a frame (which Core
     // reports as a Subtitle warning) instead of the renderer factory.
-    private SKPaint? _paint;
-    private SKPaint? _layerPaint;
+    SKPaint? _paint;
+    SKPaint? _layerPaint;
     // Set when the native library failed to load: later frames draw nothing instead of throwing
     // (and raising a warning) on every karaoke progress step.
-    private bool _nativeUnavailable;
-    private long _generation;
-    private SKBitmap? _bitmap;
-    private SKCanvas? _canvas;
-    private bool _disposed;
+    bool _nativeUnavailable;
+    long _generation;
+    SKBitmap? _bitmap;
+    SKCanvas? _canvas;
+    bool _disposed;
 
     /// <summary>Creates a rasterizer with the given styles (the defaults when <see langword="null"/>).</summary>
     public SkiaSubtitleRasterizer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null)
@@ -128,9 +128,9 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
     }
 
-    private SubtitleRasterResult RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
+    SubtitleRasterResult RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
     {
-        SkiaTextLayout layout = GetLayout(
+        var layout = GetLayout(
             text,
             new FormatKey(_style.FontFamily, BoldWeight, false, _style.FontSize),
             width * 0.85f,
@@ -138,7 +138,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var canvasOriginX = width * 0.075f;
         var canvasOriginY = Math.Max(0, height - layout.Height - (height * 0.08f));
         var textLeft = canvasOriginX + Math.Max(0, ((width * 0.85f) - layout.Width) / 2);
-        RenderBounds bounds = CreateBounds(
+        var bounds = CreateBounds(
             textLeft,
             canvasOriginY,
             textLeft + layout.Width,
@@ -149,7 +149,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
             _style.ShadowOffsetX,
             _style.ShadowOffsetY);
 
-        SKCanvas canvas = GetTarget(bounds.Width, bounds.Height);
+        var canvas = GetTarget(bounds.Width, bounds.Height);
         var originX = canvasOriginX - bounds.Left;
         var originY = canvasOriginY - bounds.Top;
 
@@ -159,7 +159,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         if (_style.OutlineWidth > 0 && (_style.OutlineArgb >> 24) != 0)
         {
-            SKColor outline = ToColor(_style.OutlineArgb);
+            var outline = ToColor(_style.OutlineArgb);
             for (var x = -1; x <= 1; x++)
             {
                 for (var y = -1; y <= 1; y++)
@@ -174,7 +174,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return CopyPixels(bounds, width, height, rentPixels);
     }
 
-    private SubtitleRasterResult RenderKaraokeFrame(
+    SubtitleRasterResult RenderKaraokeFrame(
         KaraokeCueTiming timing,
         TimeSpan position,
         KaraokeLayerStyle baseStyle,
@@ -185,14 +185,14 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     {
         var lyricFormat = new FormatKey(_karaokeStyle.FontFamily, BoldWeight, false, _karaokeStyle.FontSize);
         var countdownFormat = new FormatKey(_karaokeStyle.FontFamily, BoldWeight, false, _karaokeStyle.FontSize * 0.5f);
-        SkiaTextLayout countdownArrowLayout = GetLayout("▶", countdownFormat, width, center: false);
+        var countdownArrowLayout = GetLayout("▶", countdownFormat, width, center: false);
         var layoutWidth = width * 0.85f;
         var wipeDuration = TimeSpan.FromMilliseconds(_karaokeStyle.WipeTransitionMilliseconds);
 
         // Current page lines first, then the outgoing page's, as one list.
-        IReadOnlyList<KaraokeLineTiming> lines = timing.Lines;
-        IReadOnlyList<KaraokeLineTiming> outgoingLines = timing.OutgoingPageLines;
-        List<SkiaTextLayout> allLayouts = _lineLayouts;
+        var lines = timing.Lines;
+        var outgoingLines = timing.OutgoingPageLines;
+        var allLayouts = _lineLayouts;
         allLayouts.Clear();
         for (var i = 0; i < lines.Count; i++)
             allLayouts.Add(GetLayout(lines[i].Text, lyricFormat, layoutWidth, center: true));
@@ -223,8 +223,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var anyCountdownVisible = false;
         for (var i = 0; i < allLayouts.Count; i++)
         {
-            SkiaTextLayout layout = allLayouts[i];
-            KaraokeLineTiming line = i < lines.Count ? lines[i] : outgoingLines[i - lines.Count];
+            var layout = allLayouts[i];
+            var line = i < lines.Count ? lines[i] : outgoingLines[i - lines.Count];
             var textLeft = (width * 0.075f) + Math.Max(0, (layoutWidth - layout.Width) / 2);
             var textRight = textLeft + layout.Width;
             maxLineHeight = Math.Max(maxLineHeight, layout.Height);
@@ -245,7 +245,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var countdownTopExtension = anyCountdownVisible
             ? countdownArrowLayout.Height + (_karaokeStyle.FontSize * 0.1f)
             : 0;
-        RenderBounds bounds = hasFullCanvasOverlay
+        var bounds = hasFullCanvasOverlay
             ? new RenderBounds(0, 0, width, height)
             : CreateBounds(
                 minTextLeft,
@@ -258,7 +258,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
                 _karaokeStyle.ShadowOffsetX,
                 _karaokeStyle.ShadowOffsetY);
 
-        SKCanvas canvas = GetTarget(bounds.Width, bounds.Height);
+        var canvas = GetTarget(bounds.Width, bounds.Height);
         canvas.Clear(SKColors.Transparent);
         if (introMetadataOpacity > 0
             && timing.UseSplitMetadataBands
@@ -335,7 +335,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return CopyPixels(bounds, width, height, rentPixels);
     }
 
-    private void DrawKaraokeLine(
+    void DrawKaraokeLine(
         SKCanvas canvas,
         in LineContext context,
         KaraokeLineTiming line,
@@ -348,14 +348,14 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         if (opacity <= 0)
             return;
 
-        RenderBounds bounds = context.Bounds;
+        var bounds = context.Bounds;
         var padding = context.Padding;
         var scale = GetLineScale(relativeLine, scrollProgress);
         var totalScale = scale * presentationScale;
         var effectiveFontSize = _karaokeStyle.FontSize * totalScale;
         var scaledLayoutWidth = context.LayoutWidth * totalScale;
         var scaledFormat = new FormatKey(_karaokeStyle.FontFamily, BoldWeight, false, effectiveFontSize);
-        SkiaTextLayout scaledLayout = GetLayout(line.Text, scaledFormat, scaledLayoutWidth, center: true);
+        var scaledLayout = GetLayout(line.Text, scaledFormat, scaledLayoutWidth, center: true);
         var lineHeight = scaledLayout.Height;
         var y = centerY - (lineHeight / 2);
         var canvasOriginX = (context.Width - scaledLayoutWidth) / 2;
@@ -413,8 +413,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
                 transitioningWidth = scaledLayout.Width;
             }
 
-            KaraokeLayerStyle baseLayer = context.BaseStyle;
-            KaraokeLayerStyle wipeLayer = context.WipeStyle;
+            var baseLayer = context.BaseStyle;
+            var wipeLayer = context.WipeStyle;
 
             // Pass 1: fully-highlighted syllables at full wipe opacity
             if (fullyHighlightedWidth > 0)
@@ -479,12 +479,12 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     /// excluded), read from the line's own layout. A wrapped line measures a real prefix layout,
     /// which wraps on its own.
     /// </summary>
-    private float MeasurePrefixWidth(SkiaTextLayout layout, string text, int length, FormatKey format, float maxWidth) =>
+    float MeasurePrefixWidth(SkiaTextLayout layout, string text, int length, FormatKey format, float maxWidth) =>
         layout.LineCount > 1
             ? GetLayout(text[..length], format, maxWidth, center: true).Width
             : layout.MeasurePrefixWidth(length);
 
-    private void DrawMetadataCard(
+    void DrawMetadataCard(
         SKCanvas canvas,
         KaraokeMetadata metadata,
         float opacity,
@@ -505,11 +505,11 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         var boxWidth = canvasWidth * (metadata.IsFallback ? 0.5f : 0.72f);
         var textWidth = boxWidth - (_karaokeStyle.FontSize * 0.9f);
-        SkiaTextLayout titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, center: true);
-        SkiaTextLayout artistLayout = GetLayout(string.IsNullOrEmpty(metadata.Artist) ? "" : metadata.Artist, artistFormat, textWidth, center: true);
+        var titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, center: true);
+        var artistLayout = GetLayout(string.IsNullOrEmpty(metadata.Artist) ? "" : metadata.Artist, artistFormat, textWidth, center: true);
         var infoText = BuildMetadataDetails(metadata, isEndCard);
-        SkiaTextLayout infoLayout = GetLayout(infoText, infoFormat, textWidth, center: true);
-        SkiaTextLayout copyrightLayout = GetLayout(metadata.Copyright, copyrightFormat, textWidth, center: true);
+        var infoLayout = GetLayout(infoText, infoFormat, textWidth, center: true);
+        var copyrightLayout = GetLayout(metadata.Copyright, copyrightFormat, textWidth, center: true);
 
         var gap = _karaokeStyle.FontSize * 0.13f;
         var sectionGap = _karaokeStyle.FontSize * 0.2f;
@@ -531,7 +531,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         var textY = boxTop + padding;
         var textX = boxLeft + ((boxWidth - textWidth) / 2) - bounds.Left;
-        SKColor shadow = ToColor(0xD0000000, opacity);
+        var shadow = ToColor(0xD0000000, opacity);
         DrawMetadataText(canvas, titleLayout, textX, textY - bounds.Top, ToColor(0xFFFFF4DC, opacity), shadow, 2.2f);
         textY += titleLayout.Height;
 
@@ -556,7 +556,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
     }
 
-    private void DrawSplitMetadataBands(
+    void DrawSplitMetadataBands(
         SKCanvas canvas,
         KaraokeMetadata metadata,
         float opacity,
@@ -576,12 +576,12 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var secondaryFormat = new FormatKey(_karaokeStyle.FontFamily, SemiBoldWeight, false, secondarySize);
         var detailFormat = new FormatKey(_karaokeStyle.FontFamily, NormalWeight, false, detailSize);
         var textWidth = canvasWidth * 0.88f;
-        SkiaTextLayout titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, center: true);
+        var titleLayout = GetLayout(metadata.Title, titleFormat, textWidth, center: true);
         var secondary = string.Join("  •  ", new[] { metadata.Artist, metadata.Year }.Where(static value => !string.IsNullOrWhiteSpace(value)));
-        SkiaTextLayout secondaryLayout = GetLayout(secondary, secondaryFormat, textWidth, center: true);
-        SkiaTextLayout bottomLayout = GetLayout(BuildBandDetails(metadata), detailFormat, textWidth, center: true);
+        var secondaryLayout = GetLayout(secondary, secondaryFormat, textWidth, center: true);
+        var bottomLayout = GetLayout(BuildBandDetails(metadata), detailFormat, textWidth, center: true);
 
-        SKColor shadow = ToColor(0xD0000000, opacity);
+        var shadow = ToColor(0xD0000000, opacity);
         var x = ((canvasWidth - textWidth) / 2f) - bounds.Left;
         var titleY = (topHeight * 0.12f) - bounds.Top;
         DrawMetadataText(canvas, titleLayout, x, titleY, ToColor(0xFFFFF4DC, opacity), shadow, 1.8f);
@@ -590,7 +590,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         DrawMetadataText(canvas, bottomLayout, x, canvasHeight - bottomHeight + (bottomHeight * 0.14f) - bounds.Top, ToColor(0xFFD5DCE6, opacity), shadow, 1f);
     }
 
-    private static string BuildMetadataDetails(KaraokeMetadata metadata, bool isEndCard)
+    static string BuildMetadataDetails(KaraokeMetadata metadata, bool isEndCard)
     {
         var lines = new List<string>();
         if (!isEndCard && !metadata.IsFallback)
@@ -613,7 +613,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return string.Join('\n', lines);
     }
 
-    private static string BuildBandDetails(KaraokeMetadata metadata)
+    static string BuildBandDetails(KaraokeMetadata metadata)
     {
         var lines = new List<string> { $"Length  {FormatDuration(metadata.Duration)}" };
         var music = BuildMusicDetails(metadata);
@@ -624,7 +624,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return string.Join('\n', lines);
     }
 
-    private static string BuildWriterCredits(KaraokeMetadata metadata) =>
+    static string BuildWriterCredits(KaraokeMetadata metadata) =>
         !string.IsNullOrWhiteSpace(metadata.Writer) && !string.IsNullOrWhiteSpace(metadata.Lyricist)
             ? string.Equals(metadata.Writer, metadata.Lyricist, StringComparison.OrdinalIgnoreCase)
                 ? $"Written By / Lyricist:  {metadata.Writer}"
@@ -633,7 +633,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
                 ? $"Written By:  {metadata.Writer}"
                 : string.IsNullOrWhiteSpace(metadata.Lyricist) ? string.Empty : $"Lyricist:  {metadata.Lyricist}";
 
-    private static string BuildMusicDetails(KaraokeMetadata metadata)
+    static string BuildMusicDetails(KaraokeMetadata metadata)
     {
         var details = new List<string>();
         if (!string.IsNullOrWhiteSpace(metadata.KeySignature))
@@ -645,13 +645,13 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return string.Join("  •  ", details);
     }
 
-    private static string FormatDuration(TimeSpan duration) => duration.TotalHours >= 1
+    static string FormatDuration(TimeSpan duration) => duration.TotalHours >= 1
         ? $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}"
         : $"{(int)duration.TotalMinutes}:{duration.Seconds:00}";
 
-    private void DrawSmokedGlassPanel(SKCanvas canvas, SKRect rect, float radius, float opacity, uint accentArgb)
+    void DrawSmokedGlassPanel(SKCanvas canvas, SKRect rect, float radius, float opacity, uint accentArgb)
     {
-        SKPaint paint = _paint!;
+        var paint = _paint!;
         paint.Color = ToColor(0f, 0f, 0f, 0.42f * opacity);
         canvas.DrawRoundRect(SKRect.Create(rect.Left + 8, rect.Top + 10, rect.Width, rect.Height), radius, radius, paint);
         paint.Color = ToColor(0.055f, 0.075f, 0.11f, 0.88f * opacity);
@@ -666,9 +666,9 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         paint.Style = SKPaintStyle.Fill;
     }
 
-    private void DrawSmokedGlassBand(SKCanvas canvas, SKRect rect, float opacity, bool borderAtTop)
+    void DrawSmokedGlassBand(SKCanvas canvas, SKRect rect, float opacity, bool borderAtTop)
     {
-        SKPaint paint = _paint!;
+        var paint = _paint!;
         paint.Color = ToColor(0.025f, 0.04f, 0.065f, 0.78f * opacity);
         canvas.DrawRect(rect, paint);
         paint.Color = ToColor(0.12f, 0.2f, 0.27f, 0.16f * opacity);
@@ -681,13 +681,13 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         paint.Style = SKPaintStyle.Fill;
     }
 
-    private void DrawMetadataText(SKCanvas canvas, SkiaTextLayout layout, float x, float y, SKColor text, SKColor shadow, float shadowOffset)
+    void DrawMetadataText(SKCanvas canvas, SkiaTextLayout layout, float x, float y, SKColor text, SKColor shadow, float shadowOffset)
     {
         DrawLayout(canvas, layout, x + shadowOffset, y + shadowOffset, shadow);
         DrawLayout(canvas, layout, x, y, text);
     }
 
-    private void DrawCountdownArrows(
+    void DrawCountdownArrows(
         SKCanvas canvas,
         SkiaTextLayout arrowLayout,
         KaraokeLineTiming line,
@@ -696,22 +696,22 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         float opacity,
         TimeSpan position)
     {
-        KaraokeCountdownState state = line.GetCountdownState(position);
+        var state = line.GetCountdownState(position);
         if (!state.IsVisible)
             return;
 
         var arrowGap = _karaokeStyle.FontSize * 0.1f;
         var slotSpacing = arrowLayout.Width + (_karaokeStyle.FontSize * 0.12f);
         var countdownOpacity = opacity * state.Opacity;
-        const uint redArgb = 0xFFFF0000;
-        const uint greenArgb = 0xFF00C000;
-        SKColor red = ToColor(redArgb, countdownOpacity);
-        SKColor green = ToColor(greenArgb, countdownOpacity);
-        SKColor active = ToColor(LerpColor(redArgb, greenArgb, state.ActiveArrowProgress), countdownOpacity);
+        const uint RedArgb = 0xFFFF0000;
+        const uint GreenArgb = 0xFF00C000;
+        var red = ToColor(RedArgb, countdownOpacity);
+        var green = ToColor(GreenArgb, countdownOpacity);
+        var active = ToColor(LerpColor(RedArgb, GreenArgb, state.ActiveArrowProgress), countdownOpacity);
 
         for (var i = 0; i < 4; i++)
         {
-            SKColor color = i < state.CompletedArrowCount
+            var color = i < state.CompletedArrowCount
                 ? green
                 : i == state.CompletedArrowCount && state.CompletedArrowCount < 4
                     ? active
@@ -720,7 +720,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
     }
 
-    private void DrawTextLayer(
+    void DrawTextLayer(
         SKCanvas canvas,
         SkiaTextLayout layout,
         float x,
@@ -735,7 +735,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         if (style.OutlineWidth > 0 && (style.OutlineArgb >> 24) != 0)
         {
-            SKColor outline = ToColor(outlineArgb);
+            var outline = ToColor(outlineArgb);
             for (var dx = -1; dx <= 1; dx++)
             {
                 for (var dy = -1; dy <= 1; dy++)
@@ -749,13 +749,13 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         DrawLayout(canvas, layout, x, y, ToColor(textArgb));
     }
 
-    private void DrawLayout(SKCanvas canvas, SkiaTextLayout layout, float x, float y, SKColor color)
+    void DrawLayout(SKCanvas canvas, SkiaTextLayout layout, float x, float y, SKColor color)
     {
         _paint!.Color = color;
         layout.Draw(canvas, x, y, _paint);
     }
 
-    private (float CenterY, float Opacity) GetAnimatedLineState(
+    (float CenterY, float Opacity) GetAnimatedLineState(
         int relativeLine,
         float progress,
         float middleY,
@@ -782,7 +782,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
                 easedProgress));
     }
 
-    private float GetStableLineOpacity(int relativeLine) => relativeLine switch
+    float GetStableLineOpacity(int relativeLine) => relativeLine switch
     {
         0 => 1,
         -1 => 0.5f,
@@ -792,7 +792,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         _ => 0,
     };
 
-    private static float GetStableLineScale(int relativeLine) => relativeLine switch
+    static float GetStableLineScale(int relativeLine) => relativeLine switch
     {
         0 => 1.0f,
         -1 or 1 => 0.80f,
@@ -800,7 +800,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         _ => 0.40f,
     };
 
-    private static float GetLineScale(int relativeLine, float scrollProgress)
+    static float GetLineScale(int relativeLine, float scrollProgress)
     {
         var easedProgress = SmoothStep(scrollProgress);
         var previousScale = GetStableLineScale(relativeLine + 1);
@@ -808,16 +808,16 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return Lerp(previousScale, currentScale, easedProgress);
     }
 
-    private static float EaseInOutQuint(float t) =>
+    static float EaseInOutQuint(float t) =>
         t < 0.5f
             ? 16 * t * t * t * t * t
             : 1 - (MathF.Pow((-2 * t) + 2, 5) / 2);
 
-    private static float SmoothStep(float t) => t * t * (3 - (2 * t));
+    static float SmoothStep(float t) => t * t * (3 - (2 * t));
 
-    private static float Lerp(float start, float end, float amount) => start + ((end - start) * amount);
+    static float Lerp(float start, float end, float amount) => start + ((end - start) * amount);
 
-    private static RenderBounds CreateBounds(
+    static RenderBounds CreateBounds(
         float left,
         float top,
         float right,
@@ -836,20 +836,20 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return new RenderBounds(boundsLeft, boundsTop, boundsRight - boundsLeft, boundsBottom - boundsTop);
     }
 
-    private static byte ToByte(float unit) => (byte)Math.Round(Math.Clamp(unit, 0, 1) * 255);
+    static byte ToByte(float unit) => (byte)Math.Round(Math.Clamp(unit, 0, 1) * 255);
 
-    private static SKColor ToColor(uint argb) => new(argb);
+    static SKColor ToColor(uint argb) => new(argb);
 
-    private static SKColor ToColor(uint argb, float opacity) => new(
+    static SKColor ToColor(uint argb, float opacity) => new(
         (byte)(argb >> 16),
         (byte)(argb >> 8),
         (byte)argb,
         ToByte(((argb >> 24) & 0xFF) / 255f * Math.Clamp(opacity, 0, 1)));
 
-    private static SKColor ToColor(float red, float green, float blue, float alpha) =>
+    static SKColor ToColor(float red, float green, float blue, float alpha) =>
         new(ToByte(red), ToByte(green), ToByte(blue), ToByte(alpha));
 
-    private static uint LerpColor(uint from, uint to, float amount)
+    static uint LerpColor(uint from, uint to, float amount)
     {
         amount = Math.Clamp(amount, 0, 1);
         var fa = (byte)((from >> 24) & 0xFF);
@@ -869,7 +869,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
     // False when the native SkiaSharp library is unavailable: the first frame reports it (Core
     // raises one Subtitle warning) and later frames draw nothing.
-    private bool BeginFrame()
+    bool BeginFrame()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_nativeUnavailable)
@@ -893,9 +893,9 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     }
 
     // Disposes the layouts this frame did not use.
-    private void EndFrame()
+    void EndFrame()
     {
-        foreach (KeyValuePair<LayoutKey, CacheEntry> pair in _layouts)
+        foreach (var pair in _layouts)
         {
             if (pair.Value.LastUsed == _generation)
                 continue;
@@ -905,9 +905,9 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
     }
 
-    private SkiaTextLayout GetLayout(string text, FormatKey format, float maxWidth, bool center)
+    SkiaTextLayout GetLayout(string text, FormatKey format, float maxWidth, bool center)
     {
-        ref CacheEntry entry = ref CollectionsMarshal.GetValueRefOrAddDefault(
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(
             _layouts,
             new LayoutKey(text, format, maxWidth, center),
             out _);
@@ -916,16 +916,16 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return entry.Layout;
     }
 
-    private SkiaFontFace GetFace(FormatKey format)
+    SkiaFontFace GetFace(FormatKey format)
     {
         var key = new FaceKey(format.Family, format.Weight, format.Italic);
-        ref SkiaFontFace? face = ref CollectionsMarshal.GetValueRefOrAddDefault(_faces, key, out _);
+        ref var face = ref CollectionsMarshal.GetValueRefOrAddDefault(_faces, key, out _);
         face ??= new SkiaFontFace(format.Family, format.Weight, format.Italic);
         return face;
     }
 
     // One bitmap and canvas, kept while the raster size stays the same.
-    private SKCanvas GetTarget(int width, int height)
+    SKCanvas GetTarget(int width, int height)
     {
         if (_canvas is not null && _bitmap!.Width == width && _bitmap.Height == height)
             return _canvas;
@@ -936,7 +936,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return _canvas;
     }
 
-    private void ReleaseTarget()
+    void ReleaseTarget()
     {
         _canvas?.Dispose();
         _canvas = null;
@@ -944,12 +944,12 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         _bitmap = null;
     }
 
-    private SubtitleRasterResult CopyPixels(RenderBounds bounds, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels)
+    SubtitleRasterResult CopyPixels(RenderBounds bounds, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels)
     {
         _canvas!.Flush();
         var stride = bounds.Width * 4;
         var length = checked(stride * bounds.Height);
-        Memory<byte> pixels = rentPixels(length)[..length];
+        var pixels = rentPixels(length)[..length];
         ReadOnlySpan<byte> source = _bitmap!.GetPixelSpan();
         var sourceStride = _bitmap.RowBytes;
         if (sourceStride == stride)
@@ -958,7 +958,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
         else
         {
-            Span<byte> destination = pixels.Span;
+            var destination = pixels.Span;
             for (var row = 0; row < bounds.Height; row++)
                 source.Slice(row * sourceStride, stride).CopyTo(destination.Slice(row * stride, stride));
         }
@@ -982,7 +982,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
                 return;
 
             _disposed = true;
-            foreach (CacheEntry entry in _layouts.Values)
+            foreach (var entry in _layouts.Values)
                 entry.Layout?.Dispose();
             _layouts.Clear();
             _faces.Clear();
@@ -993,19 +993,19 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         }
     }
 
-    private struct CacheEntry
+    struct CacheEntry
     {
         public SkiaTextLayout? Layout;
         public long LastUsed;
     }
 
-    private readonly record struct FaceKey(string Family, int Weight, bool Italic);
-    private readonly record struct FormatKey(string Family, int Weight, bool Italic, float Size);
-    private readonly record struct LayoutKey(string Text, FormatKey Format, float MaxWidth, bool Center);
-    private readonly record struct KaraokeLayerStyle(uint TextArgb, uint OutlineArgb, float OutlineWidth, uint ShadowArgb);
-    private readonly record struct RenderBounds(int Left, int Top, int Width, int Height);
+    readonly record struct FaceKey(string Family, int Weight, bool Italic);
+    readonly record struct FormatKey(string Family, int Weight, bool Italic, float Size);
+    readonly record struct LayoutKey(string Text, FormatKey Format, float MaxWidth, bool Center);
+    readonly record struct KaraokeLayerStyle(uint TextArgb, uint OutlineArgb, float OutlineWidth, uint ShadowArgb);
+    readonly record struct RenderBounds(int Left, int Top, int Width, int Height);
 
-    private readonly record struct LineContext(
+    readonly record struct LineContext(
         SkiaTextLayout CountdownArrowLayout,
         RenderBounds Bounds,
         KaraokeLayerStyle BaseStyle,

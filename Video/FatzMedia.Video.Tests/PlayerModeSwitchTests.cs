@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -22,7 +22,7 @@ public sealed class PlayerModeSwitchTests
         await player.FlushControlOperationsAsync();
 
         Assert.Equal(MediaPlayerMode.Full, player.Mode);
-        TestMediaEngine engine = Assert.Single(factory.Engines);
+        var engine = Assert.Single(factory.Engines);
         Assert.Equal(0, engine.DisposeCount);
         Assert.Equal(1, engine.PlayCount);
         Assert.Equal(MediaPlayerState.Playing, player.State);
@@ -37,7 +37,7 @@ public sealed class PlayerModeSwitchTests
     {
         var factory = new SwitchTestPlatformFactory();
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        MediaInputSource background = MediaInputSource.FromColor(0xFF336699);
+        var background = MediaInputSource.FromColor(0xFF336699);
         var loaded = new ConcurrentQueue<string?>();
         player.MediaLoaded += (_, e) => loaded.Enqueue(e.Source.FilePath);
         player.ResetPitchOnMediaLoad = true;
@@ -59,7 +59,7 @@ public sealed class PlayerModeSwitchTests
         Assert.Equal(MediaPlayerMode.Audio, player.Mode);
         Assert.Equal([MediaPlayerMode.Full, MediaPlayerMode.Audio], factory.Modes);
         Assert.Equal(1, factory.Engines[0].DisposeCount);
-        TestMediaEngine engine = factory.Engines[1];
+        var engine = factory.Engines[1];
         Assert.True(engine.IsOpen);
         Assert.Equal(["song.mp3", "song.mp3"], loaded.Select(Path.GetFileName));
         Assert.Same(background, engine.Background?.Source);
@@ -165,11 +165,11 @@ public sealed class PlayerModeSwitchTests
     {
         var factory = new SwitchTestPlatformFactory();
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        MediaPresentationSurfaceDescriptor primary = Surface("primary", 640, 360);
-        MediaPresentationSurfaceDescriptor gone = Surface("gone", 320, 240);
+        var primary = Surface("primary", 640, 360);
+        var gone = Surface("gone", 320, 240);
         Assert.True(player.AttachPresentationSurface(primary));
         Assert.True(player.AttachPresentationSurface(gone));
-        RecordingCoordinator fullCoordinator = Assert.Single(factory.Coordinators);
+        var fullCoordinator = Assert.Single(factory.Coordinators);
 
         Assert.True(await player.SetModeAsync(MediaPlayerMode.Audio));
 
@@ -181,7 +181,7 @@ public sealed class PlayerModeSwitchTests
 
         Assert.True(await player.SetModeAsync(MediaPlayerMode.Full));
 
-        RecordingCoordinator returned = factory.Coordinators[^1];
+        var returned = factory.Coordinators[^1];
         Assert.NotSame(fullCoordinator, returned);
         Assert.Equal(["added", "primary"], returned.Surfaces.Keys.Order(StringComparer.Ordinal));
         Assert.Equal((1280, 720), (returned.Surfaces["primary"].PixelWidth, returned.Surfaces["primary"].PixelHeight));
@@ -226,9 +226,9 @@ public sealed class PlayerModeSwitchTests
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
 
-        Task<bool> switching = player.SetModeAsync(MediaPlayerMode.Audio);
+        var switching = player.SetModeAsync(MediaPlayerMode.Audio);
         await buildEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
-        Task<bool> pause = player.PauseAsync();
+        var pause = player.PauseAsync();
 
         await Task.Delay(50);
         Assert.False(pause.IsCompleted);
@@ -259,9 +259,9 @@ public sealed class PlayerModeSwitchTests
         var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
 
-        Task<bool> switching = player.SetModeAsync(MediaPlayerMode.Background);
+        var switching = player.SetModeAsync(MediaPlayerMode.Background);
         await buildEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
-        Task dispose = Task.Run(player.Dispose);
+        var dispose = Task.Run(player.Dispose);
 
         await Task.Delay(50);
         Assert.False(dispose.IsCompleted);
@@ -297,7 +297,7 @@ public sealed class PlayerModeSwitchTests
         await player.FlushControlOperationsAsync();
 
         Assert.Equal(MediaPlayerMode.Full, player.Mode);
-        TestMediaEngine engine = factory.Engines[^1];
+        var engine = factory.Engines[^1];
         Assert.Equal(2, factory.Engines.Count);
         Assert.True(engine.IsOpen);
         Assert.Equal(12, engine.Position);
@@ -310,7 +310,7 @@ public sealed class PlayerModeSwitchTests
     {
         var factory = new SwitchTestPlatformFactory();
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        MediaInputSource next = MediaInputSource.FromColor(0xFF000000);
+        var next = MediaInputSource.FromColor(0xFF000000);
         Assert.True(await player.PrepareNextAsync(next));
         await player.FlushControlOperationsAsync();
         var slotChanges = 0;
@@ -327,12 +327,12 @@ public sealed class PlayerModeSwitchTests
     }
 
     internal static MediaPresentationSurfaceDescriptor Surface(string id, int width, int height) =>
-        new(id, MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x1234), width, height);
+        new(id, MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd(0x1234), width, height);
 
     /// <summary>A new engine and coordinator for every graph, so each rebuild can be observed.</summary>
     internal sealed class SwitchTestPlatformFactory : IPlatformFactory
     {
-        private int _createServiceProviderCount;
+        int _createServiceProviderCount;
 
         public List<TestMediaEngine> Engines { get; } = [];
 
@@ -387,7 +387,7 @@ public sealed class PlayerModeSwitchTests
 
         public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight)
         {
-            if (!Surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+            if (!Surfaces.TryGetValue(surfaceId, out var surface))
                 return false;
 
             Surfaces[surfaceId] = surface.WithSize(pixelWidth, pixelHeight);

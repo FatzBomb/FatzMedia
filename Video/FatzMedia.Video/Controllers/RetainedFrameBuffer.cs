@@ -8,13 +8,13 @@ namespace FatzMedia.Video.Controllers;
 /// holds another. The array returns to its pool when the last reference is released, so a
 /// composition can present the retained pixels directly instead of copying them.
 /// </summary>
-internal sealed class RetainedFrameBuffer
+sealed class RetainedFrameBuffer
 {
-    private readonly ArrayPool<byte> _pool;
-    private byte[]? _array;
-    private int _references = 1;
+    readonly ArrayPool<byte> _pool;
+    byte[]? _array;
+    int _references = 1;
 
-    private RetainedFrameBuffer(ArrayPool<byte> pool, byte[] array, int length)
+    RetainedFrameBuffer(ArrayPool<byte> pool, byte[] array, int length)
     {
         _pool = pool;
         _array = array;
@@ -63,7 +63,7 @@ internal sealed class RetainedFrameBuffer
         if (remaining < 0)
             throw new InvalidOperationException("RetainedFrameBuffer released more times than referenced.");
 
-        byte[]? array = Interlocked.Exchange(ref _array, null);
+        var array = Interlocked.Exchange(ref _array, null);
         if (array is not null)
             _pool.Return(array);
     }

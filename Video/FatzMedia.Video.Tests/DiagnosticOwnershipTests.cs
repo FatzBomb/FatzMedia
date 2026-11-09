@@ -102,7 +102,7 @@ public sealed class DiagnosticOwnershipTests
         cache.Release("missing");
     }
 
-    private sealed class Entry(string identity) : IDisposable
+    sealed class Entry(string identity) : IDisposable
     {
         public string Identity { get; } = identity;
 

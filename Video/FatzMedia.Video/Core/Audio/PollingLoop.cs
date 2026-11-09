@@ -7,13 +7,13 @@ namespace FatzMedia.Video.Core.Audio;
 /// </summary>
 public sealed class PollingLoop : IDisposable
 {
-    private readonly string _name;
-    private readonly TimeSpan _interval;
-    private readonly Action _tick;
-    private readonly Action<Exception>? _onError;
-    private readonly Lock _gate = new();
-    private Thread? _thread;
-    private CancellationTokenSource? _cancellation;
+    readonly string _name;
+    readonly TimeSpan _interval;
+    readonly Action _tick;
+    readonly Action<Exception>? _onError;
+    readonly Lock _gate = new();
+    Thread? _thread;
+    CancellationTokenSource? _cancellation;
 
     /// <param name="name">The polling thread's name.</param>
     /// <param name="interval">The wait between callbacks (a negative value is treated as zero).</param>
@@ -90,7 +90,7 @@ public sealed class PollingLoop : IDisposable
 
     public void Dispose() => Stop();
 
-    private void Run(CancellationToken token)
+    void Run(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {

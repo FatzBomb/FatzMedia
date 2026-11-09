@@ -59,7 +59,7 @@ public readonly record struct HdrToneMapRequest(double SourcePeakNits, double Ta
 /// </summary>
 public sealed class HdrToneMapFallback
 {
-    private int _requested;
+    int _requested;
 
     /// <summary>Gets whether a renderer asked for CPU tone mapping.</summary>
     public bool IsRequested => Volatile.Read(ref _requested) != 0;

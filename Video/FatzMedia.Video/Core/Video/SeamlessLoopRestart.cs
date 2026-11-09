@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Core.Video;
 /// loop boundary invisible. The output path (composition layer / presentation clock) never
 /// stops; only the decoder's input cursor wraps.
 /// </summary>
-internal static class SeamlessLoopRestart
+static class SeamlessLoopRestart
 {
     /// <summary>Default inline top-up batch size. Small: the goal is to prime the queue, not drain a decode budget on the presentation/loop thread.</summary>
     public const int DefaultTopUpBatchSize = 8;

@@ -52,7 +52,7 @@ public partial class PlayerCore
     /// Raised by the engine's embedded subtitle scan (ENG-039 P5-1) on its own thread; delivered
     /// through the control queue, so hosts see it after the load's <c>MediaLoaded</c>.
     /// </remarks>
-    private void OnEngineSubtitleTracksChanged(object? sender, EventArgs e) =>
+    void OnEngineSubtitleTracksChanged(object? sender, EventArgs e) =>
         RaiseOnControlQueue(() =>
         {
             // Queued behind a Close, the change is stale (a newer load drops it in the engine).
@@ -68,30 +68,30 @@ public partial class PlayerCore
                 nameof(SubtitleTracksChanged));
         });
 
-    private void OnControlsMediaEnded(object? sender, EventArgs e)
+    void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         ClearPendingSeek();
         if (!Controls.LoopMedia)
             _positionNotifier.Stop();
 
-        EventHandler? handler = MediaEnded;
+        var handler = MediaEnded;
         if (handler != null)
             _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, nameof(MediaEnded)));
 
         ScheduleAutomaticPreparedNextTransition();
     }
 
-    private void OnControlsMediaStarted(object? sender, EventArgs e)
+    void OnControlsMediaStarted(object? sender, EventArgs e)
     {
         HostEventDispatcher.Raise(this, MediaStarted, nameof(MediaStarted));
         _positionNotifier.Start();
     }
 
-    private void OnControlsMediaStopped(object? sender, EventArgs e)
+    void OnControlsMediaStopped(object? sender, EventArgs e)
     {
         ClearPendingSeek();
         _positionNotifier.Stop();
-        EventHandler? handler = MediaStopped;
+        var handler = MediaStopped;
         if (handler == null)
             return;
 
@@ -103,20 +103,20 @@ public partial class PlayerCore
             _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, nameof(MediaStopped)));
     }
 
-    private void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
+    void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
     {
         Controls.CancelScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         SubscribeSeekCompletionSources();
         HostEventDispatcher.Raise(this, MediaLoaded, e, nameof(MediaLoaded));
         if (!Controls.ReportCurrentState())
             QueuePositionSnapshotAfter(Task.CompletedTask);
     }
 
-    private void OnFileMediaClosed(object? sender, MediaClosedEventArgs e)
+    void OnFileMediaClosed(object? sender, MediaClosedEventArgs e)
     {
         Controls.CancelScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         _positionNotifier.Stop();
         ClearPendingSeek();
         UnsubscribeSeekCompletionSources();
@@ -125,55 +125,55 @@ public partial class PlayerCore
             QueuePositionSnapshotAfter(Task.CompletedTask);
     }
 
-    private void OnControlsMediaPaused(object? sender, MediaPausedEventArgs e)
+    void OnControlsMediaPaused(object? sender, MediaPausedEventArgs e)
     {
         _positionNotifier.Stop();
         HostEventDispatcher.Raise(this, MediaPaused, e, nameof(MediaPaused));
     }
 
-    private void OnControlsMediaLooped(object? sender, MediaLoopedEventArgs e)
+    void OnControlsMediaLooped(object? sender, MediaLoopedEventArgs e)
     {
-        Task delivery = _controlOperations.Enqueue(() =>
+        var delivery = _controlOperations.Enqueue(() =>
             HostEventDispatcher.Raise(this, MediaLooped, e, nameof(MediaLooped)));
         QueuePositionSnapshotAfter(delivery);
     }
 
-    private void OnControlsStateChanged(object? sender, MediaStateChangedEventArgs e)
+    void OnControlsStateChanged(object? sender, MediaStateChangedEventArgs e)
     {
-        Task delivery = _controlOperations.Enqueue(() =>
+        var delivery = _controlOperations.Enqueue(() =>
             HostEventDispatcher.Raise(this, StateChanged, e, nameof(StateChanged)));
         if (e.CurrentState is MediaPlayerState.Stopped or MediaPlayerState.Null)
             QueuePositionSnapshotAfter(delivery);
     }
 
-    private void OnPositionNotifierChanged(object? sender, MediaPositionChangedEventArgs e) =>
+    void OnPositionNotifierChanged(object? sender, MediaPositionChangedEventArgs e) =>
         HostEventDispatcher.Raise(this, PositionChanged, e, nameof(PositionChanged));
 
-    private void OnEffectsVolumeChanged(object? sender, MediaValueChangedEventArgs<double> e) =>
+    void OnEffectsVolumeChanged(object? sender, MediaValueChangedEventArgs<double> e) =>
         HostEventDispatcher.Raise(this, VolumeChanged, e, nameof(VolumeChanged));
 
-    private void OnEffectsPitchChanged(object? sender, MediaValueChangedEventArgs<int> e) =>
+    void OnEffectsPitchChanged(object? sender, MediaValueChangedEventArgs<int> e) =>
         HostEventDispatcher.Raise(this, PitchChanged, e, nameof(PitchChanged));
 
-    private void OnEffectsTempoChanged(object? sender, MediaValueChangedEventArgs<int> e) =>
+    void OnEffectsTempoChanged(object? sender, MediaValueChangedEventArgs<int> e) =>
         HostEventDispatcher.Raise(this, TempoChanged, e, nameof(TempoChanged));
 
-    private void OnEffectsNormalizeChanged(object? sender, MediaNormalizeChangedEventArgs e) =>
+    void OnEffectsNormalizeChanged(object? sender, MediaNormalizeChangedEventArgs e) =>
         HostEventDispatcher.Raise(this, NormalizeChanged, e, nameof(NormalizeChanged));
 
-    private void OnEffectsEqualizerChanged(object? sender, MediaValueChangedEventArgs<AudioEqualizerSettings> e) =>
+    void OnEffectsEqualizerChanged(object? sender, MediaValueChangedEventArgs<AudioEqualizerSettings> e) =>
         HostEventDispatcher.Raise(this, EqualizerChanged, e, nameof(EqualizerChanged));
 
-    private void OnControlsLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e) =>
+    void OnControlsLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e) =>
         HostEventDispatcher.Raise(this, LoopMediaChanged, e, nameof(LoopMediaChanged));
 
     // Raised on the render thread: a throwing handler must not escape into the render loop.
-    private void OnPresentationFramePresented(object? sender, EventArgs e) =>
+    void OnPresentationFramePresented(object? sender, EventArgs e) =>
         HostEventDispatcher.Raise(this, PresentationFramePresented, nameof(PresentationFramePresented));
 
-    private void OnEngineErrorOccurred(MediaErrorInfo info)
+    void OnEngineErrorOccurred(MediaErrorInfo info)
     {
-        EventHandler<MediaErrorEventArgs>? handler = MediaError;
+        var handler = MediaError;
         if (handler == null)
             return;
 
@@ -181,10 +181,10 @@ public partial class PlayerCore
         _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaError)));
     }
 
-    private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
+    void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
         // Another player's diagnostics are not this player's (process-wide ones are everyone's).
-        EventHandler<MediaDiagnosticEventArgs>? handler = MediaDiagnostic;
+        var handler = MediaDiagnostic;
         if (handler == null || !info.IsFor(this))
             return;
 
@@ -196,15 +196,15 @@ public partial class PlayerCore
         _ = _diagnosticEvents.Post(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaDiagnostic), reportFailures: false));
     }
 
-    private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
+    void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
 
     // The BASS output watchdog is process-wide and raises its own diagnostic, so every player
     // forwards the event without adding a second warning (ENG-032).
-    private void OnAudioOutputAvailabilityChanged(AudioDeviceChangeInfo info) =>
+    void OnAudioOutputAvailabilityChanged(AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChanged(info));
 
-    private void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
+    void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
     {
         if (_disposed)
             return;
@@ -220,17 +220,17 @@ public partial class PlayerCore
         RaiseAudioDeviceChanged(info);
     }
 
-    private void RaiseAudioDeviceChanged(AudioDeviceChangeInfo info)
+    void RaiseAudioDeviceChanged(AudioDeviceChangeInfo info)
     {
         if (_disposed)
             return;
 
-        EventHandler<AudioDeviceChangedEventArgs>? handler = AudioDeviceChanged;
+        var handler = AudioDeviceChanged;
         if (handler != null)
             HostEventDispatcher.Raise(this, handler, new AudioDeviceChangedEventArgs(info), nameof(AudioDeviceChanged));
     }
 
-    private PlaybackPositionNotifier CreatePositionNotifier()
+    PlaybackPositionNotifier CreatePositionNotifier()
     {
         var notifier = new PlaybackPositionNotifier(
             () => _mediaEngine.Position,
@@ -239,7 +239,7 @@ public partial class PlayerCore
         return notifier;
     }
 
-    private void SubscribeNewSessionEvents()
+    void SubscribeNewSessionEvents()
     {
         File.MediaLoaded += OnFileMediaLoaded;
         File.MediaClosed += OnFileMediaClosed;
@@ -256,7 +256,7 @@ public partial class PlayerCore
             subtitleTracks.SubtitleTracksChanged += OnEngineSubtitleTracksChanged;
     }
 
-    private void UnsubscribeNewSessionEvents()
+    void UnsubscribeNewSessionEvents()
     {
         File.MediaLoaded -= OnFileMediaLoaded;
         File.MediaClosed -= OnFileMediaClosed;
@@ -273,34 +273,30 @@ public partial class PlayerCore
             subtitleTracks.SubtitleTracksChanged -= OnEngineSubtitleTracksChanged;
     }
 
-    private void SubscribeSeekCompletionSources()
+    void SubscribeSeekCompletionSources()
     {
         UnsubscribeSeekCompletionSources();
         _seekVideoEngine = _mediaEngine.Video;
         _seekCdgEngine = _mediaEngine.Cdg;
-        if (_seekVideoEngine != null)
-            _seekVideoEngine.PositionChanged += OnSeekVideoPositionChanged;
-        if (_seekCdgEngine != null)
-            _seekCdgEngine.FrameInvalidated += OnSeekCdgFrameInvalidated;
+        _seekVideoEngine?.PositionChanged += OnSeekVideoPositionChanged;
+        _seekCdgEngine?.FrameInvalidated += OnSeekCdgFrameInvalidated;
     }
 
-    private void UnsubscribeSeekCompletionSources()
+    void UnsubscribeSeekCompletionSources()
     {
-        if (_seekVideoEngine != null)
-            _seekVideoEngine.PositionChanged -= OnSeekVideoPositionChanged;
-        if (_seekCdgEngine != null)
-            _seekCdgEngine.FrameInvalidated -= OnSeekCdgFrameInvalidated;
+        _seekVideoEngine?.PositionChanged -= OnSeekVideoPositionChanged;
+        _seekCdgEngine?.FrameInvalidated -= OnSeekCdgFrameInvalidated;
         _seekVideoEngine = null;
         _seekCdgEngine = null;
     }
 
-    private void OnSeekVideoPositionChanged(object? sender, double position) =>
+    void OnSeekVideoPositionChanged(object? sender, double position) =>
         TryCompletePendingSeek(position);
 
-    private void OnSeekCdgFrameInvalidated(object? sender, EventArgs e) =>
+    void OnSeekCdgFrameInvalidated(object? sender, EventArgs e) =>
         TryCompletePendingSeek(_mediaEngine.Position);
 
-    private void TryCompletePendingSeek(
+    void TryCompletePendingSeek(
         double resultingPosition,
         double toleranceSeconds = SeekSettleToleranceSeconds,
         bool isSettlement = true)
@@ -329,7 +325,7 @@ public partial class PlayerCore
             RaiseSeekCompleted(pending.Value.RequestedSeconds, resultingPosition));
     }
 
-    private void RaiseSeekCompleted(double requestedSeconds, double resultingSeconds)
+    void RaiseSeekCompleted(double requestedSeconds, double resultingSeconds)
     {
         HostEventDispatcher.Raise(
             this,
@@ -341,10 +337,10 @@ public partial class PlayerCore
         QueuePositionSnapshotAfter(Task.CompletedTask);
     }
 
-    private void QueuePositionSnapshotAfter(Task prerequisite) =>
+    void QueuePositionSnapshotAfter(Task prerequisite) =>
         _ = PublishPositionSnapshotAfterAsync(prerequisite);
 
-    private async Task PublishPositionSnapshotAfterAsync(Task prerequisite)
+    async Task PublishPositionSnapshotAfterAsync(Task prerequisite)
     {
         // Always off the caller's thread, and never posted to its SynchronizationContext (a sync
         // call from a UI thread). Position delivery is independent of lifecycle handler failures.
@@ -352,7 +348,7 @@ public partial class PlayerCore
         _positionNotifier.PublishNow();
     }
 
-    private void ClearPendingSeek()
+    void ClearPendingSeek()
     {
         lock (_seekCompletionGate)
         {
@@ -361,6 +357,6 @@ public partial class PlayerCore
         }
     }
 
-    private static double CleanPosition(double seconds) =>
+    static double CleanPosition(double seconds) =>
         double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

@@ -20,17 +20,16 @@ public sealed class PlayerSetController<TSlot>
     /// <summary>How often the players' stats lines are refreshed.</summary>
     public static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(1);
 
-    private readonly IPlayerSetHost<TSlot> _host;
-    private readonly List<TSlot> _slots = [];
-    private readonly IPlayerTimer _statsTimer;
-    private readonly Func<ProcessSample> _sample;
-    private readonly ProcessSampler? _ownedSampler;
-    private Task _rebuild = Task.CompletedTask;
-    private bool _rebuilding;
-    private bool _rebuildAgain;
-    private bool _firstBuild = true;
-    private bool _rendererFallbackRequested;
-    private TSlot? _fullScreen;
+    readonly IPlayerSetHost<TSlot> _host;
+    readonly List<TSlot> _slots = [];
+    readonly IPlayerTimer _statsTimer;
+    readonly Func<ProcessSample> _sample;
+    readonly ProcessSampler? _ownedSampler;
+    Task _rebuild = Task.CompletedTask;
+    bool _rebuilding;
+    bool _rebuildAgain;
+    bool _firstBuild = true;
+    bool _rendererFallbackRequested;
 
     /// <param name="host">The window.</param>
     /// <param name="dispatcher">The window's UI thread; its timer runs the stats tick.</param>
@@ -58,7 +57,7 @@ public sealed class PlayerSetController<TSlot>
     public IReadOnlyList<TSlot> Slots => _slots;
 
     /// <summary>Gets the player shown alone full screen, or null.</summary>
-    public TSlot? FullScreenSlot => _fullScreen;
+    public TSlot? FullScreenSlot { get; private set; }
 
     /// <summary>Gets whether <see cref="StartAsync"/> ran: toolbar changes rebuild only from then on.</summary>
     public bool IsStarted { get; private set; }
@@ -127,7 +126,7 @@ public sealed class PlayerSetController<TSlot>
 
             TSlot[] slots = [.. _slots];
             _slots.Clear();
-            foreach (TSlot slot in slots)
+            foreach (var slot in slots)
                 await DisposeSlotAsync(slot);
         }
         catch (Exception ex)
@@ -148,7 +147,7 @@ public sealed class PlayerSetController<TSlot>
     public void ToggleFullScreen(TSlot slot)
     {
         ArgumentNullException.ThrowIfNull(slot);
-        if (ReferenceEquals(_fullScreen, slot))
+        if (ReferenceEquals(FullScreenSlot, slot))
             ExitFullScreen();
         else
             EnterFullScreen(slot);
@@ -162,7 +161,7 @@ public sealed class PlayerSetController<TSlot>
             return;
 
         ExitFullScreen();
-        _fullScreen = slot;
+        FullScreenSlot = slot;
         _host.Layout(_slots, slot);
         _host.SetWindowFullScreen(true);
         slot.SetFullScreen(true);
@@ -171,10 +170,10 @@ public sealed class PlayerSetController<TSlot>
     /// <summary>Leaves full screen, when on: the player, then the window, then the host's layout.</summary>
     public void ExitFullScreen()
     {
-        if (_fullScreen is not { } slot)
+        if (FullScreenSlot is not { } slot)
             return;
 
-        _fullScreen = null;
+        FullScreenSlot = null;
         slot.SetFullScreen(false);
         _host.SetWindowFullScreen(false);
         _host.Layout(_slots, null);
@@ -189,7 +188,7 @@ public sealed class PlayerSetController<TSlot>
         if (_slots.Count == 0 || IsShuttingDown)
             return false;
 
-        if (_fullScreen is not null)
+        if (FullScreenSlot is not null)
             ExitFullScreen();
         else
             EnterFullScreen(_slots.FirstOrDefault(static slot => slot.IsKeyboardFocusWithin) ?? _slots[0]);
@@ -203,21 +202,21 @@ public sealed class PlayerSetController<TSlot>
     /// </summary>
     public bool HandleEscapeKey()
     {
-        TSlot? target = _fullScreen
+        var target = FullScreenSlot
             ?? _slots.Where(static slot => slot.HasOpenFlyout)
                 .OrderByDescending(static slot => slot.IsKeyboardFocusWithin)
                 .FirstOrDefault();
         if (target?.CloseFlyout() == true)
             return true;
 
-        if (_fullScreen is null)
+        if (FullScreenSlot is null)
             return false;
 
         ExitFullScreen();
         return true;
     }
 
-    private async Task RebuildLoopAsync()
+    async Task RebuildLoopAsync()
     {
         try
         {
@@ -242,14 +241,14 @@ public sealed class PlayerSetController<TSlot>
         }
     }
 
-    private async Task RebuildOnceAsync()
+    async Task RebuildOnceAsync()
     {
         ExitFullScreen();
         TSlot[] old = [.. _slots];
         _slots.Clear();
-        foreach (TSlot slot in old)
+        foreach (var slot in old)
             _host.Detach(slot);
-        foreach (TSlot slot in old)
+        foreach (var slot in old)
             await DisposeSlotAsync(slot);
 
         // Closing started while the old players were disposed: build nothing (ShutdownAsync waits for this rebuild).
@@ -263,7 +262,7 @@ public sealed class PlayerSetController<TSlot>
         _firstBuild = false;
         for (var index = 1; index <= count; index++)
         {
-            TSlot slot = _host.CreateSlot(index, atStartup);
+            var slot = _host.CreateSlot(index, atStartup);
             slot.FullScreenToggleRequested += OnFullScreenToggleRequested;
             slot.RendererDeviceLost += OnRendererDeviceLost;
             _slots.Add(slot);
@@ -273,7 +272,7 @@ public sealed class PlayerSetController<TSlot>
         _host.Layout(_slots, null);
 
         // Created one after the other: native loading is process-wide and happens on the first.
-        foreach (TSlot slot in _slots.ToList())
+        foreach (var slot in _slots.ToList())
         {
             if (IsShuttingDown || _rebuildAgain || !_slots.Contains(slot))
                 return;
@@ -282,7 +281,7 @@ public sealed class PlayerSetController<TSlot>
         }
     }
 
-    private async Task DisposeSlotAsync(TSlot slot)
+    async Task DisposeSlotAsync(TSlot slot)
     {
         slot.FullScreenToggleRequested -= OnFullScreenToggleRequested;
         slot.RendererDeviceLost -= OnRendererDeviceLost;
@@ -300,7 +299,7 @@ public sealed class PlayerSetController<TSlot>
     // Every player of a window shares its renderer: the first loss asks the window once per build.
     // The sender is not checked: the slots forward their view model's event, so it is the view model
     // (ENG-050 smoke), and a removed slot is unsubscribed before it is disposed.
-    private void OnRendererDeviceLost(object? sender, EventArgs e)
+    void OnRendererDeviceLost(object? sender, EventArgs e)
     {
         if (IsShuttingDown || _rendererFallbackRequested || _slots.Count == 0)
             return;
@@ -310,19 +309,19 @@ public sealed class PlayerSetController<TSlot>
         _host.FallBackRenderer();
     }
 
-    private void OnFullScreenToggleRequested(object? sender, EventArgs e)
+    void OnFullScreenToggleRequested(object? sender, EventArgs e)
     {
         if (sender is TSlot slot)
             ToggleFullScreen(slot);
     }
 
-    private void OnStatsTick()
+    void OnStatsTick()
     {
         if (IsShuttingDown)
             return;
 
-        ProcessSample sample = _sample();
-        foreach (TSlot slot in _slots)
+        var sample = _sample();
+        foreach (var slot in _slots)
             slot.UpdateStatus(sample);
     }
 }

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
@@ -6,8 +8,6 @@ using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
@@ -18,50 +18,48 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore : IPlayerSession
 {
-    private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
-    private const double SeekSettleToleranceSeconds = 0.25;
+    static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
+    const double SeekSettleToleranceSeconds = 0.25;
     // How long Dispose waits for diagnostics already queued to reach the host.
-    private static readonly TimeSpan DiagnosticDrainTimeout = TimeSpan.FromSeconds(1);
-    private const double SeekImmediateCompletionToleranceSeconds = 0.001;
+    static readonly TimeSpan DiagnosticDrainTimeout = TimeSpan.FromSeconds(1);
+    const double SeekImmediateCompletionToleranceSeconds = 0.001;
     // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
     // distance (2 s) from the target, plus the normal settle tolerance.
-    private const double ScrubSettleToleranceSeconds = 2.0 + SeekSettleToleranceSeconds;
-    private readonly IPlatformFactory _platformFactory;
-    private IServiceProvider _serviceProvider;
-    private IMediaEngine _mediaEngine;
-    private IMediaPresentationCoordinator _presentationCoordinator;
-    private PlayerOperationQueue _controlOperations;
+    const double ScrubSettleToleranceSeconds = 2.0 + SeekSettleToleranceSeconds;
+    readonly IPlatformFactory _platformFactory;
+    IServiceProvider _serviceProvider;
+    IMediaEngine _mediaEngine;
+    IMediaPresentationCoordinator _presentationCoordinator;
+    PlayerOperationQueue _controlOperations;
     // MediaDiagnostic delivery, in order but not behind the control queue; lives as long as the
     // player (Reset and mode switches keep it). Closed by Dispose.
-    private readonly SerialEventDispatcher _diagnosticEvents = new("MediaDiagnostic", DiagnosticDrainTimeout);
-    private PlaybackPositionNotifier _positionNotifier;
+    readonly SerialEventDispatcher _diagnosticEvents = new("MediaDiagnostic", DiagnosticDrainTimeout);
+    PlaybackPositionNotifier _positionNotifier;
     // The host's surfaces. Guarded by _surfaceGate: host calls arrive on the UI thread while a
     // rebuild (Reset, SetModeAsync) holds and reattaches them on the control queue.
-    private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Lock _surfaceGate = new();
-    private bool _surfacesHeld;
+    readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
+    readonly Lock _surfaceGate = new();
+    bool _surfacesHeld;
     // Held only while a call checks the lifecycle and takes its place in the control queue, never
     // for the operation itself (ENG-024).
-    private readonly Lock _operationAdmissionGate = new();
+    readonly Lock _operationAdmissionGate = new();
     // Serializes Reset and Dispose with each other; held for their whole run.
-    private readonly Lock _lifecycleGate = new();
+    readonly Lock _lifecycleGate = new();
     // Cancelled by Reset and Dispose so loads in progress or queued stop early; Reset replaces it.
-    private volatile CancellationTokenSource _loadLifetime = new();
-    private readonly Lock _seekCompletionGate = new();
-    private readonly Lock _queuedSeekGate = new();
-    private QueuedSeek? _queuedSeek;
-    private readonly ScrubAudioMuter _scrubAudio;
-    private VideoFrameTiming _videoFrameTiming = VideoFrameTiming.SourceCadence;
-    private IAudioDeviceMonitor? _audioDeviceMonitor;
-    private IVideoEngine? _seekVideoEngine;
-    private ICdgEngine? _seekCdgEngine;
-    private PendingSeek? _pendingSeek;
-    private int _hasPendingSeek;
-    private int _presentationRefreshQueued;
-    private int _resetting;
+    volatile CancellationTokenSource _loadLifetime = new();
+    readonly Lock _seekCompletionGate = new();
+    readonly Lock _queuedSeekGate = new();
+    QueuedSeek? _queuedSeek;
+    IAudioDeviceMonitor? _audioDeviceMonitor;
+    IVideoEngine? _seekVideoEngine;
+    ICdgEngine? _seekCdgEngine;
+    PendingSeek? _pendingSeek;
+    int _hasPendingSeek;
+    int _presentationRefreshQueued;
+    int _resetting;
     // A rebuild freed the graph and failed to build the next one: nothing in the fields is live.
-    private bool _sessionGraphFreed;
-    private volatile bool _disposed;
+    bool _sessionGraphFreed;
+    volatile bool _disposed;
 
     public PlayerCore(
         IPlatformFactory platformFactory,
@@ -73,7 +71,7 @@ public partial class PlayerCore : IPlayerSession
 
         // Diagnostics from this player's engine (its threads and tasks inherit the owner) reach
         // only this player's MediaDiagnostic event, not every player's in the process.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
             CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
@@ -89,19 +87,19 @@ public partial class PlayerCore : IPlayerSession
         }
 
         // Reads Effects on every call: Reset replaces it.
-        _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
+        ScrubAudioMuter = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
         StartAudioDeviceMonitor();
     }
 
     internal MediaControls Controls { get; private set; }
 
-    private MediaFile File { get; set; }
+    MediaFile File { get; set; }
 
     public MediaEffects Effects { get; private set; }
 
     public CdgVisuals CdgVisuals { get; private set; }
 
-    private AcceptedMediaTypes _acceptedTypes;
+    AcceptedMediaTypes _acceptedTypes;
 
     public string OpenFileDialogFilter => _acceptedTypes.OpenFileDialogFilter;
 
@@ -129,21 +127,21 @@ public partial class PlayerCore : IPlayerSession
 
     public MediaScrubAudio ScrubAudio
     {
-        get => _scrubAudio.Mode;
-        set => _scrubAudio.Mode = value;
+        get => ScrubAudioMuter.Mode;
+        set => ScrubAudioMuter.Mode = value;
     }
 
-    internal ScrubAudioMuter ScrubAudioMuter => _scrubAudio;
+    internal ScrubAudioMuter ScrubAudioMuter { get; }
 
     public VideoFrameTiming VideoFrameTiming
     {
-        get => _videoFrameTiming;
+        get;
         set
         {
-            _videoFrameTiming = value;
+            field = value;
             ApplyVideoFrameTiming();
         }
-    }
+    } = VideoFrameTiming.SourceCadence;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -298,7 +296,7 @@ public partial class PlayerCore : IPlayerSession
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken) =>
         EnqueueLoad(() => source, () => backgroundSource, ignoreSidecar, cancellationToken);
 
-    private static MediaInputSource? FileBackground(string? path) =>
+    static MediaInputSource? FileBackground(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : MediaInputSource.FromFile(path);
 
     /// <summary>
@@ -306,11 +304,11 @@ public partial class PlayerCore : IPlayerSession
     /// Dispose. The <see cref="PlayOnLoad"/> start is queued from inside the turn, so it runs right
     /// after it and before any control issued after this call returns.
     /// </summary>
-    private bool LoadOnQueue(Func<MediaInputSource> source, Func<MediaInputSource?> backgroundSource, bool ignoreSidecar) =>
+    bool LoadOnQueue(Func<MediaInputSource> source, Func<MediaInputSource?> backgroundSource, bool ignoreSidecar) =>
         ExecuteControlOperation(() =>
         {
-            CancellationToken lifetime = _loadLifetime.Token;
-            MediaFile file = File;
+            var lifetime = _loadLifetime.Token;
+            var file = File;
             try
             {
                 if (!file.Load(source(), backgroundSource(), ignoreSidecar, lifetime, out var loadGeneration))
@@ -331,7 +329,7 @@ public partial class PlayerCore : IPlayerSession
             }
         });
 
-    private Task<bool> EnqueueLoad(
+    Task<bool> EnqueueLoad(
         Func<MediaInputSource> source,
         Func<MediaInputSource?> backgroundSource,
         bool ignoreSidecar,
@@ -343,8 +341,8 @@ public partial class PlayerCore : IPlayerSession
         return EnqueueControlOperation(async () =>
         {
             // Read when the load runs: a Reset replaces the lifetime (and File) after cancelling it.
-            CancellationToken lifetime = _loadLifetime.Token;
-            using CancellationTokenSource? linked = cancellationToken.CanBeCanceled
+            var lifetime = _loadLifetime.Token;
+            using var linked = cancellationToken.CanBeCanceled
                 ? CancellationTokenSource.CreateLinkedTokenSource(lifetime, cancellationToken)
                 : null;
             try
@@ -380,7 +378,7 @@ public partial class PlayerCore : IPlayerSession
     public bool EndScrub() => ExecuteControlOperation(() =>
     {
         var ended = Controls.EndScrub();
-        _scrubAudio.OnScrubEnded();
+        ScrubAudioMuter.OnScrubEnded();
         return ended;
     });
 
@@ -451,7 +449,7 @@ public partial class PlayerCore : IPlayerSession
         return queued.Completion.Task;
     }
 
-    private void FailQueuedSeek(QueuedSeek queued, Exception exception)
+    void FailQueuedSeek(QueuedSeek queued, Exception exception)
     {
         lock (_queuedSeekGate)
         {
@@ -462,7 +460,7 @@ public partial class PlayerCore : IPlayerSession
         _ = queued.Completion.TrySetException(exception);
     }
 
-    private bool RunQueuedSeek(QueuedSeek queued)
+    bool RunQueuedSeek(QueuedSeek queued)
     {
         double seconds;
         lock (_queuedSeekGate)
@@ -494,13 +492,13 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    private sealed class QueuedSeek(double seconds)
+    sealed class QueuedSeek(double seconds)
     {
         public double Seconds { get; set; } = seconds;
         public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private bool SeekOperation(double seconds, bool refreshPresentation)
+    bool SeekOperation(double seconds, bool refreshPresentation)
     {
         var requested = CleanPosition(seconds);
         var target = _mediaEngine.Duration > 0
@@ -527,7 +525,7 @@ public partial class PlayerCore : IPlayerSession
         // Silent scrubbing mutes before the seek moves the audio, so nothing of the new position
         // is heard while the drag keeps moving. A slow seek (a network stream) holds the unmute
         // until it returns, so the drag requests queued behind it are not heard either.
-        var trackedScrubSeek = Controls.IsScrubbing && _scrubAudio.OnScrubSeek();
+        var trackedScrubSeek = Controls.IsScrubbing && ScrubAudioMuter.OnScrubSeek();
         bool success;
         try
         {
@@ -536,7 +534,7 @@ public partial class PlayerCore : IPlayerSession
         finally
         {
             if (trackedScrubSeek)
-                _scrubAudio.OnScrubSeekFinished();
+                ScrubAudioMuter.OnScrubSeekFinished();
         }
 
         if (!success)
@@ -593,7 +591,7 @@ public partial class PlayerCore : IPlayerSession
     /// under the admission gate; the wait for it and the operation are not (ENG-024), so a long
     /// synchronous call never blocks asynchronous callers, which only queue.
     /// </summary>
-    private T ExecuteControlOperation<T>(Func<T> operation)
+    T ExecuteControlOperation<T>(Func<T> operation)
     {
         PlayerOperationQueue.ExclusiveTurn turn;
         lock (_operationAdmissionGate)
@@ -604,13 +602,13 @@ public partial class PlayerCore : IPlayerSession
 
         // A synchronous call runs on the caller's thread, which belongs to no player: what the
         // operation raises, and the workers it starts, belong to this one (ENG-025).
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         return turn.Run(operation);
     }
 
     // The admission gate is held only to check the lifecycle and write to the queue, never for
     // the operation: an async call never waits for a long one.
-    private Task<T> EnqueueControlOperation<T>(Func<T> operation)
+    Task<T> EnqueueControlOperation<T>(Func<T> operation)
     {
         ThrowIfResetting();
         lock (_operationAdmissionGate)
@@ -620,7 +618,7 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    private Task<T> EnqueueControlOperation<T>(Func<Task<T>> operation)
+    Task<T> EnqueueControlOperation<T>(Func<Task<T>> operation)
     {
         ThrowIfResetting();
         lock (_operationAdmissionGate)
@@ -630,17 +628,17 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    private void DispatchControlOperation(Action operation) =>
+    void DispatchControlOperation(Action operation) =>
         _ = _controlOperations.Enqueue(operation);
 
-    private void ThrowIfResetting()
+    void ThrowIfResetting()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (Volatile.Read(ref _resetting) != 0)
             throw new InvalidOperationException("Media control operations are unavailable while the player is resetting.");
     }
 
-    private double ApplySyncOffset(double seconds)
+    double ApplySyncOffset(double seconds)
     {
         RequestPresentationRefresh();
         return seconds;
@@ -651,12 +649,12 @@ public partial class PlayerCore : IPlayerSession
     /// control queue, in order with seeks, and coalesced, so a burst of changes redraws once and
     /// the host's thread never waits for a present (a present stuck in the renderer froze the UI).
     /// </summary>
-    private void RequestPresentationRefresh()
+    void RequestPresentationRefresh()
     {
         if (_disposed || Interlocked.Exchange(ref _presentationRefreshQueued, 1) != 0)
             return;
 
-        Task queued = _controlOperations.Enqueue(() =>
+        var queued = _controlOperations.Enqueue(() =>
         {
             Volatile.Write(ref _presentationRefreshQueued, 0);
             if (!_disposed && !_sessionGraphFreed)
@@ -675,7 +673,7 @@ public partial class PlayerCore : IPlayerSession
 
         // Surface calls arrive on the host's UI thread and can create the device or start the
         // render loop: attribute what they raise (and start) to this player.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         lock (_surfaceGate)
         {
             if (_surfacesHeld)
@@ -698,10 +696,10 @@ public partial class PlayerCore : IPlayerSession
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId) || pixelWidth <= 0 || pixelHeight <= 0)
             return false;
 
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         lock (_surfaceGate)
         {
-            if (!_presentationSurfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+            if (!_presentationSurfaces.TryGetValue(surfaceId, out var surface))
                 return false;
 
             if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
@@ -728,7 +726,7 @@ public partial class PlayerCore : IPlayerSession
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
             return false;
 
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         lock (_surfaceGate)
         {
             return _presentationSurfaces.ContainsKey(surfaceId)
@@ -741,7 +739,7 @@ public partial class PlayerCore : IPlayerSession
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
             return false;
 
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         lock (_surfaceGate)
         {
             if (_surfacesHeld)
@@ -759,7 +757,7 @@ public partial class PlayerCore : IPlayerSession
     /// Before the graph is freed: the surfaces stay registered with the player but no longer reach
     /// a coordinator, so host calls during the rebuild only update them.
     /// </summary>
-    private void HoldPresentationSurfaces()
+    void HoldPresentationSurfaces()
     {
         lock (_surfaceGate)
             _surfacesHeld = true;
@@ -769,7 +767,7 @@ public partial class PlayerCore : IPlayerSession
     /// Attaches the held surfaces, at their latest size, to the new graph's coordinator. A surface
     /// the new coordinator refuses is dropped, as a refused attach is.
     /// </summary>
-    private void ReattachHeldPresentationSurfaces()
+    void ReattachHeldPresentationSurfaces()
     {
         lock (_surfaceGate)
         {
@@ -780,7 +778,7 @@ public partial class PlayerCore : IPlayerSession
             KeyValuePair<string, MediaPresentationSurfaceDescriptor>[] held = [.. _presentationSurfaces];
             _presentationSurfaces.Clear();
             _surfacesHeld = false;
-            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in held)
+            foreach (var kvp in held)
             {
                 try
                 {
@@ -799,7 +797,7 @@ public partial class PlayerCore : IPlayerSession
     /// Detaches every surface from the coordinator and forgets it, as the host's own detach calls
     /// would (they are not serialized with control operations either).
     /// </summary>
-    private void DetachPresentationSurfacesForDispose()
+    void DetachPresentationSurfacesForDispose()
     {
         lock (_surfaceGate)
         {
@@ -817,7 +815,7 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
+    static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -893,7 +891,7 @@ public partial class PlayerCore : IPlayerSession
                 {
                     // Nothing was torn down. Loads queued from now on are not cancelled.
                     _loadLifetime = new CancellationTokenSource();
-                    using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(this);
+                    using var owner = DiagnosticRouter.EnterOwner(this);
                     DiagnosticRouter.Raise(
                         MediaDiagnosticLevel.Warning,
                         "PlayerCore",
@@ -902,7 +900,7 @@ public partial class PlayerCore : IPlayerSession
                 }
 
                 turnTaken = true;
-                using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+                using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
                 changes = turn.Run(() => ResetCore(configuration, resolvedNativeLibraryPaths));
             }
             finally
@@ -917,14 +915,14 @@ public partial class PlayerCore : IPlayerSession
         return true;
     }
 
-    private ResetChanges? ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
+    ResetChanges? ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
     {
         // Discard the prepared-next item (its analysis ran on the old engine).
         try { ClearPreparedNextForLifecycle(); } catch { }
         // After a failed Reset there is no live graph to compare with.
-        ResetChanges? before = _sessionGraphFreed ? null : TryCaptureResetChanges();
+        var before = _sessionGraphFreed ? null : TryCaptureResetChanges();
         // Loads queued behind Reset run on the new graph and must not inherit the cancellation.
-        CancellationTokenSource previousLifetime = _loadLifetime;
+        var previousLifetime = _loadLifetime;
         _loadLifetime = new CancellationTokenSource();
         try
         {
@@ -946,6 +944,8 @@ public partial class PlayerCore : IPlayerSession
     /// <paramref name="configuration"/> (Reset, and SetModeAsync with another mode). The host's
     /// surfaces are held meanwhile and reattached to the new graph.
     /// </summary>
+    /// <param name="configuration">The configuration the new graph is built from.</param>
+    /// <param name="resolvedNativeLibraryPaths">The folders searched for the native libraries.</param>
     /// <param name="keepOperationQueue">
     /// Keeps the control queue: a mode switch runs on it, and the calls queued behind the switch
     /// must run after it. Reset replaces it.
@@ -953,7 +953,7 @@ public partial class PlayerCore : IPlayerSession
     /// <param name="restoreSettings">
     /// Applied to the new graph before its events are forwarded to the host.
     /// </param>
-    private void RebuildSessionGraph(
+    void RebuildSessionGraph(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> resolvedNativeLibraryPaths,
         bool keepOperationQueue,
@@ -961,10 +961,10 @@ public partial class PlayerCore : IPlayerSession
     {
         // ENG-025: the new graph's threads and tasks (and the control queue a Reset creates)
         // inherit this player as their diagnostic owner.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         TearDownSessionGraph();
 
-        PlayerOperationQueue oldOperations = _controlOperations;
+        var oldOperations = _controlOperations;
         (object Services, IMediaEngine Engine, IMediaPresentationCoordinator Coordinator, MediaControls Controls) freed =
             (_serviceProvider, _mediaEngine, _presentationCoordinator, Controls);
         try
@@ -1000,14 +1000,14 @@ public partial class PlayerCore : IPlayerSession
     }
 
     /// <summary>Holds the surfaces, then stops and closes the media, unsubscribes, and disposes the session graph.</summary>
-    private void TearDownSessionGraph()
+    void TearDownSessionGraph()
     {
         HoldPresentationSurfaces();
         if (_sessionGraphFreed)
             return;
 
         try { _fadeRunner.Cancel(); } catch { }
-        try { _scrubAudio.OnScrubEnded(); } catch { }
+        try { ScrubAudioMuter.OnScrubEnded(); } catch { }
         FreeSessionGraph(stopPlayback: false);
     }
 
@@ -1017,7 +1017,7 @@ public partial class PlayerCore : IPlayerSession
     /// disposes the graph, once.
     /// </summary>
     /// <param name="stopPlayback">Stops the transport before closing (Dispose).</param>
-    private void FreeSessionGraph(bool stopPlayback)
+    void FreeSessionGraph(bool stopPlayback)
     {
         if (_sessionGraphFreed)
             return;
@@ -1056,7 +1056,7 @@ public partial class PlayerCore : IPlayerSession
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Service provider dispose failed: {ex.Message}"); }
     }
 
-    private void StartAudioDeviceMonitor()
+    void StartAudioDeviceMonitor()
     {
         try
         {
@@ -1073,7 +1073,7 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    private void StopAudioDeviceMonitor()
+    void StopAudioDeviceMonitor()
     {
         if (_audioDeviceMonitor == null)
             return;
@@ -1087,9 +1087,7 @@ public partial class PlayerCore : IPlayerSession
     /// <summary>Creates the engine, presentation and control objects and subscribes to them.</summary>
     [MemberNotNull(nameof(_serviceProvider), nameof(_mediaEngine), nameof(_acceptedTypes), nameof(Effects), nameof(CdgVisuals),
         nameof(_presentationCoordinator), nameof(Controls), nameof(File), nameof(_controlOperations), nameof(_positionNotifier))]
-    /// <param name="operations">The control queue to keep (a mode switch), or <see langword="null"/> for a new one.</param>
-    /// <param name="restoreSettings">Settings carried from the previous graph, applied before the host events are forwarded.</param>
-    private void CreateSessionGraph(
+    void CreateSessionGraph(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> resolvedNativeLibraryPaths,
         PlayerOperationQueue? operations = null,
@@ -1100,7 +1098,7 @@ public partial class PlayerCore : IPlayerSession
         _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
-        IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
+        var archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
 
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
@@ -1143,10 +1141,10 @@ public partial class PlayerCore : IPlayerSession
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset
     // creates a new engine and applies it again.
-    private void ApplyVideoFrameTiming()
+    void ApplyVideoFrameTiming()
     {
         if (_mediaEngine is IVideoFrameTimingControl control)
-            control.FrameTiming = _videoFrameTiming;
+            control.FrameTiming = VideoFrameTiming;
     }
 
     /// <summary>
@@ -1200,7 +1198,7 @@ public partial class PlayerCore : IPlayerSession
             }
 
             var teardownRan = false;
-            using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+            using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
             try
             {
                 _ = turn.Run(() =>
@@ -1231,7 +1229,7 @@ public partial class PlayerCore : IPlayerSession
     /// Dispose gave up waiting (ENG-024): reject calls now, free the host's surfaces now (the host may
     /// destroy their windows), and tear down on the queue once the operation in progress ends.
     /// </summary>
-    private void DisposeLater(PlayerOperationQueue operations)
+    void DisposeLater(PlayerOperationQueue operations)
     {
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -1264,7 +1262,7 @@ public partial class PlayerCore : IPlayerSession
         });
     }
 
-    private void DisposeCore()
+    void DisposeCore()
     {
         try
         {
@@ -1274,13 +1272,15 @@ public partial class PlayerCore : IPlayerSession
         catch { }
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
-        try { _scrubAudio.Dispose(); } catch { }
+        try { ScrubAudioMuter.Dispose(); } catch { }
         FreeSessionGraph(stopPlayback: true);
     }
 
+    /// <param name="RequestedSeconds">The position the caller asked for.</param>
+    /// <param name="TargetSeconds">The position the seek was sent to: the seek is complete once the engine is there.</param>
     /// <param name="DuringScrub">
     /// The seek was requested during a scrub, so a video settle may land on the previewed frame
     /// rather than the target (035A).
     /// </param>
-    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds, bool DuringScrub);
+    readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds, bool DuringScrub);
 }

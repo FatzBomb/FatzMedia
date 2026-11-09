@@ -46,19 +46,17 @@ public class KaraokeSurface : Panel, IDisposable
 
     public static readonly DirectProperty<KaraokeSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<KaraokeSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
-
-    private readonly MediaSurface _surface = new();
-    private readonly LightweightSurfaceHost _host;
+    readonly LightweightSurfaceHost _host;
     // The player holds a song the Source loaded (not one LoadAsync loaded directly).
-    private bool _sourceLoaded;
+    bool _sourceLoaded;
 
     public KaraokeSurface()
     {
         ClipToBounds = true;
         Background = new SolidColorBrush(Colors.Black);
-        _host = new LightweightSurfaceHost(_surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
+        _host = new LightweightSurfaceHost(Surface, LightweightPlayerKind.Karaoke, DiagnosticCategory, ReloadSourceAsync);
         _host.ContentVisibilityChanged += OnContentVisibilityChanged;
-        Children.Add(_surface);
+        Children.Add(Surface);
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
@@ -91,7 +89,7 @@ public class KaraokeSurface : Panel, IDisposable
         get => _host.PlatformFactory;
         set
         {
-            IPlatformFactory? old = _host.PlatformFactory;
+            var old = _host.PlatformFactory;
             _host.PlatformFactory = value;
             RaisePropertyChanged(PlatformFactoryProperty, old, value);
         }
@@ -136,7 +134,7 @@ public class KaraokeSurface : Panel, IDisposable
     }
 
     /// <summary>The inner surface (tests).</summary>
-    internal MediaSurface Surface => _surface;
+    internal MediaSurface Surface { get; } = new();
 
     /// <summary>
     /// Loads <paramref name="path"/>: <see langword="true"/> when it is karaoke and this load is still
@@ -168,9 +166,9 @@ public class KaraokeSurface : Panel, IDisposable
         else if (change.Property == AutoPlayProperty)
             _host.Controller.AutoPlay = change.NewValue is true;
         else if (change.Property == AutoHideProperty)
-            _surface.AutoHide = change.NewValue is true;
+            Surface.AutoHide = change.NewValue is true;
         else if (change.Property == PreferGpuSharedSurfaceProperty)
-            _surface.PreferGpuSharedSurface = change.NewValue is true;
+            Surface.PreferGpuSharedSurface = change.NewValue is true;
         else if (change.Property == CanvasColorProperty && change.NewValue is Color color)
             Background = new SolidColorBrush(Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
     }
@@ -190,14 +188,14 @@ public class KaraokeSurface : Panel, IDisposable
     protected override Size ArrangeOverride(Size finalSize)
     {
         _ = base.ArrangeOverride(finalSize);
-        (double x, double y, double width, double height) = KaraokeLayout.Fit(finalSize.Width, finalSize.Height);
-        _surface.Arrange(new Rect(x, y, width, height));
+        (var x, var y, var width, var height) = KaraokeLayout.Fit(finalSize.Width, finalSize.Height);
+        Surface.Arrange(new Rect(x, y, width, height));
         return finalSize;
     }
 
     // Clearing the source releases the player, so the previous song does not keep playing; a
     // reload without one (attaching) leaves a song LoadAsync loaded directly alone.
-    private Task ReloadSourceAsync()
+    Task ReloadSourceAsync()
     {
         if (!string.IsNullOrWhiteSpace(Source))
         {
@@ -214,7 +212,7 @@ public class KaraokeSurface : Panel, IDisposable
         return Task.CompletedTask;
     }
 
-    private void OnContentVisibilityChanged(object? sender, EventArgs e)
+    void OnContentVisibilityChanged(object? sender, EventArgs e)
     {
         Dispatcher.UIThread.VerifyAccess();
         var isVisible = _host.IsContentVisible;

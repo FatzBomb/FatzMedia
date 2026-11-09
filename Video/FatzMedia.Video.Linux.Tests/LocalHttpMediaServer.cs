@@ -13,10 +13,10 @@ namespace FatzMedia.Video.Linux.Tests;
 /// <param name="TruncateAfterBytes">Send at most this many body bytes, then close the connection.</param>
 /// <param name="Refuse">Close the connection without answering, as a lost network does.</param>
 /// <param name="BytesPerSecond">Send the body at about this rate (0 = as fast as possible).</param>
-internal sealed record HttpResponsePlan(TimeSpan DelayBeforeResponse = default, long? TruncateAfterBytes = null, bool Refuse = false, long BytesPerSecond = 0);
+sealed record HttpResponsePlan(TimeSpan DelayBeforeResponse = default, long? TruncateAfterBytes = null, bool Refuse = false, long BytesPerSecond = 0);
 
 /// <summary>One request the server received.</summary>
-internal sealed record HttpRequestRecord(int Number, string Path, long? RangeStart);
+sealed record HttpRequestRecord(int Number, string Path, long? RangeStart);
 
 /// <summary>
 /// A tiny in-process HTTP/1.1 file server on 127.0.0.1 for the network video tests: serves files
@@ -26,17 +26,17 @@ internal sealed record HttpRequestRecord(int Number, string Path, long? RangeSta
 /// be turned off (<see cref="SupportsRanges"/>, like <c>python -m http.server</c>), and a client
 /// that asks for ICY metadata gets an Icecast-style live stream (<see cref="IcyTitle"/>).
 /// </summary>
-internal sealed class LocalHttpMediaServer : IDisposable
+sealed class LocalHttpMediaServer : IDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-    private readonly string _root;
-    private readonly CancellationTokenSource _stop = new();
-    private readonly ConcurrentDictionary<string, byte[]> _overrides = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<HttpRequestRecord> _requests = new();
-    private readonly ConcurrentBag<TcpClient> _clients = [];
-    private readonly X509Certificate2? _certificate;
-    private int _requestCount;
-    private int _handshakes;
+    readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    readonly string _root;
+    readonly CancellationTokenSource _stop = new();
+    readonly ConcurrentDictionary<string, byte[]> _overrides = new(StringComparer.Ordinal);
+    readonly ConcurrentQueue<HttpRequestRecord> _requests = new();
+    readonly ConcurrentBag<TcpClient> _clients = [];
+    readonly X509Certificate2? _certificate;
+    int _requestCount;
+    int _handshakes;
 
     public LocalHttpMediaServer(string root, Func<HttpRequestRecord, HttpResponsePlan>? plan = null, X509Certificate2? certificate = null)
     {
@@ -74,7 +74,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
     /// <summary>Resets every open connection, as a lost network does to a download in progress.</summary>
     public void DropConnections()
     {
-        foreach (TcpClient client in _clients)
+        foreach (var client in _clients)
         {
             try
             {
@@ -89,7 +89,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
     /// <summary>Serves <paramref name="content"/> for <paramref name="relativePath"/> instead of the file.</summary>
     public void Override(string relativePath, string content) => _overrides["/" + relativePath.TrimStart('/')] = Encoding.UTF8.GetBytes(content);
 
-    private async Task AcceptLoopAsync()
+    async Task AcceptLoopAsync()
     {
         while (!_stop.IsCancellationRequested)
         {
@@ -108,14 +108,14 @@ internal sealed class LocalHttpMediaServer : IDisposable
         }
     }
 
-    private async Task ServeAsync(TcpClient client)
+    async Task ServeAsync(TcpClient client)
     {
         using (client)
         {
             try
             {
-                await using SslStream? tls = _certificate is null ? null : new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
-                Stream stream = tls ?? (Stream)client.GetStream();
+                await using var tls = _certificate is null ? null : new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
+                var stream = tls ?? (Stream)client.GetStream();
                 if (tls is not null)
                 {
                     // A client that rejects the certificate aborts the handshake; no request is recorded.
@@ -146,12 +146,12 @@ internal sealed class LocalHttpMediaServer : IDisposable
                     }
                 }
 
-                Func<int, string>? icyTitle = wantsIcy ? IcyTitle : null;
+                var icyTitle = wantsIcy ? IcyTitle : null;
                 if (!SupportsRanges || icyTitle is not null)
                     rangeStart = null;
                 var record = new HttpRequestRecord(Interlocked.Increment(ref _requestCount), path, rangeStart);
                 _requests.Enqueue(record);
-                HttpResponsePlan plan = Plan(record);
+                var plan = Plan(record);
                 if (plan.Refuse)
                 {
                     client.Client.Close(0);
@@ -161,7 +161,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 if (plan.DelayBeforeResponse > TimeSpan.Zero)
                     await Task.Delay(plan.DelayBeforeResponse, _stop.Token).ConfigureAwait(false);
 
-                byte[]? body = _overrides.TryGetValue(path, out var overridden) ? overridden : null;
+                var body = _overrides.TryGetValue(path, out var overridden) ? overridden : null;
                 var file = Path.GetFullPath(Path.Combine(_root, path.TrimStart('/')));
                 if (body is null && (!file.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal) || !File.Exists(file)))
                 {
@@ -201,7 +201,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 }
                 else
                 {
-                    await using FileStream source = File.OpenRead(file);
+                    await using var source = File.OpenRead(file);
                     source.Position = start;
                     // A throttled body goes out in twentieths of a second, not in bursts.
                     var buffer = new byte[plan.BytesPerSecond > 0 ? (int)Math.Clamp(plan.BytesPerSecond / 20, 1024, 64 * 1024) : 64 * 1024];
@@ -233,10 +233,10 @@ internal sealed class LocalHttpMediaServer : IDisposable
     }
 
     /// <summary>Inserts an ICY metadata block after every <c>interval</c> body bytes (Shoutcast/Icecast framing).</summary>
-    private sealed class IcyWriteStream(Stream inner, int interval, Func<int, string> title) : Stream
+    sealed class IcyWriteStream(Stream inner, int interval, Func<int, string> title) : Stream
     {
-        private int _sinceBlock;
-        private int _blocks;
+        int _sinceBlock;
+        int _blocks;
 
         public override bool CanRead => false;
         public override bool CanSeek => false;
@@ -275,7 +275,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
         public override void SetLength(long value) => throw new NotSupportedException();
     }
 
-    private static async Task<string?> ReadHeaderAsync(Stream stream)
+    static async Task<string?> ReadHeaderAsync(Stream stream)
     {
         var buffer = new byte[16 * 1024];
         var total = 0;
@@ -294,13 +294,13 @@ internal sealed class LocalHttpMediaServer : IDisposable
         return null;
     }
 
-    private Task WriteAsync(Stream stream, string text) => stream.WriteAsync(Encoding.ASCII.GetBytes(text), _stop.Token).AsTask();
+    Task WriteAsync(Stream stream, string text) => stream.WriteAsync(Encoding.ASCII.GetBytes(text), _stop.Token).AsTask();
 
     public void Dispose()
     {
         _stop.Cancel();
         _listener.Stop();
-        foreach (TcpClient client in _clients)
+        foreach (var client in _clients)
         {
             try
             {
@@ -319,9 +319,9 @@ internal sealed class LocalHttpMediaServer : IDisposable
 /// A self-signed server certificate for 127.0.0.1 and localhost, made in process (ENG-034 tests),
 /// with its PEM written to a temporary file for <see cref="NetworkTlsPolicy.CertificateAuthorityFile"/>.
 /// </summary>
-internal sealed class SelfSignedCertificate : IDisposable
+sealed class SelfSignedCertificate : IDisposable
 {
-    private SelfSignedCertificate(X509Certificate2 certificate, string pemPath)
+    SelfSignedCertificate(X509Certificate2 certificate, string pemPath)
     {
         Certificate = certificate;
         PemPath = pemPath;
@@ -341,12 +341,12 @@ internal sealed class SelfSignedCertificate : IDisposable
         request.CertificateExtensions.Add(names.Build());
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(certificateAuthority: true, hasPathLengthConstraint: false, pathLengthConstraint: 0, critical: true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], critical: false));
-        using X509Certificate2 created = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        using var created = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
 
         var pemPath = Path.Combine(Directory.CreateTempSubdirectory("fbm-tls-").FullName, "ca.pem");
         File.WriteAllText(pemPath, created.ExportCertificatePem());
         // Reload through PKCS#12 so the private key is usable by SslStream on every platform.
-        X509Certificate2 certificate = X509CertificateLoader.LoadPkcs12(created.Export(X509ContentType.Pkcs12), password: null);
+        var certificate = X509CertificateLoader.LoadPkcs12(created.Export(X509ContentType.Pkcs12), password: null);
         return new SelfSignedCertificate(certificate, pemPath);
     }
 
@@ -358,11 +358,11 @@ internal sealed class SelfSignedCertificate : IDisposable
 }
 
 /// <summary>A TCP port that accepts connections and never answers (a hung server).</summary>
-internal sealed class SilentTcpServer : IDisposable
+sealed class SilentTcpServer : IDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-    private readonly ConcurrentBag<Socket> _accepted = [];
-    private readonly CancellationTokenSource _stop = new();
+    readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    readonly ConcurrentBag<Socket> _accepted = [];
+    readonly CancellationTokenSource _stop = new();
 
     public SilentTcpServer()
     {
@@ -389,7 +389,7 @@ internal sealed class SilentTcpServer : IDisposable
     {
         _stop.Cancel();
         _listener.Stop();
-        foreach (Socket socket in _accepted)
+        foreach (var socket in _accepted)
             socket.Dispose();
         _stop.Dispose();
     }

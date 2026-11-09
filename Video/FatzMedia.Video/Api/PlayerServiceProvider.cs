@@ -45,7 +45,7 @@ public static class PlayerServiceProvider
         return services.BuildServiceProvider();
     }
 
-    private static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
+    static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
     {
         _ = services.AddSingleton(MediaAnalysisCache.Shared);
         // Background mode (043A) never initializes audio output; without BASS (ENG-033) no mode can.
@@ -60,7 +60,7 @@ public static class PlayerServiceProvider
         _ = services.AddSingleton<IMidiLyricProvider, BassMidiLyricProvider>();
     }
 
-    private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
+    static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
     {
         // Every decoder of the player uses the platform's hardware-decode services, unless the
         // presentation renderer decodes on its own device (Stage 045A slice 2): the coordinator
@@ -88,19 +88,19 @@ public static class PlayerServiceProvider
                 audioAvailable: audioAvailable));
     }
 
-    private static IAudioEngine CreateAudioEngine(
+    static IAudioEngine CreateAudioEngine(
         MediaPlayerConfiguration configuration,
         MediaAnalysisCache analysisCache)
     {
         // The BASS engine is created and BASS initialized on the configured device in every case:
         // video audio and soundtracks stay on BASS (037A slice 2), and it is the fallback.
-        AudioEngine bassEngine = CreateBassAudioEngine(configuration, analysisCache);
+        var bassEngine = CreateBassAudioEngine(configuration, analysisCache);
         if (configuration.AudioEngineFactory is not { } factory)
             return bassEngine;
 
         try
         {
-            IAudioEngine engine = factory.Create(configuration)
+            var engine = factory.Create(configuration)
                 ?? throw new InvalidOperationException("The factory returned no engine.");
             // Disposing the BASS file engine keeps BASS initialized for video audio.
             bassEngine.Dispose();
@@ -123,12 +123,12 @@ public static class PlayerServiceProvider
     /// engine's own device moves (<see cref="IAudioDeviceChangeSource"/>); the platform's monitor,
     /// when there is one, keeps watching BASS for video audio.
     /// </summary>
-    private static void RegisterEngineDeviceMonitor(IServiceCollection services)
+    static void RegisterEngineDeviceMonitor(IServiceCollection services)
     {
-        ServiceDescriptor? platformMonitor = services.LastOrDefault(static descriptor => descriptor.ServiceType == typeof(IAudioDeviceMonitor));
+        var platformMonitor = services.LastOrDefault(static descriptor => descriptor.ServiceType == typeof(IAudioDeviceMonitor));
         _ = services.AddSingleton<IAudioDeviceMonitor>(provider =>
         {
-            IAudioDeviceMonitor? platform = platformMonitor switch
+            var platform = platformMonitor switch
             {
                 { ImplementationFactory: { } create } => create(provider) as IAudioDeviceMonitor,
                 { ImplementationInstance: IAudioDeviceMonitor instance } => instance,
@@ -139,7 +139,7 @@ public static class PlayerServiceProvider
         });
     }
 
-    private static AudioEngine CreateBassAudioEngine(
+    static AudioEngine CreateBassAudioEngine(
         MediaPlayerConfiguration configuration,
         MediaAnalysisCache analysisCache)
     {

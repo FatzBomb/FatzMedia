@@ -1,7 +1,6 @@
-using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
-
 using FatzMedia.Video.Core.Threading;
+using Microsoft.Win32.SafeHandles;
 
 namespace FatzMedia.Video.Windows.Threading;
 
@@ -22,22 +21,22 @@ namespace FatzMedia.Video.Windows.Threading;
 ///
 /// A single instance is owned by one loop thread and is not safe for concurrent callers.
 /// </remarks>
-internal sealed partial class WindowsPrecisionWaiter : IPrecisionWaiter
+sealed partial class WindowsPrecisionWaiter : IPrecisionWaiter
 {
     // CreateWaitableTimerExW flag requesting a high-resolution timer (Windows 10 1803+).
-    private const uint CreateWaitableTimerHighResolution = 0x00000002;
+    const uint CreateWaitableTimerHighResolution = 0x00000002;
 
     // TIMER_ALL_ACCESS = STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x3.
-    private const uint TimerAllAccess = 0x1F0003;
+    const uint TimerAllAccess = 0x1F0003;
 
-    private readonly TimerWaitHandle? _timer;
-    private readonly SafeWaitHandle? _timerHandle;
-    private readonly WaitHandle[] _waitHandles = new WaitHandle[2];
-    private bool _disposed;
+    readonly TimerWaitHandle? _timer;
+    readonly SafeWaitHandle? _timerHandle;
+    readonly WaitHandle[] _waitHandles = new WaitHandle[2];
+    bool _disposed;
 
     public WindowsPrecisionWaiter()
     {
-        SafeWaitHandle handle = CreateWaitableTimerExW(
+        var handle = CreateWaitableTimerExW(
             IntPtr.Zero,
             IntPtr.Zero,
             CreateWaitableTimerHighResolution,
@@ -88,7 +87,7 @@ internal sealed partial class WindowsPrecisionWaiter : IPrecisionWaiter
         _waitHandles[1] = _timer;
 
         // Safety timeout just beyond the requested duration so a missed signal can never hang the loop.
-        TimeSpan safetyTimeout = duration + TimeSpan.FromMilliseconds(50);
+        var safetyTimeout = duration + TimeSpan.FromMilliseconds(50);
         _ = WaitHandle.WaitAny(_waitHandles, safetyTimeout);
     }
 
@@ -118,7 +117,7 @@ internal sealed partial class WindowsPrecisionWaiter : IPrecisionWaiter
         IntPtr lpArgToCompletionRoutine,
         [MarshalAs(UnmanagedType.Bool)] bool fResume);
 
-    private sealed class TimerWaitHandle : WaitHandle
+    sealed class TimerWaitHandle : WaitHandle
     {
         public TimerWaitHandle(SafeWaitHandle handle) => SafeWaitHandle = handle;
     }

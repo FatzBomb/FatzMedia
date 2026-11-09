@@ -2,7 +2,6 @@ using System.Diagnostics;
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 using FatzMedia.Video.Core.Graphics.Rendering;
 using FatzMedia.Video.Direct3D11;
-using SharpGen.Runtime;
 using Vortice.DXGI;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.SwapChain;
@@ -12,7 +11,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.SwapChain;
 /// the active mode and resize state; this class owns sync-interval selection,
 /// diagnostics, and error logging.
 /// </summary>
-internal static class D3D11SwapChainPresenter
+static class D3D11SwapChainPresenter
 {
     public static bool Present(
         IDXGISwapChain? swapChain,
@@ -36,7 +35,7 @@ internal static class D3D11SwapChainPresenter
             var syncInterval = GetSyncInterval(presentMode, liveResizeFlag, syncImmediate);
 
             var presentStart = Stopwatch.GetTimestamp();
-            Result result = swapChain.Present(syncInterval, (int)PresentFlags.None);
+            var result = swapChain.Present(syncInterval, (int)PresentFlags.None);
             diagnostics.RecordNativePresent(D3D11PresentationDiagnostics.ElapsedMilliseconds(presentStart), (int)syncInterval);
             if (result.Failure)
             {

@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// Default MIDI lyric provider through <see cref="MidiLyricCueBuilder"/>: from an engine-neutral
 /// <see cref="IMidiEventReader"/> (037A slice 1), or from a BASS source handle as before.
 /// </summary>
-internal sealed class BassMidiLyricProvider : IMidiLyricReaderProvider
+sealed class BassMidiLyricProvider : IMidiLyricReaderProvider
 {
     public bool IsMidiFile(string path) => MidiLyricCueBuilder.IsMidiFile(path);
 

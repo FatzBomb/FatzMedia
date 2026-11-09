@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// target texture lifetime, presentation policy, and cleanup for their specific surface type;
 /// VorticeD3D11Renderer should coordinate rendering and ask the active backend to present.
 /// </summary>
-internal interface ID3D11PresentationBackend : IDisposable
+interface ID3D11PresentationBackend : IDisposable
 {
     D3D11PresentationBackendKind Kind { get; }
     bool IsActive { get; }

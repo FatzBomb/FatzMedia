@@ -81,7 +81,7 @@ public sealed record AudioEqualizerSettings
     {
         var hash = new HashCode();
         hash.Add(Enabled);
-        foreach (AudioEqualizerBand band in Bands)
+        foreach (var band in Bands)
             hash.Add(band);
         return hash.ToHashCode();
     }

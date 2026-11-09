@@ -30,7 +30,7 @@ public class AudioOutputConfigurationTests
     [Fact]
     public void AudioOutputDeviceInfo_PrimaryFormatsForSelectors()
     {
-        AudioOutputDeviceInfo primary = AudioOutputDeviceInfo.Primary;
+        var primary = AudioOutputDeviceInfo.Primary;
 
         Assert.True(primary.IsPrimary);
         Assert.Equal(AudioOutputDeviceInfo.PrimaryDeviceIndex, primary.DeviceIndex);

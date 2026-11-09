@@ -6,13 +6,13 @@ using FatzMedia.Video.Core.Graphics;
 namespace FatzMedia.Video.Core.Video.Hdr;
 
 /// <summary>SMPTE ST 2084 (PQ), the transfer function of HDR10 video.</summary>
-internal static class PqCurve
+static class PqCurve
 {
-    private const double M1 = 2610.0 / 16384;
-    private const double M2 = 2523.0 / 4096 * 128;
-    private const double C1 = 3424.0 / 4096;
-    private const double C2 = 2413.0 / 4096 * 32;
-    private const double C3 = 2392.0 / 4096 * 32;
+    const double M1 = 2610.0 / 16384;
+    const double M2 = 2523.0 / 4096 * 128;
+    const double C1 = 3424.0 / 4096;
+    const double C2 = 2413.0 / 4096 * 32;
+    const double C3 = 2392.0 / 4096 * 32;
 
     /// <summary>PQ's peak luminance in nits (signal 1.0).</summary>
     public const double PeakNits = 10000;
@@ -36,11 +36,11 @@ internal static class PqCurve
 /// ARIB STD-B67 / ITU-R BT.2100 hybrid log-gamma (HLG): the OETF, its inverse and the OOTF's
 /// system gamma (Stage 042A).
 /// </summary>
-internal static class HlgCurve
+static class HlgCurve
 {
-    private const double A = 0.17883277;
-    private const double B = 1 - (4 * A);
-    private static readonly double C = 0.5 - (A * Math.Log(4 * A));
+    const double A = 0.17883277;
+    const double B = 1 - (4 * A);
+    static readonly double C = 0.5 - (A * Math.Log(4 * A));
 
     /// <summary>The nominal display peak HLG is shown for: BT.2100's reference display, 1000 nits.</summary>
     public const double NominalPeakNits = 1000;
@@ -84,7 +84,7 @@ internal static class HlgCurve
 /// Hermite spline in PQ space, leaving everything below the knee unchanged. Black level
 /// lift is not applied (target black is 0).
 /// </summary>
-internal static class Bt2390ToneCurve
+static class Bt2390ToneCurve
 {
     /// <summary>Maps <paramref name="nits"/> from a source peaking at <paramref name="sourcePeakNits"/> into [0, <paramref name="targetPeakNits"/>].</summary>
     public static double Map(double nits, double sourcePeakNits, double targetPeakNits)
@@ -143,36 +143,36 @@ internal static class Bt2390ToneCurve
 /// which is monotonic, so gray levels can only rise. Gamut and gamma steps are PQ's.
 /// </para>
 /// </remarks>
-internal sealed unsafe class HdrToneMapper
+sealed unsafe class HdrToneMapper
 {
-    private const int TableBits = 12;
-    private const int TableSize = 1 << TableBits;
-    private const int SignalShift = 16 - TableBits;
-    private const float EncodeScale = TableSize - 1;
-    private const double SdrGamma = 2.4;
+    const int TableBits = 12;
+    const int TableSize = 1 << TableBits;
+    const int SignalShift = 16 - TableBits;
+    const float EncodeScale = TableSize - 1;
+    const double SdrGamma = 2.4;
 
     // BT.2020 to BT.709 primaries, linear light (ITU-R BT.2087).
-    private const float R0 = 1.660491f, R1 = -0.587641f, R2 = -0.072850f;
-    private const float G0 = -0.124550f, G1 = 1.132900f, G2 = -0.008349f;
-    private const float B0 = -0.018151f, B1 = -0.100579f, B2 = 1.118730f;
+    const float R0 = 1.660491f, R1 = -0.587641f, R2 = -0.072850f;
+    const float G0 = -0.124550f, G1 = 1.132900f, G2 = -0.008349f;
+    const float B0 = -0.018151f, B1 = -0.100579f, B2 = 1.118730f;
 
-    private const int RowsPerBand = 16;
+    const int RowsPerBand = 16;
 
     // HLG's log-indexed tables (Stage 042A): 2^LogMantissaBits steps per octave, from
     // 2^-LogOctaves to 1; values below the first step use entry 0, above 1 the last entry.
-    private const int LogMantissaBits = 7;
-    private const int LogOctaves = 24;
-    private const int LogTableSize = (LogOctaves << LogMantissaBits) + 1;
-    private const int LogIndexShift = 23 - LogMantissaBits;
-    private const int LogIndexBase = (127 - LogOctaves) << LogMantissaBits;
-    private const float HlgKr = (float)HlgCurve.Kr, HlgKg = (float)HlgCurve.Kg, HlgKb = (float)HlgCurve.Kb;
+    const int LogMantissaBits = 7;
+    const int LogOctaves = 24;
+    const int LogTableSize = (LogOctaves << LogMantissaBits) + 1;
+    const int LogIndexShift = 23 - LogMantissaBits;
+    const int LogIndexBase = (127 - LogOctaves) << LogMantissaBits;
+    const float HlgKr = (float)HlgCurve.Kr, HlgKg = (float)HlgCurve.Kg, HlgKb = (float)HlgCurve.Kb;
 
-    private readonly float[] _linear = new float[TableSize];
-    private readonly float[] _gain = new float[TableSize];
-    private readonly byte[] _encode = new byte[TableSize];
-    private readonly float[]? _inverseScene;
-    private readonly float[]? _ootf;
-    private readonly float[]? _mapped;
+    readonly float[] _linear = new float[TableSize];
+    readonly float[] _gain = new float[TableSize];
+    readonly byte[] _encode = new byte[TableSize];
+    readonly float[]? _inverseScene;
+    readonly float[]? _ootf;
+    readonly float[]? _mapped;
 
     public HdrToneMapper(double sourcePeakNits, double referenceWhiteNits, HdrTransferFunction transfer = HdrTransferFunction.Pq)
     {
@@ -248,8 +248,8 @@ internal sealed unsafe class HdrToneMapper
         fixed (float* gain = _gain)
         fixed (byte* encode = _encode)
         {
-            ushort* input = source;
-            byte* output = destination;
+            var input = source;
+            var output = destination;
             for (var pixel = 0; pixel < pixels; pixel++, input += 3, output += 4)
             {
                 var r = input[0] >> SignalShift;
@@ -267,7 +267,7 @@ internal sealed unsafe class HdrToneMapper
         }
     }
 
-    private void ConvertHlgRow(ReadOnlySpan<ushort> rgb48, Span<byte> bgra)
+    void ConvertHlgRow(ReadOnlySpan<ushort> rgb48, Span<byte> bgra)
     {
         var pixels = Math.Min(rgb48.Length / 3, bgra.Length / 4);
         fixed (ushort* source = rgb48)
@@ -278,8 +278,8 @@ internal sealed unsafe class HdrToneMapper
         fixed (float* mapped = _mapped)
         fixed (byte* encode = _encode)
         {
-            ushort* input = source;
-            byte* output = destination;
+            var input = source;
+            var output = destination;
             for (var pixel = 0; pixel < pixels; pixel++, input += 3, output += 4)
             {
                 var r = input[0] >> SignalShift;
@@ -336,10 +336,10 @@ internal sealed unsafe class HdrToneMapper
     }
 
     /// <summary>The log-table index of a non-negative value: its exponent and top mantissa bits, clamped.</summary>
-    private static int ToLogIndex(float value) =>
+    static int ToLogIndex(float value) =>
         Math.Clamp((BitConverter.SingleToInt32Bits(value) >> LogIndexShift) - LogIndexBase, 0, LogTableSize - 1);
 
     /// <summary>The encode-table index for linear light: its square root, clipped to [0, 1].</summary>
-    private static int ToIndex(float value) =>
+    static int ToIndex(float value) =>
         (int)((MathF.Sqrt(MathF.Max(0f, MathF.Min(value, 1f))) * EncodeScale) + 0.5f);
 }

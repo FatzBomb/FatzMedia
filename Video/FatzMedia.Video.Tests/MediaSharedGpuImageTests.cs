@@ -8,13 +8,13 @@ public sealed class MediaSharedGpuImageRingTests
         using var ring = new MediaSharedGpuImageRing(2);
         ring.Reset(7);
 
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite first));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var first));
         Assert.Equal(new MediaSharedGpuImageWrite(0, MediaSharedGpuImageRing.ProducerKey, false), first);
-        MediaSharedGpuImageFrame frame0 = ring.CompleteWrite(first.BufferIndex);
+        var frame0 = ring.CompleteWrite(first.BufferIndex);
 
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite second));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var second));
         Assert.Equal(new MediaSharedGpuImageWrite(1, MediaSharedGpuImageRing.ProducerKey, false), second);
-        MediaSharedGpuImageFrame frame1 = ring.CompleteWrite(second.BufferIndex);
+        var frame1 = ring.CompleteWrite(second.BufferIndex);
 
         Assert.Equal(new MediaSharedGpuImageFrame(7, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey), frame0);
         Assert.Equal(new MediaSharedGpuImageFrame(7, 1, 2, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey), frame1);
@@ -26,13 +26,13 @@ public sealed class MediaSharedGpuImageRingTests
     {
         using var ring = new MediaSharedGpuImageRing(2);
         ring.Reset(1);
-        MediaSharedGpuImageFrame frame0 = Present(ring);
+        var frame0 = Present(ring);
         _ = Present(ring);
 
         Assert.False(ring.TryBeginWrite(TimeSpan.Zero, out _));
 
         Assert.True(ring.Release(frame0, consumed: true));
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite next));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var next));
         // The compositor released the mutex with the producer key and signalled its semaphore.
         Assert.Equal(new MediaSharedGpuImageWrite(0, MediaSharedGpuImageRing.ProducerKey, true), next);
     }
@@ -42,10 +42,10 @@ public sealed class MediaSharedGpuImageRingTests
     {
         using var ring = new MediaSharedGpuImageRing(1);
         ring.Reset(1);
-        MediaSharedGpuImageFrame frame = Present(ring);
+        var frame = Present(ring);
 
         Assert.True(ring.Release(frame, consumed: false));
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite next));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var next));
         Assert.Equal(new MediaSharedGpuImageWrite(0, MediaSharedGpuImageRing.ConsumerKey, false), next);
     }
 
@@ -55,12 +55,12 @@ public sealed class MediaSharedGpuImageRingTests
         using var ring = new MediaSharedGpuImageRing(1);
         ring.Reset(1);
         Assert.True(ring.Release(Present(ring), consumed: true));
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite waited));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var waited));
         Assert.True(waited.WaitForConsumerRelease);
-        MediaSharedGpuImageFrame frame = ring.CompleteWrite(waited.BufferIndex);
+        var frame = ring.CompleteWrite(waited.BufferIndex);
 
         Assert.True(ring.Release(frame, consumed: false));
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite next));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var next));
         Assert.False(next.WaitForConsumerRelease);
     }
 
@@ -69,14 +69,14 @@ public sealed class MediaSharedGpuImageRingTests
     {
         using var ring = new MediaSharedGpuImageRing(2);
         ring.Reset(1);
-        MediaSharedGpuImageFrame frame0 = Present(ring);
-        MediaSharedGpuImageFrame frame1 = Present(ring);
+        var frame0 = Present(ring);
+        var frame1 = Present(ring);
 
         // Released out of order: image 0 is still the older one.
         Assert.True(ring.Release(frame1, consumed: true));
         Assert.True(ring.Release(frame0, consumed: true));
 
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite next));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var next));
         Assert.Equal(0, next.BufferIndex);
     }
 
@@ -85,12 +85,12 @@ public sealed class MediaSharedGpuImageRingTests
     {
         using var ring = new MediaSharedGpuImageRing(2);
         ring.Reset(1);
-        MediaSharedGpuImageFrame old = Present(ring);
+        var old = Present(ring);
         ring.Reset(2);
         Assert.Equal(2, ring.FreeCount);
 
         Assert.False(ring.Release(old, consumed: true));
-        MediaSharedGpuImageFrame current = Present(ring);
+        var current = Present(ring);
         Assert.Equal(2, current.Generation);
         Assert.True(ring.Release(current, consumed: true));
         Assert.False(ring.Release(current, consumed: true));
@@ -103,10 +103,10 @@ public sealed class MediaSharedGpuImageRingTests
         using var ring = new MediaSharedGpuImageRing(1);
         ring.Reset(1);
         Assert.True(ring.Release(Present(ring), consumed: false));
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite write));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var write));
         ring.AbortWrite(write.BufferIndex);
 
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite retry));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var retry));
         Assert.Equal(MediaSharedGpuImageRing.ConsumerKey, retry.AcquireKey);
         _ = ring.CompleteWrite(retry.BufferIndex);
         Assert.Throws<InvalidOperationException>(() => ring.CompleteWrite(retry.BufferIndex));
@@ -117,9 +117,9 @@ public sealed class MediaSharedGpuImageRingTests
     {
         using var ring = new MediaSharedGpuImageRing(1);
         ring.Reset(1);
-        MediaSharedGpuImageFrame frame = Present(ring);
+        var frame = Present(ring);
 
-        Task<bool> waiting = Task.Run(() => ring.TryBeginWrite(TimeSpan.FromSeconds(10), out _));
+        var waiting = Task.Run(() => ring.TryBeginWrite(TimeSpan.FromSeconds(10), out _));
         await Task.Delay(50);
         Assert.False(waiting.IsCompleted);
         Assert.True(ring.Release(frame, consumed: true));
@@ -137,24 +137,24 @@ public sealed class MediaSharedGpuImageRingTests
         Assert.False(ring.TryBeginWrite(TimeSpan.FromMilliseconds(20), out _));
     }
 
-    private static MediaSharedGpuImageFrame Present(MediaSharedGpuImageRing ring)
+    static MediaSharedGpuImageFrame Present(MediaSharedGpuImageRing ring)
     {
-        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out MediaSharedGpuImageWrite write));
+        Assert.True(ring.TryBeginWrite(TimeSpan.Zero, out var write));
         return ring.CompleteWrite(write.BufferIndex);
     }
 }
 
 public sealed class MediaSharedGpuImageRequestTests
 {
-    private static readonly MediaSharedGpuImageCapability NtKeyedMutex = new(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex);
-    private static readonly MediaSharedGpuImageCapability GlobalKeyedMutex = new(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex);
+    static readonly MediaSharedGpuImageCapability NtKeyedMutex = new(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex);
+    static readonly MediaSharedGpuImageCapability GlobalKeyedMutex = new(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex);
 
     [Fact]
     public void TrySelect_FollowsTheConsumerPreferenceOrder()
     {
         var request = new MediaSharedGpuImageRequest([NtKeyedMutex, GlobalKeyedMutex]);
 
-        Assert.True(request.TrySelect([GlobalKeyedMutex, NtKeyedMutex], [], out MediaSharedGpuImageSelection selection, out _));
+        Assert.True(request.TrySelect([GlobalKeyedMutex, NtKeyedMutex], [], out var selection, out _));
         Assert.Equal(new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None), selection);
     }
 
@@ -167,7 +167,7 @@ public sealed class MediaSharedGpuImageRequestTests
             MediaSharedGpuImageHandleKind.VulkanOpaqueFd,
             MediaSharedGpuImageSyncKinds.Semaphores | MediaSharedGpuImageSyncKinds.HostSynchronized);
 
-        Assert.True(request.TrySelect([producer], [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd], out MediaSharedGpuImageSelection selection, out _));
+        Assert.True(request.TrySelect([producer], [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd], out var selection, out _));
         Assert.Equal(MediaSharedGpuImageSyncKinds.Semaphores, selection.SyncKind);
         Assert.Equal(MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd, selection.SemaphoreHandleKind);
 
@@ -185,7 +185,7 @@ public sealed class MediaSharedGpuImageRequestTests
         Assert.True(request.TrySelect(
             [new(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.Semaphores | MediaSharedGpuImageSyncKinds.HostSynchronized)],
             [],
-            out MediaSharedGpuImageSelection selection,
+            out var selection,
             out _));
         Assert.Equal(MediaSharedGpuImageSyncKinds.HostSynchronized, selection.SyncKind);
     }
@@ -224,7 +224,7 @@ public sealed class MediaSharedGpuImageSetTests
     public void Handles_AreReleasedOnceAfterBothRetireAndCompleteImport()
     {
         List<bool> released = [];
-        MediaSharedGpuImageSet set = Create(releaseHandles: released.Add);
+        var set = Create(releaseHandles: released.Add);
 
         set.CompleteImport(handlesConsumed: true);
         Assert.Empty(released);
@@ -241,7 +241,7 @@ public sealed class MediaSharedGpuImageSetTests
     public void ReleaseFrame_ReachesTheProducer()
     {
         List<(MediaSharedGpuImageFrame, bool)> releases = [];
-        MediaSharedGpuImageSet set = Create(releaseFrame: (frame, consumed) => releases.Add((frame, consumed)));
+        var set = Create(releaseFrame: (frame, consumed) => releases.Add((frame, consumed)));
         var frame = new MediaSharedGpuImageFrame(3, 1, 9, 1, 0);
 
         set.ReleaseFrame(frame, consumed: true);
@@ -253,7 +253,7 @@ public sealed class MediaSharedGpuImageSetTests
     public void CompleteImport_PartialCount_TellsTheProducerWhichBuffersWereConsumed()
     {
         List<int> released = [];
-        MediaSharedGpuImageSet set = CreateCounted(released.Add);
+        var set = CreateCounted(released.Add);
 
         set.CompleteImport(1);
         set.CompleteImport(2);
@@ -268,13 +268,13 @@ public sealed class MediaSharedGpuImageSetTests
     public void CompleteImport_ClampsTheCountAndMapsTheBooleanForm()
     {
         List<int> released = [];
-        MediaSharedGpuImageSet all = CreateCounted(released.Add);
+        var all = CreateCounted(released.Add);
         all.CompleteImport(handlesConsumed: true);
         all.Retire();
-        MediaSharedGpuImageSet tooMany = CreateCounted(released.Add);
+        var tooMany = CreateCounted(released.Add);
         tooMany.CompleteImport(7);
         tooMany.Retire();
-        MediaSharedGpuImageSet none = CreateCounted(released.Add);
+        var none = CreateCounted(released.Add);
         none.CompleteImport(-1);
         none.Retire();
 
@@ -286,7 +286,7 @@ public sealed class MediaSharedGpuImageSetTests
     public void BooleanProducer_KeepsEveryHandleAfterAPartialImport()
     {
         List<bool> released = [];
-        MediaSharedGpuImageSet set = Create(releaseHandles: released.Add);
+        var set = Create(releaseHandles: released.Add);
 
         set.CompleteImport(1);
         set.Retire();
@@ -299,7 +299,7 @@ public sealed class MediaSharedGpuImageSetTests
     public void ReportDeviceLost_ReachesTheProducerOnce_AndIsIgnoredWithoutACallback()
     {
         List<string> reports = [];
-        MediaSharedGpuImageSet set = CreateCounted(static _ => { }, reports.Add);
+        var set = CreateCounted(static _ => { }, reports.Add);
 
         set.ReportDeviceLost("context lost");
         set.ReportDeviceLost("again");
@@ -313,7 +313,7 @@ public sealed class MediaSharedGpuImageSetTests
         Assert.Throws<ArgumentException>(() => new MediaSharedGpuImageSet(
             1, default, 4, 4, MediaSharedGpuImageFormat.Bgra8Unorm, [], static (_, _) => { }));
 
-    private static MediaSharedGpuImageSet Create(
+    static MediaSharedGpuImageSet Create(
         Action<MediaSharedGpuImageFrame, bool>? releaseFrame = null,
         Action<bool>? releaseHandles = null) => new(
             3,
@@ -325,7 +325,7 @@ public sealed class MediaSharedGpuImageSetTests
             releaseFrame ?? (static (_, _) => { }),
             releaseHandles);
 
-    private static MediaSharedGpuImageSet CreateCounted(Action<int> releaseConsumedHandles, Action<string>? deviceLost = null) => new(
+    static MediaSharedGpuImageSet CreateCounted(Action<int> releaseConsumedHandles, Action<string>? deviceLost = null) => new(
         3,
         new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.HostSynchronized, MediaSharedGpuSemaphoreHandleKind.None),
         64,
@@ -353,7 +353,7 @@ public sealed class MediaSharedGpuImageConsumerHandleTests
 
         Assert.True(surface.IsValid);
         Assert.Equal(MediaNativeSurfaceTypeIds.SharedGpuImage, surface.NativeSurface.SurfaceTypeId);
-        Assert.True(MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? resolved));
+        Assert.True(MediaSharedGpuImageConsumerHandle.TryResolve(surface, out var resolved));
         Assert.Same(consumer, resolved);
 
         handle.Dispose();
@@ -371,12 +371,12 @@ public sealed class MediaSharedGpuImageConsumerHandleTests
         Assert.False(MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _));
     }
 
-    private sealed class NullSink : IMediaPresentationFrameSink
+    sealed class NullSink : IMediaPresentationFrameSink
     {
         public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride) { }
     }
 
-    private sealed class NullConsumer : IMediaSharedGpuImageConsumer
+    sealed class NullConsumer : IMediaSharedGpuImageConsumer
     {
         public MediaSharedGpuImageRequest Request { get; } = new([]);
         public void OnImagesCreated(MediaSharedGpuImageSet images) { }

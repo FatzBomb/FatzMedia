@@ -52,19 +52,19 @@ public sealed class HostEventDispatcherTests
             HostEventDispatcher.Raise(this, genericHandlers, args, "Test");
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
+        var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 1000; i++)
         {
             HostEventDispatcher.Raise(this, handlers, "Test");
             HostEventDispatcher.Raise(this, genericHandlers, args, "Test");
         }
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(5 * 1100, count);
         Assert.Equal(0, allocated);
     }
 
-    private sealed class TestEventArgs(int value) : EventArgs
+    sealed class TestEventArgs(int value) : EventArgs
     {
         public int Value { get; } = value;
     }

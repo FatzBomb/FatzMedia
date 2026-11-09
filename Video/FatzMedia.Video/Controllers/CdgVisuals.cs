@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Controllers;
 /// </summary>
 public sealed class CdgVisuals
 {
-    private readonly IMediaEngine _mediaEngine;
+    readonly IMediaEngine _mediaEngine;
 
     internal CdgVisuals(IMediaEngine mediaEngine)
     {
@@ -44,7 +44,7 @@ public sealed class CdgVisuals
 
     internal void Apply()
     {
-        ICdgEngine? cdg = _mediaEngine.Cdg;
+        var cdg = _mediaEngine.Cdg;
         if (cdg == null) return;
 
         cdg.BackgroundOpacity = EffectiveBackgroundOpacity;

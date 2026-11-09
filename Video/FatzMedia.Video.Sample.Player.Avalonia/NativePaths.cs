@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// then <c>native/</c> and <c>runtimes/&lt;rid&gt;/native</c> next to the app. Only existing
 /// directories are returned (the engine throws for a missing one).
 /// </summary>
-internal static class NativePaths
+static class NativePaths
 {
     public static IReadOnlyList<string> Resolve(PlayerStartupOptions options)
     {

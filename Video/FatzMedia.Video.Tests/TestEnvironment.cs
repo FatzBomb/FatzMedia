@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace FatzMedia.Video.Tests;
 
-internal static class TestEnvironment
+static class TestEnvironment
 {
     /// <summary>
     /// Upper bound for "this must eventually happen" waits. It only bounds latency on a loaded

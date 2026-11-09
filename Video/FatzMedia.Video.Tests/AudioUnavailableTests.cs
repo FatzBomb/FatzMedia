@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
@@ -5,7 +6,6 @@ using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -13,12 +13,12 @@ namespace FatzMedia.Video.Tests;
 [Collection("File type registry")]
 public sealed class AudioUnavailableTests : IDisposable
 {
-    private readonly string _root = Directory.CreateTempSubdirectory("fbm-no-audio-").FullName;
-    private readonly List<(HashSet<string> Set, string Extension)> _addedTypes = [];
+    readonly string _root = Directory.CreateTempSubdirectory("fbm-no-audio-").FullName;
+    readonly List<(HashSet<string> Set, string Extension)> _addedTypes = [];
 
     public void Dispose()
     {
-        foreach ((HashSet<string> set, var extension) in _addedTypes)
+        foreach ((var set, var extension) in _addedTypes)
             _ = set.Remove(extension);
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
@@ -54,19 +54,19 @@ public sealed class AudioUnavailableTests : IDisposable
     public void ServiceProvider_WithoutBass_UsesSilentEngineAndWarns(MediaPlayerMode mode)
     {
         IServiceProvider? services = null;
-        List<MediaDiagnosticInfo> diagnostics = Capture(() => services = Create(mode));
+        var diagnostics = Capture(() => services = Create(mode));
 
         _ = Assert.IsType<SilentAudioEngine>(services!.GetRequiredService<IAudioEngine>());
         Assert.Same(UnavailableMediaFileAnalyzer.Instance, services!.GetRequiredService<IMediaFileAnalyzer>());
         Assert.NotNull(services!.GetRequiredService<IMediaEngine>());
-        MediaDiagnosticInfo warning = Assert.Single(diagnostics, static info => info.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
+        var warning = Assert.Single(diagnostics, static info => info.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
         Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
     }
 
     [Fact]
     public void ServiceProvider_BackgroundWithoutBass_DoesNotWarn()
     {
-        List<MediaDiagnosticInfo> diagnostics = Capture(() => Create(MediaPlayerMode.Background));
+        var diagnostics = Capture(() => Create(MediaPlayerMode.Background));
 
         Assert.DoesNotContain(diagnostics, static info => info.Message.Contains(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
     }
@@ -78,16 +78,16 @@ public sealed class AudioUnavailableTests : IDisposable
     public void Open_MediaThatNeedsAudio_FailsWithErrorDiagnosticAndEvent(MediaPlayerMode mode, string fileName)
     {
         var path = CreateMediaFile(fileName);
-        IMediaEngine engine = Create(mode).GetRequiredService<IMediaEngine>();
+        var engine = Create(mode).GetRequiredService<IMediaEngine>();
         var errors = new List<MediaErrorInfo>();
         ((IMediaErrorSource)engine).ErrorOccurred += errors.Add;
         var opened = true;
 
-        List<MediaDiagnosticInfo> diagnostics = Capture(() => opened = engine.Open(path));
+        var diagnostics = Capture(() => opened = engine.Open(path));
 
         Assert.False(opened);
         Assert.False(engine.IsOpen);
-        MediaErrorInfo error = Assert.Single(errors);
+        var error = Assert.Single(errors);
         Assert.Equal(MediaErrorCode.NativeLibraryMissing, error.Code);
         Assert.Equal($"{MediaPlayerModePolicy.AudioUnavailableMessage}; {fileName} was not loaded.", error.Message);
         Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Error && info.Message == error.Message);
@@ -97,7 +97,7 @@ public sealed class AudioUnavailableTests : IDisposable
     [Fact]
     public void Open_NetworkAudioWithoutBass_FailsCleanly()
     {
-        IMediaEngine engine = Create(MediaPlayerMode.Full).GetRequiredService<IMediaEngine>();
+        var engine = Create(MediaPlayerMode.Full).GetRequiredService<IMediaEngine>();
         var errors = new List<MediaErrorInfo>();
         ((IMediaErrorSource)engine).ErrorOccurred += errors.Add;
 
@@ -121,13 +121,13 @@ public sealed class AudioUnavailableTests : IDisposable
         Assert.Contains(errors, static args => args.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
     }
 
-    private static IServiceProvider Create(MediaPlayerMode mode) =>
+    static IServiceProvider Create(MediaPlayerMode mode) =>
         PlayerServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode }, [], new NoAudioPlatformServices());
 
-    private string CreateMediaFile(string fileName)
+    string CreateMediaFile(string fileName)
     {
         var extension = Path.GetExtension(fileName);
-        HashSet<string> set = extension == ".mp4" ? FileTypes.Video : FileTypes.Audio;
+        var set = extension == ".mp4" ? FileTypes.Video : FileTypes.Audio;
         if (set.Add(extension))
             _addedTypes.Add((set, extension));
 
@@ -136,7 +136,7 @@ public sealed class AudioUnavailableTests : IDisposable
         return path;
     }
 
-    private static List<MediaDiagnosticInfo> Capture(Action action)
+    static List<MediaDiagnosticInfo> Capture(Action action)
     {
         var captured = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info) => captured.Enqueue(info);
@@ -155,7 +155,7 @@ public sealed class AudioUnavailableTests : IDisposable
     }
 
     /// <summary>A platform whose BASS libraries did not load: no audio, no device monitor.</summary>
-    private sealed class NoAudioPlatformServices : IPlatformServices
+    sealed class NoAudioPlatformServices : IPlatformServices
     {
         public bool IsAudioAvailable => false;
 
@@ -171,14 +171,14 @@ public sealed class AudioUnavailableTests : IDisposable
         }
     }
 
-    private sealed class FixedRefreshServices : IVideoPipelinePlatformServices
+    sealed class FixedRefreshServices : IVideoPipelinePlatformServices
     {
         public double GetPresentationRefreshIntervalSeconds() => 1.0 / 60;
     }
 
-    private sealed class NoAudioPlatformFactory : IPlatformFactory
+    sealed class NoAudioPlatformFactory : IPlatformFactory
     {
-        private readonly NullPresentationCoordinator _coordinator = new();
+        readonly NullPresentationCoordinator _coordinator = new();
 
         public string LastNativeLoadMessage => string.Empty;
 

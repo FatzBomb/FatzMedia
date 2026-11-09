@@ -21,11 +21,11 @@ namespace FatzMedia.Video.Sample.Player;
 /// </summary>
 public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
 {
-    private readonly PlayerSetController<PlayerView> _players;
-    private WindowState _restoreWindowState;
-    private WindowStyle _restoreWindowStyle;
-    private ResizeMode _restoreResizeMode;
-    private bool _restoreTopmost;
+    readonly PlayerSetController<PlayerView> _players;
+    WindowState _restoreWindowState;
+    WindowStyle _restoreWindowStyle;
+    ResizeMode _restoreResizeMode;
+    bool _restoreTopmost;
 
     public MainWindow()
     {
@@ -38,7 +38,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
             Height = 1000;
         }
 
-        foreach ((PlayerRendererRequest request, var label) in PlayerRendererSelection.Choices)
+        foreach ((var request, var label) in PlayerRendererSelection.Choices)
             _ = RendererBox.Items.Add(new ComboBoxItem { Content = label, Tag = request });
         RendererBox.SelectedIndex = Math.Max(0, PlayerRendererSelection.Choices.ToList().FindIndex(static choice => choice.Request == App.StartupOptions.RendererRequest));
         PlayersBox.SelectedIndex = App.StartupOptions.Players - 1;
@@ -46,13 +46,13 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
         Loaded += MainWindow_Loaded;
     }
 
-    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         _ = ShowRendererSummaryAsync();
         _ = _players.StartAsync();
     }
 
-    private void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // The boxes are set in the constructor: nothing is rebuilt before the first build.
         if (!_players.IsStarted)
@@ -66,11 +66,11 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
         _ = _players.RebuildAsync();
     }
 
-    private async Task ShowRendererSummaryAsync()
+    async Task ShowRendererSummaryAsync()
     {
-        Task<PlayerRendererSelection> pending = App.RendererSelection;
+        var pending = App.RendererSelection;
         InfoText.Text = "resolving the renderer...";
-        PlayerRendererSelection selection = await pending;
+        var selection = await pending;
         // A later choice owns the text.
         if (ReferenceEquals(pending, App.RendererSelection))
             InfoText.Text = selection.Summary;
@@ -86,7 +86,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
 
     void IPlayerSetHost<PlayerView>.Layout(IReadOnlyList<PlayerView> slots, PlayerView? fullScreen)
     {
-        foreach (PlayerView player in slots)
+        foreach (var player in slots)
             player.Visibility = fullScreen is null || ReferenceEquals(player, fullScreen) ? Visibility.Visible : Visibility.Collapsed;
         PlayersGrid.Columns = fullScreen is not null || slots.Count == 1 ? 1 : 2;
         Toolbar.Visibility = fullScreen is null ? Visibility.Visible : Visibility.Collapsed;
@@ -120,7 +120,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
 
     void IPlayerSetHost<PlayerView>.FallBackRenderer()
     {
-        PlayerRendererRequest current = RendererBox.SelectedItem is ComboBoxItem { Tag: PlayerRendererRequest selected } ? selected : App.StartupOptions.RendererRequest;
+        var current = RendererBox.SelectedItem is ComboBoxItem { Tag: PlayerRendererRequest selected } ? selected : App.StartupOptions.RendererRequest;
         var choices = PlayerRendererSelection.Choices.ToList();
         if (PlayerRendererRules.NextAvailableAfterDeviceLoss(current, windows: true, request => choices.Exists(choice => choice.Request == request)) is not { } next)
         {
@@ -141,13 +141,13 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
 
     // F11 before any control sees it (a focused control could handle it and the window would never see
     // it: ENG-044); Escape after, so an open drop-down or text box handles its own Escape first.
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F11 && _players.HandleFullScreenKey())
             e.Handled = true;
     }
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && _players.HandleEscapeKey())
             e.Handled = true;

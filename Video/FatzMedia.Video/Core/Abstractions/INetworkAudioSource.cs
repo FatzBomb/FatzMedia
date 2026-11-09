@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// <summary>
 /// Audio engine support for direct HTTP/HTTPS sources (Stage 014A).
 /// </summary>
-internal interface INetworkAudioSource
+interface INetworkAudioSource
 {
     /// <summary>
     /// Connects to <paramref name="url"/> with the configured bounded retry policy. Blocks the
@@ -24,7 +24,7 @@ internal interface INetworkAudioSource
 /// <summary>
 /// Reports the capability row of the currently open source.
 /// </summary>
-internal interface IMediaSourceCapabilityProvider
+interface IMediaSourceCapabilityProvider
 {
     MediaSourceCapabilities? CurrentCapabilities { get; }
 }
@@ -34,7 +34,7 @@ internal interface IMediaSourceCapabilityProvider
 /// an open in progress, buffering changes (network video, Audio-mode network soundtracks, https
 /// and HLS audio) and the in-stream titles of network audio.
 /// </summary>
-internal interface INetworkPlayer
+interface INetworkPlayer
 {
     /// <summary>
     /// Cancels the FFmpeg network open in progress, if any: the connect attempt and any retry delay

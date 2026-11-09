@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Wpf;
 /// </summary>
 public sealed class PresentationScreen
 {
-    private PresentationScreen(IntPtr handle, string deviceName, Int32Rect bounds, Int32Rect workingArea, bool isPrimary, double scaling)
+    PresentationScreen(IntPtr handle, string deviceName, Int32Rect bounds, Int32Rect workingArea, bool isPrimary, double scaling)
     {
         Handle = handle;
         DeviceName = deviceName;
@@ -43,7 +43,7 @@ public sealed class PresentationScreen
         get
         {
             var handles = new List<IntPtr>();
-            GCHandle list = GCHandle.Alloc(handles);
+            var list = GCHandle.Alloc(handles);
             try
             {
                 unsafe
@@ -57,7 +57,7 @@ public sealed class PresentationScreen
             }
 
             var screens = new List<PresentationScreen>(handles.Count);
-            foreach (IntPtr handle in handles)
+            foreach (var handle in handles)
             {
                 if (FromHandle(handle) is { } screen)
                     screens.Add(screen);
@@ -93,7 +93,7 @@ public sealed class PresentationScreen
     internal static (int X, int Y) CenteredPosition(Int32Rect area, int width, int height) =>
         PresentationPlacement.Center(area.X, area.Y, area.Width, area.Height, width, height);
 
-    private static unsafe PresentationScreen? FromHandle(IntPtr monitor)
+    static unsafe PresentationScreen? FromHandle(IntPtr monitor)
     {
         if (monitor == IntPtr.Zero)
             return null;
@@ -114,11 +114,11 @@ public sealed class PresentationScreen
             scaling);
     }
 
-    private static Int32Rect ToRect(NativeMethods.RECT rect) =>
+    static Int32Rect ToRect(NativeMethods.RECT rect) =>
         new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
 
     [UnmanagedCallersOnly]
-    private static unsafe int OnMonitor(IntPtr monitor, IntPtr hdc, NativeMethods.RECT* clip, IntPtr data)
+    static unsafe int OnMonitor(IntPtr monitor, IntPtr hdc, NativeMethods.RECT* clip, IntPtr data)
     {
         if (GCHandle.FromIntPtr(data).Target is List<IntPtr> handles)
             handles.Add(monitor);

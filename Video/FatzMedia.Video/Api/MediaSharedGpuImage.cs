@@ -102,8 +102,8 @@ public readonly record struct MediaSharedGpuImageSelection(
 /// </summary>
 public sealed class MediaSharedGpuImageRequest
 {
-    private readonly ReadOnlyCollection<MediaSharedGpuImageCapability> _imageCapabilities;
-    private readonly ReadOnlyCollection<MediaSharedGpuSemaphoreHandleKind> _semaphoreHandleKinds;
+    readonly ReadOnlyCollection<MediaSharedGpuImageCapability> _imageCapabilities;
+    readonly ReadOnlyCollection<MediaSharedGpuSemaphoreHandleKind> _semaphoreHandleKinds;
 
     public MediaSharedGpuImageRequest(
         IEnumerable<MediaSharedGpuImageCapability> imageCapabilities,
@@ -149,19 +149,19 @@ public sealed class MediaSharedGpuImageRequest
         ArgumentNullException.ThrowIfNull(producerCapabilities);
         ArgumentNullException.ThrowIfNull(producerSemaphoreHandleKinds);
         MediaSharedGpuImageCapability[] producer = [.. producerCapabilities];
-        MediaSharedGpuSemaphoreHandleKind semaphoreKind = _semaphoreHandleKinds
+        var semaphoreKind = _semaphoreHandleKinds
             .FirstOrDefault(kind => producerSemaphoreHandleKinds.Contains(kind));
 
         var handleMatched = false;
-        foreach (MediaSharedGpuImageCapability wanted in _imageCapabilities)
+        foreach (var wanted in _imageCapabilities)
         {
-            foreach (MediaSharedGpuImageCapability offered in producer)
+            foreach (var offered in producer)
             {
                 if (offered.HandleKind != wanted.HandleKind)
                     continue;
 
                 handleMatched = true;
-                MediaSharedGpuImageSyncKinds common = wanted.SyncKinds & offered.SyncKinds;
+                var common = wanted.SyncKinds & offered.SyncKinds;
                 if ((common & MediaSharedGpuImageSyncKinds.KeyedMutex) != 0)
                     selection = new(wanted.HandleKind, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None);
                 else if ((common & MediaSharedGpuImageSyncKinds.Semaphores) != 0 && semaphoreKind != MediaSharedGpuSemaphoreHandleKind.None)
@@ -211,13 +211,13 @@ public sealed class MediaSharedGpuImageRequest
 
     public override string ToString() => $"{Describe(_imageCapabilities)}; semaphores {DescribeKinds(_semaphoreHandleKinds)}";
 
-    private static string Describe(IEnumerable<MediaSharedGpuImageCapability> capabilities)
+    static string Describe(IEnumerable<MediaSharedGpuImageCapability> capabilities)
     {
         var text = string.Join(", ", capabilities.Select(static c => $"{c.HandleKind} [{c.SyncKinds}]"));
         return text.Length == 0 ? "none" : text;
     }
 
-    private static string DescribeKinds(IEnumerable<MediaSharedGpuSemaphoreHandleKind> kinds)
+    static string DescribeKinds(IEnumerable<MediaSharedGpuSemaphoreHandleKind> kinds)
     {
         var text = string.Join(", ", kinds);
         return text.Length == 0 ? "none" : text;
@@ -262,15 +262,15 @@ public readonly record struct MediaSharedGpuImageFrame(
 /// </remarks>
 public sealed class MediaSharedGpuImageSet
 {
-    private readonly ReadOnlyCollection<MediaSharedGpuImageBuffer> _buffers;
-    private readonly Action<MediaSharedGpuImageFrame, bool> _releaseFrame;
-    private readonly Action<int>? _releaseHandles;
-    private readonly Action<string>? _deviceLost;
-    private int _outstanding = 2;
-    private int _consumedBuffers;
-    private int _importCompleted;
-    private int _retired;
-    private int _deviceLostReported;
+    readonly ReadOnlyCollection<MediaSharedGpuImageBuffer> _buffers;
+    readonly Action<MediaSharedGpuImageFrame, bool> _releaseFrame;
+    readonly Action<int>? _releaseHandles;
+    readonly Action<string>? _deviceLost;
+    int _outstanding = 2;
+    int _consumedBuffers;
+    int _importCompleted;
+    int _retired;
+    int _deviceLostReported;
 
     /// <param name="generation">Non-decreasing set number; frames carry it.</param>
     /// <param name="selection">The handle kind and synchronization of every image.</param>
@@ -425,7 +425,7 @@ public sealed class MediaSharedGpuImageSet
 
     public override string ToString() => $"#{Generation} {Width}x{Height} {Format} x{_buffers.Count}: {Selection}";
 
-    private void Settle()
+    void Settle()
     {
         if (Interlocked.Decrement(ref _outstanding) == 0)
             _releaseHandles?.Invoke(ConsumedBufferCount);

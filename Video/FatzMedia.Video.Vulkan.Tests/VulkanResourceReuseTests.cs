@@ -10,10 +10,10 @@ namespace FatzMedia.Video.Vulkan.Tests;
 /// </summary>
 public sealed class VulkanResourceReuseTests
 {
-    private const MemoryPropertyFlags Visible = MemoryPropertyFlags.HostVisibleBit;
-    private const MemoryPropertyFlags Coherent = MemoryPropertyFlags.HostCoherentBit;
-    private const MemoryPropertyFlags Cached = MemoryPropertyFlags.HostCachedBit;
-    private const MemoryPropertyFlags Local = MemoryPropertyFlags.DeviceLocalBit;
+    const MemoryPropertyFlags Visible = MemoryPropertyFlags.HostVisibleBit;
+    const MemoryPropertyFlags Coherent = MemoryPropertyFlags.HostCoherentBit;
+    const MemoryPropertyFlags Cached = MemoryPropertyFlags.HostCachedBit;
+    const MemoryPropertyFlags Local = MemoryPropertyFlags.DeviceLocalBit;
 
     [Fact]
     public void SelectMemoryType_PrefersCachedCoherentThenCachedThenCoherentForReadback()
@@ -35,11 +35,11 @@ public sealed class VulkanResourceReuseTests
     [Fact]
     public void Readback_UsesHostCachedMemoryOnLavapipe()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699), 4, 4));
+        var pixels = compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699), 4, 4));
 
         Assert.Equal([0x99, 0x66, 0x33, 0xFF], pixels[..4].ToArray());
         // lavapipe's only memory type is device-local, host-visible, coherent and cached.
@@ -50,14 +50,14 @@ public sealed class VulkanResourceReuseTests
     [Fact]
     public void UnchangedBackgroundRevision_IsUploadedOnceForEveryTargetSize()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
-        using VulkanOffscreenCompositor? reference = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var reference = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null || reference is null)
             return;
 
-        MediaCompositionFrame frame = BackgroundFrame(seed: 1, revision: 7);
+        var frame = BackgroundFrame(seed: 1, revision: 7);
         (int Width, int Height)[] targets = [(64, 36), (32, 32), (64, 36)];
-        foreach ((int width, int height) in targets)
+        foreach ((var width, var height) in targets)
             Assert.Equal(RenderFresh(reference, frame, width, height), compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height)).ToArray());
 
         Assert.Equal(1, compositor.BackgroundUploadCount);
@@ -68,7 +68,7 @@ public sealed class VulkanResourceReuseTests
         Assert.Equal(1, compositor.BackgroundUploadCount);
 
         // A new revision (the next video frame) is uploaded, once.
-        MediaCompositionFrame next = BackgroundFrame(seed: 2, revision: 8);
+        var next = BackgroundFrame(seed: 2, revision: 8);
         var nextPixels = compositor.Render(VulkanCompositionPlanner.Plan(next, 64, 36)).ToArray();
         Assert.Equal(RenderFresh(reference, next, 64, 36), nextPixels);
         Assert.Equal(nextPixels, compositor.Render(VulkanCompositionPlanner.Plan(next, 64, 36)).ToArray());
@@ -78,8 +78,8 @@ public sealed class VulkanResourceReuseTests
     [Fact]
     public void Background_IsUploadedAgainForANewBufferSizeOrUnknownRevision()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
-        using VulkanOffscreenCompositor? reference = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var reference = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null || reference is null)
             return;
 
@@ -87,17 +87,17 @@ public sealed class VulkanResourceReuseTests
         Assert.Equal(1, compositor.BackgroundUploadCount);
 
         // Same revision, other pixel buffer: never trusted to hold the same pixels.
-        MediaCompositionFrame otherBuffer = BackgroundFrame(seed: 4, revision: 3);
+        var otherBuffer = BackgroundFrame(seed: 4, revision: 3);
         Assert.Equal(RenderFresh(reference, otherBuffer, 32, 32), compositor.Render(VulkanCompositionPlanner.Plan(otherBuffer, 32, 32)).ToArray());
         Assert.Equal(2, compositor.BackgroundUploadCount);
 
         // Same revision, other size: the source image is re-created and filled again.
-        MediaCompositionFrame larger = BackgroundFrame(seed: 4, revision: 3, width: 24, height: 12);
+        var larger = BackgroundFrame(seed: 4, revision: 3, width: 24, height: 12);
         Assert.Equal(RenderFresh(reference, larger, 32, 32), compositor.Render(VulkanCompositionPlanner.Plan(larger, 32, 32)).ToArray());
         Assert.Equal(3, compositor.BackgroundUploadCount);
 
         // An unknown revision always uploads.
-        MediaCompositionFrame unknown = BackgroundFrame(seed: 5, revision: -1);
+        var unknown = BackgroundFrame(seed: 5, revision: -1);
         _ = compositor.Render(VulkanCompositionPlanner.Plan(unknown, 32, 32));
         _ = compositor.Render(VulkanCompositionPlanner.Plan(unknown, 32, 32));
         Assert.Equal(5, compositor.BackgroundUploadCount);
@@ -133,16 +133,16 @@ public sealed class VulkanResourceReuseTests
     {
         // ENG-039 P5-10: buffers stay mapped, so neither a repeated frame nor a new background
         // upload maps memory or allocates (measured 0 bytes per frame on lavapipe).
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        MediaCompositionFrame frame = BackgroundFrame(seed: 3, revision: 1) with { WashArgb = 0x40FF0000, CdgOverlay = CdgFixtures.Snapshot() };
+        var frame = BackgroundFrame(seed: 3, revision: 1) with { WashArgb = 0x40FF0000, CdgOverlay = CdgFixtures.Snapshot() };
         var plans = new VulkanFramePlan[30];
         for (var i = 0; i < plans.Length; i++)
             plans[i] = VulkanCompositionPlanner.Plan(frame with { BackgroundRevision = 10 + (i / 2) }, 64, 36);
 
-        byte[] expected = compositor.Render(plans[^1]).ToArray();
+        var expected = compositor.Render(plans[^1]).ToArray();
         for (var i = 0; i < 4; i++)
             _ = compositor.Render(plans[i]);
         var before = GC.GetAllocatedBytesForCurrentThread();
@@ -154,10 +154,10 @@ public sealed class VulkanResourceReuseTests
         Assert.Equal(expected, compositor.Render(plans[^1]).ToArray());
     }
 
-    private static byte[] RenderFresh(VulkanOffscreenCompositor reference, MediaCompositionFrame frame, int width, int height) =>
+    static byte[] RenderFresh(VulkanOffscreenCompositor reference, MediaCompositionFrame frame, int width, int height) =>
         reference.Render(VulkanCompositionPlanner.Plan(frame with { BackgroundRevision = -1 }, width, height)).ToArray();
 
-    private static MediaCompositionFrame BackgroundFrame(int seed, long revision, int width = 16, int height = 9)
+    static MediaCompositionFrame BackgroundFrame(int seed, long revision, int width = 16, int height = 9)
     {
         var stride = width * 4;
         var pixels = new byte[stride * height];
@@ -184,7 +184,7 @@ public sealed class VulkanResourceReuseTests
         };
     }
 
-    private sealed class CountingFrameSink : IMediaPresentationFrameSink
+    sealed class CountingFrameSink : IMediaPresentationFrameSink
     {
         public int Frames { get; private set; }
 

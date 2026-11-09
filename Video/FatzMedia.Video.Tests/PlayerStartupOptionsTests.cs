@@ -10,7 +10,7 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void Parse_NoArguments_GivesTheDefaults()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse([]);
+        var options = PlayerStartupOptions.Parse([]);
 
         Assert.Null(options.MediaPath);
         Assert.Null(options.NetworkUri);
@@ -27,7 +27,7 @@ public sealed class PlayerStartupOptionsTests
     [InlineData("http://example.com/a.mp4")]
     public void Parse_APositionalUrlIsTheStartupStream(string url)
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["--players=2", url, "second.mp3"]);
+        var options = PlayerStartupOptions.Parse(["--players=2", url, "second.mp3"]);
 
         Assert.Null(options.MediaPath);
         Assert.Equal(new Uri(url), options.NetworkUri);
@@ -36,7 +36,7 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void Parse_AUrlFlagReplacesAPositionalFile()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/live.mp3"]);
+        var options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/live.mp3"]);
 
         Assert.Null(options.MediaPath);
         Assert.Equal(new Uri("https://example.com/live.mp3"), options.NetworkUri);
@@ -47,7 +47,7 @@ public sealed class PlayerStartupOptionsTests
     [InlineData("--url=ftp://example.com/a.mp3")]
     public void Parse_OnlyHttpAndHttpsUrlsAreStreams(string argument)
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse([argument, "song.mp3"]);
+        var options = PlayerStartupOptions.Parse([argument, "song.mp3"]);
 
         Assert.Null(options.NetworkUri);
         Assert.Equal("song.mp3", options.MediaPath);
@@ -56,7 +56,7 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void Parse_UrlFlagWinsOverAPositionalUrl()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["https://example.com/a.m3u8", "--url=https://example.com/b.m3u8"]);
+        var options = PlayerStartupOptions.Parse(["https://example.com/a.m3u8", "--url=https://example.com/b.m3u8"]);
 
         Assert.Null(options.MediaPath);
         Assert.Equal(new Uri("https://example.com/b.m3u8"), options.NetworkUri);
@@ -77,9 +77,9 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void WithoutStartupMedia_KeepsTheSettingsForAnotherPlayer()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/a.m3u8", "--prepare-next=next.mp3", "--mode=audio", "--auto-next"]);
+        var options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/a.m3u8", "--prepare-next=next.mp3", "--mode=audio", "--auto-next"]);
 
-        PlayerStartupOptions other = options.WithoutStartupMedia();
+        var other = options.WithoutStartupMedia();
 
         Assert.Null(other.MediaPath);
         Assert.Null(other.NetworkUri);
@@ -94,9 +94,9 @@ public sealed class PlayerStartupOptionsTests
     [InlineData(1, false, false)]
     public void ForBuild_GivesTheStartupMediaToPlayerOneOfTheFirstBuildOnly(int index, bool atStartup, bool hasMedia)
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--prepare-next=next.mp3", "--mode=audio"]);
+        var options = PlayerStartupOptions.Parse(["song.mp3", "--prepare-next=next.mp3", "--mode=audio"]);
 
-        PlayerStartupOptions player = options.ForBuild(index, atStartup);
+        var player = options.ForBuild(index, atStartup);
 
         Assert.Equal(hasMedia ? "song.mp3" : null, player.MediaPath);
         Assert.Equal(hasMedia ? "next.mp3" : null, player.PrepareNextPath);
@@ -118,7 +118,7 @@ public sealed class PlayerStartupOptionsTests
         var second = Directory.CreateTempSubdirectory("fatzbomb-native-b").FullName;
         try
         {
-            IReadOnlyList<string> paths = PlayerNativePaths.Combine(
+            var paths = PlayerNativePaths.Combine(
                 [second, Path.Combine(first, "missing")],
                 [first, second + Path.DirectorySeparatorChar, ""]);
 
@@ -134,7 +134,7 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void Parse_ReadsEverySharedFlag()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(
+        var options = PlayerStartupOptions.Parse(
         [
             "--RESET-PITCH-ON-LOAD",
             "--reset-tempo-on-load",
@@ -181,7 +181,7 @@ public sealed class PlayerStartupOptionsTests
     [Fact]
     public void Parse_RendererLastWinsAndOtherValuesFirstWins()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(
+        var options = PlayerStartupOptions.Parse(
         [
             "--renderer=gpu",
             "--renderer=\"warp\"",

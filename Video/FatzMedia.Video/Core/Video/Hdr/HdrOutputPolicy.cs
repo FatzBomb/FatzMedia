@@ -152,8 +152,8 @@ public static class HdrOutputPolicy
         (ushort)Math.Round(Math.Clamp(peakNits, 0, 10000)),
         (ushort)Math.Round(Math.Clamp(frameAverageNits, 0, 10000)));
 
-    private static ushort Chromaticity(double value) => (ushort)Math.Round(value * 50000);
+    static ushort Chromaticity(double value) => (ushort)Math.Round(value * 50000);
 
-    private static bool IsUsable(double nits, double minimum, double maximum) =>
+    static bool IsUsable(double nits, double minimum, double maximum) =>
         double.IsFinite(nits) && nits >= minimum && nits <= maximum;
 }

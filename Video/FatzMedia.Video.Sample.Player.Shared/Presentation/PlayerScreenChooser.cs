@@ -8,8 +8,8 @@ public readonly record struct PlayerScreenBounds(int X, int Y, int Width, int He
     /// <summary>Gets the area <paramref name="other"/> shares with this rectangle (0 when they do not meet).</summary>
     public long OverlapArea(PlayerScreenBounds other)
     {
-        long width = Math.Min(X + (long)Width, other.X + (long)other.Width) - Math.Max(X, other.X);
-        long height = Math.Min(Y + (long)Height, other.Y + (long)other.Height) - Math.Max(Y, other.Y);
+        var width = Math.Min(X + (long)Width, other.X + (long)other.Width) - Math.Max(X, other.X);
+        var height = Math.Min(Y + (long)Height, other.Y + (long)other.Height) - Math.Max(Y, other.Y);
         return width > 0 && height > 0 ? width * height : 0;
     }
 }
@@ -102,6 +102,6 @@ public static class PlayerScreenChooser
             : screen.Name;
     }
 
-    private static PlayerScreenChoice FullScreenOn(IReadOnlyList<PlayerScreen> screens, int index) =>
+    static PlayerScreenChoice FullScreenOn(IReadOnlyList<PlayerScreen> screens, int index) =>
         new(index, FullScreen: true, $"full screen on screen {index + 1} of {screens.Count} ({Describe(screens[index])})");
 }

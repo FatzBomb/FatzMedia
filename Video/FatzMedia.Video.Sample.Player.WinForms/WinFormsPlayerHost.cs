@@ -1,8 +1,8 @@
 using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Sample.Player.Configuration;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
-using FatzMedia.Video.Sample.Player.Configuration;
 
 namespace FatzMedia.Video.Sample.Player.WinForms;
 
@@ -10,10 +10,10 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// The WinForms UI thread: the <see cref="WindowsFormsSynchronizationContext"/> of the thread that
 /// creates the dispatcher.
 /// </summary>
-internal sealed class WinFormsPlayerDispatcher : IPlayerDispatcher
+sealed class WinFormsPlayerDispatcher : IPlayerDispatcher
 {
-    private readonly SynchronizationContext _context;
-    private readonly Thread _uiThread = Thread.CurrentThread;
+    readonly SynchronizationContext _context;
+    readonly Thread _uiThread = Thread.CurrentThread;
 
     /// <summary>Call on the UI thread (normally from the main form's constructor).</summary>
     public WinFormsPlayerDispatcher() =>
@@ -25,10 +25,10 @@ internal sealed class WinFormsPlayerDispatcher : IPlayerDispatcher
 
     public IPlayerTimer CreateTimer(TimeSpan interval, Action tick) => new Timer(interval, tick);
 
-    private sealed class Timer : IPlayerTimer
+    sealed class Timer : IPlayerTimer
     {
-        private readonly System.Windows.Forms.Timer _timer;
-        private readonly Action _tick;
+        readonly System.Windows.Forms.Timer _timer;
+        readonly Action _tick;
 
         public Timer(TimeSpan interval, Action tick)
         {
@@ -48,12 +48,12 @@ internal sealed class WinFormsPlayerDispatcher : IPlayerDispatcher
             _timer.Dispose();
         }
 
-        private void OnTick(object? sender, EventArgs e) => _tick();
+        void OnTick(object? sender, EventArgs e) => _tick();
     }
 }
 
 /// <summary>The WinForms clipboard and open-file dialog, owned by the main form.</summary>
-internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard, IPlayerFilePicker
+sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard, IPlayerFilePicker
 {
     public Task SetTextAsync(string text)
     {
@@ -75,10 +75,10 @@ internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard
 /// player, and the adapter's <see cref="FatzMedia.Video.WinForms.Player"/>. A frame-sink renderer
 /// (software, Vulkan) is shown through the surface's frame-sink path (Stage 046A).
 /// </summary>
-internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayerEngineFactory
+sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayerEngineFactory
 {
-    private IPlatformFactory? _platformFactory;
-    private PlayerRendererSelection? _selection;
+    IPlatformFactory? _platformFactory;
+    PlayerRendererSelection? _selection;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = ResolveNativePaths(options);
 
@@ -86,7 +86,7 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
 
     public async Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        PlayerRendererSelection selection = await Program.RendererSelection.ConfigureAwait(false);
+        var selection = await Program.RendererSelection.ConfigureAwait(false);
         _selection = selection;
         // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
         return selection.ToRendererInfo(
@@ -103,9 +103,9 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
 
     public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
-        PlayerRendererSelection selection = _selection
+        var selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
-        IPlatformFactory platform = CreatePlatformFactory(selection);
+        var platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
         if (options.AudioEngine == PlayerAudioEngine.FatzAudio)

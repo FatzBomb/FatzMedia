@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Graphics.Rendering;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Controllers;
 
@@ -29,9 +29,9 @@ public sealed partial class MediaPresentationCoordinator
     /// A surface call presents on its own thread, unless a renderer call has been running this long:
     /// then the present is left to the thread pool so the UI thread does not wait behind it.
     /// </summary>
-    private static readonly TimeSpan SurfacePresentDeferThreshold = TimeSpan.FromMilliseconds(250);
+    static readonly TimeSpan SurfacePresentDeferThreshold = TimeSpan.FromMilliseconds(250);
 
-    private static readonly TimeSpan[] DefaultRecoveryBackoff =
+    static readonly TimeSpan[] DefaultRecoveryBackoff =
     [
         TimeSpan.FromMilliseconds(500),
         TimeSpan.FromSeconds(1),
@@ -40,25 +40,25 @@ public sealed partial class MediaPresentationCoordinator
         TimeSpan.FromSeconds(8),
     ];
 
-    private const string DeviceRecoveryDiagnosticCategory = "DeviceRecovery";
-    private const string PresentationDiagnosticCategory = "Presentation";
+    const string DeviceRecoveryDiagnosticCategory = "DeviceRecovery";
+    const string PresentationDiagnosticCategory = "Presentation";
 
-    private readonly TimeProvider _timeProvider;
+    readonly TimeProvider _timeProvider;
     // Calls on the presentation threads (presents, under _presentGate) and on the surface threads
     // (attach, resize, initialize, under _lock), each timed for the stall detector.
-    private readonly RendererCallTracker _renderCalls = new();
-    private readonly RendererCallTracker _surfaceCalls = new();
+    readonly RendererCallTracker _renderCalls = new();
+    readonly RendererCallTracker _surfaceCalls = new();
     // A refused native video frame, reported once per episode like a refused composition.
-    private readonly RendererDiagnosticLatch _nativePresentFailure = new();
+    readonly RendererDiagnosticLatch _nativePresentFailure = new();
     // Created under _lock once the renderer first initialized; disposed by Dispose.
-    private ITimer? _deviceHealthTimer;
-    private int _deviceHealthTickRunning;
-    private long _lastDeviceProbeKickPlusOne;
+    ITimer? _deviceHealthTimer;
+    int _deviceHealthTickRunning;
+    long _lastDeviceProbeKickPlusOne;
     // Set when a recovery gave up (timestamp + 1); cleared by a successful one.
-    private long _recoveryFailedAtPlusOne;
-    private int _deferredSurfacePresentQueued;
+    long _recoveryFailedAtPlusOne;
+    int _deferredSurfacePresentQueued;
     // Set by a failed attach: the next tick probes even with no surface attached (ENG-039).
-    private int _probeAfterFailedAttach;
+    int _probeAfterFailedAttach;
 
     /// <summary>
     /// Raised on the recovery thread after the renderer's device was lost and recovered: frames
@@ -77,10 +77,10 @@ public sealed partial class MediaPresentationCoordinator
     /// <summary>Gets whether a device recovery is running (tests).</summary>
     internal bool IsRecoveryRunning => Volatile.Read(ref _recoveryInProgress) != 0;
 
-    private bool HasAttachedSurfaces => Volatile.Read(ref _surfaceSnapshot).Length > 0;
+    bool HasAttachedSurfaces => Volatile.Read(ref _surfaceSnapshot).Length > 0;
 
     /// <summary>A recovery runs, or gave up and waits to retry: hardware frames refer to the lost device.</summary>
-    private bool IsRecoveringDevice =>
+    bool IsRecoveringDevice =>
         Volatile.Read(ref _recoveryInProgress) != 0 || Volatile.Read(ref _recoveryFailedAtPlusOne) != 0;
 
     /// <summary>
@@ -90,12 +90,12 @@ public sealed partial class MediaPresentationCoordinator
     /// </summary>
     internal void RequestDeviceLostRecovery(string reason) => StartDeviceLostRecovery(reason, isRetry: false);
 
-    private void StartDeviceLostRecovery(string reason, bool isRetry)
+    void StartDeviceLostRecovery(string reason, bool isRetry)
     {
         if (_disposed || Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0)
             return;
 
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         if (isRetry)
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, DeviceRecoveryDiagnosticCategory, $"Retrying GPU device recovery ({reason}).");
         else
@@ -112,9 +112,9 @@ public sealed partial class MediaPresentationCoordinator
         }
     }
 
-    private void RunDeviceLostRecovery(CancellationToken cancellationToken)
+    void RunDeviceLostRecovery(CancellationToken cancellationToken)
     {
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         var recovered = false;
         var reportFailure = false;
         var wasRenderingActive = _isRenderingActive;
@@ -125,7 +125,7 @@ public sealed partial class MediaPresentationCoordinator
 
             StopRendering();
 
-            TimeSpan[] backoff = RecoveryBackoff;
+            var backoff = RecoveryBackoff;
             var attempts = backoff.Length + 1;
             var made = 0;
             for (var attempt = 1; attempt <= attempts && !cancellationToken.IsCancellationRequested; attempt++)
@@ -222,7 +222,7 @@ public sealed partial class MediaPresentationCoordinator
     }
 
     /// <summary>Starts the health timer once the renderer first initialized. Under _lock.</summary>
-    private void ArmDeviceHealthNoLock()
+    void ArmDeviceHealthNoLock()
     {
         if (_deviceHealthTimer is not null || _disposed)
             return;
@@ -244,7 +244,7 @@ public sealed partial class MediaPresentationCoordinator
         }
     }
 
-    private void StopDeviceHealth()
+    void StopDeviceHealth()
     {
         ITimer? timer;
         lock (_lock)
@@ -262,9 +262,9 @@ public sealed partial class MediaPresentationCoordinator
     /// attach: with no surface left nothing else would find the loss). The probe runs on the
     /// timer's thread, not on the caller's.
     /// </summary>
-    private void KickDeviceProbe(bool attachFailed = false)
+    void KickDeviceProbe(bool attachFailed = false)
     {
-        ITimer? timer = Volatile.Read(ref _deviceHealthTimer);
+        var timer = Volatile.Read(ref _deviceHealthTimer);
         if (timer is null || _disposed)
             return;
 
@@ -289,7 +289,7 @@ public sealed partial class MediaPresentationCoordinator
         }
     }
 
-    private void OnDeviceHealthTick()
+    void OnDeviceHealthTick()
     {
         if (Interlocked.Exchange(ref _deviceHealthTickRunning, 1) != 0)
             return;
@@ -299,7 +299,7 @@ public sealed partial class MediaPresentationCoordinator
             if (_disposed)
                 return;
 
-            using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+            using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
             var stalled = CheckForStall(_renderCalls) | CheckForStall(_surfaceCalls);
             if (Volatile.Read(ref _recoveryInProgress) != 0)
                 return;
@@ -336,7 +336,7 @@ public sealed partial class MediaPresentationCoordinator
         }
     }
 
-    private bool TryProbeDeviceLost(out string reason)
+    bool TryProbeDeviceLost(out string reason)
     {
         reason = string.Empty;
         try
@@ -355,13 +355,13 @@ public sealed partial class MediaPresentationCoordinator
     }
 
     /// <summary>Reports a renderer call that has not returned for 3 s, once per call; true while one is that late.</summary>
-    private bool CheckForStall(RendererCallTracker tracker)
+    bool CheckForStall(RendererCallTracker tracker)
     {
         var startedPlusOne = Volatile.Read(ref tracker.StartedPlusOne);
         if (startedPlusOne == 0)
             return false;
 
-        TimeSpan elapsed = _timeProvider.GetElapsedTime(startedPlusOne - 1);
+        var elapsed = _timeProvider.GetElapsedTime(startedPlusOne - 1);
         if (elapsed < RendererStallThreshold)
             return false;
 
@@ -376,14 +376,14 @@ public sealed partial class MediaPresentationCoordinator
         return true;
     }
 
-    private bool IsRendererCallLate(RendererCallTracker tracker, TimeSpan threshold)
+    bool IsRendererCallLate(RendererCallTracker tracker, TimeSpan threshold)
     {
         var startedPlusOne = Volatile.Read(ref tracker.StartedPlusOne);
         return startedPlusOne != 0 && _timeProvider.GetElapsedTime(startedPlusOne - 1) >= threshold;
     }
 
     /// <summary>Times one renderer call for the stall detector; a nested call is timed as part of the outer one.</summary>
-    private RendererCallScope BeginRendererCall(RendererCallTracker tracker, string operation)
+    RendererCallScope BeginRendererCall(RendererCallTracker tracker, string operation)
     {
         if (Volatile.Read(ref tracker.StartedPlusOne) != 0)
             return default;
@@ -393,14 +393,14 @@ public sealed partial class MediaPresentationCoordinator
         return new RendererCallScope(this, tracker);
     }
 
-    private void EndRendererCall(RendererCallTracker tracker)
+    void EndRendererCall(RendererCallTracker tracker)
     {
         var startedPlusOne = Interlocked.Exchange(ref tracker.StartedPlusOne, 0);
         if (startedPlusOne == 0 || Interlocked.Exchange(ref tracker.ReportedPlusOne, 0) != startedPlusOne)
             return;
 
         // It was reported as blocked: say that it came back.
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Info,
             PresentationDiagnosticCategory,
@@ -412,7 +412,7 @@ public sealed partial class MediaPresentationCoordinator
     /// been running for a while (a present stuck after a device loss) the present is left to the
     /// thread pool, so the UI thread returns instead of waiting behind it (ENG-039).
     /// </summary>
-    private void PresentAfterSurfaceChange(string reason)
+    void PresentAfterSurfaceChange(string reason)
     {
         if (!IsRendererCallLate(_renderCalls, SurfacePresentDeferThreshold))
         {
@@ -428,7 +428,7 @@ public sealed partial class MediaPresentationCoordinator
         _ = ThreadPool.QueueUserWorkItem(
             static state =>
             {
-                (MediaPresentationCoordinator coordinator, string reason) = state;
+                (var coordinator, var reason) = state;
                 do
                 {
                     Volatile.Write(ref coordinator._deferredSurfacePresentQueued, 1);
@@ -448,11 +448,14 @@ public sealed partial class MediaPresentationCoordinator
             preferLocal: false);
     }
 
+    /// <param name="Width">The background frame's width in pixels.</param>
+    /// <param name="Height">The background frame's height in pixels.</param>
+    /// <param name="StretchMode">How the background is stretched to the surface.</param>
     /// <param name="Revision">The background revision the frame was handed over with.</param>
-    private readonly record struct GpuBackground(int Width, int Height, MediaCompositionStretchMode StretchMode, long Revision);
+    readonly record struct GpuBackground(int Width, int Height, MediaCompositionStretchMode StretchMode, long Revision);
 
     /// <summary>The renderer call in progress on one kind of thread (presents, or surface calls).</summary>
-    private sealed class RendererCallTracker
+    sealed class RendererCallTracker
     {
         // Timestamp + 1 of the call in progress, or 0.
         public long StartedPlusOne;
@@ -461,7 +464,7 @@ public sealed partial class MediaPresentationCoordinator
         public string? Operation;
     }
 
-    private readonly struct RendererCallScope(MediaPresentationCoordinator? coordinator, RendererCallTracker? tracker) : IDisposable
+    readonly struct RendererCallScope(MediaPresentationCoordinator? coordinator, RendererCallTracker? tracker) : IDisposable
     {
         public void Dispose()
         {

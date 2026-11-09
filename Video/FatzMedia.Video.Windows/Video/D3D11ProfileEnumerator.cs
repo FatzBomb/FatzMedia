@@ -1,11 +1,10 @@
-using SharpGen.Runtime;
 using System.Diagnostics;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 
 namespace FatzMedia.Video.Windows.Video;
 
-internal static class D3D11ProfileEnumerator
+static class D3D11ProfileEnumerator
 {
     public static HashSet<Guid> EnumerateProfiles()
     {
@@ -18,7 +17,7 @@ internal static class D3D11ProfileEnumerator
 
             try
             {
-                Result result = D3D11.D3D11CreateDevice(
+                var result = D3D11.D3D11CreateDevice(
                     adapter: null,
                     driverType: DriverType.Hardware,
                     flags: DeviceCreationFlags.VideoSupport | DeviceCreationFlags.BgraSupport,
@@ -33,7 +32,7 @@ internal static class D3D11ProfileEnumerator
                     return profiles;
                 }
 
-                using ID3D11VideoDevice? videoDevice = device.QueryInterfaceOrNull<ID3D11VideoDevice>();
+                using var videoDevice = device.QueryInterfaceOrNull<ID3D11VideoDevice>();
                 if (videoDevice == null)
                 {
                     Debug.WriteLine("[D3D11ProfileEnumerator] ID3D11VideoDevice not available on this device");
@@ -44,7 +43,7 @@ internal static class D3D11ProfileEnumerator
                 Debug.WriteLine($"[D3D11ProfileEnumerator] Found {count} decoder profiles");
                 for (uint i = 0; i < count; i++)
                 {
-                    Guid profile = videoDevice.GetVideoDecoderProfile(i);
+                    var profile = videoDevice.GetVideoDecoderProfile(i);
                     if (profile != Guid.Empty)
                     {
                         _ = profiles.Add(profile);

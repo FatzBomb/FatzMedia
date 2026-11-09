@@ -4,13 +4,13 @@ using FatzMedia.Video.Sample.Player.Shared.Hosting;
 
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
-internal static class Program
+static class Program
 {
     [STAThread]
     public static int Main(string[] args)
     {
         StartupOptions.Current = PlayerStartupOptions.Parse(args);
-        using PlayerDebugLog debugLog = PlayerDebugLog.Attach(App.LogFilePath, "Player.Avalonia");
+        using var debugLog = PlayerDebugLog.Attach(App.LogFilePath, "Player.Avalonia");
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

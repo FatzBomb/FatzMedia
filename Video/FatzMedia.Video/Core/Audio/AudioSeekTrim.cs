@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// position reported for the target (dropping the whole frame made the sound lead the clock by up
 /// to one frame: 21-93 ms depending on the codec).
 /// </summary>
-internal static class AudioSeekTrim
+static class AudioSeekTrim
 {
     /// <summary>
     /// Returns the samples to skip at the start of a frame of <paramref name="frameSamples"/>

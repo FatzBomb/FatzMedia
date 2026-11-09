@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace FatzMedia.Video.Sample.Player.Hosting;
 
 /// <summary>The WPF application dispatcher; with no application (designer) everything runs inline.</summary>
-internal sealed class WpfPlayerDispatcher : IPlayerDispatcher
+sealed class WpfPlayerDispatcher : IPlayerDispatcher
 {
     public bool CheckAccess() => Application.Current?.Dispatcher is not { } dispatcher || dispatcher.CheckAccess();
 
@@ -20,10 +20,10 @@ internal sealed class WpfPlayerDispatcher : IPlayerDispatcher
 
     public IPlayerTimer CreateTimer(TimeSpan interval, Action tick) => new Timer(interval, tick);
 
-    private sealed class Timer : IPlayerTimer
+    sealed class Timer : IPlayerTimer
     {
-        private readonly DispatcherTimer _timer;
-        private readonly Action _tick;
+        readonly DispatcherTimer _timer;
+        readonly Action _tick;
 
         public Timer(TimeSpan interval, Action tick)
         {
@@ -42,12 +42,12 @@ internal sealed class WpfPlayerDispatcher : IPlayerDispatcher
             _timer.Tick -= OnTick;
         }
 
-        private void OnTick(object? sender, EventArgs e) => _tick();
+        void OnTick(object? sender, EventArgs e) => _tick();
     }
 }
 
 /// <summary>The WPF clipboard; a COM failure (another app holds the clipboard) reaches the status line.</summary>
-internal sealed class WpfPlayerClipboard : IPlayerClipboard
+sealed class WpfPlayerClipboard : IPlayerClipboard
 {
     public Task SetTextAsync(string text)
     {
@@ -57,7 +57,7 @@ internal sealed class WpfPlayerClipboard : IPlayerClipboard
 }
 
 /// <summary>The WPF open-file dialog, owned by the main window.</summary>
-internal sealed class WpfPlayerFilePicker(Window owner) : IPlayerFilePicker
+sealed class WpfPlayerFilePicker(Window owner) : IPlayerFilePicker
 {
     public Task<string?> PickFileAsync(string title, string filter)
     {

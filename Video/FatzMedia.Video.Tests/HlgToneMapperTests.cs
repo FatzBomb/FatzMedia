@@ -7,8 +7,8 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 042A slice 1: HLG to SDR tone mapping (inverse OETF, BT.2100 OOTF, BT.2390 curve).</summary>
 public sealed class HlgToneMapperTests
 {
-    private const double Reference = HdrToneMappingOptions.DefaultReferenceWhiteNits;
-    private const double Peak = HlgCurve.NominalPeakNits;
+    const double Reference = HdrToneMappingOptions.DefaultReferenceWhiteNits;
+    const double Peak = HlgCurve.NominalPeakNits;
 
     [Theory]
     [InlineData(0, 0)]
@@ -53,7 +53,7 @@ public sealed class HlgToneMapperTests
     [Fact]
     public void BlackAndPeakWhite_MapToSdrBlackAndWhite()
     {
-        HdrToneMapper mapper = CreateMapper();
+        var mapper = CreateMapper();
         Assert.Equal(new byte[] { 0, 0, 0, 255 }, Convert(mapper, 0, 0, 0));
         Assert.Equal(new byte[] { 255, 255, 255, 255 }, Convert(mapper, ushort.MaxValue, ushort.MaxValue, ushort.MaxValue));
     }
@@ -61,12 +61,12 @@ public sealed class HlgToneMapperTests
     [Fact]
     public void GrayLevels_StayNeutralAndRiseMonotonically()
     {
-        HdrToneMapper mapper = CreateMapper();
+        var mapper = CreateMapper();
         var previous = 0;
         for (var code = 0; code <= 1023; code++)
         {
             var value = (ushort)Math.Round(code * 65535 / 1023.0);
-            byte[] bgra = Convert(mapper, value, value, value);
+            var bgra = Convert(mapper, value, value, value);
             Assert.True(bgra[0] == bgra[1] && bgra[1] == bgra[2], $"10-bit gray {code} is not neutral: {string.Join(",", bgra)}");
             Assert.True(bgra[0] >= previous, $"10-bit gray {code} ({bgra[0]}) is darker than the level below ({previous})");
             previous = bgra[0];
@@ -76,7 +76,7 @@ public sealed class HlgToneMapperTests
         var last = -1;
         foreach (var signal in new[] { 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0 })
         {
-            byte level = Convert(mapper, Code(signal), Code(signal), Code(signal))[0];
+            var level = Convert(mapper, Code(signal), Code(signal), Code(signal))[0];
             Assert.True(level > last, $"HLG {signal} ({level}) is not brighter than the level below ({last})");
             last = level;
         }
@@ -87,9 +87,9 @@ public sealed class HlgToneMapperTests
     {
         // 75% HLG and 203-nit PQ are both BT.2408 reference white; with 1000-nit peaks on both
         // sides they come out the same (about 230 of 255 at the default SDR white).
-        byte hlg = Convert(CreateMapper(), Code(0.75), Code(0.75), Code(0.75))[0];
+        var hlg = Convert(CreateMapper(), Code(0.75), Code(0.75), Code(0.75))[0];
         var pqCode = (ushort)Math.Round(PqCurve.FromNits(203) * 65535);
-        byte pq = Convert(new HdrToneMapper(Peak, Reference), pqCode, pqCode, pqCode)[0];
+        var pq = Convert(new HdrToneMapper(Peak, Reference), pqCode, pqCode, pqCode)[0];
         Assert.InRange(hlg, pq - 1, pq + 1);
         Assert.InRange(hlg, 200, 250);
     }
@@ -97,7 +97,7 @@ public sealed class HlgToneMapperTests
     [Fact]
     public void Bt2020Red_StaysRedAfterGamutClipping()
     {
-        byte[] bgra = Convert(CreateMapper(), Code(0.75), 0, 0);
+        var bgra = Convert(CreateMapper(), Code(0.75), 0, 0);
         Assert.True(bgra[2] > 150, $"red {bgra[2]}");
         Assert.Equal(0, bgra[1]);
         Assert.Equal(0, bgra[0]);
@@ -106,7 +106,7 @@ public sealed class HlgToneMapperTests
     [Fact]
     public void TheTables_MatchTheExactMathWithinOneLevel()
     {
-        HdrToneMapper mapper = CreateMapper();
+        var mapper = CreateMapper();
         var random = new Random(42);
         for (var sample = 0; sample < 4000; sample++)
         {
@@ -115,8 +115,8 @@ public sealed class HlgToneMapperTests
             if (sample % 4 == 0)
                 g = b = r;
 
-            byte[] actual = Convert(mapper, Ten(r), Ten(g), Ten(b));
-            byte[] expected = Exact(Ten(r), Ten(g), Ten(b));
+            var actual = Convert(mapper, Ten(r), Ten(g), Ten(b));
+            var expected = Exact(Ten(r), Ten(g), Ten(b));
             for (var channel = 0; channel < 3; channel++)
             {
                 Assert.True(
@@ -129,32 +129,32 @@ public sealed class HlgToneMapperTests
     [Fact]
     public void AnImage_ConvertsEveryRow()
     {
-        HdrToneMapper mapper = CreateMapper();
-        const int width = 5, height = 37, sourceStride = width * 6, destinationStride = (width * 4) + 4;
-        var source = new byte[sourceStride * height];
-        for (var y = 0; y < height; y++)
+        var mapper = CreateMapper();
+        const int Width = 5, Height = 37, SourceStride = Width * 6, DestinationStride = (Width * 4) + 4;
+        var source = new byte[SourceStride * Height];
+        for (var y = 0; y < Height; y++)
         {
-            for (var x = 0; x < width * 3; x++)
-                BitConverter.TryWriteBytes(source.AsSpan((y * sourceStride) + (x * 2), 2), Code(y / (double)height));
+            for (var x = 0; x < Width * 3; x++)
+                BitConverter.TryWriteBytes(source.AsSpan((y * SourceStride) + (x * 2), 2), Code(y / (double)Height));
         }
 
-        var destination = new byte[destinationStride * height];
-        mapper.Convert(source, sourceStride, destination, destinationStride, width, height);
+        var destination = new byte[DestinationStride * Height];
+        mapper.Convert(source, SourceStride, destination, DestinationStride, Width, Height);
 
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            byte expected = Convert(mapper, Code(y / (double)height), Code(y / (double)height), Code(y / (double)height))[0];
-            Assert.Equal(expected, destination[(y * destinationStride) + ((width - 1) * 4)]);
+            var expected = Convert(mapper, Code(y / (double)Height), Code(y / (double)Height), Code(y / (double)Height))[0];
+            Assert.Equal(expected, destination[(y * DestinationStride) + ((Width - 1) * 4)]);
         }
     }
 
-    private static HdrToneMapper CreateMapper() => new(Peak, Reference, HdrTransferFunction.Hlg);
+    static HdrToneMapper CreateMapper() => new(Peak, Reference, HdrTransferFunction.Hlg);
 
-    private static ushort Code(double signal) => (ushort)Math.Round(signal * 65535);
+    static ushort Code(double signal) => (ushort)Math.Round(signal * 65535);
 
-    private static ushort Ten(int code) => (ushort)Math.Round(code * 65535 / 1023.0);
+    static ushort Ten(int code) => (ushort)Math.Round(code * 65535 / 1023.0);
 
-    private static byte[] Convert(HdrToneMapper mapper, ushort r, ushort g, ushort b)
+    static byte[] Convert(HdrToneMapper mapper, ushort r, ushort g, ushort b)
     {
         var output = new byte[4];
         mapper.ConvertRow([r, g, b], output);

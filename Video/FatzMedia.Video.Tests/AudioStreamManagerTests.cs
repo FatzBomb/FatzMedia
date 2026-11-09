@@ -17,7 +17,7 @@ public sealed class AudioStreamManagerTests
     [InlineData("TRACK.MOD")]
     public void TrackerFormats_UsePrescannedDecodeSource(string path)
     {
-        BassFlags flags = AudioStreamManager.GetPlaybackSourceFlags(path);
+        var flags = AudioStreamManager.GetPlaybackSourceFlags(path);
 
         Assert.True(AudioStreamManager.IsTrackerFormat(path));
         Assert.True(flags.HasFlag(BassFlags.Decode));
@@ -35,7 +35,7 @@ public sealed class AudioStreamManagerTests
     [InlineData("track.mp3")]
     public void NonTrackerFormats_KeepExistingPlaybackFlags(string path)
     {
-        BassFlags flags = AudioStreamManager.GetPlaybackSourceFlags(path);
+        var flags = AudioStreamManager.GetPlaybackSourceFlags(path);
 
         Assert.False(AudioStreamManager.IsTrackerFormat(path));
         Assert.True(flags.HasFlag(BassFlags.Decode));
@@ -79,7 +79,7 @@ public sealed class AudioStreamManagerTests
         Assert.Equal(audio, data);
     }
 
-    private sealed class Entry(byte[] data, long? size) : IArchiveEntryInfo
+    sealed class Entry(byte[] data, long? size) : IArchiveEntryInfo
     {
         public string Key => "entry.mp3";
 

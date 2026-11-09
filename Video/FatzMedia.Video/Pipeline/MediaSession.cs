@@ -2,7 +2,7 @@ using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class MediaSession : IDisposable
+sealed class MediaSession : IDisposable
 {
     public MediaState State { get; }
     public PlaybackSyncState Sync { get; } = new();

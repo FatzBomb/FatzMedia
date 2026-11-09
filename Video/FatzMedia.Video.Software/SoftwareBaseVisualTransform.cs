@@ -2,7 +2,7 @@ using FatzMedia.Video.Core.Graphics.Composition;
 
 namespace FatzMedia.Video.Software;
 
-internal static class SoftwareBaseVisualTransform
+static class SoftwareBaseVisualTransform
 {
     /// <summary>Transforms straight BGRA8 input and returns premultiplied BGRA8 output.</summary>
     internal static (byte Blue, byte Green, byte Red, byte Alpha) ApplyStraightToPremultiplied(

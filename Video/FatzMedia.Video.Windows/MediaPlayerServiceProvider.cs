@@ -30,7 +30,7 @@ public static class MediaPlayerServiceProvider
     public static IServiceProvider Create(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths)
         => PlayerServiceProvider.Create(configuration, nativeLibraryPaths, new WindowsPlatformServices());
 
-    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
+    static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
         string.IsNullOrWhiteSpace(nativeLibraryPath)
             ? DLLPath.GetConfiguredNativeLibraryPaths()
             : [nativeLibraryPath];

@@ -4,10 +4,10 @@ namespace FatzMedia.Video.Windows.Video;
 /// Caches FFmpeg codec/container capabilities combined with Windows D3D11/DXVA
 /// hardware-profile availability.
 /// </summary>
-internal static class WindowsVideoDecodeCapabilities
+static class WindowsVideoDecodeCapabilities
 {
-    private static readonly Lock CacheLock = new();
-    private static VideoDecodeCapabilities? _cached;
+    static readonly Lock CacheLock = new();
+    static VideoDecodeCapabilities? _cached;
 
     public static VideoDecodeCapabilities GetOrScan()
     {

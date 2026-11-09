@@ -10,14 +10,14 @@ namespace FatzMedia.Video.Sample.Player;
 /// (<c>--lightweight-surfaces</c>, Stage 046A slice 2; the Avalonia and WinForms players have the
 /// same window). Each control creates its own player with the renderer chosen at startup.
 /// </summary>
-internal sealed class LightweightSurfacesWindow : Window
+sealed class LightweightSurfacesWindow : Window
 {
-    private static readonly Color[] Colours = [Colors.DarkSlateBlue, Colors.DarkGreen, Colors.Black];
+    static readonly Color[] Colours = [Colors.DarkSlateBlue, Colors.DarkGreen, Colors.Black];
 
-    private readonly BackgroundSurface _background;
-    private readonly KaraokeSurface _karaoke;
-    private readonly TextBox _path = new() { MinWidth = 380, Margin = new Thickness(4), VerticalContentAlignment = VerticalAlignment.Center };
-    private int _colour;
+    readonly BackgroundSurface _background;
+    readonly KaraokeSurface _karaoke;
+    readonly TextBox _path = new() { MinWidth = 380, Margin = new Thickness(4), VerticalContentAlignment = VerticalAlignment.Center };
+    int _colour;
 
     public LightweightSurfacesWindow(
         Func<IPlatformFactory> createPlatformFactory,
@@ -80,16 +80,16 @@ internal sealed class LightweightSurfacesWindow : Window
         };
     }
 
-    private string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
+    string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
 
-    private void Browse()
+    void Browse()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Background (image, video) or karaoke (CDG, MP3+G, ZIP, KAR, MID)" };
         if (dialog.ShowDialog(this) == true)
             _path.Text = dialog.FileName;
     }
 
-    private static Button Button(string text, Action click)
+    static Button Button(string text, Action click)
     {
         var button = new Button { Content = text, Margin = new Thickness(4), Padding = new Thickness(8, 2, 8, 2) };
         button.Click += (_, _) => click();

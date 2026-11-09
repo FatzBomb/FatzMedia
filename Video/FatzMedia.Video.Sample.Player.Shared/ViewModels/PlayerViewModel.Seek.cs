@@ -15,11 +15,11 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// </remarks>
 public partial class PlayerViewModel
 {
-    private readonly Lock _deferredSeekGate = new();
+    readonly Lock _deferredSeekGate = new();
     // UI thread only.
-    private Task _scrubLane = Task.CompletedTask;
+    Task _scrubLane = Task.CompletedTask;
     // Guarded by _deferredSeekGate: the newest drag target waiting for the lane.
-    private double? _deferredSeekTarget;
+    double? _deferredSeekTarget;
 
     /// <summary>
     /// Gets or sets where the seek bar's thumb is. While a seek preview is active, each change
@@ -101,7 +101,7 @@ public partial class PlayerViewModel
 
     // Stage 022A slice 4: drag seeks run on the engine's control queue, not the UI thread;
     // SeekAsync keeps only the newest of the requests still waiting, so every move can send one.
-    private void QueueDragSeek(double target)
+    void QueueDragSeek(double target)
     {
         if (Player is not { } player)
             return;
@@ -138,12 +138,12 @@ public partial class PlayerViewModel
         });
     }
 
-    private void EnqueueScrubCall(Func<Task> call) =>
+    void EnqueueScrubCall(Func<Task> call) =>
         _scrubLane = _scrubLane
             .ContinueWith(_ => call(), CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default)
             .Unwrap();
 
-    private void RunScrubCall(Action call)
+    void RunScrubCall(Action call)
     {
         try
         {
@@ -160,7 +160,7 @@ public partial class PlayerViewModel
     }
 
     // Fire-and-forget from the drag handlers: every failure is handled here, never left unobserved.
-    private async Task SendDragSeekAsync(PlayerCore player, double target)
+    async Task SendDragSeekAsync(PlayerCore player, double target)
     {
         try
         {

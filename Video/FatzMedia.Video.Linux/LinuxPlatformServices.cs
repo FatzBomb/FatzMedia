@@ -12,12 +12,12 @@ namespace FatzMedia.Video.Linux;
 /// <summary>
 /// Registers Linux platform services into the Core composition graph.
 /// </summary>
-internal sealed class LinuxPlatformServices(LinuxNativeLibraryBootstrapper bootstrapper, LinuxPlatformOptions options) : IPlatformServices
+sealed class LinuxPlatformServices(LinuxNativeLibraryBootstrapper bootstrapper, LinuxPlatformOptions options) : IPlatformServices
 {
     public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
     {
         // FFmpeg is required; without BASS the player starts with no audio (ENG-033).
-        LinuxNativeLoadResult result = bootstrapper.EnsureInitialized(nativeLibraryPaths);
+        var result = bootstrapper.EnsureInitialized(nativeLibraryPaths);
         if (!result.IsInitialized)
             throw new InvalidOperationException(result.Message);
     }

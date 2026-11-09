@@ -4,15 +4,15 @@ using FatzMedia.Video.Core.Cdg;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class RenderPipeline(IMediaEngine mediaEngine)
+sealed class RenderPipeline(IMediaEngine mediaEngine)
 {
-    private readonly IMediaEngine _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
-    private IVideoEngine? _video;
-    private ICdgEngine? _cdg;
-    private long _lastRenderedCdgPacketIndex = -1;
-    private double _lastRenderedCdgPosition = double.NaN;
+    readonly IMediaEngine _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
+    IVideoEngine? _video;
+    ICdgEngine? _cdg;
+    long _lastRenderedCdgPacketIndex = -1;
+    double _lastRenderedCdgPosition = double.NaN;
 
-    private double CurrentPosition =>
+    double CurrentPosition =>
         _mediaEngine.Content.HasFlag(MediaContent.Audio)
             ? _mediaEngine.Audio.Position
             : _mediaEngine.Content.HasFlag(MediaContent.Video) && _mediaEngine.Video != null
@@ -59,7 +59,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
             _video.RenderCurrentFrame(allowWhilePlaying, forceReissue);
     }
 
-    private bool ShouldRenderCdg(double currentPosition, bool force)
+    bool ShouldRenderCdg(double currentPosition, bool force)
     {
         if (!double.IsFinite(currentPosition))
         {
@@ -87,17 +87,17 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
         return true;
     }
 
-    private void RememberCdgRender(double position, long packetIndex)
+    void RememberCdgRender(double position, long packetIndex)
     {
         _lastRenderedCdgPosition = position;
         _lastRenderedCdgPacketIndex = packetIndex;
     }
 
-    private void ResetCdgRenderGate()
+    void ResetCdgRenderGate()
     {
         _lastRenderedCdgPacketIndex = -1;
         _lastRenderedCdgPosition = double.NaN;
     }
 
-    private static bool NearlySamePosition(double currentPosition, double previousPosition) => double.IsFinite(previousPosition) && Math.Abs(currentPosition - previousPosition) < 0.001;
+    static bool NearlySamePosition(double currentPosition, double previousPosition) => double.IsFinite(previousPosition) && Math.Abs(currentPosition - previousPosition) < 0.001;
 }

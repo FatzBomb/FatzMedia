@@ -163,12 +163,12 @@ public sealed record PlayerStartupOptions
         ArgumentNullException.ThrowIfNull(args);
 
         var positional = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal));
-        Uri? positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out Uri? parsedUrl) ? parsedUrl : null;
+        var positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out var parsedUrl) ? parsedUrl : null;
         var surface = Values(args, "--surface=").LastOrDefault();
         var decoding = Values(args, "--decoding=").LastOrDefault();
         var audio = Values(args, "--audio=").LastOrDefault();
-        Uri? networkUri = Values(args, "--url=")
-            .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out Uri? uri) ? uri : null)
+        var networkUri = Values(args, "--url=")
+            .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out var uri) ? uri : null)
             .FirstOrDefault(static uri => uri is not null);
 
         return new PlayerStartupOptions
@@ -275,15 +275,15 @@ public sealed record PlayerStartupOptions
         args.Where(argument => argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(argument => trimQuotes ? argument[prefix.Length..].Trim('"') : argument[prefix.Length..]);
 
-    private static bool IsValue(string? value, string expected) =>
+    static bool IsValue(string? value, string expected) =>
         value is not null && value.Trim().Equals(expected, StringComparison.OrdinalIgnoreCase);
 
-    private static TimeSpan ParseFade(string value) =>
+    static TimeSpan ParseFade(string value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) && double.IsFinite(seconds)
             ? TimeSpan.FromSeconds(Math.Clamp(seconds, 0, MaxFadeNextSeconds))
             : TimeSpan.Zero;
 
-    private static double[] ParseGains(string value) =>
+    static double[] ParseGains(string value) =>
         [.. value
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(static gain => double.TryParse(gain, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0)];

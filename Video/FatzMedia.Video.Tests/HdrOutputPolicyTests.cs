@@ -6,8 +6,8 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 042A slice 2 groundwork: the HDR output decision and its pure math.</summary>
 public sealed class HdrOutputPolicyTests
 {
-    private static readonly HdrDisplayInfo HdrMonitor = new(HdrEnabled: true, PeakNits: 600, SdrWhiteNits: 200);
-    private static readonly HdrDisplayInfo SdrMonitor = new(HdrEnabled: false, PeakNits: 270, SdrWhiteNits: 0);
+    static readonly HdrDisplayInfo HdrMonitor = new(HdrEnabled: true, PeakNits: 600, SdrWhiteNits: 200);
+    static readonly HdrDisplayInfo SdrMonitor = new(HdrEnabled: false, PeakNits: 270, SdrWhiteNits: 0);
 
     [Theory]
     [InlineData(false, HdrTransferFunction.Pq, true, false, "HDR output is off")]
@@ -19,7 +19,7 @@ public sealed class HdrOutputPolicyTests
     public void TheDecision_IsHdrOnlyForHdrVideoOnAnHdrMonitorWithTheOptionOn(
         bool enabled, HdrTransferFunction? content, bool hdrMonitor, bool scRgb, string reason)
     {
-        HdrOutputDecision decision = HdrOutputPolicy.Choose(enabled, content, hdrMonitor ? HdrMonitor : SdrMonitor);
+        var decision = HdrOutputPolicy.Choose(enabled, content, hdrMonitor ? HdrMonitor : SdrMonitor);
         Assert.Equal(scRgb ? HdrOutputMode.ScRgb : HdrOutputMode.Sdr, decision.Mode);
         Assert.Equal(reason, decision.Reason);
     }
@@ -27,7 +27,7 @@ public sealed class HdrOutputPolicyTests
     [Fact]
     public void UnreportedValues_FallBackToTheDefaults()
     {
-        HdrOutputDecision decision = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, new HdrDisplayInfo(true, 0, double.NaN));
+        var decision = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, new HdrDisplayInfo(true, 0, double.NaN));
         Assert.Equal(HdrOutputMode.ScRgb, decision.Mode);
         Assert.Equal(HdrOutputPolicy.AssumedDisplayPeakNits, decision.DisplayPeakNits);
         Assert.Equal(HdrOutputPolicy.DefaultSdrWhiteNits, decision.SdrWhiteNits);
@@ -40,10 +40,10 @@ public sealed class HdrOutputPolicyTests
     [Fact]
     public void ABlocker_TurnsOnlyAnHdrDecisionIntoSdr()
     {
-        HdrOutputDecision hdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);
-        HdrOutputDecision sdr = HdrOutputPolicy.Choose(true, null, HdrMonitor);
+        var hdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);
+        var sdr = HdrOutputPolicy.Choose(true, null, HdrMonitor);
 
-        HdrOutputDecision blocked = HdrOutputPolicy.Restrict(hdr, "a video effect is on");
+        var blocked = HdrOutputPolicy.Restrict(hdr, "a video effect is on");
         Assert.Equal(HdrOutputMode.Sdr, blocked.Mode);
         Assert.Equal("a video effect is on", blocked.Reason);
         Assert.Equal(200, blocked.SdrWhiteNits);
@@ -56,9 +56,9 @@ public sealed class HdrOutputPolicyTests
     [Fact]
     public void MovingBetweenMonitors_ChangesTheSwapChainOnlyWhenTheModeChanges()
     {
-        HdrOutputDecision onHdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);
-        HdrOutputDecision onSdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, SdrMonitor);
-        HdrOutputDecision onBrighterHdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor with { PeakNits = 1000, SdrWhiteNits = 240 });
+        var onHdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);
+        var onSdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, SdrMonitor);
+        var onBrighterHdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor with { PeakNits = 1000, SdrWhiteNits = 240 });
 
         Assert.True(HdrOutputPolicy.NeedsSwapChainChange(onSdr, onHdr));
         Assert.True(HdrOutputPolicy.NeedsSwapChainChange(onHdr, onSdr));
@@ -118,7 +118,7 @@ public sealed class HdrOutputPolicyTests
     [Fact]
     public void TheMetadata_UsesDxgiUnits()
     {
-        Hdr10MetadataValues metadata = HdrOutputPolicy.CreateMetadata(1000, 400, 0.005);
+        var metadata = HdrOutputPolicy.CreateMetadata(1000, 400, 0.005);
 
         Assert.Equal((35400, 14600), (metadata.RedX, metadata.RedY));
         Assert.Equal((8500, 39850), (metadata.GreenX, metadata.GreenY));

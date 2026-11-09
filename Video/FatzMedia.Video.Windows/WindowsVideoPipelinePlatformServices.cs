@@ -7,15 +7,15 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Supplies Windows DWM timing and Direct3D device-loss checks to Core video playback.
 /// </summary>
-internal sealed class WindowsVideoPipelinePlatformServices : IVideoPipelinePlatformServices
+sealed class WindowsVideoPipelinePlatformServices : IVideoPipelinePlatformServices
 {
     // The video presentation loop reads the interval several times per frame; the 022A
     // baseline showed the DWM call costing measurable presentation-thread time. A rate change
     // (display settings) is picked up within this age.
-    private static readonly long MaxAgeTicks = Stopwatch.Frequency;
+    static readonly long MaxAgeTicks = Stopwatch.Frequency;
 
-    private long _cachedIntervalBits;
-    private long _cachedAtTimestamp = long.MinValue;
+    long _cachedIntervalBits;
+    long _cachedAtTimestamp = long.MinValue;
 
     public double GetPresentationRefreshIntervalSeconds()
     {

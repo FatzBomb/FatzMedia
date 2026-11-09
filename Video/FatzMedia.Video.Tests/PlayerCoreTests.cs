@@ -1,8 +1,8 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Threading;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -12,7 +12,7 @@ public sealed class PlayerCoreTests
     public void Constructor_NullPlatformFactory_Throws()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new PlayerCore(null!, MediaPlayerConfiguration.Auto, Array.Empty<string>()));
+            new PlayerCore(null!, MediaPlayerConfiguration.Auto, []));
 
         Assert.Equal("platformFactory", exception.ParamName);
     }
@@ -186,7 +186,7 @@ public sealed class PlayerCoreTests
         var requested = new ConcurrentQueue<TimeSpan>();
         player.SeekCompleted += (_, e) => requested.Enqueue(e.RequestedPosition);
 
-        Task<bool> drag = player.SeekAsync(8);
+        var drag = player.SeekAsync(8);
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
 
         Assert.True(await drag.WaitAsync(TestEnvironment.EventuallyTimeout));
@@ -236,7 +236,7 @@ public sealed class PlayerCoreTests
             seekEntered.Set();
             _ = releaseSeek.Wait(TestEnvironment.EventuallyTimeout);
         };
-        Task<bool> seek = player.SeekAsync(10);
+        var seek = player.SeekAsync(10);
         Assert.True(seekEntered.Wait(TestEnvironment.EventuallyTimeout));
 
         player.AudioSyncOffset = TimeSpan.FromMilliseconds(100);
@@ -294,7 +294,7 @@ public sealed class PlayerCoreTests
             seekEntered.Set();
             _ = releaseSeek.Wait(TestEnvironment.EventuallyTimeout);
         };
-        Task<bool> seek = player.SeekAsync(10);
+        var seek = player.SeekAsync(10);
         Assert.True(seekEntered.Wait(TestEnvironment.EventuallyTimeout));
         factory.Coordinator.RaiseDeviceRecovered();
         factory.Coordinator.RaiseDeviceRecovered();
@@ -410,7 +410,7 @@ public sealed class PlayerCoreTests
             }
         };
 
-        Task<bool> running = player.SeekAsync(1);
+        var running = player.SeekAsync(1);
         Assert.True(firstEntered.Wait(TestEnvironment.EventuallyTimeout));
         Task<bool>[] waiting = [player.SeekAsync(2), player.SeekAsync(3), player.SeekAsync(4)];
         release.Set();
@@ -437,7 +437,7 @@ public sealed class PlayerCoreTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
@@ -455,7 +455,7 @@ public sealed class PlayerCoreTests
 
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
@@ -483,7 +483,7 @@ public sealed class PlayerCoreTests
 
         video.RaisePositionChanged(28.6);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(30), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(28.6), args.ResultingPosition);
     }
@@ -505,7 +505,7 @@ public sealed class PlayerCoreTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -526,7 +526,7 @@ public sealed class PlayerCoreTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -548,7 +548,7 @@ public sealed class PlayerCoreTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
@@ -568,7 +568,7 @@ public sealed class PlayerCoreTests
 
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -723,7 +723,7 @@ public sealed class PlayerCoreTests
         player.MediaEnded += (_, _) => Interlocked.Increment(ref endedCount);
         player.MediaStopped += (_, _) => stopped.TrySetResult();
 
-        Task<bool> stop = player.StopAsync();
+        var stop = player.StopAsync();
         await stopEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         engine.RaiseMediaEnded();
         releaseStop.Set();
@@ -872,9 +872,9 @@ public sealed class PlayerCoreTests
             MediaPlayerConfiguration.Auto,
             []);
 
-        Task<bool> load = player.LoadAsync("song.mp3");
+        var load = player.LoadAsync("song.mp3");
         await loadEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
-        Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+        var reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
 
         await Task.Delay(50);
         Assert.False(reset.IsCompleted);
@@ -902,9 +902,9 @@ public sealed class PlayerCoreTests
         };
         var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
-        Task<bool> load = player.LoadAsync("song.mp3");
+        var load = player.LoadAsync("song.mp3");
         await loadEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
-        Task dispose = Task.Run(player.Dispose);
+        var dispose = Task.Run(player.Dispose);
 
         await Task.Delay(50);
         Assert.False(dispose.IsCompleted);
@@ -936,9 +936,9 @@ public sealed class PlayerCoreTests
             }
         };
 
-        Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+        var reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
         await resetEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
-        Task dispose = Task.Run(player.Dispose);
+        var dispose = Task.Run(player.Dispose);
 
         await Task.Delay(50);
         Assert.False(dispose.IsCompleted);
@@ -1016,7 +1016,7 @@ public sealed class PlayerCoreTests
         player.BaseVisualTransform = transform;
         player.BaseVisualTransform = transform;
 
-        MediaValueChangedEventArgs<BaseVisualTransform> change = Assert.Single(changes);
+        var change = Assert.Single(changes);
         Assert.Equal(BaseVisualTransform.Identity, change.PreviousValue);
         Assert.Equal(transform, change.CurrentValue);
         Assert.Equal(MediaChangeReason.User, change.Reason);
@@ -1124,7 +1124,7 @@ public sealed class PlayerCoreTests
         using var playerB = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         Assert.True(playerA.Load("song.mp3"));
         engineA.OnPlay = static () => DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Sync", "from A");
-        (ConcurrentQueue<string> seenByA, ConcurrentQueue<string> seenByB) = await CaptureOwnership(playerA, playerB, "OwnershipTest.Sync", () =>
+        (var seenByA, var seenByB) = await CaptureOwnership(playerA, playerB, "OwnershipTest.Sync", () =>
         {
             Assert.True(playerA.Play());
             return Task.CompletedTask;
@@ -1144,7 +1144,7 @@ public sealed class PlayerCoreTests
         await File.WriteAllBytesAsync(path, [0]);
         try
         {
-            (ConcurrentQueue<string> seenByA, ConcurrentQueue<string> seenByB) = await CaptureOwnership(playerA, playerB, "PreparedNext", async () =>
+            (var seenByA, var seenByB) = await CaptureOwnership(playerA, playerB, "PreparedNext", async () =>
                 Assert.True(await playerA.PrepareNextAsync(path)));
 
             Assert.Contains(seenByA, static message => message.StartsWith("Analysis failed", StringComparison.Ordinal));
@@ -1160,7 +1160,7 @@ public sealed class PlayerCoreTests
     /// Runs <paramref name="action"/> on a thread with no diagnostic owner, then raises an unowned
     /// marker; returns what each player received in <paramref name="category"/>.
     /// </summary>
-    private static async Task<(ConcurrentQueue<string> A, ConcurrentQueue<string> B)> CaptureOwnership(
+    static async Task<(ConcurrentQueue<string> A, ConcurrentQueue<string> B)> CaptureOwnership(
         PlayerCore playerA, PlayerCore playerB, string category, Func<Task> action)
     {
         var seenByA = new ConcurrentQueue<string>();
@@ -1189,17 +1189,16 @@ public sealed class PlayerCoreTests
         return (seenByA, seenByB);
     }
 
-    private sealed class ThrowingAnalyzer : IMediaFileAnalyzer
+    sealed class ThrowingAnalyzer : IMediaFileAnalyzer
     {
         public Task<MediaAnalysisResult?> AnalyzeAsync(string filePath, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("analysis unavailable");
     }
 
-    private sealed class TestPlatformFactory : IPlatformFactory
+    sealed class TestPlatformFactory : IPlatformFactory
     {
-        private readonly Queue<TestMediaEngine> _engines;
-        private readonly TestPresentationCoordinator _coordinator = new();
-        private int _createServiceProviderCount;
+        readonly Queue<TestMediaEngine> _engines;
+        int _createServiceProviderCount;
 
         public TestPlatformFactory(params TestMediaEngine[] engines)
         {
@@ -1208,7 +1207,7 @@ public sealed class PlayerCoreTests
 
         public string LastNativeLoadMessage => string.Empty;
 
-        public TestPresentationCoordinator Coordinator => _coordinator;
+        public TestPresentationCoordinator Coordinator { get; } = new();
 
         public Action<int>? BeforeCreateServiceProvider { get; set; }
 
@@ -1216,7 +1215,7 @@ public sealed class PlayerCoreTests
 
         public IMediaPresentationCoordinator CreatePresentationCoordinator(
             IMediaEngine mediaEngine,
-            MediaPlayerConfiguration configuration) => _coordinator;
+            MediaPlayerConfiguration configuration) => Coordinator;
 
         public IServiceProvider CreateServiceProvider(
             MediaPlayerConfiguration configuration,

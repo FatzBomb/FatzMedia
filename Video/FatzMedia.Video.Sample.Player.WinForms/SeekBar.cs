@@ -13,15 +13,14 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// by <see cref="SmallChange"/>, Page Up / Page Down by <see cref="LargeChange"/>, Home / End go to
 /// the ends. The value runs from 0 to <see cref="Maximum"/>.
 /// </remarks>
-internal sealed class SeekBar : Control
+sealed class SeekBar : Control
 {
     // The WPF player's accent.
-    private static readonly Color Accent = Color.FromArgb(0x3E, 0xA6, 0xFF);
-    private int _maximum = 1;
-    private int _value;
-    private bool _pressed;
+    static readonly Color Accent = Color.FromArgb(0x3E, 0xA6, 0xFF);
+    int _value;
+    bool _pressed;
     // Focus shows only after the keyboard is used (Tab or a key), never for a mouse press or drag.
-    private bool _keyboardFocus;
+    bool _keyboardFocus;
 
     public SeekBar()
     {
@@ -45,15 +44,15 @@ internal sealed class SeekBar : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Maximum
     {
-        get => _maximum;
+        get;
         set
         {
-            _maximum = Math.Max(1, value);
-            if (_value > _maximum)
-                SetValue(_maximum);
+            field = Math.Max(1, value);
+            if (_value > field)
+                SetValue(field);
             Invalidate();
         }
-    }
+    } = 1;
 
     /// <summary>Gets or sets the thumb's position, 0 to <see cref="Maximum"/>.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -71,11 +70,11 @@ internal sealed class SeekBar : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int LargeChange { get; set; } = 10;
 
-    private float ThumbRadius => 7f * DeviceDpi / 96f;
+    float ThumbRadius => 7f * DeviceDpi / 96f;
 
-    private void SetValue(int value)
+    void SetValue(int value)
     {
-        value = Math.Clamp(value, 0, _maximum);
+        value = Math.Clamp(value, 0, Maximum);
         if (value == _value)
             return;
 
@@ -86,7 +85,7 @@ internal sealed class SeekBar : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        Graphics graphics = e.Graphics;
+        var graphics = e.Graphics;
         graphics.Clear(BackColor);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -95,8 +94,8 @@ internal sealed class SeekBar : Control
         var left = radius;
         var width = Math.Max(1f, ClientSize.Width - (2 * radius));
         var centreY = ClientSize.Height / 2f;
-        var thumbX = left + (width * _value / _maximum);
-        Color fill = Enabled ? Accent : SystemColors.GrayText;
+        var thumbX = left + (width * _value / Maximum);
+        var fill = Enabled ? Accent : SystemColors.GrayText;
 
         using (var track = new SolidBrush(SystemColors.ControlDark))
             graphics.FillRectangle(track, left, centreY - (trackHeight / 2), width, trackHeight);
@@ -165,7 +164,7 @@ internal sealed class SeekBar : Control
             Keys.PageDown => _value - LargeChange,
             Keys.PageUp => _value + LargeChange,
             Keys.Home => 0,
-            Keys.End => _maximum,
+            Keys.End => Maximum,
             _ => null,
         };
         if (target is { } value)
@@ -200,7 +199,7 @@ internal sealed class SeekBar : Control
         Invalidate();
     }
 
-    private void EndPress()
+    void EndPress()
     {
         if (!_pressed)
             return;
@@ -210,11 +209,11 @@ internal sealed class SeekBar : Control
         PressEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private void MoveTo(int x)
+    void MoveTo(int x)
     {
         // The thumb's centre travels the bar minus a thumb radius at each end.
         var radius = ThumbRadius;
         var fraction = Math.Clamp((x - radius) / Math.Max(1f, ClientSize.Width - (2 * radius)), 0f, 1f);
-        SetValue((int)Math.Round(fraction * _maximum));
+        SetValue((int)Math.Round(fraction * Maximum));
     }
 }

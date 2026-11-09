@@ -7,14 +7,14 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class DisplayCadenceTests
 {
-    private static readonly FrameRate Hz50 = FrameRate.FromInteger(50);
-    private static readonly FrameRate Hz60 = FrameRate.FromInteger(60);
-    private static readonly FrameRate Hz120 = FrameRate.FromInteger(120);
+    static readonly FrameRate Hz50 = FrameRate.FromInteger(50);
+    static readonly FrameRate Hz60 = FrameRate.FromInteger(60);
+    static readonly FrameRate Hz120 = FrameRate.FromInteger(120);
 
     [Fact]
     public void Fps24_On60Hz_Is32Pulldown()
     {
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz60, 600);
+        var report = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz60, 600);
 
         Assert.Equal(0, report.DroppedFrames);
         Assert.Equal((2, 3), (report.MinimumHold, report.MaximumHold));
@@ -29,7 +29,7 @@ public sealed class DisplayCadenceTests
     [InlineData(60, 60, 1)]
     public void IntegerMultiples_AreJudderFree(int fps, int hz, int hold)
     {
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.FromInteger(fps), FrameRate.FromInteger(hz), 1200);
+        var report = DisplayCadence.Analyze(FrameRate.FromInteger(fps), FrameRate.FromInteger(hz), 1200);
 
         Assert.True(report.IsJudderFree);
         Assert.Equal(hold, report.MaximumHold);
@@ -39,7 +39,7 @@ public sealed class DisplayCadenceTests
     public void Fps23_976_On60Hz_Is32PulldownWithRareExtraRepeat()
     {
         // 23.976 is 0.1 % slower than 24: over ~42 s one extra refresh repeat appears.
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.Fps23_976, Hz60, 60 * 60);
+        var report = DisplayCadence.Analyze(FrameRate.Fps23_976, Hz60, 60 * 60);
 
         Assert.Equal(0, report.DroppedFrames);
         Assert.Equal((2, 3), (report.MinimumHold, report.MaximumHold));
@@ -50,7 +50,7 @@ public sealed class DisplayCadenceTests
     [Fact]
     public void Fps23_976_On59_94Hz_IsExact32Pulldown()
     {
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.Fps23_976, FrameRate.Hz59_94, 6000);
+        var report = DisplayCadence.Analyze(FrameRate.Fps23_976, FrameRate.Hz59_94, 6000);
 
         Assert.Equal(0, report.DroppedFrames);
         Assert.All(report.HoldPattern.Chunk(2).Where(static pair => pair.Length == 2), pair => Assert.Equal(5, pair.Sum()));
@@ -62,7 +62,7 @@ public sealed class DisplayCadenceTests
         // The display is still faster than the source, so the latest-frame rule never skips a
         // frame; the 0.1 % excess shortens one hold from 2 refreshes to 1 every 1000 refreshes
         // (~16.7 s), each absorbing half a source frame.
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.FromInteger(30), FrameRate.Hz59_94, 60_000);
+        var report = DisplayCadence.Analyze(FrameRate.FromInteger(30), FrameRate.Hz59_94, 60_000);
 
         Assert.Equal(0, report.DroppedFrames);
         Assert.Equal((1, 2), (report.MinimumHold, report.MaximumHold));
@@ -72,7 +72,7 @@ public sealed class DisplayCadenceTests
     [Fact]
     public void Fps29_97_On60Hz_RepeatsAnExtraRefreshRarely()
     {
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.Fps29_97, Hz60, 6000);
+        var report = DisplayCadence.Analyze(FrameRate.Fps29_97, Hz60, 6000);
 
         // 29.97 is 0.1 % slower than 30: one extra refresh every 500 frames (~16.7 s).
         Assert.Equal(0, report.DroppedFrames);
@@ -83,7 +83,7 @@ public sealed class DisplayCadenceTests
     [Fact]
     public void Fps60_On50Hz_DropsOneFrameInSix()
     {
-        CadenceReport report = DisplayCadence.Analyze(Hz60, Hz50, 500);
+        var report = DisplayCadence.Analyze(Hz60, Hz50, 500);
 
         Assert.Equal(100, report.DroppedFrames, tolerance: 1);
         Assert.Equal(1, report.MaximumHold);
@@ -92,7 +92,7 @@ public sealed class DisplayCadenceTests
     [Fact]
     public void Fps25_On60Hz_Alternates2And3()
     {
-        CadenceReport report = DisplayCadence.Analyze(FrameRate.FromInteger(25), Hz60, 600);
+        var report = DisplayCadence.Analyze(FrameRate.FromInteger(25), Hz60, 600);
 
         Assert.Equal(0, report.DroppedFrames);
         Assert.Equal((2, 3), (report.MinimumHold, report.MaximumHold));
@@ -120,8 +120,8 @@ public sealed class DisplayCadenceTests
     [Fact]
     public void MultiTarget_EachRefreshRateGetsItsOwnCadence()
     {
-        CadenceReport primary = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz60, 600);
-        CadenceReport projector = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz120, 1200);
+        var primary = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz60, 600);
+        var projector = DisplayCadence.Analyze(FrameRate.FromInteger(24), Hz120, 1200);
 
         // Both targets show the same media time span (10 s) but with different holds.
         Assert.Equal(primary.DistinctFramesShown, projector.DistinctFramesShown);

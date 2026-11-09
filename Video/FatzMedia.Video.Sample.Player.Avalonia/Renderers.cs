@@ -9,7 +9,7 @@ using FatzMedia.Video.Direct3D11;
 
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
-internal enum RendererKind
+enum RendererKind
 {
     Software,
     Vulkan,
@@ -26,7 +26,7 @@ internal enum RendererKind
 /// describes its composition, or why it is unusable), and how video is decoded for it
 /// (<see cref="Renderers.ChooseDecoding"/>).
 /// </summary>
-internal sealed record RendererOption(
+sealed record RendererOption(
     RendererKind Kind,
     bool IsAvailable,
     string Detail,
@@ -41,12 +41,12 @@ internal sealed record RendererOption(
 /// GPU and on WARP in the Windows build. Each presents through the surface's shared GPU image path
 /// when it and Avalonia's compositor support it, else through the frame sink (see the status line).
 /// </summary>
-internal static class Renderers
+static class Renderers
 {
 #if WINDOWS
-    private const bool IsWindowsBuild = true;
+    const bool IsWindowsBuild = true;
 #else
-    private const bool IsWindowsBuild = false;
+    const bool IsWindowsBuild = false;
 #endif
 
     public static IReadOnlyList<RendererOption> Probe()
@@ -63,9 +63,9 @@ internal static class Renderers
         return options;
     }
 
-    private static RendererOption Describe(RendererKind kind, MediaPresentationAvailability availability, string composition)
+    static RendererOption Describe(RendererKind kind, MediaPresentationAvailability availability, string composition)
     {
-        (VideoDecodingMethod decoding, var decodingDetail) = ChooseDecoding(kind, availability);
+        (var decoding, var decodingDetail) = ChooseDecoding(kind, availability);
         return new RendererOption(
             kind,
             availability.IsAvailable,
@@ -81,7 +81,7 @@ internal static class Renderers
     /// (<see cref="PlayerRendererRules.DescribeDecoding"/>) over what the renderer's probe says it
     /// can present (<see cref="MediaPresentationAvailability.RequiresSoftwareDecoding"/>).
     /// </summary>
-    internal static (VideoDecodingMethod Decoding, string Detail) ChooseDecoding(RendererKind kind, MediaPresentationAvailability availability) =>
+    static (VideoDecodingMethod Decoding, string Detail) ChooseDecoding(RendererKind kind, MediaPresentationAvailability availability) =>
         PlayerRendererRules.DescribeDecoding(
             kind switch
             {
@@ -104,7 +104,7 @@ internal static class Renderers
     {
         bool Usable(RendererKind kind) => options.Any(option => option.Kind == kind && option.IsAvailable);
 
-        RendererKind auto = PlayerRendererRules.AutoOrder(IsWindowsBuild)
+        var auto = PlayerRendererRules.AutoOrder(IsWindowsBuild)
             .Select(ToKind)
             .FirstOrDefault(kind => kind is { } candidate && Usable(candidate)) ?? RendererKind.Software;
 
@@ -122,7 +122,7 @@ internal static class Renderers
             : (auto, $"--renderer={PlayerRendererRules.Name(request)} is not usable here; using {auto} (the auto choice).");
     }
 
-    private static RendererKind? ToKind(PlayerRendererRequest request) => request switch
+    static RendererKind? ToKind(PlayerRendererRequest request) => request switch
     {
         PlayerRendererRequest.Gpu => IsWindowsBuild ? RendererKind.Direct3D11 : RendererKind.Vulkan,
         PlayerRendererRequest.Warp when IsWindowsBuild => RendererKind.Warp,
@@ -143,7 +143,7 @@ internal static class Renderers
     };
 
 #if WINDOWS
-    private static Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection device) =>
+    static Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection device) =>
         WindowsDirect3D11PlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions { DeviceSelection = device });
 #endif
 }

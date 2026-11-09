@@ -9,10 +9,9 @@ using FatzMedia.Video.Pipeline;
 
 namespace FatzMedia.Video.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
+sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
-    private double _position;
-    private int _cancelPendingNetworkOpenCount;
+    int _cancelPendingNetworkOpenCount;
 
     /// <summary>How often the player cancelled a network open in progress (Stage 039A).</summary>
     public int CancelPendingNetworkOpenCount => Volatile.Read(ref _cancelPendingNetworkOpenCount);
@@ -68,10 +67,10 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public MediaBackgroundCandidate? Background { get; private set; }
     public double Position
     {
-        get => TestVideo is { IsOpen: true } ? TestVideo.Position : _position;
+        get => TestVideo is { IsOpen: true } ? TestVideo.Position : field;
         set
         {
-            _position = value;
+            field = value;
             if (TestVideo is { IsOpen: true })
                 TestVideo.Position = value;
         }
@@ -234,7 +233,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 }
 
-internal sealed class TestVideoEngine : IVideoEngine, IVideoOpenOutcome, IRendererRefreshRateSink, IPresentationTimingSink, INetworkVideoEngine
+sealed class TestVideoEngine : IVideoEngine, IVideoOpenOutcome, IRendererRefreshRateSink, IPresentationTimingSink, INetworkVideoEngine
 {
     /// <summary>A local open finds no video stream (an audio-only container) and fails.</summary>
     public bool OpenFindsNoVideo { get; set; }
@@ -336,7 +335,7 @@ internal sealed class TestVideoEngine : IVideoEngine, IVideoOpenOutcome, IRender
     public void Dispose() => Close();
 }
 
-internal sealed class TestCdgEngine : ICdgEngine
+sealed class TestCdgEngine : ICdgEngine
 {
     public int FrameWidth => 300;
     public int FrameHeight => 216;
@@ -366,9 +365,8 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzMedia.Video.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
+sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzMedia.Video.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
-    private bool _normalizationReady = true;
     public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
     public int EqualizerApplyCount { get; private set; }
 
@@ -401,7 +399,7 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl,
     public void RaiseStreamMetadata(string? title, string? artist) =>
         StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(title, artist, $"{artist} - {title}"));
 
-    private int _fadeSession;
+    int _fadeSession;
 
     public bool FadeAvailable { get; set; } = true;
     public System.Collections.Concurrent.ConcurrentQueue<(double Gain, TimeSpan Ramp)> FadeCalls { get; } = new();
@@ -423,7 +421,7 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl,
     public bool Normalize { get; set; } = true;
     public double NormalizationGain { get; set; } = 1;
     // Settable so a test can hold a PlayOnLoad start in its wait for the quick analysis.
-    public bool NormalizationReady { get => Volatile.Read(ref _normalizationReady); set => Volatile.Write(ref _normalizationReady, value); }
+    public bool NormalizationReady { get => Volatile.Read(ref field); set => Volatile.Write(ref field, value); } = true;
     public bool IsNormalizationReady => NormalizationReady;
     public double Duration { get; set; }
     public double Position { get; set; }
@@ -498,7 +496,7 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl,
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private void SetState(AudioEngineState state)
+    void SetState(AudioEngineState state)
     {
         State = state;
         StateChanged?.Invoke(this, state);

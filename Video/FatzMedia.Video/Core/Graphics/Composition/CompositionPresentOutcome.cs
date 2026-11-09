@@ -8,9 +8,9 @@ namespace FatzMedia.Video.Core.Graphics.Composition;
 /// </summary>
 public struct CompositionPresentOutcome
 {
-    private bool _primaryExpected;
-    private bool _primaryPresented;
-    private bool _anyPresented;
+    bool _primaryExpected;
+    bool _primaryPresented;
+    bool _anyPresented;
 
     /// <summary>Records a target that took part in the present, and whether it presented.</summary>
     public void Record(bool isPrimary, bool presented)

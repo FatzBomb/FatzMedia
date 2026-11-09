@@ -8,18 +8,18 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class ScrubAudioMuterTests
 {
-    private static readonly TimeSpan Quiet = ScrubAudioMuter.DefaultQuietPeriod;
-    private readonly FakeTimeProvider _time = new();
-    private readonly List<(bool Muted, TimeSpan Ramp)> _applied = [];
+    static readonly TimeSpan Quiet = ScrubAudioMuter.DefaultQuietPeriod;
+    readonly FakeTimeProvider _time = new();
+    readonly List<(bool Muted, TimeSpan Ramp)> _applied = [];
 
     /// <summary>A scrub seek as the player makes it: tracked, then finished.</summary>
-    private static void Seek(ScrubAudioMuter muter)
+    static void Seek(ScrubAudioMuter muter)
     {
         if (muter.OnScrubSeek())
             muter.OnScrubSeekFinished();
     }
 
-    private ScrubAudioMuter Create(MediaScrubAudio mode = MediaScrubAudio.SilentWhileMoving) =>
+    ScrubAudioMuter Create(MediaScrubAudio mode = MediaScrubAudio.SilentWhileMoving) =>
         new((muted, ramp) => _applied.Add((muted, ramp)), _time) { Mode = mode };
 
     [Fact]
@@ -187,10 +187,10 @@ public sealed class ScrubAudioMuterTests
     }
 
     /// <summary>Manual clock with one-shot timers that fire, in order, as time advances.</summary>
-    private sealed class FakeTimeProvider : TimeProvider
+    sealed class FakeTimeProvider : TimeProvider
     {
-        private readonly List<FakeTimer> _timers = [];
-        private long _now;
+        readonly List<FakeTimer> _timers = [];
+        long _now;
 
         public override long TimestampFrequency => 1_000;
 
@@ -216,7 +216,7 @@ public sealed class ScrubAudioMuterTests
             _now = target;
         }
 
-        private sealed class FakeTimer(FakeTimeProvider owner, TimerCallback callback, object? state) : ITimer
+        sealed class FakeTimer(FakeTimeProvider owner, TimerCallback callback, object? state) : ITimer
         {
             public long? DueAt { get; private set; }
 

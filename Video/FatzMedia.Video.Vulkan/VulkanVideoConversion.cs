@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Vulkan;
 /// the Direct3D11 tone-map shader's constants (Stage 038A), so both renderers draw the same picture.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct VulkanVideoConstants
+struct VulkanVideoConstants
 {
     /// <summary>xy: texture coordinates at the display's bottom-right edge (display / coded size); zw unused.</summary>
     public Vector4 TextureScale;
@@ -38,7 +38,7 @@ internal struct VulkanVideoConstants
 }
 
 /// <summary>Pure planning of the YCbCr-to-RGB conversion and HDR tone mapping of a native frame (tested).</summary>
-internal static class VulkanVideoConversion
+static class VulkanVideoConversion
 {
     /// <summary>
     /// The shader constants for a frame of <paramref name="bitDepth"/> bits per sample, shown
@@ -73,7 +73,7 @@ internal static class VulkanVideoConversion
         var chromaScale = codeScale / (full ? maxCode : 224 * step);
         var chromaOffset = -128 * step / (full ? maxCode : 224 * step);
 
-        (double kr, double kb) = colorSpace.Matrix switch
+        (var kr, var kb) = colorSpace.Matrix switch
         {
             VideoColorMatrix.Bt601 => (0.299, 0.114),
             VideoColorMatrix.Bt709 => (0.2126, 0.0722),

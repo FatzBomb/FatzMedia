@@ -101,7 +101,7 @@ public sealed class SurfaceAutoHidePolicyTests
         Assert.False(policy.IsContentVisible);
     }
 
-    private static SurfaceAutoHidePolicy CreateShownPolicy()
+    static SurfaceAutoHidePolicy CreateShownPolicy()
     {
         var policy = new SurfaceAutoHidePolicy();
         _ = policy.MediaLoaded();

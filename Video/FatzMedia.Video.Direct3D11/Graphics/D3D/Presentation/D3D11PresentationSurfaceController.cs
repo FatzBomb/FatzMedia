@@ -1,9 +1,8 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
-using FatzMedia.Video.Core.Graphics.D3D.Presentation.Shared;
 using FatzMedia.Video.Core.Video.Hdr;
 using Vortice.Direct3D11;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 
@@ -12,23 +11,23 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// The renderer should coordinate frame upload/composition; this controller owns the
 /// bookkeeping that says which backend target texture is active and how large it is.
 /// </summary>
-internal sealed class D3D11PresentationSurfaceController(
+sealed class D3D11PresentationSurfaceController(
     D3D11PresentationBackendSet backends) : ID3D11PresentationSurfaceProvider
 {
-    private static readonly long DirectCompositionResizeOverlaySplitSuppressionTicks = Math.Max(1, Stopwatch.Frequency / 4);
+    static readonly long DirectCompositionResizeOverlaySplitSuppressionTicks = Math.Max(1, Stopwatch.Frequency / 4);
 
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
     public long TargetRevision { get; private set; }
     public IntPtr NativeHwnd { get; private set; }
-    private D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
-    private HdrOutputMode _activeOutputMode;
-    private long _directCompositionOverlaySplitSuppressedUntil;
+    D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
+    HdrOutputMode _activeOutputMode;
+    long _directCompositionOverlaySplitSuppressedUntil;
     // Reused every frame (ENG-026). Every caller holds the presentation lock.
-    private readonly List<D3D11PresentationBackendTarget> _scratchBackends = [];
-    private readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
-    private readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
+    readonly List<D3D11PresentationBackendTarget> _scratchBackends = [];
+    readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
+    readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
     public bool LastActivationCreated { get; private set; }
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
     public bool ShouldSuppressDirectCompositionOverlaySplit =>
@@ -68,7 +67,7 @@ internal sealed class D3D11PresentationSurfaceController(
         return _frameSnapshots;
     }
 
-    private void FillActiveTargetSnapshots(
+    void FillActiveTargetSnapshots(
         List<D3D11PresentationTargetSnapshot> snapshots,
         bool applyPendingNativeResize,
         string? reason)
@@ -83,12 +82,12 @@ internal sealed class D3D11PresentationSurfaceController(
         if (applyPendingNativeResize)
             backends.ApplyPendingSecondaryResizes();
 
-        ID3D11PresentationBackend? primary = backends.Active;
+        var primary = backends.Active;
         backends.CollectActiveTargetBackends(_scratchBackends);
-        foreach (D3D11PresentationBackendTarget candidate in _scratchBackends)
+        foreach (var candidate in _scratchBackends)
         {
-            ID3D11PresentationBackend backend = candidate.Backend;
-            ID3D11Texture2D? texture = backend.TargetTexture;
+            var backend = candidate.Backend;
+            var texture = backend.TargetTexture;
             var width = backend.Width;
             var height = backend.Height;
             if (texture == null || width <= 0 || height <= 0)
@@ -102,7 +101,7 @@ internal sealed class D3D11PresentationSurfaceController(
                 ? Composition.Planning.CompositionTargetDescriptor.PrimaryFinalTargetId
                 : candidate.TargetId;
 
-            HdrOutputMode outputMode = OutputModeOf(backend);
+            var outputMode = OutputModeOf(backend);
             if (isPrimary && (!ReferenceEquals(texture, TargetTexture)
                 || width != Width
                 || height != Height
@@ -139,13 +138,13 @@ internal sealed class D3D11PresentationSurfaceController(
     /// backend object (a resize, or a new sink of the same size), and a new texture must not be
     /// taken for the one a retained refresh already drew into.
     /// </summary>
-    private static long SecondaryRevision(ID3D11PresentationBackend backend, ID3D11Texture2D texture) =>
+    static long SecondaryRevision(ID3D11PresentationBackend backend, ID3D11Texture2D texture) =>
         backend.Kind is D3D11PresentationBackendKind.ManagedFrameSink or D3D11PresentationBackendKind.SharedTexture
             ? HashCode.Combine(backend, texture)
             : backend.GetHashCode();
 
     /// <summary>What a backend's target holds: only the HWND swap chains can hold scRGB (Stage 042A slice 2).</summary>
-    private static HdrOutputMode OutputModeOf(ID3D11PresentationBackend backend) =>
+    static HdrOutputMode OutputModeOf(ID3D11PresentationBackend backend) =>
         backend is ID3D11HdrOutputBackend hdr ? hdr.OutputMode : HdrOutputMode.Sdr;
 
     public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot snapshot)
@@ -191,7 +190,7 @@ internal sealed class D3D11PresentationSurfaceController(
         return backends.DirectComposition.PresentOverlayAndCommit(liveResize ? 0u : 1u);
     }
 
-    private static void LogInvalidTarget(string? reason, string detail)
+    static void LogInvalidTarget(string? reason, string detail)
     {
         if (string.IsNullOrWhiteSpace(reason))
         {
@@ -367,7 +366,7 @@ internal sealed class D3D11PresentationSurfaceController(
             enableLogging,
             notifyPresented);
 
-    private bool ActivateManagedFrameSinkSurface(
+    bool ActivateManagedFrameSinkSurface(
         D3D11DeviceResources deviceResources,
         IMediaPresentationFrameSink sink,
         int width,
@@ -428,7 +427,7 @@ internal sealed class D3D11PresentationSurfaceController(
             height,
             onCreated =>
             {
-                D3D11SharedTextureBackend backend = backends.SharedTexture;
+                var backend = backends.SharedTexture;
                 // A re-export for the consumer already served (a resize step): no black frame is
                 // announced, the consumer keeps its last image until the next real frame
                 // (ENG-039 G4).
@@ -660,7 +659,7 @@ internal sealed class D3D11PresentationSurfaceController(
         return directCompositionResized && nativeHwndResized;
     }
 
-    private bool ApplyPendingDirectCompositionResizeIfNeeded()
+    bool ApplyPendingDirectCompositionResizeIfNeeded()
     {
         if (!backends.DirectComposition.IsActive)
         {
@@ -678,10 +677,10 @@ internal sealed class D3D11PresentationSurfaceController(
         return resized;
     }
 
-    private void SuppressDirectCompositionOverlaySplitForResize() =>
+    void SuppressDirectCompositionOverlaySplitForResize() =>
         _directCompositionOverlaySplitSuppressedUntil = Stopwatch.GetTimestamp() + DirectCompositionResizeOverlaySplitSuppressionTicks;
 
-    private void SyncNativeHwndState()
+    void SyncNativeHwndState()
     {
         if (backends.NativeHwnd.IsActive)
         {
@@ -689,7 +688,7 @@ internal sealed class D3D11PresentationSurfaceController(
         }
     }
 
-    private void SyncDirectCompositionState()
+    void SyncDirectCompositionState()
     {
         if (backends.DirectComposition.IsActive)
         {
@@ -697,11 +696,11 @@ internal sealed class D3D11PresentationSurfaceController(
         }
     }
 
-    private void Adopt(ID3D11PresentationBackend backend, IntPtr nativeHwnd = default)
+    void Adopt(ID3D11PresentationBackend backend, IntPtr nativeHwnd = default)
     {
         // A swap chain that switched between SDR and scRGB (Stage 042A slice 2) holds new,
         // undrawn buffers: a structural change, so a retained refresh draws instead of skipping.
-        HdrOutputMode outputMode = OutputModeOf(backend);
+        var outputMode = OutputModeOf(backend);
         var structuralChange = Width != backend.Width
             || Height != backend.Height
             || NativeHwnd != nativeHwnd

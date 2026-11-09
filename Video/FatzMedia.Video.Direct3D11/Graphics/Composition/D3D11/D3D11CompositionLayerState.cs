@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Graphics.Composition.Planning;
 using FatzMedia.Video.Core.Graphics.Rendering;
@@ -18,11 +17,11 @@ namespace FatzMedia.Video.Core.Graphics.Composition.D3D11;
 /// transition guardrails and update-planner metadata; Stage 10K adds scheduling
 /// metadata without changing current presentation behavior.
 /// </summary>
-internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposable
+sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposable
 {
     public MediaCompositionLayerId Id { get; } = id;
     // Upload and allocation failures repeat every frame: one diagnostic until one succeeds (ENG-026).
-    private readonly RendererDiagnosticLatch _failure = new();
+    readonly RendererDiagnosticLatch _failure = new();
 
     public MediaCompositionLayer? Descriptor { get; private set; }
     public MediaCompositionLayerDirtyFlags DirtyFlags { get; private set; } = MediaCompositionLayerDirtyFlags.None;
@@ -46,8 +45,8 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
     public CompositionLayerUpdate CreateUpdatePlanEntry()
     {
-        MediaCompositionLayer? descriptor = Descriptor;
-        CompositionLayerUpdateAction action = CompositionLayerUpdateAction.None;
+        var descriptor = Descriptor;
+        var action = CompositionLayerUpdateAction.None;
 
         if (WasDeactivated)
         {
@@ -244,7 +243,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
             if (UploadedRevision != snapshot.Revision)
             {
-                ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
+                var indices = snapshot.ColorIndices.Span;
                 UploadCdgIndexRegions(context, CdgIndexTexture, snapshot, indices, UploadedRevision);
                 MarkUploaded(snapshot.Revision);
             }
@@ -252,7 +251,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             if (CdgPaletteUploadedRevision != snapshot.PaletteRevision)
             {
                 Span<byte> paletteBgra = stackalloc byte[CdgConstants.ColorCount * 4];
-                ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
+                var palette = snapshot.PaletteArgb.Span;
                 for (var i = 0; i < CdgConstants.ColorCount; i++)
                 {
                     var argb = unchecked((uint)palette[i]);
@@ -307,7 +306,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
         var needsUpload = NeedsUpload;
         var needsRender = NeedsRender;
-        MediaCompositionLayerDirtyFlags remainingFlags = MediaCompositionLayerDirtyFlags.None;
+        var remainingFlags = MediaCompositionLayerDirtyFlags.None;
         if (needsUpload)
             remainingFlags |= MediaCompositionLayerDirtyFlags.UploadRequired;
 
@@ -345,7 +344,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
     public void Dispose() => Clear();
 
-    private static MediaCompositionLayerDirtyFlags ComputeDirtyFlags(MediaCompositionLayer? previous, MediaCompositionLayer current)
+    static MediaCompositionLayerDirtyFlags ComputeDirtyFlags(MediaCompositionLayer? previous, MediaCompositionLayer current)
     {
         if (previous == null)
             return MediaCompositionLayerDirtyFlags.Activated
@@ -355,7 +354,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
 
-        MediaCompositionLayerDirtyFlags flags = MediaCompositionLayerDirtyFlags.None;
+        var flags = MediaCompositionLayerDirtyFlags.None;
 
         if (previous.SourceKind != current.SourceKind)
             flags |= MediaCompositionLayerDirtyFlags.SourceKindChanged
@@ -410,10 +409,10 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         return flags;
     }
 
-    private static bool NearlyEquals(double left, double right)
+    static bool NearlyEquals(double left, double right)
         => Math.Abs(left - right) < 0.000001d;
 
-    private void EnsureTexture(ID3D11Device device, int width, int height, int stride, BindFlags bindFlags, Format format = Format.B8G8R8A8_UNorm)
+    void EnsureTexture(ID3D11Device device, int width, int height, int stride, BindFlags bindFlags, Format format = Format.B8G8R8A8_UNorm)
     {
         if (Texture != null
             && ShaderResourceView != null
@@ -448,7 +447,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         TextureFormat = format;
     }
 
-    private void EnsureCdgTextures(ID3D11Device device)
+    void EnsureCdgTextures(ID3D11Device device)
     {
         if (HasCdgResources)
             return;
@@ -491,7 +490,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         UploadedRevision = -1;
     }
 
-    private static void UploadCdgIndexRegions(
+    static void UploadCdgIndexRegions(
         ID3D11DeviceContext context,
         ID3D11Texture2D indexTexture,
         CdgRenderSnapshot snapshot,
@@ -508,9 +507,9 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             return;
         }
 
-        foreach (CdgDirtyRect dirtyRect in snapshot.DirtyRects)
+        foreach (var dirtyRect in snapshot.DirtyRects)
         {
-            CdgDirtyRect rect = dirtyRect.ClampToFrame();
+            var rect = dirtyRect.ClampToFrame();
             if (rect.IsEmpty)
             {
                 continue;
@@ -535,7 +534,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         }
     }
 
-    private void ReleaseResources()
+    void ReleaseResources()
     {
         ShaderResourceView?.Dispose();
         ShaderResourceView = null;
@@ -548,7 +547,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         StretchMode = MediaCompositionStretchMode.UniformFit;
     }
 
-    private void ReleaseCdgResources()
+    void ReleaseCdgResources()
     {
         CdgIndexShaderResourceView?.Dispose();
         CdgIndexShaderResourceView = null;

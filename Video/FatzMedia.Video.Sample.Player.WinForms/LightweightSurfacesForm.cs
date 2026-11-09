@@ -7,14 +7,14 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// (<c>--lightweight-surfaces</c>, Stage 046A slice 2; the WPF and Avalonia players have the same
 /// window). Each control creates its own player with the renderer chosen at startup.
 /// </summary>
-internal sealed class LightweightSurfacesForm : Form
+sealed class LightweightSurfacesForm : Form
 {
-    private static readonly Color[] Colours = [Color.DarkSlateBlue, Color.DarkGreen, Color.Black];
+    static readonly Color[] Colours = [Color.DarkSlateBlue, Color.DarkGreen, Color.Black];
 
-    private readonly BackgroundSurface _background;
-    private readonly KaraokeSurface _karaoke;
-    private readonly TextBox _path = new() { Width = 380, Margin = new Padding(4, 6, 4, 4) };
-    private int _colour;
+    readonly BackgroundSurface _background;
+    readonly KaraokeSurface _karaoke;
+    readonly TextBox _path = new() { Width = 380, Margin = new Padding(4, 6, 4, 4) };
+    int _colour;
 
     public LightweightSurfacesForm(Func<IPlatformFactory> createPlatformFactory, IReadOnlyList<string> nativeLibraryPaths, bool autoHide, bool preferNativeWindow)
     {
@@ -61,16 +61,16 @@ internal sealed class LightweightSurfacesForm : Form
         FormClosed += (_, _) => _background.OverlayContent?.Dispose();
     }
 
-    private string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
+    string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
 
-    private void Browse()
+    void Browse()
     {
         using var dialog = new OpenFileDialog { Title = "Background (image, video) or karaoke (CDG, MP3+G, ZIP, KAR, MID)" };
         if (dialog.ShowDialog(this) == DialogResult.OK)
             _path.Text = dialog.FileName;
     }
 
-    private static Button Button(string text, Action click)
+    static Button Button(string text, Action click)
     {
         var button = new Button { Text = text, AutoSize = true };
         button.Click += (_, _) => click();

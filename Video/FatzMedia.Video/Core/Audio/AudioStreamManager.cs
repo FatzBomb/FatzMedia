@@ -1,9 +1,9 @@
+using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Threading;
 using ManagedBass;
 using ManagedBass.Fx;
-using System.Runtime.CompilerServices;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -12,49 +12,49 @@ namespace FatzMedia.Video.Core.Audio;
 /// Manages BASS audio stream lifecycle including creation, validation, and cleanup.
 /// Handles multiple stream types (decode, source, tempo) and their complex interactions.
 /// </summary>
-internal sealed class AudioStreamManager : IDisposable
+sealed class AudioStreamManager : IDisposable
 {
     #region Constants
 
     // ManagedBass omits BASS_POS_FLUSH from PositionFlags; bass.h defines it as 0x1000000.
-    private const PositionFlags FlushPositionFlag = (PositionFlags)0x1000000;
+    const PositionFlags FlushPositionFlag = (PositionFlags)0x1000000;
 
     // FxFreeSource (0x10000) does nothing for most streams (it is a TempoCreate flag), but it is
     // also BASS_MIDI_NOTEOFF1, which MIDI streams have always been created with: kept as it was
     // (ENG-028) until MIDI can be checked against a change.
-    private const BassFlags CreateStreamFlags =
+    const BassFlags CreateStreamFlags =
         BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
 
     internal const BassFlags DecodeFlags =
         BassFlags.Decode | BassFlags.Float | BassFlags.Prescan;
 
     // Tracker byte seeking requires Prescan on the decode source wrapped by BASS_FX.
-    private const BassFlags TrackerPlaybackSourceFlags =
+    const BassFlags TrackerPlaybackSourceFlags =
         BassFlags.Decode
         | BassFlags.Float
         | BassFlags.Prescan
         | BassFlags.MusicPositionReset
         | BassFlags.MusicStopBack;
 
-    private const BassFlags TrackerDecodeFlags =
+    const BassFlags TrackerDecodeFlags =
         DecodeFlags | BassFlags.MusicPositionReset | BassFlags.MusicStopBack;
 
-    private const BassFlags TempoCreateFlags =
+    const BassFlags TempoCreateFlags =
         BassFlags.Default | BassFlags.Float;
 
     #endregion
 
     #region Private Fields
 
-    private int _sourceHandle;
-    private bool _sourceHandleIsMusic;
-    private bool _decodeHandleIsMusic;
-    private ConvertedAudio? _converted;
-    private bool _loopPlayback;
-    private readonly TrackerPositionTimeline _trackerPositionTimeline = new();
+    int _sourceHandle;
+    bool _sourceHandleIsMusic;
+    bool _decodeHandleIsMusic;
+    ConvertedAudio? _converted;
+    bool _loopPlayback;
+    readonly TrackerPositionTimeline _trackerPositionTimeline = new();
 
     // Cached values to avoid repeated calculations
-    private volatile bool _disposed;
+    volatile bool _disposed;
 
     #endregion
 
@@ -96,7 +96,7 @@ internal sealed class AudioStreamManager : IDisposable
 
     #region Public Methods
 
-    private static readonly HashSet<string> TrackerExtensions = new(StringComparer.OrdinalIgnoreCase)
+    static readonly HashSet<string> TrackerExtensions = new(StringComparer.OrdinalIgnoreCase)
     { ".mod", ".it", ".s3m", ".xm", ".mo3", ".mtm", ".umx" };
 
     internal static bool IsTrackerFormat(string filePath) =>
@@ -161,12 +161,12 @@ internal sealed class AudioStreamManager : IDisposable
     /// Opens a file no BASS plugin can decode through the FFmpeg fallback (Stage 033A): the
     /// converted float WAV gets the same decode and tempo streams as any other file.
     /// </summary>
-    private bool OpenConverted(string filePath)
+    bool OpenConverted(string filePath)
     {
         try
         {
             // The load's token: Reset, Dispose and the host can stop a long conversion.
-            ConvertedAudio? converted = FfmpegAudioFallback.Take(filePath, MediaOpenCancellation.Current);
+            var converted = FfmpegAudioFallback.Take(filePath, MediaOpenCancellation.Current);
             if (converted is null)
                 return false;
 
@@ -268,7 +268,7 @@ internal sealed class AudioStreamManager : IDisposable
         using var memoryStream = new MemoryStream(estimatedSize);
         archiveEntry.WriteTo(memoryStream);
 
-        byte[] buffer = memoryStream.GetBuffer();
+        var buffer = memoryStream.GetBuffer();
         return buffer.Length == memoryStream.Length
             ? (buffer, buffer.Length)
             : (memoryStream.ToArray(), (int)memoryStream.Length);
@@ -279,7 +279,7 @@ internal sealed class AudioStreamManager : IDisposable
     /// disk: the entry is copied to a scratch file for FFmpeg, which is deleted once converted
     /// (the converted WAV holds its own data).
     /// </summary>
-    private bool OpenConvertedArchiveEntry(IArchiveEntryInfo archiveEntry)
+    bool OpenConvertedArchiveEntry(IArchiveEntryInfo archiveEntry)
     {
         string tempPath;
         try
@@ -343,7 +343,7 @@ internal sealed class AudioStreamManager : IDisposable
     /// <summary>Gets whether the open source is a network stream.</summary>
     public bool IsNetworkSource { get; private set; }
 
-    private long? _networkContentLength;
+    long? _networkContentLength;
 
     /// <summary>
     /// Describes the connected network stream for the capability matrix. A stream is finite only
@@ -358,7 +358,7 @@ internal sealed class AudioStreamManager : IDisposable
 
         var headers = ReadMultiStringTag(_sourceHandle, TagType.HTTP);
         var icyHeaders = ReadMultiStringTag(_sourceHandle, TagType.ICY);
-        long? contentLength = TryReadContentLength(headers);
+        var contentLength = TryReadContentLength(headers);
         if (contentLength is null && MBass.ChannelGetLength(_sourceHandle) > 0)
         {
             var end = MBass.StreamGetFilePosition(_sourceHandle, FileStreamPosition.End);
@@ -378,9 +378,9 @@ internal sealed class AudioStreamManager : IDisposable
     {
         foreach (var header in headers)
         {
-            const string prefix = "Content-Length:";
-            if (header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && long.TryParse(header.AsSpan(prefix.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
+            const string Prefix = "Content-Length:";
+            if (header.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(header.AsSpan(Prefix.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
                 && length > 0)
             {
                 return length;
@@ -427,7 +427,7 @@ internal sealed class AudioStreamManager : IDisposable
     /// <summary>Gets the handle that receives network syncs (the connected source stream).</summary>
     public int NetworkSyncHandle => IsNetworkSource ? _sourceHandle : 0;
 
-    private static IReadOnlyList<string> ReadMultiStringTag(int handle, TagType tagType, bool utf8 = false)
+    static IReadOnlyList<string> ReadMultiStringTag(int handle, TagType tagType, bool utf8 = false)
     {
         var pointer = MBass.ChannelGetTags(handle, tagType);
         if (pointer == IntPtr.Zero)
@@ -484,7 +484,7 @@ internal sealed class AudioStreamManager : IDisposable
         var position = MBass.ChannelGetPosition(handle);
         var seconds = MBass.ChannelBytes2Seconds(handle, position);
 
-        if (_sourceHandleIsMusic && TryGetTrackerOrderRow(out int order, out int row))
+        if (_sourceHandleIsMusic && TryGetTrackerOrderRow(out var order, out var row))
         {
             seconds = _trackerPositionTimeline.Resolve(order, row, seconds);
         }
@@ -496,6 +496,7 @@ internal sealed class AudioStreamManager : IDisposable
     /// Sets the current position in seconds on the playback handle.
     /// </summary>
     /// <param name="seconds">Target position in seconds</param>
+    /// <param name="flush">Whether to flush the buffered audio so the new position is heard at once</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetCurrentPosition(double seconds, bool flush = false)
     {
@@ -539,15 +540,15 @@ internal sealed class AudioStreamManager : IDisposable
         // Free source and decode streams
         if (_sourceHandle != 0)
         {
-            int sourceHandle = _sourceHandle;
-            bool sourceHandleIsMusic = _sourceHandleIsMusic;
+            var sourceHandle = _sourceHandle;
+            var sourceHandleIsMusic = _sourceHandleIsMusic;
             SafeExecute(() => FreeSourceHandle(sourceHandle, sourceHandleIsMusic));
         }
 
         if (DecodeHandle != 0)
         {
-            int decodeHandle = DecodeHandle;
-            bool decodeHandleIsMusic = _decodeHandleIsMusic;
+            var decodeHandle = DecodeHandle;
+            var decodeHandleIsMusic = _decodeHandleIsMusic;
             SafeExecute(() => FreeSourceHandle(decodeHandle, decodeHandleIsMusic));
         }
 
@@ -582,7 +583,7 @@ internal sealed class AudioStreamManager : IDisposable
     #region Private Methods
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool ValidateStreamHandles()
+    bool ValidateStreamHandles()
     {
         if (_sourceHandle != 0)
             return true;
@@ -599,7 +600,7 @@ internal sealed class AudioStreamManager : IDisposable
         return false;
     }
 
-    private void AttachTempoProcessor()
+    void AttachTempoProcessor()
     {
         if (_sourceHandle == 0)
         {
@@ -618,22 +619,22 @@ internal sealed class AudioStreamManager : IDisposable
         }
     }
 
-    private void ApplyLoopPlayback()
+    void ApplyLoopPlayback()
     {
         // A live stream cannot restart: network sources never get the native loop flag.
-        bool enabled = _loopPlayback && !IsNetworkSource;
+        var enabled = _loopPlayback && !IsNetworkSource;
         SetLoopFlag(_sourceHandle, enabled);
         if (PlayHandle != _sourceHandle)
             SetLoopFlag(PlayHandle, enabled);
     }
 
-    private static void SetLoopFlag(int handle, bool enabled)
+    static void SetLoopFlag(int handle, bool enabled)
     {
         if (handle == 0)
             return;
 
-        BassFlags requested = enabled ? BassFlags.Loop : BassFlags.Default;
-        BassFlags updated = MBass.ChannelFlags(handle, requested, BassFlags.Loop);
+        var requested = enabled ? BassFlags.Loop : BassFlags.Default;
+        var updated = MBass.ChannelFlags(handle, requested, BassFlags.Loop);
         if (updated.HasFlag(BassFlags.Loop) != enabled)
         {
             DiagnosticRouter.Raise(
@@ -643,10 +644,10 @@ internal sealed class AudioStreamManager : IDisposable
         }
     }
 
-    private bool TryGetTrackerOrderRow(out int order, out int row)
+    bool TryGetTrackerOrderRow(out int order, out int row)
     {
-        int positionHandle = GetPositionHandle();
-        long orderRow = MBass.ChannelGetPosition(positionHandle, PositionFlags.MusicOrders);
+        var positionHandle = GetPositionHandle();
+        var orderRow = MBass.ChannelGetPosition(positionHandle, PositionFlags.MusicOrders);
         if (orderRow < 0 && positionHandle != _sourceHandle)
         {
             orderRow = MBass.ChannelGetPosition(_sourceHandle, PositionFlags.MusicOrders);
@@ -665,9 +666,9 @@ internal sealed class AudioStreamManager : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ResetState() => DurationSeconds = -1; // Invalidate duration cache
+    void ResetState() => DurationSeconds = -1; // Invalidate duration cache
 
-    private double CalculateDuration()
+    double CalculateDuration()
     {
         if (PlayHandle == 0 && DecodeHandle == 0) return 0.0;
 
@@ -688,7 +689,7 @@ internal sealed class AudioStreamManager : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ResetPosition(int handle)
+    static void ResetPosition(int handle)
     {
         if (handle != 0)
         {
@@ -698,13 +699,13 @@ internal sealed class AudioStreamManager : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SafeExecute(Action action)
+    static void SafeExecute(Action action)
     {
         try { action(); }
         catch { /* Ignore cleanup failures */ }
     }
 
-    private static bool FreeSourceHandle(int handle, bool isMusic) =>
+    static bool FreeSourceHandle(int handle, bool isMusic) =>
         isMusic ? MBass.MusicFree(handle) : MBass.StreamFree(handle);
 
     #endregion

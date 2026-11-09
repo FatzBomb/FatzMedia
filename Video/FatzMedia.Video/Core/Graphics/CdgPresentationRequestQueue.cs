@@ -8,15 +8,15 @@ namespace FatzMedia.Video.Core.Graphics;
 /// a retained refresh only if every merged request was). This preserves the
 /// original coordinator semantics exactly, in a small testable unit.
 /// </summary>
-internal sealed class CdgPresentationRequestQueue
+sealed class CdgPresentationRequestQueue
 {
-    private const string DefaultReason = "cdg pending";
+    const string DefaultReason = "cdg pending";
 
-    private readonly Lock _gate = new();
-    private bool _pending;
-    private bool _consumeDirtyRegions;
-    private bool _retainedRefresh;
-    private string _reason = DefaultReason;
+    readonly Lock _gate = new();
+    bool _pending;
+    bool _consumeDirtyRegions;
+    bool _retainedRefresh;
+    string _reason = DefaultReason;
 
     /// <summary>
     /// Records a pending presentation request, coalescing it with any request that
@@ -67,7 +67,7 @@ internal sealed class CdgPresentationRequestQueue
             ClearNoLock();
     }
 
-    private void ClearNoLock()
+    void ClearNoLock()
     {
         _pending = false;
         _consumeDirtyRegions = false;

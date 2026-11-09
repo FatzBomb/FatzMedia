@@ -61,6 +61,6 @@ public sealed record NetworkRetryPolicy
         return seconds >= MaxDelay.TotalSeconds ? MaxDelay : TimeSpan.FromSeconds(seconds);
     }
 
-    private static TimeSpan ClampTime(TimeSpan value, TimeSpan min, TimeSpan max) =>
+    static TimeSpan ClampTime(TimeSpan value, TimeSpan min, TimeSpan max) =>
         value < min ? min : value > max ? max : value;
 }

@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// silence sections, a one-instrument SF2 soundfont (this machine has no GM bank, and FatzAudio needs
 /// one to open MIDI) and a Soft Karaoke .kar.
 /// </summary>
-internal static class FatzAudioTestMedia
+static class FatzAudioTestMedia
 {
     public const int SampleRate = 44100;
 
@@ -33,7 +33,7 @@ internal static class FatzAudioTestMedia
         writer.Write((short)16);
         writer.Write("data"u8);
         writer.Write(dataBytes);
-        foreach (Section section in sections)
+        foreach (var section in sections)
         {
             var count = (int)Math.Round(section.Seconds * SampleRate);
             for (var i = 0; i < count; i++)
@@ -54,22 +54,22 @@ internal static class FatzAudioTestMedia
     public static string WriteSoundFont(string directory)
     {
         var path = Path.Combine(directory, "test.sf2");
-        const int sampleCount = 4400; // 44 whole cycles of 441 Hz at 44.1 kHz, so the loop is seamless
+        const int SampleCount = 4400; // 44 whole cycles of 441 Hz at 44.1 kHz, so the loop is seamless
         var smpl = new MemoryStream();
         using (var w = new BinaryWriter(smpl, Encoding.ASCII, leaveOpen: true))
         {
-            for (var i = 0; i < sampleCount; i++)
+            for (var i = 0; i < SampleCount; i++)
                 w.Write((short)Math.Round(0.5 * short.MaxValue * Math.Sin(2 * Math.PI * 441 * i / SampleRate)));
             for (var i = 0; i < 46; i++)
                 w.Write((short)0); // the zero guard the spec asks for after each sample
         }
 
-        byte[] info = List("INFO",
+        var info = List("INFO",
             Chunk("ifil", Bytes(w => { w.Write((ushort)2); w.Write((ushort)1); })),
             Chunk("isng", Ascii("EMU8000", 8)),
             Chunk("INAM", Ascii("Test", 6)));
-        byte[] sdta = List("sdta", Chunk("smpl", smpl.ToArray()));
-        byte[] pdta = List("pdta",
+        var sdta = List("sdta", Chunk("smpl", smpl.ToArray()));
+        var pdta = List("pdta",
             Chunk("phdr", Bytes(w =>
             {
                 PresetHeader(w, "Sine", preset: 0, bank: 0, bag: 0);
@@ -92,9 +92,9 @@ internal static class FatzAudioTestMedia
             {
                 w.Write(Ascii("Sine", 20));
                 w.Write(0u);
-                w.Write((uint)sampleCount);
+                w.Write((uint)SampleCount);
                 w.Write(0u);
-                w.Write((uint)sampleCount);
+                w.Write((uint)SampleCount);
                 w.Write((uint)SampleRate);
                 w.Write((byte)69);
                 w.Write((sbyte)0);
@@ -153,10 +153,10 @@ internal static class FatzAudioTestMedia
             ("/Sec", 3), ("ond ", 4), ("line", 5),
             ("\\Third ", 6), ("page", 7),
         ];
-        const int division = 480;
-        const int start = 4 * division;
+        const int Division = 480;
+        const int Start = 4 * Division;
 
-        byte[] conductor = Track(
+        var conductor = Track(
             Meta(0, 0x03, Encoding.ASCII.GetBytes("Test Song")),
             Meta(0, 0x51, [0x07, 0xA1, 0x20]), // 500000 us per quarter: 120 bpm
             Meta(0, 0x58, [3, 2, 24, 8]),
@@ -172,7 +172,7 @@ internal static class FatzAudioTestMedia
         var previous = 0;
         foreach ((var text, var index) in words)
         {
-            var tick = start + (index * division);
+            var tick = Start + (index * Division);
             wordEvents.Add(Meta(tick - previous, 0x01, Encoding.ASCII.GetBytes(text)));
             previous = tick;
         }
@@ -181,10 +181,10 @@ internal static class FatzAudioTestMedia
         previous = 0;
         for (var i = 0; i < words.Length; i++)
         {
-            var on = start + (i * division);
+            var on = Start + (i * Division);
             noteEvents.Add(Event(on - previous, 0x90, 60 + i, 100));
-            noteEvents.Add(Event(division / 2, 0x80, 60 + i, 0));
-            previous = on + (division / 2);
+            noteEvents.Add(Event(Division / 2, 0x80, 60 + i, 0));
+            previous = on + (Division / 2);
         }
 
         using var file = new BinaryWriter(File.Create(path));
@@ -192,14 +192,14 @@ internal static class FatzAudioTestMedia
         WriteBigEndian(file, 6);
         WriteBigEndian16(file, 1);
         WriteBigEndian16(file, 3);
-        WriteBigEndian16(file, division);
+        WriteBigEndian16(file, Division);
         file.Write(conductor);
         file.Write(Track([.. wordEvents]));
         file.Write(Track([.. noteEvents]));
         return path;
     }
 
-    private static byte[] Track(params byte[][] events)
+    static byte[] Track(params byte[][] events)
     {
         var body = events.SelectMany(static e => e).Concat(new byte[] { 0x00, 0xFF, 0x2F, 0x00 }).ToArray();
         var track = new MemoryStream();
@@ -210,13 +210,13 @@ internal static class FatzAudioTestMedia
         return track.ToArray();
     }
 
-    private static byte[] Meta(int delta, byte type, byte[] data) =>
+    static byte[] Meta(int delta, byte type, byte[] data) =>
         [.. VariableLength(delta), 0xFF, type, .. VariableLength(data.Length), .. data];
 
-    private static byte[] Event(int delta, byte status, params int[] data) =>
+    static byte[] Event(int delta, byte status, params int[] data) =>
         [.. VariableLength(delta), status, .. data.Select(static value => (byte)value)];
 
-    private static byte[] VariableLength(int value)
+    static byte[] VariableLength(int value)
     {
         var bytes = new List<byte> { (byte)(value & 0x7F) };
         while ((value >>= 7) > 0)
@@ -224,7 +224,7 @@ internal static class FatzAudioTestMedia
         return [.. bytes];
     }
 
-    private static void WriteBigEndian(BinaryWriter w, int value)
+    static void WriteBigEndian(BinaryWriter w, int value)
     {
         w.Write((byte)(value >> 24));
         w.Write((byte)(value >> 16));
@@ -232,32 +232,32 @@ internal static class FatzAudioTestMedia
         w.Write((byte)value);
     }
 
-    private static void WriteBigEndian16(BinaryWriter w, int value)
+    static void WriteBigEndian16(BinaryWriter w, int value)
     {
         w.Write((byte)(value >> 8));
         w.Write((byte)value);
     }
 
-    private static byte[] Chunk(string id, byte[] data)
+    static byte[] Chunk(string id, byte[] data)
     {
         var padded = data.Length % 2 == 0 ? data : [.. data, 0];
         return [.. Encoding.ASCII.GetBytes(id), .. BitConverter.GetBytes(data.Length), .. padded];
     }
 
-    private static byte[] List(string type, params byte[][] chunks)
+    static byte[] List(string type, params byte[][] chunks)
     {
         byte[] body = [.. Encoding.ASCII.GetBytes(type), .. chunks.SelectMany(static chunk => chunk)];
         return [.. "LIST"u8.ToArray(), .. BitConverter.GetBytes(body.Length), .. body];
     }
 
-    private static byte[] Ascii(string text, int length)
+    static byte[] Ascii(string text, int length)
     {
         var bytes = new byte[length];
         _ = Encoding.ASCII.GetBytes(text, 0, Math.Min(text.Length, length - 1), bytes, 0);
         return bytes;
     }
 
-    private static byte[] Bytes(Action<BinaryWriter> write)
+    static byte[] Bytes(Action<BinaryWriter> write)
     {
         var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))

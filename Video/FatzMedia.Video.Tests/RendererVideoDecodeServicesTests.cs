@@ -46,7 +46,7 @@ public sealed class RendererVideoDecodeServicesTests
         Assert.Equal(42, context);
         Assert.False(services.TryCreateRendererDeviceContext("d3d11va", out _));
 
-        NativeVideoDeviceResource device = services.CreateDeviceResource("vulkan", context)!;
+        var device = services.CreateDeviceResource("vulkan", context)!;
         Assert.Equal(MediaGraphicsBackendId.Vulkan, device.BackendId);
         Assert.Same(renderer.FrameResource, services.CreateFrameResource("vulkan", device, 7));
         Assert.True(services.IsDeviceLost(device));
@@ -72,7 +72,7 @@ public sealed class RendererVideoDecodeServicesTests
             services.NoteHardwareDecodingRequested();
         });
 
-        MediaDiagnosticInfo diagnostic = Assert.Single(diagnostics, static info => info.Category == "VideoDecoder");
+        var diagnostic = Assert.Single(diagnostics, static info => info.Category == "VideoDecoder");
         Assert.Equal(MediaDiagnosticLevel.Warning, diagnostic.Level);
         Assert.Contains("(the device has no video decode queue); decoding in software", diagnostic.Message, StringComparison.Ordinal);
     }
@@ -96,19 +96,19 @@ public sealed class RendererVideoDecodeServicesTests
     [Fact]
     public void TheCoordinator_AttachesItsRenderersDevice_ToThePlayersDecoders()
     {
-        using ServiceProvider provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
-        IMediaEngine engine = provider.GetRequiredService<IMediaEngine>();
-        RendererVideoDecodeServices services = provider.GetRequiredService<RendererVideoDecodeServices>();
+        using var provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        var engine = provider.GetRequiredService<IMediaEngine>();
+        var services = provider.GetRequiredService<RendererVideoDecodeServices>();
 
         var decoding = new DecodingRendererBackend();
-        MediaPresentationCoordinator coordinator = Create(decoding, engine);
+        var coordinator = Create(decoding, engine);
         Assert.Same(decoding, services.Renderer);
         coordinator.Dispose();
         Assert.Null(services.Renderer);
 
         // A renderer that takes the platform's frames replaces any earlier renderer device.
         services.Attach(new FakeRendererDevice("vulkan"));
-        using MediaPresentationCoordinator plain = Create(new DecodingRendererBackend.Plain(), engine);
+        using var plain = Create(new DecodingRendererBackend.Plain(), engine);
         Assert.Null(services.Renderer);
     }
 
@@ -117,11 +117,11 @@ public sealed class RendererVideoDecodeServicesTests
     {
         // ENG-037: the software renderer draws only CPU frames, so with the default (Auto)
         // decoding its players must decode in software instead of dropping hardware frames.
-        using ServiceProvider provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
-        IMediaEngine engine = provider.GetRequiredService<IMediaEngine>();
-        RendererVideoDecodeServices services = provider.GetRequiredService<RendererVideoDecodeServices>();
+        using var provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        var engine = provider.GetRequiredService<IMediaEngine>();
+        var services = provider.GetRequiredService<RendererVideoDecodeServices>();
         var software = new SoftwareRendererBackend();
-        using MediaPresentationCoordinator coordinator = Create(software, engine);
+        using var coordinator = Create(software, engine);
 
         Assert.Same(software, services.Renderer);
         Assert.Empty(services.PreferredDeviceTypeNames);
@@ -132,14 +132,14 @@ public sealed class RendererVideoDecodeServicesTests
             services.NoteHardwareDecodingRequested();
         });
 
-        MediaDiagnosticInfo diagnostic = Assert.Single(diagnostics, static info => info.Category == "VideoDecoder");
+        var diagnostic = Assert.Single(diagnostics, static info => info.Category == "VideoDecoder");
         Assert.Contains(SoftwareRendererBackend.NoVideoDecodeReason, diagnostic.Message, StringComparison.Ordinal);
     }
 
-    private static MediaPresentationCoordinator Create(IMediaRendererBackend backend, IMediaEngine engine) =>
+    static MediaPresentationCoordinator Create(IMediaRendererBackend backend, IMediaEngine engine) =>
         new(backend, NullSubtitleRasterizer.Instance, engine, MediaPlayerConfiguration.Auto, new SystemPrecisionWaiterFactory());
 
-    private static List<MediaDiagnosticInfo> Capture(Action action)
+    static List<MediaDiagnosticInfo> Capture(Action action)
     {
         var captured = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info) => captured.Enqueue(info);
@@ -156,7 +156,7 @@ public sealed class RendererVideoDecodeServicesTests
         return [.. captured];
     }
 
-    private sealed class RecordingPlatformServices : IVideoHardwareAccelerationServices
+    sealed class RecordingPlatformServices : IVideoHardwareAccelerationServices
     {
         public int LostQueries { get; private set; }
 
@@ -175,7 +175,7 @@ public sealed class RendererVideoDecodeServicesTests
         }
     }
 
-    private sealed class FakeRendererDevice(string? type) : IMediaRendererVideoDecodeDevice
+    sealed class FakeRendererDevice(string? type) : IMediaRendererVideoDecodeDevice
     {
         public nint Context { get; init; }
         public bool Lost { get; init; }
@@ -200,7 +200,7 @@ public sealed class RendererVideoDecodeServicesTests
         public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => Lost;
     }
 
-    private class DecodingRendererBackend : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
+    class DecodingRendererBackend : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
     {
         public event EventHandler? FramePresented
         {
@@ -247,7 +247,7 @@ public sealed class RendererVideoDecodeServicesTests
         /// <summary>The same backend without a decode device (as Direct3D11 is).</summary>
         public sealed class Plain : IMediaRendererBackend
         {
-            private readonly DecodingRendererBackend _inner = new();
+            readonly DecodingRendererBackend _inner = new();
 
             public event EventHandler? FramePresented
             {
@@ -283,7 +283,7 @@ public sealed class RendererVideoDecodeServicesTests
 
 
     /// <summary>A platform with no native libraries: no audio, software decoding services.</summary>
-    private sealed class TestPlatformServices : IPlatformServices
+    sealed class TestPlatformServices : IPlatformServices
     {
         public bool IsAudioAvailable => false;
 
@@ -299,7 +299,7 @@ public sealed class RendererVideoDecodeServicesTests
         }
     }
 
-    private sealed class FixedRefresh : IVideoPipelinePlatformServices
+    sealed class FixedRefresh : IVideoPipelinePlatformServices
     {
         public double GetPresentationRefreshIntervalSeconds() => 1.0 / 60;
     }

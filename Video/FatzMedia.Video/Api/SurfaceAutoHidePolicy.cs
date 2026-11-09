@@ -1,7 +1,7 @@
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
 
-internal enum SurfaceAutoHideState
+enum SurfaceAutoHideState
 {
     Idle,
     PendingShow,
@@ -13,7 +13,7 @@ internal enum SurfaceAutoHideState
 /// The surface auto-hide states (Stage 029C, in Core since 046A). Pure and not thread-safe:
 /// <see cref="MediaSurfaceContentTracker"/> drives it under its lock.
 /// </summary>
-internal sealed class SurfaceAutoHidePolicy
+sealed class SurfaceAutoHidePolicy
 {
     public SurfaceAutoHideState State { get; private set; }
 
@@ -43,7 +43,7 @@ internal sealed class SurfaceAutoHidePolicy
 
     public bool Reset() => TransitionTo(SurfaceAutoHideState.Idle);
 
-    private bool TransitionTo(SurfaceAutoHideState state)
+    bool TransitionTo(SurfaceAutoHideState state)
     {
         var wasVisible = IsContentVisible;
         State = state;

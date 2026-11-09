@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// </summary>
 public sealed class EmbeddedSubtitleDecoderNativeTests
 {
-    private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
+    const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
 
     [Fact]
     public void DecodeTracks_ReadsTheEmbeddedSrtTrack()
@@ -19,7 +19,7 @@ public sealed class EmbeddedSubtitleDecoderNativeTests
         if (ResolveClip() is not { } clip)
             return;
 
-        EmbeddedSubtitleTrack track = Assert.Single(EmbeddedSubtitleDecoder.DecodeTracks(clip, CancellationToken.None));
+        var track = Assert.Single(EmbeddedSubtitleDecoder.DecodeTracks(clip, CancellationToken.None));
         Assert.Equal("SUBRIP", track.CodecName);
         Assert.Equal(4, track.Cues.Count);
         Assert.Equal("First line", track.Cues[0].Text);
@@ -55,14 +55,14 @@ public sealed class EmbeddedSubtitleDecoderNativeTests
         FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpeg);
         var size = new FileInfo(clip).Length;
         var before = ReadProcessBytes();
-        IReadOnlyList<EmbeddedSubtitleTrack> tracks = EmbeddedSubtitleDecoder.DecodeTracks(clip, CancellationToken.None);
+        var tracks = EmbeddedSubtitleDecoder.DecodeTracks(clip, CancellationToken.None);
         var read = ReadProcessBytes() - before;
 
         Assert.NotEmpty(tracks);
         Assert.True(read < size * 1.2, $"read {read / 1048576.0:F0} MB of a {size / 1048576.0:F0} MB file");
     }
 
-    private static long ReadProcessBytes()
+    static long ReadProcessBytes()
     {
         foreach (var line in File.ReadLines("/proc/self/io"))
         {
@@ -73,7 +73,7 @@ public sealed class EmbeddedSubtitleDecoderNativeTests
         return 0;
     }
 
-    private static string? ResolveClip()
+    static string? ResolveClip()
     {
         var ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         var mediaDirectory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SUBTITLE_MEDIA_DIR") is { Length: > 0 } configured ? configured : DefaultMediaDirectory;

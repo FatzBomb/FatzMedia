@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
 /// 042A slice 2): the native HWND swap chain and the DirectComposition base swap chain. Offscreen
 /// backends (managed frame sink, shared textures) do not implement it and stay SDR.
 /// </summary>
-internal interface ID3D11HdrOutputBackend
+interface ID3D11HdrOutputBackend
 {
     /// <summary>The window whose monitor decides the output.</summary>
     IntPtr Hwnd { get; }

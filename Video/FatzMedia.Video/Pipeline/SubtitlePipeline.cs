@@ -7,11 +7,11 @@ namespace FatzMedia.Video.Pipeline;
 /// Passive sidecar subtitle source. Cue selection is driven by the active media clock rather than
 /// receiving play, pause, stop, or seek commands of its own.
 /// </summary>
-internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state) : IDisposable
+sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state) : IDisposable
 {
-    private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
-    private readonly Lock _gate = new();
-    private readonly Dictionary<string, SubtitleSource> _sources = new(StringComparer.Ordinal);
+    readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
+    readonly Lock _gate = new();
+    readonly Dictionary<string, SubtitleSource> _sources = new(StringComparer.Ordinal);
 
     public ISubtitleEngine Engine { get; } = engine ?? throw new ArgumentNullException(nameof(engine));
     public bool IsOpen => Engine.IsOpen;
@@ -74,7 +74,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             {
                 shouldSelect = selectFirstTrack && _sources.Count == 0;
                 firstTrackId = null;
-                foreach (EmbeddedSubtitleTrack track in tracks)
+                foreach (var track in tracks)
                 {
                     var trackId = EmbeddedTrackId(track.StreamIndex);
                     _sources[trackId] = new SubtitleSource(
@@ -112,7 +112,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         SubtitleSource source;
         lock (_gate)
         {
-            if (!_sources.TryGetValue(trackId, out SubtitleSource? found) || found is null)
+            if (!_sources.TryGetValue(trackId, out var found) || found is null)
                 return false;
 
             source = found;
@@ -149,7 +149,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
 
     public void Dispose() => Engine.Dispose();
 
-    private void ActivateTrack(SubtitleSource source)
+    void ActivateTrack(SubtitleSource source)
     {
         if (source.FilePath != null)
             Engine.Load(source.FilePath);
@@ -157,5 +157,5 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             Engine.LoadCues(source.Cues!);
     }
 
-    private sealed record SubtitleSource(SubtitleTrack Track, string? FilePath, IReadOnlyList<SubtitleCue>? Cues);
+    sealed record SubtitleSource(SubtitleTrack Track, string? FilePath, IReadOnlyList<SubtitleCue>? Cues);
 }

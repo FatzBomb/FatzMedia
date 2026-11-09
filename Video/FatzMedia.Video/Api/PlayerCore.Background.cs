@@ -10,7 +10,7 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore
 {
-    private volatile bool _backgroundPaused;
+    volatile bool _backgroundPaused;
 
     /// <summary>
     /// Gets whether the background video is paused by <see cref="PauseBackground"/>. The pause holds
@@ -38,7 +38,7 @@ public partial class PlayerCore
     /// <summary>Ends an explicit background pause and plays the background, on the control queue.</summary>
     public Task<bool> ResumeBackgroundAsync() => EnqueueControlOperation(() => SetBackgroundPaused(false));
 
-    private bool SetBackgroundPaused(bool paused)
+    bool SetBackgroundPaused(bool paused)
     {
         if (_mediaEngine is not IBackgroundPlaybackControl control)
             return false;
@@ -48,6 +48,6 @@ public partial class PlayerCore
     }
 
     /// <summary>After a rebuild: the new engine gets the host's pause again (a resume needs nothing).</summary>
-    private bool ApplyBackgroundPause() =>
+    bool ApplyBackgroundPause() =>
         !_backgroundPaused || (_mediaEngine is IBackgroundPlaybackControl control && control.PauseBackground());
 }

@@ -7,24 +7,24 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 /// Aggregates upload and native-present performance diagnostics.  The renderer
 /// should decide when work happens; this class owns only the counters/logging.
 /// </summary>
-internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration configuration)
+sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration configuration)
 {
-    private const int UploadFrameInterval = 120;
-    private const int NativePresentFrameInterval = 120;
-    private const int NativeResizeFrameInterval = 30;
-    private int _uploadFrames;
-    private double _uploadMs;
-    private double _uploadMaxMs;
+    const int UploadFrameInterval = 120;
+    const int NativePresentFrameInterval = 120;
+    const int NativeResizeFrameInterval = 30;
+    int _uploadFrames;
+    double _uploadMs;
+    double _uploadMaxMs;
 
-    private int _nativePresentFrames;
-    private double _nativePresentMs;
-    private double _nativePresentMaxMs;
+    int _nativePresentFrames;
+    double _nativePresentMs;
+    double _nativePresentMaxMs;
 
-    private int _nativeResizeFrames;
-    private double _nativeResizeMs;
-    private double _nativeResizeMaxMs;
-    private int _lastNativeResizeWidth;
-    private int _lastNativeResizeHeight;
+    int _nativeResizeFrames;
+    double _nativeResizeMs;
+    double _nativeResizeMaxMs;
+    int _lastNativeResizeWidth;
+    int _lastNativeResizeHeight;
 
     public void RecordUpload(double uploadMs, int sourceWidth, int sourceHeight, int surfaceWidth, int surfaceHeight)
     {

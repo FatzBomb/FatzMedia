@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Avalonia;
 /// performs the imports; tests describe a compositor without one (Avalonia's interop interfaces
 /// cannot be implemented outside Avalonia).
 /// </summary>
-internal sealed record GpuInteropCapabilities(
+sealed record GpuInteropCapabilities(
     IReadOnlyList<string> ImageHandleTypes,
     Func<string, CompositionGpuImportedImageSynchronizationCapabilities> Synchronization,
     IReadOnlyList<string> SemaphoreHandleTypes,
@@ -29,7 +29,7 @@ internal sealed record GpuInteropCapabilities(
     /// <summary>Asks the compositor for its interop; completes synchronously when Avalonia answers at once.</summary>
     public static ValueTask<GpuInteropCapabilities?> QueryAsync(Compositor compositor)
     {
-        ValueTask<ICompositionGpuInterop?> query = compositor.TryGetCompositionGpuInterop();
+        var query = compositor.TryGetCompositionGpuInterop();
         return query.IsCompletedSuccessfully
             ? new ValueTask<GpuInteropCapabilities?>(query.Result is { } interop ? From(interop) : null)
             : AwaitAsync(query);
@@ -47,11 +47,11 @@ internal sealed record GpuInteropCapabilities(
 /// capabilities) and Core's neutral shared-image contract. Plain values only: the adapter never
 /// touches a graphics API.
 /// </summary>
-internal static class AvaloniaGpuInterop
+static class AvaloniaGpuInterop
 {
     // Preference order: NT handles before legacy global handles (closable, securable), then the
     // portable descriptor kinds.
-    private static readonly (string Avalonia, MediaSharedGpuImageHandleKind Kind)[] ImageHandleTypes =
+    static readonly (string Avalonia, MediaSharedGpuImageHandleKind Kind)[] ImageHandleTypes =
     [
         (KnownPlatformGraphicsExternalImageHandleTypes.D3D11TextureNtHandle, MediaSharedGpuImageHandleKind.D3D11TextureNtHandle),
         (KnownPlatformGraphicsExternalImageHandleTypes.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle),
@@ -59,7 +59,7 @@ internal static class AvaloniaGpuInterop
         (KnownPlatformGraphicsExternalImageHandleTypes.VulkanOpaqueNtHandle, MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle),
     ];
 
-    private static readonly (string Avalonia, MediaSharedGpuSemaphoreHandleKind Kind)[] SemaphoreHandleTypes =
+    static readonly (string Avalonia, MediaSharedGpuSemaphoreHandleKind Kind)[] SemaphoreHandleTypes =
     [
         (KnownPlatformGraphicsExternalSemaphoreHandleTypes.VulkanOpaquePosixFileDescriptor, MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd),
         (KnownPlatformGraphicsExternalSemaphoreHandleTypes.VulkanOpaqueNtHandle, MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle),
@@ -73,12 +73,12 @@ internal static class AvaloniaGpuInterop
         byte[]? deviceUuid)
     {
         List<MediaSharedGpuImageCapability> capabilities = [];
-        foreach ((var avaloniaType, MediaSharedGpuImageHandleKind kind) in ImageHandleTypes)
+        foreach ((var avaloniaType, var kind) in ImageHandleTypes)
         {
             if (!imageHandleTypes.Contains(avaloniaType))
                 continue;
 
-            MediaSharedGpuImageSyncKinds sync = ToSyncKinds(synchronization(avaloniaType));
+            var sync = ToSyncKinds(synchronization(avaloniaType));
             if (sync != MediaSharedGpuImageSyncKinds.None)
                 capabilities.Add(new MediaSharedGpuImageCapability(kind, sync));
         }
@@ -92,7 +92,7 @@ internal static class AvaloniaGpuInterop
 
     internal static MediaSharedGpuImageSyncKinds ToSyncKinds(CompositionGpuImportedImageSynchronizationCapabilities capabilities)
     {
-        MediaSharedGpuImageSyncKinds sync = MediaSharedGpuImageSyncKinds.None;
+        var sync = MediaSharedGpuImageSyncKinds.None;
         if ((capabilities & CompositionGpuImportedImageSynchronizationCapabilities.KeyedMutex) != 0)
             sync |= MediaSharedGpuImageSyncKinds.KeyedMutex;
         if ((capabilities & CompositionGpuImportedImageSynchronizationCapabilities.Semaphores) != 0)

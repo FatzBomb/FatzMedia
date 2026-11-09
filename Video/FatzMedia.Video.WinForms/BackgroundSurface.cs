@@ -22,18 +22,14 @@ public class BackgroundSurface : Control
 {
     /// <summary>The diagnostic category of this control's own notices.</summary>
     public const string DiagnosticCategory = "WinForms.BackgroundSurface";
-
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill };
-    private readonly LightweightSurfaceHost _host;
-    private object? _source;
-    private Color _backgroundColor = Color.Black;
+    readonly LightweightSurfaceHost _host;
 
     public BackgroundSurface()
     {
         BackColor = Color.Black;
-        _host = new LightweightSurfaceHost(this, _surface, LightweightPlayerKind.Background, DiagnosticCategory, ReloadSourceAsync);
+        _host = new LightweightSurfaceHost(this, Surface, LightweightPlayerKind.Background, DiagnosticCategory, ReloadSourceAsync);
         _host.ContentVisibilityChanged += (_, _) => ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
-        Controls.Add(_surface);
+        Controls.Add(Surface);
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
@@ -84,8 +80,8 @@ public class BackgroundSurface : Control
     [DefaultValue(true)]
     public bool AutoHide
     {
-        get => _surface.AutoHide;
-        set => _surface.AutoHide = value;
+        get => Surface.AutoHide;
+        set => Surface.AutoHide = value;
     }
 
     /// <summary>Gets whether media is shown now (false for a solid colour).</summary>
@@ -96,8 +92,8 @@ public class BackgroundSurface : Control
     [DefaultValue(true)]
     public bool PreferNativeWindow
     {
-        get => _surface.PreferNativeWindow;
-        set => _surface.PreferNativeWindow = value;
+        get => Surface.PreferNativeWindow;
+        set => Surface.PreferNativeWindow = value;
     }
 
     /// <summary>Gets or sets what the background shows (see the remarks); a change reloads once the control has a handle.</summary>
@@ -105,13 +101,13 @@ public class BackgroundSurface : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public object? Source
     {
-        get => _source;
+        get;
         set
         {
-            if (Equals(_source, value))
+            if (Equals(field, value))
                 return;
 
-            _source = value;
+            field = value;
             _host.QueueReload();
         }
     }
@@ -119,34 +115,34 @@ public class BackgroundSurface : Control
     /// <summary>Gets or sets the opaque colour shown without media, and behind it (default black).</summary>
     public Color BackgroundColor
     {
-        get => _backgroundColor;
+        get;
         set
         {
-            _backgroundColor = Color.FromArgb(byte.MaxValue, value);
-            BackColor = _backgroundColor;
-            _surface.BackColor = _backgroundColor;
+            field = Color.FromArgb(byte.MaxValue, value);
+            BackColor = field;
+            Surface.BackColor = field;
         }
-    }
+    } = Color.Black;
 
     /// <summary>Gets or sets host controls shown above the background (see <see cref="MediaSurface.OverlayContent"/>).</summary>
     [DefaultValue(null)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Control? OverlayContent
     {
-        get => _surface.OverlayContent;
-        set => _surface.OverlayContent = value;
+        get => Surface.OverlayContent;
+        set => Surface.OverlayContent = value;
     }
 
     /// <summary>Gets or sets whether <see cref="OverlayContent"/> takes mouse input (default <see langword="false"/>).</summary>
     [DefaultValue(false)]
     public bool OverlayHitTestVisible
     {
-        get => _surface.OverlayHitTestVisible;
-        set => _surface.OverlayHitTestVisible = value;
+        get => Surface.OverlayHitTestVisible;
+        set => Surface.OverlayHitTestVisible = value;
     }
 
     /// <summary>The inner surface (tests).</summary>
-    internal MediaSurface Surface => _surface;
+    internal MediaSurface Surface { get; } = new() { Dock = DockStyle.Fill };
 
     /// <summary>Shows a solid colour: sets <see cref="BackgroundColor"/> and <see cref="Source"/>.</summary>
     public void SetColor(Color color)
@@ -174,9 +170,9 @@ public class BackgroundSurface : Control
 
     public Task<bool> StopAsync() => _host.Controller.StopAsync();
 
-    private bool ShouldSerializeBackgroundColor() => _backgroundColor != Color.Black;
+    bool ShouldSerializeBackgroundColor() => BackgroundColor != Color.Black;
 
-    private void ResetBackgroundColor() => BackgroundColor = Color.Black;
+    void ResetBackgroundColor() => BackgroundColor = Color.Black;
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -198,7 +194,7 @@ public class BackgroundSurface : Control
         base.Dispose(disposing);
     }
 
-    private Task<bool> LoadMediaAsync(MediaInputSource source)
+    Task<bool> LoadMediaAsync(MediaInputSource source)
     {
         ObjectDisposedException.ThrowIf(_host.IsDisposed, this);
         return _host.Controller.LoadAsync(source, PlatformFactory);
@@ -206,17 +202,17 @@ public class BackgroundSurface : Control
 
     // A newer Source abandons a load in progress: Core's controller checks after every await, and
     // a solid colour releases the player.
-    private Task ReloadSourceAsync() => _source switch
+    Task ReloadSourceAsync() => Source switch
     {
-        null => ShowSolidColor(_backgroundColor),
+        null => ShowSolidColor(BackgroundColor),
         Color color => ShowSolidColor(color),
         string path => LoadAsync(path),
         Bitmap bitmap => LoadAsync(bitmap),
         MediaInputSource source => LoadAsync(source),
-        _ => throw new NotSupportedException($"Background source type {_source.GetType().Name} is not supported."),
+        _ => throw new NotSupportedException($"Background source type {Source.GetType().Name} is not supported."),
     };
 
-    private Task ShowSolidColor(Color color)
+    Task ShowSolidColor(Color color)
     {
         BackgroundColor = color;
         _host.Controller.ReleasePlayer();

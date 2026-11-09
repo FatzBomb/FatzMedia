@@ -1,7 +1,5 @@
 using System.Runtime.InteropServices;
-using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Graphics;
-using FatzMedia.Video.Core.Graphics.Composition;
 using FFmpeg.AutoGen;
 using Silk.NET.Vulkan;
 using Xunit.Abstractions;
@@ -52,11 +50,11 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [InlineData(10, VideoColorRange.Limited, 64 * 64 / 65535.0, 1.0, 940 * 64 / 65535.0)]
     public void Conversion_MapsBlackAndWhiteCodesAcrossRangesAndDepths(int bitDepth, VideoColorRange range, double black, double one, double white)
     {
-        VulkanVideoConstants constants = VulkanVideoConversion.Create(new VideoColorSpace(VideoColorMatrix.Bt709, range), null, bitDepth, 1920, 1080, 1920, 1088);
+        var constants = VulkanVideoConversion.Create(new VideoColorSpace(VideoColorMatrix.Bt709, range), null, bitDepth, 1920, 1080, 1920, 1088);
         var neutral = range == VideoColorRange.Full
             ? (bitDepth == 8 ? 128.0 / 255 : 512 * 64 / 65535.0) * one
             : (bitDepth == 8 ? 128.0 / 255 : 512 * 64 / 65535.0);
-        (double r, double g, double b) = VulkanVideoConversion.ConvertSdr(constants, black, neutral, neutral);
+        (var r, var g, var b) = VulkanVideoConversion.ConvertSdr(constants, black, neutral, neutral);
         Assert.Equal((0.0, 0.0, 0.0), (Math.Round(r, 4), Math.Round(g, 4), Math.Round(b, 4)));
         (r, g, b) = VulkanVideoConversion.ConvertSdr(constants, white, neutral, neutral);
         Assert.Equal((1.0, 1.0, 1.0), (Math.Round(r, 3), Math.Round(g, 3), Math.Round(b, 3)));
@@ -69,7 +67,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     public void Conversion_ToneMapsOnlyWithARequest()
     {
         var request = new HdrToneMapRequest(1000, 203) { Transfer = HdrTransferFunction.Hlg };
-        VulkanVideoConstants constants = VulkanVideoConversion.Create(new VideoColorSpace(VideoColorMatrix.Bt2020, VideoColorRange.Limited), request, 10, 3840, 2160, 3840, 2160);
+        var constants = VulkanVideoConversion.Create(new VideoColorSpace(VideoColorMatrix.Bt2020, VideoColorRange.Limited), request, 10, 3840, 2160, 3840, 2160);
         Assert.Equal(1f, constants.Transfer.W);
         Assert.Equal(1f, constants.Transfer.X);
         Assert.Equal(1000f, constants.Transfer.Y);
@@ -81,7 +79,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [Fact]
     public void DeviceWithoutVideoQueue_SaysWhyAndOffersNoDecoding()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null || compositor.VideoDecode is not null)
             return;
 
@@ -95,7 +93,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         Assert.Equal(0, backend.CreateVideoDecodeDeviceContext(out failure));
         Assert.NotNull(failure);
 
-        MediaPresentationAvailability availability = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
+        var availability = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
         Assert.True(availability.RequiresSoftwareDecoding);
         Assert.Contains("no Vulkan Video decoding: " + compositor.VideoDecodeUnavailableReason, availability.Detail, StringComparison.Ordinal);
     }
@@ -105,7 +103,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [InlineData(true)]
     public void Nv12Frame_ConvertsLikeSwscale_AndAdvancesFfmpegsSemaphore(bool imagePerPlane)
     {
-        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 64, 48, imagePerPlane);
+        using var fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 64, 48, imagePerPlane);
         if (fixture is null)
             return;
 
@@ -114,14 +112,14 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
 
         fixture.Fill(static (x, y) => (16 + (x * 2) + y, 64 + ((x / 16) * 40), 200 - ((y / 16) * 50)));
         VideoColorSpace colorSpace = new(VideoColorMatrix.Bt709, VideoColorRange.Limited);
-        (ulong valueBefore, _) = fixture.FrameState();
+        (var valueBefore, _) = fixture.FrameState();
 
         // Shown at 60x46 of the 64x48 decoded: the padding stays out of the picture.
-        byte[] gpu = fixture.Render(colorSpace, null, 60, 46, revision: 1);
-        byte[] cpu = fixture.Swscale(AVPixelFormat.AV_PIX_FMT_BGRA, ffmpeg.SWS_CS_ITU709);
+        var gpu = fixture.Render(colorSpace, null, 60, 46, revision: 1);
+        var cpu = fixture.Swscale(AVPixelFormat.AV_PIX_FMT_BGRA, ffmpeg.SWS_CS_ITU709);
 
         AssertClose(gpu, 60, cpu, 64, 60, 46, tolerance: 3, skipChromaEdges: true);
-        (ulong valueAfter, int layout) = fixture.FrameState();
+        (var valueAfter, var layout) = fixture.FrameState();
         Assert.Equal(valueBefore + 1, valueAfter);
         Assert.Equal((int)ImageLayout.ShaderReadOnlyOptimal, layout);
         Assert.Equal(1, fixture.Compositor.VideoConversionCount);
@@ -130,25 +128,25 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [Fact]
     public void Frame_ConvertsOncePerRevision_AndTheLayerIsRetained()
     {
-        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 32, 32);
+        using var fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 32, 32);
         if (fixture is null)
             return;
 
         fixture.Fill(static (x, y) => (40 + (x * 4), 128, 128));
         VideoColorSpace colorSpace = new(VideoColorMatrix.Bt709, VideoColorRange.Limited);
-        byte[] first = fixture.Render(colorSpace, null, 32, 32, revision: 7);
+        var first = fixture.Render(colorSpace, null, 32, 32, revision: 7);
         // Another target of the same composition: the layer already holds the frame.
-        byte[] second = fixture.Render(colorSpace, null, 32, 32, revision: 7);
+        var second = fixture.Render(colorSpace, null, 32, 32, revision: 7);
         Assert.Equal(first, second);
         Assert.Equal(1, fixture.Compositor.VideoConversionCount);
 
         // A refresh with the retained background draws the kept layer.
-        byte[] retained = fixture.RenderRetained(32, 32);
+        var retained = fixture.RenderRetained(32, 32);
         Assert.Equal(first, retained);
 
         // Once Core clears the background there is nothing to keep.
         fixture.Compositor.ClearVideoLayer();
-        byte[] cleared = fixture.RenderRetained(32, 32);
+        var cleared = fixture.RenderRetained(32, 32);
         Assert.All(Enumerable.Range(0, 32 * 32), pixel => Assert.Equal(0, cleared[(pixel * 4) + 1]));
     }
 
@@ -160,7 +158,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         // ENG-039 P5-10: FFmpeg's pool hands the same images out again; their plane views are
         // created once, and a conversion allocates no holder objects (376 bytes and two
         // vkCreateImageView per decoded frame before).
-        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 64, 48, imagePerPlane);
+        using var fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 64, 48, imagePerPlane);
         if (fixture is null)
             return;
 
@@ -170,7 +168,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         for (var i = 0; i < plans.Length; i++)
             plans[i] = fixture.Plan(colorSpace, 64, 48, revision: i + 1);
 
-        byte[] first = fixture.Compositor.Render(plans[0]).ToArray();
+        var first = fixture.Compositor.Render(plans[0]).ToArray();
         for (var i = 1; i < 10; i++)
             _ = fixture.Compositor.Render(plans[i]);
         var before = GC.GetAllocatedBytesForCurrentThread();
@@ -194,13 +192,13 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [Fact]
     public void P010SdrFrame_ConvertsLikeSwscale()
     {
-        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_P010LE, 64, 32);
+        using var fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_P010LE, 64, 32);
         if (fixture is null)
             return;
 
         fixture.Fill(static (x, y) => (64 + (x * 12) + (y * 3), 300 + ((x / 16) * 120), 700 - ((y / 16) * 200)));
-        byte[] gpu = fixture.Render(new VideoColorSpace(VideoColorMatrix.Bt709, VideoColorRange.Limited), null, 64, 32, revision: 1);
-        byte[] cpu = fixture.Swscale(AVPixelFormat.AV_PIX_FMT_BGRA, ffmpeg.SWS_CS_ITU709);
+        var gpu = fixture.Render(new VideoColorSpace(VideoColorMatrix.Bt709, VideoColorRange.Limited), null, 64, 32, revision: 1);
+        var cpu = fixture.Swscale(AVPixelFormat.AV_PIX_FMT_BGRA, ffmpeg.SWS_CS_ITU709);
         AssertClose(gpu, 64, cpu, 64, 64, 32, tolerance: 3, skipChromaEdges: true);
         Assert.Equal(1, fixture.ImageCount);
         output.WriteLine($"P010 frame image format: {fixture.ImageFormat}");
@@ -211,7 +209,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     [InlineData(HdrTransferFunction.Hlg, 1000.0)]
     public void HdrP010Frame_IsToneMappedLikeTheCpuMath(HdrTransferFunction transfer, double sourcePeakNits)
     {
-        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_P010LE, 64, 32);
+        using var fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_P010LE, 64, 32);
         if (fixture is null)
             return;
 
@@ -219,7 +217,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         fixture.Fill(static (x, y) => (64 + (x * 13 % 877), 420 + ((y / 16) * 160), 460 + ((x / 16) * 60)));
         var request = new HdrToneMapRequest(sourcePeakNits, 203) { Transfer = transfer };
         VideoColorSpace colorSpace = new(VideoColorMatrix.Bt2020, VideoColorRange.Limited);
-        byte[] gpu = fixture.Render(colorSpace, request, 64, 32, revision: 1);
+        var gpu = fixture.Render(colorSpace, request, 64, 32, revision: 1);
 
         var mismatches = 0;
         for (var y = 0; y < 32; y++)
@@ -230,7 +228,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
                     continue;
 
                 (var luma, var cb, var cr) = fixture.Codes(x, y);
-                (byte r, byte g, byte b) = ToneMapReference.ToSdr(luma, cb, cr, request);
+                (var r, var g, var b) = ToneMapReference.ToSdr(luma, cb, cr, request);
                 var at = ((y * 64) + x) * 4;
                 if (Math.Abs(gpu[at + 2] - r) > 3 || Math.Abs(gpu[at + 1] - g) > 3 || Math.Abs(gpu[at] - b) > 3)
                     mismatches++;
@@ -243,7 +241,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         Assert.InRange(gpu.Where((_, index) => index % 4 != 3).Min(), (byte)0, (byte)40);
     }
 
-    private static void AssertClose(byte[] actual, int actualWidth, byte[] expected, int expectedWidth, int width, int height, int tolerance, bool skipChromaEdges)
+    static void AssertClose(byte[] actual, int actualWidth, byte[] expected, int expectedWidth, int width, int height, int tolerance, bool skipChromaEdges)
     {
         var worst = 0;
         (int X, int Y) worstAt = default;
@@ -278,15 +276,15 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     /// FFmpeg on the renderer's device: a Vulkan frames context and one frame FFmpeg allocated and
     /// uploaded there (as a decoder's output would be), with its software copy for references.
     /// </summary>
-    private sealed class VideoFrameFixture : IDisposable
+    sealed class VideoFrameFixture : IDisposable
     {
-        private readonly AVPixelFormat _format;
-        private AVBufferRef* _device;
-        private AVBufferRef* _frames;
-        private AVFrame* _hardware;
-        private AVFrame* _software;
+        readonly AVPixelFormat _format;
+        AVBufferRef* _device;
+        AVBufferRef* _frames;
+        AVFrame* _hardware;
+        AVFrame* _software;
 
-        private VideoFrameFixture(VulkanOffscreenCompositor compositor, AVPixelFormat format, int width, int height)
+        VideoFrameFixture(VulkanOffscreenCompositor compositor, AVPixelFormat format, int width, int height)
         {
             Compositor = compositor;
             _format = format;
@@ -303,7 +301,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
             if (!FfmpegForTests.TryLoad())
                 return null;
 
-            VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _, shareWithFfmpegWithoutDecode: true);
+            var compositor = VulkanOffscreenCompositor.TryCreate(out _, shareWithFfmpegWithoutDecode: true);
             if (compositor?.SharedDevice?.VideoDecode is null)
             {
                 compositor?.Dispose();
@@ -323,7 +321,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
             }
         }
 
-        private void Allocate(bool imagePerPlane)
+        void Allocate(bool imagePerPlane)
         {
             var context = Compositor.SharedDevice!.CreateFfmpegDeviceContextReference(out var failure);
             Assert.True(context != 0, $"FFmpeg refused the renderer's device: {failure}");
@@ -423,8 +421,8 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
 
         public VulkanFramePlan Plan(VideoColorSpace colorSpace, int width, int height, long revision)
         {
-            NativeVideoDeviceResource device = VulkanOffscreenCompositor.CreateDeviceResource((nint)_device)!;
-            NativeVideoFrameResource resource = VulkanOffscreenCompositor.CreateFrameResource(device, (nint)_hardware)! with { ColorSpace = colorSpace };
+            var device = VulkanOffscreenCompositor.CreateDeviceResource((nint)_device)!;
+            var resource = VulkanOffscreenCompositor.CreateFrameResource(device, (nint)_hardware)! with { ColorSpace = colorSpace };
             var blit = new VulkanBlit(new PixelRect(0, 0, width, height), new PixelRect(0, 0, width, height));
             var layer = new VulkanBackgroundLayer(ReadOnlyMemory<byte>.Empty, width, height, width * 4, blit, revision, Native: resource);
             return new VulkanFramePlan(width, height, (0, 0, 0, 255), layer, null, null);
@@ -432,8 +430,8 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
 
         public byte[] Render(VideoColorSpace colorSpace, HdrToneMapRequest? toneMap, int width, int height, long revision)
         {
-            NativeVideoDeviceResource device = VulkanOffscreenCompositor.CreateDeviceResource((nint)_device)!;
-            NativeVideoFrameResource resource = VulkanOffscreenCompositor.CreateFrameResource(device, (nint)_hardware)! with
+            var device = VulkanOffscreenCompositor.CreateDeviceResource((nint)_device)!;
+            var resource = VulkanOffscreenCompositor.CreateFrameResource(device, (nint)_hardware)! with
             {
                 ColorSpace = colorSpace,
                 HdrToneMap = toneMap,
@@ -456,11 +454,11 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         public byte[] Swscale(AVPixelFormat target, int colorspace)
         {
             // As Core's VideoDecoder converts software frames.
-            SwsContext* scaler = ffmpeg.sws_getContext(Width, Height, _format, Width, Height, target, (int)SwsFlags.SWS_BILINEAR, null, null, null);
+            var scaler = ffmpeg.sws_getContext(Width, Height, _format, Width, Height, target, (int)SwsFlags.SWS_BILINEAR, null, null, null);
             Assert.True(scaler != null);
             try
             {
-                int* coefficients = ffmpeg.sws_getCoefficients(colorspace);
+                var coefficients = ffmpeg.sws_getCoefficients(colorspace);
                 var table = new int_array4();
                 for (uint i = 0; i < 4; i++)
                     table[i] = coefficients[i];
@@ -496,7 +494,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
             Compositor.Dispose();
         }
 
-        private static void Check(int result, string operation) => Assert.True(result >= 0, $"{operation} failed: {result}");
+        static void Check(int result, string operation) => Assert.True(result >= 0, $"{operation} failed: {result}");
     }
 
     /// <summary>
@@ -505,24 +503,24 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
     /// PQ or HLG (with the BT.2100 OOTF) to nits, the BT.2390 curve on the brightest channel,
     /// BT.2020 to BT.709 primaries, gamma 2.4.
     /// </summary>
-    private static class ToneMapReference
+    static class ToneMapReference
     {
-        private const double M1 = 2610.0 / 16384;
-        private const double M2 = 2523.0 / 4096 * 128;
-        private const double C1 = 3424.0 / 4096;
-        private const double C2 = 2413.0 / 4096 * 32;
-        private const double C3 = 2392.0 / 4096 * 32;
+        const double M1 = 2610.0 / 16384;
+        const double M2 = 2523.0 / 4096 * 128;
+        const double C1 = 3424.0 / 4096;
+        const double C2 = 2413.0 / 4096 * 32;
+        const double C3 = 2392.0 / 4096 * 32;
 
         public static (byte R, byte G, byte B) ToSdr(int luma, int cb, int cr, HdrToneMapRequest request)
         {
-            const double kr = 0.2627;
-            const double kb = 0.0593;
-            const double kg = 1 - kr - kb;
+            const double Kr = 0.2627;
+            const double Kb = 0.0593;
+            const double Kg = 1 - Kr - Kb;
             var y = (luma - 64) / 876.0;
             var u = (cb - 512) / 896.0;
             var v = (cr - 512) / 896.0;
-            double[] signal = [y + (2 * (1 - kr) * v), y - (2 * kb * (1 - kb) / kg * u) - (2 * kr * (1 - kr) / kg * v), y + (2 * (1 - kb) * u)];
-            double[] nits = request.Transfer == HdrTransferFunction.Hlg ? HlgNits(signal, request) : [.. signal.Select(PqToNits)];
+            double[] signal = [y + (2 * (1 - Kr) * v), y - (2 * Kb * (1 - Kb) / Kg * u) - (2 * Kr * (1 - Kr) / Kg * v), y + (2 * (1 - Kb) * u)];
+            var nits = request.Transfer == HdrTransferFunction.Hlg ? HlgNits(signal, request) : [.. signal.Select(PqToNits)];
             var brightest = nits.Max();
             var gain = brightest > 0 ? Curve(brightest, request) / brightest : 1;
             double[] linear = [.. nits.Select(n => n * gain / request.TargetPeakNits)];
@@ -536,19 +534,19 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
             return (Encode(bt709[0]), Encode(bt709[1]), Encode(bt709[2]));
         }
 
-        private static double PqToNits(double signal)
+        static double PqToNits(double signal)
         {
             var e = Math.Pow(Math.Clamp(signal, 0, 1), 1 / M2);
             return 10000 * Math.Pow(Math.Max(e - C1, 0) / (C2 - (C3 * e)), 1 / M1);
         }
 
-        private static double NitsToPq(double nits)
+        static double NitsToPq(double nits)
         {
             var y = Math.Pow(Math.Clamp(nits / 10000, 0, 1), M1);
             return Math.Pow((C1 + (C2 * y)) / (1 + (C3 * y)), M2);
         }
 
-        private static double[] HlgNits(double[] signal, HdrToneMapRequest request)
+        static double[] HlgNits(double[] signal, HdrToneMapRequest request)
         {
             static double Scene(double s) => s <= 0.5 ? s * s / 3 : (Math.Exp((s - 0.55991073) / 0.17883277) + 0.28466892) / 12;
             double[] scene = [.. signal.Select(s => Scene(Math.Clamp(s, 0, 1)))];
@@ -557,7 +555,7 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
             return [.. scene.Select(s => s * ootf)];
         }
 
-        private static double Curve(double nits, HdrToneMapRequest request)
+        static double Curve(double nits, HdrToneMapRequest request)
         {
             if (request.SourcePeakNits <= request.TargetPeakNits)
                 return Math.Min(nits, request.TargetPeakNits);
@@ -579,10 +577,10 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
 }
 
 /// <summary>Loads FFmpeg from <c>FATZBOMB_LINUX_FFMPEG_DIR</c> for the tests that need it.</summary>
-internal static class FfmpegForTests
+static class FfmpegForTests
 {
-    private static readonly Lock Gate = new();
-    private static bool? _loaded;
+    static readonly Lock Gate = new();
+    static bool? _loaded;
 
     public static bool TryLoad()
     {

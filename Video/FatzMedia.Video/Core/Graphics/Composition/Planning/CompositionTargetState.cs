@@ -43,7 +43,7 @@ public sealed class CompositionTargetState(string id)
 
     public CompositionTargetUpdate CreateUpdatePlanEntry()
     {
-        CompositionTargetUpdateAction action = CompositionTargetUpdateAction.None;
+        var action = CompositionTargetUpdateAction.None;
         if (DirtyFlags.HasFlag(CompositionTargetDirtyFlags.Deactivated))
         {
             action |= CompositionTargetUpdateAction.Deactivate;
@@ -81,7 +81,7 @@ public sealed class CompositionTargetState(string id)
             LastCapturedSequence);
     }
 
-    private static CompositionTargetDirtyFlags ComputeDirtyFlags(
+    static CompositionTargetDirtyFlags ComputeDirtyFlags(
         CompositionTargetDescriptor previous,
         CompositionTargetDescriptor current,
         bool wasActive)
@@ -95,7 +95,7 @@ public sealed class CompositionTargetState(string id)
                 | CompositionTargetDirtyFlags.BackendChanged
                 | CompositionTargetDirtyFlags.RevisionChanged;
 
-        CompositionTargetDirtyFlags flags = CompositionTargetDirtyFlags.None;
+        var flags = CompositionTargetDirtyFlags.None;
         if (previous.Width != current.Width || previous.Height != current.Height)
             flags |= CompositionTargetDirtyFlags.SizeChanged;
 

@@ -183,14 +183,14 @@ public sealed class LatestFrameMailboxTests
         Assert.Equal(2, mailbox.BufferAllocations);
     }
 
-    private static void Publish(LatestFrameMailbox mailbox, int width, int height)
+    static void Publish(LatestFrameMailbox mailbox, int width, int height)
     {
         _ = mailbox.Post(Frame(width, height), width, height, width * 4);
         Assert.True(mailbox.TryTake(out var pixels, out _, out _, out _));
         mailbox.Return(pixels);
     }
 
-    private static byte[] Frame(int width, int height, byte fill = 0)
+    static byte[] Frame(int width, int height, byte fill = 0)
     {
         var pixels = new byte[width * height * 4];
         Array.Fill(pixels, fill);

@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 public partial class PlayerViewModel
 {
     /// <summary>Manual fade length used when the fade slider is at 0 (transitions unfaded).</summary>
-    private static readonly TimeSpan DefaultManualFade = TimeSpan.FromSeconds(3);
+    static readonly TimeSpan DefaultManualFade = TimeSpan.FromSeconds(3);
 
     public AsyncRelayCommand PlayNextNowCommand { get; private set; } = null!;
 
@@ -60,9 +60,9 @@ public partial class PlayerViewModel
 
     public string FadeInToolTip => $"Fade the current item up from silence over {ManualFadeDuration.TotalSeconds:0.#}s (3s when FADE is 0)";
 
-    private TimeSpan ManualFadeDuration => FadeSeconds > 0 ? TimeSpan.FromSeconds(FadeSeconds) : DefaultManualFade;
+    TimeSpan ManualFadeDuration => FadeSeconds > 0 ? TimeSpan.FromSeconds(FadeSeconds) : DefaultManualFade;
 
-    private void InitializePreparedNextControls()
+    void InitializePreparedNextControls()
     {
         PlayNextNowCommand = new AsyncRelayCommand(PlayNextNowAsync, () => Player?.PreparedNext.State == PreparedNextState.Ready);
         ClearNextCommand = new RelayCommand(ClearNext, () => Player?.PreparedNext.State is PreparedNextState.Analyzing or PreparedNextState.Ready or PreparedNextState.Stale);
@@ -74,7 +74,7 @@ public partial class PlayerViewModel
         FadeSeconds = Options.FadeNext.TotalSeconds;
     }
 
-    private void RefreshPreparedNextCommandStates()
+    void RefreshPreparedNextCommandStates()
     {
         PlayNextNowCommand.NotifyCanExecuteChanged();
         ClearNextCommand.NotifyCanExecuteChanged();
@@ -83,7 +83,7 @@ public partial class PlayerViewModel
         CancelFadeCommand.NotifyCanExecuteChanged();
     }
 
-    private void StartPreparedNextValidation(PlayerCore player)
+    void StartPreparedNextValidation(PlayerCore player)
     {
         player.PreparedNextChanged += OnPreparedNextChanged;
         player.PreparedNextTransitioned += OnPreparedNextTransitioned;
@@ -93,7 +93,7 @@ public partial class PlayerViewModel
             _ = PrepareNextAsync(path);
     }
 
-    private void StopPreparedNextValidation(PlayerCore player)
+    void StopPreparedNextValidation(PlayerCore player)
     {
         player.PreparedNextChanged -= OnPreparedNextChanged;
         player.PreparedNextTransitioned -= OnPreparedNextTransitioned;
@@ -118,7 +118,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private async Task ChooseNextAsync()
+    async Task ChooseNextAsync()
     {
         if (_host.FilePicker is not { } picker)
         {
@@ -141,7 +141,7 @@ public partial class PlayerViewModel
             await PrepareNextAsync(path);
     }
 
-    private async Task PlayNextNowAsync()
+    async Task PlayNextNowAsync()
     {
         if (Player is not { } player)
             return;
@@ -159,18 +159,18 @@ public partial class PlayerViewModel
         }
     }
 
-    private void ClearNext()
+    void ClearNext()
     {
         if (Player?.ClearPreparedNext() == true)
             StatusText = "Prepared next cleared.";
     }
 
-    private async Task RunManualFadeAsync(bool fadeOut)
+    async Task RunManualFadeAsync(bool fadeOut)
     {
         if (Player is not { } player)
             return;
 
-        TimeSpan duration = ManualFadeDuration;
+        var duration = ManualFadeDuration;
         var label = fadeOut ? "Fade out" : "Fade in";
         try
         {
@@ -188,15 +188,15 @@ public partial class PlayerViewModel
         }
     }
 
-    private void CancelFade()
+    void CancelFade()
     {
         Player?.CancelFade();
         StatusText = "Fade cancelled; the volume stays where the fade reached.";
     }
 
-    private void OnPreparedNextChanged(object? sender, PreparedNextChangedEventArgs e)
+    void OnPreparedNextChanged(object? sender, PreparedNextChangedEventArgs e)
     {
-        MediaAnalysisResult? analysis = e.Current.Analysis;
+        var analysis = e.Current.Analysis;
         var analysisText = analysis is null
             ? "no analysis"
             : $"effective={analysis.EffectiveDuration:F2}s, gain={analysis.NormalizationGain:F3}";
@@ -208,10 +208,10 @@ public partial class PlayerViewModel
         });
     }
 
-    private void OnPreparedNextTransitioned(object? sender, PreparedNextTransitionedEventArgs e) =>
+    void OnPreparedNextTransitioned(object? sender, PreparedNextTransitionedEventArgs e) =>
         ReportPreparedNext($"Transitioned to prepared next ({(e.IsAutomatic ? "automatic" : "manual")}): {e.Source.DisplayName}");
 
-    private static string FormatPreparedNext(PreparedNextInfo info)
+    static string FormatPreparedNext(PreparedNextInfo info)
     {
         if (info.State == PreparedNextState.Empty || info.Source is null)
             return "Nothing prepared";
@@ -229,6 +229,6 @@ public partial class PlayerViewModel
         };
     }
 
-    private void ReportPreparedNext(string message) =>
+    void ReportPreparedNext(string message) =>
         RunOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "PreparedNext", message));
 }

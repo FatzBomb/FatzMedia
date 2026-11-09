@@ -73,7 +73,7 @@ public readonly record struct MediaNativeHandle(MediaNativeHandleId Id, nint Val
 /// </summary>
 public sealed class MediaNativeSurfaceDescriptor
 {
-    private readonly ReadOnlyCollection<MediaNativeHandle> _handles;
+    readonly ReadOnlyCollection<MediaNativeHandle> _handles;
 
     public MediaNativeSurfaceDescriptor(
         MediaNativeSurfaceTypeId surfaceTypeId,
@@ -95,7 +95,7 @@ public sealed class MediaNativeSurfaceDescriptor
                 return false;
 
             HashSet<MediaNativeHandleId> seenIds = [];
-            foreach (MediaNativeHandle handle in _handles)
+            foreach (var handle in _handles)
             {
                 if (!handle.IsValid || !seenIds.Add(handle.Id))
                     return false;
@@ -107,7 +107,7 @@ public sealed class MediaNativeSurfaceDescriptor
 
     public bool TryGetHandle(MediaNativeHandleId handleId, out nint value)
     {
-        foreach (MediaNativeHandle handle in _handles)
+        foreach (var handle in _handles)
         {
             if (handle.Id == handleId)
             {

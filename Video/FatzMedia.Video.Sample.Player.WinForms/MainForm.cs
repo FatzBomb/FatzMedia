@@ -15,18 +15,18 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// are the shared <see cref="PlayerSetController{TSlot}"/>'s; this form creates and lays out the
 /// panels and owns the window state.
 /// </summary>
-internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
+sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
 {
-    private readonly PlayerStartupOptions _options;
-    private readonly Panel _grid = new() { Dock = DockStyle.Fill };
-    private readonly WinFormsPlayerDispatcher _dispatcher = new();
-    private readonly PlayerSetController<PlayerPanel> _players;
-    private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Padding = new Padding(6, 4, 6, 4) };
-    private readonly ComboBox _playersBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 60 };
-    private readonly ComboBox _rendererBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
-    private readonly Label _info = new() { AutoSize = true, Margin = new Padding(16, 8, 3, 3), ForeColor = SystemColors.GrayText };
-    private FormWindowState _restoreWindowState;
-    private FormBorderStyle _restoreBorderStyle;
+    readonly PlayerStartupOptions _options;
+    readonly Panel _grid = new() { Dock = DockStyle.Fill };
+    readonly WinFormsPlayerDispatcher _dispatcher = new();
+    readonly PlayerSetController<PlayerPanel> _players;
+    readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Padding = new Padding(6, 4, 6, 4) };
+    readonly ComboBox _playersBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 60 };
+    readonly ComboBox _rendererBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    readonly Label _info = new() { AutoSize = true, Margin = new Padding(16, 8, 3, 3), ForeColor = SystemColors.GrayText };
+    FormWindowState _restoreWindowState;
+    FormBorderStyle _restoreBorderStyle;
 
     public MainForm(PlayerStartupOptions options)
     {
@@ -39,7 +39,7 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
 
         _playersBox.Items.AddRange(["1", "2", "3", "4"]);
         _playersBox.SelectedIndex = options.Players - 1;
-        foreach ((PlayerRendererRequest _, var label) in PlayerRendererSelection.Choices)
+        foreach ((var _, var label) in PlayerRendererSelection.Choices)
             _rendererBox.Items.Add(label);
         _rendererBox.SelectedIndex = Math.Max(0, PlayerRendererSelection.Choices.ToList().FindIndex(choice => choice.Request == options.RendererRequest));
         _playersBox.SelectedIndexChanged += OnLayoutChanged;
@@ -62,9 +62,9 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         FormClosing += OnFormClosing;
     }
 
-    private static Label ToolbarLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(8, 8, 3, 3) };
+    static Label ToolbarLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(8, 8, 3, 3) };
 
-    private void OnShown(object? sender, EventArgs e)
+    void OnShown(object? sender, EventArgs e)
     {
         if (_options.LightweightSurfacesWindow)
             ShowLightweightSurfaces();
@@ -73,7 +73,7 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         _ = _players.StartAsync();
     }
 
-    private void OnLayoutChanged(object? sender, EventArgs e)
+    void OnLayoutChanged(object? sender, EventArgs e)
     {
         // The boxes are set in the constructor: nothing is rebuilt before the first build.
         if (!_players.IsStarted)
@@ -87,18 +87,18 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         _ = _players.RebuildAsync();
     }
 
-    private async Task ShowRendererSummaryAsync()
+    async Task ShowRendererSummaryAsync()
     {
-        Task<PlayerRendererSelection> pending = Program.RendererSelection;
+        var pending = Program.RendererSelection;
         _info.Text = "resolving the renderer...";
-        PlayerRendererSelection selection = await pending;
+        var selection = await pending;
         // A later choice owns the text.
         if (ReferenceEquals(pending, Program.RendererSelection) && !IsDisposed)
             _info.Text = selection.Summary;
     }
 
     /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
-    private async void ShowLightweightSurfaces()
+    async void ShowLightweightSurfaces()
     {
         var selection = await Program.RendererSelection;
         if (_players.IsShuttingDown)
@@ -116,16 +116,16 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
     }
 
     // One panel, two side by side, or a 2x2 grid; in full screen only that panel.
-    private void LayoutPanels()
+    void LayoutPanels()
     {
-        Rectangle area = _grid.ClientRectangle;
+        var area = _grid.ClientRectangle;
         if (_players.FullScreenSlot is { } fullScreen)
         {
             fullScreen.Bounds = area;
             return;
         }
 
-        IReadOnlyList<PlayerPanel> panels = _players.Slots;
+        var panels = _players.Slots;
         var columns = panels.Count == 1 ? 1 : 2;
         var rows = (panels.Count + columns - 1) / columns;
         for (var i = 0; i < panels.Count; i++)
@@ -147,7 +147,7 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
 
     void IPlayerSetHost<PlayerPanel>.Layout(IReadOnlyList<PlayerPanel> slots, PlayerPanel? fullScreen)
     {
-        foreach (PlayerPanel panel in slots)
+        foreach (var panel in slots)
             panel.Visible = fullScreen is null || ReferenceEquals(panel, fullScreen);
         _toolbar.Visible = fullScreen is null;
         _grid.PerformLayout();
@@ -191,7 +191,7 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
     void IPlayerSetHost<PlayerPanel>.FallBackRenderer()
     {
         var choices = PlayerRendererSelection.Choices.ToList();
-        PlayerRendererRequest current = _rendererBox.SelectedIndex >= 0 ? choices[_rendererBox.SelectedIndex].Request : _options.RendererRequest;
+        var current = _rendererBox.SelectedIndex >= 0 ? choices[_rendererBox.SelectedIndex].Request : _options.RendererRequest;
         if (PlayerRendererRules.NextAvailableAfterDeviceLoss(current, windows: true, request => choices.Exists(choice => choice.Request == request)) is not { } next)
         {
             _info.Text = "The renderer lost its GPU device and no other renderer is left.";
@@ -210,13 +210,13 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
             _info.Text = $"{what}: {exception.Message}";
     }
 
-    private void OnFormKeyDown(object? sender, KeyEventArgs e)
+    void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
         if ((e.KeyCode == Keys.F11 && _players.HandleFullScreenKey()) || (e.KeyCode == Keys.Escape && _players.HandleEscapeKey()))
             e.Handled = true;
     }
 
-    private async void OnFormClosing(object? sender, FormClosingEventArgs e)
+    async void OnFormClosing(object? sender, FormClosingEventArgs e)
     {
         if (_players.IsShutDown)
             return;

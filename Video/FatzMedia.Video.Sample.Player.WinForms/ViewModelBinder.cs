@@ -10,12 +10,12 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// changes, and the control's edits back into the view model. Everything runs on the UI thread
 /// (the shared view model raises its changes there). <see cref="Dispose"/> unhooks the view model.
 /// </summary>
-internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposable
+sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposable
 {
-    private readonly Dictionary<string, List<Action>> _updates = new(StringComparer.Ordinal);
-    private readonly List<Action> _unhook = [];
-    private bool _attached;
-    private int _pushing;
+    readonly Dictionary<string, List<Action>> _updates = new(StringComparer.Ordinal);
+    readonly List<Action> _unhook = [];
+    bool _attached;
+    int _pushing;
 
     /// <summary>Runs <paramref name="update"/> now and whenever one of <paramref name="properties"/> changes.</summary>
     public void OnChanged(Action update, params string[] properties)
@@ -23,7 +23,7 @@ internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposab
         Attach();
         foreach (var property in properties)
         {
-            if (!_updates.TryGetValue(property, out List<Action>? list))
+            if (!_updates.TryGetValue(property, out var list))
                 _updates[property] = list = [];
             list.Add(update);
         }
@@ -58,7 +58,7 @@ internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposab
     public void Choice<T>(ComboBox box, IEnumerable<T> items, Func<T> get, Action<T> set, string property)
     {
         box.DropDownStyle = ComboBoxStyle.DropDownList;
-        foreach (T item in items)
+        foreach (var item in items)
             _ = box.Items.Add(item!);
         OnChanged(() => box.SelectedItem = get(), property);
         box.SelectionChangeCommitted += (_, _) => Pull(() =>
@@ -111,13 +111,13 @@ internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposab
         if (_attached)
             source.PropertyChanged -= OnPropertyChanged;
         _attached = false;
-        foreach (Action unhook in _unhook)
+        foreach (var unhook in _unhook)
             unhook();
         _unhook.Clear();
         _updates.Clear();
     }
 
-    private void Attach()
+    void Attach()
     {
         if (_attached)
             return;
@@ -126,17 +126,17 @@ internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposab
         _attached = true;
     }
 
-    private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is { } name && _updates.TryGetValue(name, out List<Action>? updates))
+        if (e.PropertyName is { } name && _updates.TryGetValue(name, out var updates))
         {
-            foreach (Action update in updates)
+            foreach (var update in updates)
                 Push(update);
         }
     }
 
     // A control change caused by the view model is not sent back to it.
-    private void Push(Action update)
+    void Push(Action update)
     {
         _pushing++;
         try
@@ -149,7 +149,7 @@ internal sealed class ViewModelBinder(INotifyPropertyChanged source) : IDisposab
         }
     }
 
-    private void Pull(Action write)
+    void Pull(Action write)
     {
         if (_pushing == 0)
             write();

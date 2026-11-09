@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Pipeline;
 /// target normalization, superseding-target threshold, seek-frame acceptance, and decode
 /// budgets. Values and rules are unchanged from the original inline code.
 /// </summary>
-internal static class VideoSeekPolicy
+static class VideoSeekPolicy
 {
     /// <summary>Targets closer than this to the active target do not supersede it.</summary>
     public const double TargetChangeThresholdSeconds = 0.025;
@@ -69,7 +69,7 @@ internal static class VideoSeekPolicy
 /// moving average of seek processing time, scaled and padded, clamped to 75..300 ms. Unchanged
 /// from the original inline code; thread-safe.
 /// </summary>
-internal sealed class AdaptiveSeekPumpTiming
+sealed class AdaptiveSeekPumpTiming
 {
     public const int DefaultIntervalMilliseconds = 75;
     public const int MinIntervalMilliseconds = 75;
@@ -79,8 +79,8 @@ internal sealed class AdaptiveSeekPumpTiming
     public const double EmaPreviousWeight = 0.75;
     public const double EmaCurrentWeight = 0.25;
 
-    private readonly Lock _gate = new();
-    private double _processingMilliseconds;
+    readonly Lock _gate = new();
+    double _processingMilliseconds;
 
     public double ProcessingMilliseconds
     {

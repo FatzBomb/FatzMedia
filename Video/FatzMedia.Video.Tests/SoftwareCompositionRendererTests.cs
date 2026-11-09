@@ -6,12 +6,12 @@ namespace FatzMedia.Video.Tests;
 
 public sealed class SoftwareCompositionRendererTests
 {
-    private readonly SoftwareCompositionRenderer _renderer = new();
+    readonly SoftwareCompositionRenderer _renderer = new();
 
     [Fact]
     public void Render_BlackClear_ProducesOpaqueBlack()
     {
-        SoftwareRenderOutput output = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1);
+        var output = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1);
 
         Assert.Equal(SoftwareRenderStatus.Rendered, output.Status);
         Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, output.Pixels.ToArray());
@@ -20,8 +20,8 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_PublicOverload_ReturnsIndependentOutputs()
     {
-        SoftwareRenderOutput first = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1);
-        SoftwareRenderOutput second = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1);
+        var first = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1);
+        var second = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1);
 
         Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, first.Pixels.ToArray());
         Assert.Equal(new byte[8], second.Pixels.ToArray());
@@ -32,11 +32,11 @@ public sealed class SoftwareCompositionRendererTests
     {
         // Stage 022A slice 2: the backend reuses one buffer instead of allocating per frame.
         SoftwareCompositionBuffer? buffer = null;
-        SoftwareRenderOutput black = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1, ref buffer);
-        SoftwareCompositionBuffer firstBuffer = Assert.IsType<SoftwareCompositionBuffer>(buffer);
+        var black = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1, ref buffer);
+        var firstBuffer = Assert.IsType<SoftwareCompositionBuffer>(buffer);
         Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, black.Pixels.ToArray());
 
-        SoftwareRenderOutput transparent = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1, ref buffer);
+        var transparent = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1, ref buffer);
 
         Assert.Same(firstBuffer, buffer);
         Assert.Equal(new byte[8], transparent.Pixels.ToArray());
@@ -51,7 +51,7 @@ public sealed class SoftwareCompositionRendererTests
     {
         var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0x80804020);
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         AssertPixel(output, 0, 0, blue: 16, green: 32, red: 64, alpha: 128);
     }
@@ -61,7 +61,7 @@ public sealed class SoftwareCompositionRendererTests
     [InlineData(MediaCompositionClearMode.PreservePrevious)]
     public void Render_StatelessTransparentClearModes_ProduceTransparentPixels(MediaCompositionClearMode clearMode)
     {
-        SoftwareRenderOutput output = _renderer.Render(MediaCompositionFrame.Empty(clearMode), 1, 1);
+        var output = _renderer.Render(MediaCompositionFrame.Empty(clearMode), 1, 1);
 
         AssertPixel(output, 0, 0, blue: 0, green: 0, red: 0, alpha: 0);
     }
@@ -75,7 +75,7 @@ public sealed class SoftwareCompositionRendererTests
             height: 1,
             MediaCompositionStretchMode.Fill);
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 4, 1);
+        var output = _renderer.Render(frame, 4, 1);
 
         AssertPixel(output, 0, 0, 0, 0, 255, 255);
         AssertPixel(output, 1, 0, 0, 0, 255, 255);
@@ -92,7 +92,7 @@ public sealed class SoftwareCompositionRendererTests
             height: 1,
             MediaCompositionStretchMode.UniformFit);
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 2, 2);
+        var output = _renderer.Render(frame, 2, 2);
 
         AssertPixel(output, 0, 0, 0, 0, 0, 255);
         AssertPixel(output, 0, 1, 255, 0, 0, 255);
@@ -108,7 +108,7 @@ public sealed class SoftwareCompositionRendererTests
             height: 2,
             MediaCompositionStretchMode.UniformToFill);
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 2, 2);
+        var output = _renderer.Render(frame, 2, 2);
 
         AssertPixel(output, 0, 0, 0, 255, 0, 255);
         AssertPixel(output, 1, 0, 255, 0, 0, 255);
@@ -123,7 +123,7 @@ public sealed class SoftwareCompositionRendererTests
             height: 1,
             MediaCompositionStretchMode.Original);
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 4, 3);
+        var output = _renderer.Render(frame, 4, 3);
 
         AssertPixel(output, 0, 1, 0, 0, 0, 255);
         AssertPixel(output, 1, 1, 0, 0, 255, 255);
@@ -134,12 +134,12 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_Wash_UsesStraightAlphaOverBackground()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             WashArgb = 0x80FFFFFF
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         AssertPixel(output, 0, 0, 128, 128, 128, 255);
     }
@@ -157,14 +157,14 @@ public sealed class SoftwareCompositionRendererTests
             0,
             0,
             []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(
+        var frame = MediaCompositionFrame.Empty(
             MediaCompositionClearMode.ConfiguredColor,
             0xFF0000FF) with
         {
             CdgOverlay = snapshot
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 300, 216);
+        var output = _renderer.Render(frame, 300, 216);
 
         AssertPixel(output, 0, 0, 0, 0, 255, 255);
         AssertPixel(output, 1, 0, 255, 0, 0, 255);
@@ -180,9 +180,9 @@ public sealed class SoftwareCompositionRendererTests
         var indices = new byte[300 * 216];
         Array.Fill(indices, (byte)1);
         var snapshot = new CdgRenderSnapshot(1, 1, indices, new[] { unchecked((int)0xFF000000), unchecked((int)0xFFFF0000) }, 0, -1, []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
+        var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 300, 216);
+        var output = _renderer.Render(frame, 300, 216);
 
         AssertPixel(output, 0, 0, 255, 0, 0, 255);
     }
@@ -190,7 +190,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_InvalidBackgroundBuffer_IsRefused()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             BackgroundBgra = new byte[(4 * 4 * 3) - 1],
             BackgroundWidth = 4,
@@ -214,14 +214,14 @@ public sealed class SoftwareCompositionRendererTests
             0,
             0,
             []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(
+        var frame = MediaCompositionFrame.Empty(
             MediaCompositionClearMode.ConfiguredColor,
             0xFF0000FF) with
         {
             CdgOverlay = snapshot
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 300, 216);
+        var output = _renderer.Render(frame, 300, 216);
 
         AssertPixel(output, 0, 0, 255, 0, 0, 255);
     }
@@ -239,7 +239,7 @@ public sealed class SoftwareCompositionRendererTests
             0,
             0,
             []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(
+        var frame = MediaCompositionFrame.Empty(
             MediaCompositionClearMode.ConfiguredColor,
             0xFF0000FF) with
         {
@@ -247,7 +247,7 @@ public sealed class SoftwareCompositionRendererTests
             SuppressCdgOverlayDraw = true
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 300, 216);
+        var output = _renderer.Render(frame, 300, 216);
 
         AssertPixel(output, 0, 0, 255, 0, 0, 255);
     }
@@ -255,7 +255,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_Subtitle_UsesCanvasPlacementAndPremultipliedBlend()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             SubtitleBgra = new byte[] { 0, 0, 128, 128 },
             SubtitleWidth = 1,
@@ -267,7 +267,7 @@ public sealed class SoftwareCompositionRendererTests
             SubtitleCanvasHeight = 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 4, 4);
+        var output = _renderer.Render(frame, 4, 4);
 
         AssertPixel(output, 1, 1, 0, 0, 128, 255);
         AssertPixel(output, 0, 0, 0, 0, 0, 255);
@@ -276,7 +276,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_SubtitleRemainsTopmostLayer()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [255, 0, 0, 255],
             width: 1,
             height: 1,
@@ -289,7 +289,7 @@ public sealed class SoftwareCompositionRendererTests
             SubtitleStride = 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         AssertPixel(output, 0, 0, 0, 255, 0, 255);
     }
@@ -297,7 +297,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_RepeatedInput_IsByteIdentical()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [10, 20, 30, 255],
             width: 1,
             height: 1,
@@ -306,8 +306,8 @@ public sealed class SoftwareCompositionRendererTests
             WashArgb = 0x40302010
         };
 
-        SoftwareRenderOutput first = _renderer.Render(frame, 3, 3);
-        SoftwareRenderOutput second = _renderer.Render(frame, 3, 3);
+        var first = _renderer.Render(frame, 3, 3);
+        var second = _renderer.Render(frame, 3, 3);
 
         Assert.Equal(first.Pixels.ToArray(), second.Pixels.ToArray());
     }
@@ -315,14 +315,14 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_IdentityTransform_IsByteIdentical()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [10, 20, 30, 128],
             width: 1,
             height: 1,
             MediaCompositionStretchMode.Fill);
 
-        SoftwareRenderOutput original = _renderer.Render(frame, 1, 1);
-        SoftwareRenderOutput identity = _renderer.Render(frame with { BaseVisualTransform = BaseVisualTransform.Identity }, 1, 1);
+        var original = _renderer.Render(frame, 1, 1);
+        var identity = _renderer.Render(frame with { BaseVisualTransform = BaseVisualTransform.Identity }, 1, 1);
 
         Assert.Equal(original.Pixels.ToArray(), identity.Pixels.ToArray());
     }
@@ -330,7 +330,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_RgbGainsTransformOnlyBackgroundAndPreserveAlpha()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [255, 255, 255, 128],
             width: 1,
             height: 1,
@@ -344,7 +344,7 @@ public sealed class SoftwareCompositionRendererTests
             }
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         AssertPixel(output, 0, 0, blue: 0, green: 0, red: 128, alpha: 128);
     }
@@ -352,7 +352,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_TransformDoesNotReachSubtitle()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [255, 255, 255, 255],
             width: 1,
             height: 1,
@@ -369,7 +369,7 @@ public sealed class SoftwareCompositionRendererTests
             SubtitleStride = 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         AssertPixel(output, 0, 0, blue: 0, green: 255, red: 0, alpha: 255);
     }
@@ -377,7 +377,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_HueUsesPinnedYiqRotation()
     {
-        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+        var frame = CreateTransformedPixelFrame(
             blue: 0,
             green: 0,
             red: 255,
@@ -389,7 +389,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_SaturationUsesPinnedRec709Luma()
     {
-        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+        var frame = CreateTransformedPixelFrame(
             blue: 0,
             green: 0,
             red: 255,
@@ -401,7 +401,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_RgbGainsIndependentlyRemoveChannels()
     {
-        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+        var frame = CreateTransformedPixelFrame(
             blue: 255,
             green: 128,
             red: 64,
@@ -416,7 +416,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_IncludeOverlaysTransformsCompletedComposition()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [255, 255, 255, 255],
             width: 1,
             height: 1,
@@ -440,7 +440,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_IncludeOverlaysDoesNotDoubleApplyBackgroundTransform()
     {
-        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+        var frame = CreateTransformedPixelFrame(
             blue: 0,
             green: 0,
             red: 128,
@@ -452,14 +452,14 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_IncludeOverlaysWithNeutralMathIsByteIdentical()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(
+        var frame = CreateBackgroundFrame(
             [10, 20, 30, 128],
             width: 1,
             height: 1,
             MediaCompositionStretchMode.Fill);
 
-        SoftwareRenderOutput original = _renderer.Render(frame, 1, 1);
-        SoftwareRenderOutput scopedIdentity = _renderer.Render(
+        var original = _renderer.Render(frame, 1, 1);
+        var scopedIdentity = _renderer.Render(
             frame with { BaseVisualTransform = new BaseVisualTransform { IncludeOverlays = true } },
             1,
             1);
@@ -470,7 +470,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_CombinedTransformUsesFixedOrder()
     {
-        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+        var frame = CreateTransformedPixelFrame(
             blue: 153,
             green: 102,
             red: 51,
@@ -489,14 +489,14 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_RetainedBackground_ReturnsUnsupported()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             UseRetainedBackground = true,
             BackgroundWidth = 1,
             BackgroundHeight = 1
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         Assert.Equal(SoftwareRenderStatus.UnsupportedFrame, output.Status);
         Assert.Empty(output.Pixels.ToArray());
@@ -505,7 +505,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_InvalidBackgroundStride_ReturnsInvalid()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             BackgroundBgra = new byte[4],
             BackgroundWidth = 2,
@@ -513,7 +513,7 @@ public sealed class SoftwareCompositionRendererTests
             BackgroundStride = 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         Assert.Equal(SoftwareRenderStatus.InvalidFrame, output.Status);
     }
@@ -521,7 +521,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_InvalidSubtitleStride_ReturnsInvalid()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             SubtitleBgra = new byte[4],
             SubtitleWidth = 2,
@@ -529,7 +529,7 @@ public sealed class SoftwareCompositionRendererTests
             SubtitleStride = 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+        var output = _renderer.Render(frame, 1, 1);
 
         Assert.Equal(SoftwareRenderStatus.InvalidFrame, output.Status);
     }
@@ -537,7 +537,7 @@ public sealed class SoftwareCompositionRendererTests
     [Fact]
     public void Render_ZeroOutputSize_ReturnsInvalid()
     {
-        SoftwareRenderOutput output = _renderer.Render(MediaCompositionFrame.Empty(), 0, 1);
+        var output = _renderer.Render(MediaCompositionFrame.Empty(), 0, 1);
 
         Assert.Equal(SoftwareRenderStatus.InvalidFrame, output.Status);
     }
@@ -551,14 +551,14 @@ public sealed class SoftwareCompositionRendererTests
         // transparent source pixels, direct CD+G writes, vectorized wash); every pixel must still
         // equal the per-pixel nearest-neighbour blends of background, wash, CD+G and subtitles.
         // 1200x864 is an exact 4x of the CD+G screen and 2x of the subtitle bitmap.
-        const int width = 1200;
-        const int height = 864;
-        const int backgroundWidth = 37;
-        const int backgroundHeight = 23;
-        const int subtitleWidth = 600;
-        const int subtitleHeight = 432;
+        const int Width = 1200;
+        const int Height = 864;
+        const int BackgroundWidth = 37;
+        const int BackgroundHeight = 23;
+        const int SubtitleWidth = 600;
+        const int SubtitleHeight = 432;
         var random = new Random(17);
-        var background = new byte[backgroundWidth * backgroundHeight * 4];
+        var background = new byte[BackgroundWidth * BackgroundHeight * 4];
         random.NextBytes(background);
         for (var offset = 3; offset < background.Length; offset += 4)
             background[offset] = random.Next(3) switch { 0 => 0, 1 => 255, _ => background[offset] };
@@ -571,7 +571,7 @@ public sealed class SoftwareCompositionRendererTests
             palette[index] = random.Next();
 
         // Premultiplied: alpha 0 with a non-zero colour still adds its colour.
-        var subtitle = new byte[subtitleWidth * subtitleHeight * 4];
+        var subtitle = new byte[SubtitleWidth * SubtitleHeight * 4];
         for (var offset = 0; offset < subtitle.Length; offset += 4)
         {
             var alpha = random.Next(4) switch { 0 => 255, 1 => random.Next(256), _ => 0 };
@@ -582,29 +582,29 @@ public sealed class SoftwareCompositionRendererTests
             subtitle[offset + 3] = (byte)alpha;
         }
 
-        MediaCompositionFrame frame = CreateBackgroundFrame(background, backgroundWidth, backgroundHeight, MediaCompositionStretchMode.Fill) with
+        var frame = CreateBackgroundFrame(background, BackgroundWidth, BackgroundHeight, MediaCompositionStretchMode.Fill) with
         {
             WashArgb = washArgb,
             CdgOverlay = new CdgRenderSnapshot(1, 1, cdgIndices, palette, 0, 2, []),
             SubtitleBgra = subtitle,
-            SubtitleWidth = subtitleWidth,
-            SubtitleHeight = subtitleHeight,
-            SubtitleStride = subtitleWidth * 4
+            SubtitleWidth = SubtitleWidth,
+            SubtitleHeight = SubtitleHeight,
+            SubtitleStride = SubtitleWidth * 4
         };
 
-        SoftwareRenderOutput output = _renderer.Render(frame, width, height);
+        var output = _renderer.Render(frame, Width, Height);
 
         Assert.Equal(SoftwareRenderStatus.Rendered, output.Status);
-        ReadOnlySpan<byte> pixels = output.Pixels.Span;
+        var pixels = output.Pixels.Span;
         var washAlpha = (int)(washArgb >> 24);
         Span<int> expected = stackalloc int[4];
-        for (var y = 0; y < height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            var backgroundY = Math.Clamp((int)Math.Floor((y + 0.5) / height * backgroundHeight), 0, backgroundHeight - 1);
-            for (var x = 0; x < width; x++)
+            var backgroundY = Math.Clamp((int)Math.Floor((y + 0.5) / Height * BackgroundHeight), 0, BackgroundHeight - 1);
+            for (var x = 0; x < Width; x++)
             {
-                var backgroundX = Math.Clamp((int)Math.Floor((x + 0.5) / width * backgroundWidth), 0, backgroundWidth - 1);
-                var backgroundOffset = ((backgroundY * backgroundWidth) + backgroundX) * 4;
+                var backgroundX = Math.Clamp((int)Math.Floor((x + 0.5) / Width * BackgroundWidth), 0, BackgroundWidth - 1);
+                var backgroundOffset = ((backgroundY * BackgroundWidth) + backgroundX) * 4;
                 var backgroundAlpha = background[backgroundOffset + 3];
                 for (var channel = 0; channel < 4; channel++)
                 {
@@ -623,12 +623,12 @@ public sealed class SoftwareCompositionRendererTests
                     expected[3] = 255;
                 }
 
-                var subtitleOffset = (((y / 2) * subtitleWidth) + (x / 2)) * 4;
+                var subtitleOffset = (((y / 2) * SubtitleWidth) + (x / 2)) * 4;
                 var subtitleAlpha = subtitle[subtitleOffset + 3];
                 for (var channel = 0; channel < 4; channel++)
                 {
                     expected[channel] = Math.Min(255, subtitle[subtitleOffset + channel] + (((expected[channel] * (255 - subtitleAlpha)) + 127) / 255));
-                    Assert.Equal(expected[channel], pixels[(((y * width) + x) * 4) + channel]);
+                    Assert.Equal(expected[channel], pixels[(((y * Width) + x) * 4) + channel]);
                 }
             }
         }
@@ -637,7 +637,7 @@ public sealed class SoftwareCompositionRendererTests
             Math.Min(255, ((source * alpha) + (destination * (255 - alpha)) + 127) / 255);
     }
 
-    private static MediaCompositionFrame CreateBackgroundFrame(
+    static MediaCompositionFrame CreateBackgroundFrame(
         byte[] pixels,
         int width,
         int height,
@@ -651,7 +651,7 @@ public sealed class SoftwareCompositionRendererTests
             BackgroundRevision = 1
         };
 
-    private static MediaCompositionFrame CreateTransformedPixelFrame(
+    static MediaCompositionFrame CreateTransformedPixelFrame(
         byte blue,
         byte green,
         byte red,
@@ -664,7 +664,7 @@ public sealed class SoftwareCompositionRendererTests
             BaseVisualTransform = transform
         };
 
-    private static void AssertPixel(
+    static void AssertPixel(
         SoftwareRenderOutput output,
         int x,
         int y,
@@ -673,7 +673,7 @@ public sealed class SoftwareCompositionRendererTests
         byte red,
         byte alpha)
     {
-        ReadOnlySpan<byte> pixels = output.Pixels.Span;
+        var pixels = output.Pixels.Span;
         var offset = (y * output.Stride) + (x * 4);
         Assert.Equal(blue, pixels[offset]);
         Assert.Equal(green, pixels[offset + 1]);

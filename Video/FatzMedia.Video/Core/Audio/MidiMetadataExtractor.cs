@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// Karaoke metadata (title, artist, key, tempo, ...) from a MIDI source's text events, read through
 /// an engine-neutral <see cref="IMidiEventReader"/> (037A slice 1).
 /// </summary>
-internal static class MidiMetadataExtractor
+static class MidiMetadataExtractor
 {
     public static KaraokeMetadata Extract(
         IMidiEventReader reader,
@@ -14,7 +14,7 @@ internal static class MidiMetadataExtractor
         TimeSpan duration,
         IReadOnlyList<MidiMark> lyricOrTextMarkers)
     {
-        ParsedMarkerMetadata parsed = ParseMarkerMetadata(
+        var parsed = ParseMarkerMetadata(
             lyricOrTextMarkers.Select(static marker => marker.Text));
         var title = parsed.Title;
         var artist = parsed.Artist;
@@ -27,7 +27,7 @@ internal static class MidiMetadataExtractor
         var timeSignature = parsed.TimeSignature;
         List<string> additionalInfo = [.. parsed.AdditionalInfo];
 
-        IReadOnlyList<MidiMark> trackNames = reader.GetMarks(MidiMarkKind.TrackName);
+        var trackNames = reader.GetMarks(MidiMarkKind.TrackName);
         title ??= trackNames
             .OrderBy(static marker => marker.Track)
             .Select(static marker => marker.Text?.Trim())
@@ -45,7 +45,7 @@ internal static class MidiMetadataExtractor
         if (!string.IsNullOrWhiteSpace(rawTiming))
             timeSignature = rawTiming.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 
-        MidiTempoEvent? initialTempo = reader.GetTempoEvents()
+        var initialTempo = reader.GetTempoEvents()
             .Where(static midiEvent => midiEvent.MicrosecondsPerQuarterNote > 0)
             .OrderBy(static midiEvent => midiEvent.Position)
             .Cast<MidiTempoEvent?>()
@@ -104,7 +104,7 @@ internal static class MidiMetadataExtractor
         string? tempo = null;
         string? timeSignature = null;
 
-        foreach (string? markerText in markerTexts)
+        foreach (var markerText in markerTexts)
         {
             var text = markerText?.Trim() ?? string.Empty;
             if (text.StartsWith("@T", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
@@ -178,7 +178,7 @@ internal static class MidiMetadataExtractor
         return mode == 1 ? minorKeys[accidentals + 7] : majorKeys[accidentals + 7];
     }
 
-    private static void ParseInformation(
+    static void ParseInformation(
         string value,
         ref string? title,
         ref string? artist,
@@ -217,7 +217,7 @@ internal static class MidiMetadataExtractor
             AddDistinct(additionalInfo, value);
     }
 
-    private static bool TryReadLabel(string value, IReadOnlyList<string> labels, out string result)
+    static bool TryReadLabel(string value, IReadOnlyList<string> labels, out string result)
     {
         foreach (var label in labels)
         {
@@ -236,22 +236,22 @@ internal static class MidiMetadataExtractor
         return false;
     }
 
-    private static bool LooksLikeCopyright(string value) =>
+    static bool LooksLikeCopyright(string value) =>
         value.Contains("copyright", StringComparison.OrdinalIgnoreCase)
         || value.Contains("(c)", StringComparison.OrdinalIgnoreCase)
         || value.Contains('©');
 
-    private static string FirstMarkerText(IEnumerable<MidiMark> markers) => markers
+    static string FirstMarkerText(IEnumerable<MidiMark> markers) => markers
         .Select(static marker => marker.Text?.Trim())
         .FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
 
-    private static string JoinMarkerText(IEnumerable<MidiMark> markers) => string.Join(
+    static string JoinMarkerText(IEnumerable<MidiMark> markers) => string.Join(
         " • ",
         markers.Select(static marker => marker.Text?.Trim())
             .Where(static text => !string.IsNullOrWhiteSpace(text))
             .Distinct(StringComparer.OrdinalIgnoreCase));
 
-    private static void AddDistinct(List<string> values, string value)
+    static void AddDistinct(List<string> values, string value)
     {
         if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase))
             values.Add(value);

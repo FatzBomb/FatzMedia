@@ -94,7 +94,7 @@ public sealed class NativeDependencyReportTests
         Assert.Same(NativeDependencyReport.Empty, factory.NativeDependencies);
     }
 
-    private sealed class MinimalFactory : IPlatformFactory
+    sealed class MinimalFactory : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

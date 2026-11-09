@@ -63,7 +63,7 @@ public sealed class LightweightPlayerControllerTests
 
         Assert.True(await controller.LoadAsync("song.mp3", factory));
 
-        PlayerCore player = Assert.IsType<PlayerCore>(controller.Player);
+        var player = Assert.IsType<PlayerCore>(controller.Player);
         Assert.Same(player, controller.Session);
         Assert.Equal(1, changes);
         Assert.Equal(MediaPlayerMode.Full, player.Mode);
@@ -97,7 +97,7 @@ public sealed class LightweightPlayerControllerTests
 
         Assert.True(await controller.LoadAsync("picture.png", factory));
 
-        PlayerCore player = controller.Player!;
+        var player = controller.Player!;
         Assert.Equal(MediaPlayerMode.Background, player.Mode);
         Assert.True(player.LoopMedia);
         Assert.Equal(VideoDisplayMode.Zoom, player.VideoDisplayMode);
@@ -129,18 +129,18 @@ public sealed class LightweightPlayerControllerTests
     [Fact]
     public async Task MissingPlatformFactory_WarnsAndCreatesNothing()
     {
-        const string category = "Test.NoFactory";
+        const string Category = "Test.NoFactory";
         var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category)
+            if (info.Category == Category)
                 warnings.Enqueue(info);
         }
 
         DiagnosticRouter.DiagnosticOccurred += Record;
         try
         {
-            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
             Assert.False(await controller.LoadAsync("song.cdg", null));
             Assert.Null(controller.Player);
             Assert.False(controller.HasPlayerOrPendingCreation);
@@ -150,18 +150,18 @@ public sealed class LightweightPlayerControllerTests
             DiagnosticRouter.DiagnosticOccurred -= Record;
         }
 
-        MediaDiagnosticInfo warning = Assert.Single(warnings);
+        var warning = Assert.Single(warnings);
         Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
     }
 
     [Fact]
     public async Task FailedCreation_RaisesAnErrorAndAllowsAnotherAttempt()
     {
-        const string category = "Test.FailedCreation";
+        const string Category = "Test.FailedCreation";
         var errors = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category && info.Level == MediaDiagnosticLevel.Error)
+            if (info.Category == Category && info.Level == MediaDiagnosticLevel.Error)
                 errors.Enqueue(info);
         }
 
@@ -169,7 +169,7 @@ public sealed class LightweightPlayerControllerTests
         try
         {
             var factory = new LightweightTestPlatformFactory(new TestMediaEngine()) { Fail = true };
-            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+            using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
             Assert.Null(await controller.EnsurePlayerAsync(factory));
             Assert.False(controller.HasPlayerOrPendingCreation);
 
@@ -192,13 +192,13 @@ public sealed class LightweightPlayerControllerTests
         var changes = 0;
         controller.PlayerChanged += (_, _) => Interlocked.Increment(ref changes);
 
-        Task<PlayerCore?> first = controller.EnsurePlayerAsync(factory);
-        Task<PlayerCore?> second = controller.EnsurePlayerAsync(factory);
+        var first = controller.EnsurePlayerAsync(factory);
+        var second = controller.EnsurePlayerAsync(factory);
         Assert.True(controller.HasPlayerOrPendingCreation);
         factory.Gate.Set();
 
-        PlayerCore? a = await first;
-        PlayerCore? b = await second;
+        var a = await first;
+        var b = await second;
         Assert.NotNull(a);
         Assert.Same(a, b);
         Assert.Equal(1, factory.CreatedPlayers);
@@ -214,7 +214,7 @@ public sealed class LightweightPlayerControllerTests
         var changes = 0;
         controller.PlayerChanged += (_, _) => Interlocked.Increment(ref changes);
 
-        Task<bool> abandoned = controller.LoadAsync("picture.png", factory);
+        var abandoned = controller.LoadAsync("picture.png", factory);
         controller.ReleasePlayer();
         Assert.False(controller.HasPlayerOrPendingCreation);
         factory.Gate.Set();
@@ -236,8 +236,8 @@ public sealed class LightweightPlayerControllerTests
         var factory = new LightweightTestPlatformFactory(engine) { Gate = new ManualResetEventSlim() };
         using var controller = new LightweightPlayerController(LightweightPlayerKind.Background, "Test.Newer");
 
-        Task<bool> older = controller.LoadAsync("first.png", factory);
-        Task<bool> newer = controller.LoadAsync("second.png", factory);
+        var older = controller.LoadAsync("first.png", factory);
+        var newer = controller.LoadAsync("second.png", factory);
         factory.Gate.Set();
 
         Assert.False(await older);
@@ -282,15 +282,15 @@ public sealed class LightweightPlayerControllerTests
     [Fact]
     public async Task RunQueuedReload_ClearsTheQueue_SkipsWhenTheControlCannotRun_AndWarnsOnFailure()
     {
-        const string category = "Test.QueuedReload";
+        const string Category = "Test.QueuedReload";
         var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == category)
+            if (info.Category == Category)
                 warnings.Enqueue(info);
         }
 
-        using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+        using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, Category);
         var runs = 0;
         Assert.True(controller.TryQueueReload());
         await controller.RunQueuedReloadAsync(() => false, () =>
@@ -311,13 +311,13 @@ public sealed class LightweightPlayerControllerTests
             DiagnosticRouter.DiagnosticOccurred -= Record;
         }
 
-        MediaDiagnosticInfo warning = Assert.Single(warnings);
+        var warning = Assert.Single(warnings);
         Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
         Assert.Equal("Reloading the source failed: bad source", warning.Message);
         Assert.IsType<InvalidOperationException>(warning.InnerException);
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    static async Task WaitUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + TestEnvironment.EventuallyTimeout;
         while (!condition())
@@ -327,12 +327,12 @@ public sealed class LightweightPlayerControllerTests
         }
     }
 
-    private sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IPlatformFactory
+    sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IPlatformFactory
     {
-        private readonly ConcurrentQueue<TestMediaEngine> _engines = new(engines);
-        private readonly NullPresentationCoordinator _coordinator = new();
-        private TestMediaEngine _last = engines[0];
-        private int _createdPlayers;
+        readonly ConcurrentQueue<TestMediaEngine> _engines = new(engines);
+        readonly NullPresentationCoordinator _coordinator = new();
+        TestMediaEngine _last = engines[0];
+        int _createdPlayers;
 
         public ManualResetEventSlim? Gate { get; init; }
 
@@ -356,7 +356,7 @@ public sealed class LightweightPlayerControllerTests
 
             LastConfiguration = configuration;
             _ = Interlocked.Increment(ref _createdPlayers);
-            if (_engines.TryDequeue(out TestMediaEngine? engine))
+            if (_engines.TryDequeue(out var engine))
                 _last = engine;
             return new TestServiceProvider(_last);
         }

@@ -8,14 +8,14 @@ namespace FatzMedia.Video.Core.Video;
 /// swscale's coefficient tables, so every conversion to RGB uses the stream's own matrix and
 /// range instead of a default (swscale: BT.601 limited; GPU video processors: driver's guess).
 /// </summary>
-internal static unsafe class FFmpegVideoColor
+static unsafe class FFmpegVideoColor
 {
     /// <summary>The peak assumed for HDR10 video without usable metadata (a common mastering peak).</summary>
     public const double DefaultHdrPeakNits = 1000;
 
     public static VideoColorSpace FromTags(AVColorSpace colorSpace, AVColorRange colorRange, AVPixelFormat pixelFormat)
     {
-        VideoColorMatrix matrix = colorSpace switch
+        var matrix = colorSpace switch
         {
             AVColorSpace.AVCOL_SPC_BT709 or AVColorSpace.AVCOL_SPC_SMPTE240M => VideoColorMatrix.Bt709,
             AVColorSpace.AVCOL_SPC_BT470BG or AVColorSpace.AVCOL_SPC_SMPTE170M or AVColorSpace.AVCOL_SPC_FCC => VideoColorMatrix.Bt601,
@@ -23,7 +23,7 @@ internal static unsafe class FFmpegVideoColor
             _ => VideoColorMatrix.Unspecified
         };
 
-        VideoColorRange range = colorRange switch
+        var range = colorRange switch
         {
             AVColorRange.AVCOL_RANGE_MPEG => VideoColorRange.Limited,
             AVColorRange.AVCOL_RANGE_JPEG => VideoColorRange.Full,
@@ -40,7 +40,7 @@ internal static unsafe class FFmpegVideoColor
     /// </summary>
     public static string Describe(VideoColorSpace tagged, int width, int height, AVColorTransferCharacteristic transfer, bool toneMapsHdr = false)
     {
-        VideoColorSpace resolved = tagged.Resolve(width, height);
+        var resolved = tagged.Resolve(width, height);
         var matrix = resolved.Matrix switch
         {
             VideoColorMatrix.Bt709 => "BT.709",
@@ -73,17 +73,17 @@ internal static unsafe class FFmpegVideoColor
         double frameMaxCll = 0, frameMastering = 0, streamMaxCll = 0, streamMastering = 0;
         if (frame != null)
         {
-            AVFrameSideData* light = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
-            AVFrameSideData* mastering = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+            var light = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+            var mastering = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
             frameMaxCll = light != null ? ReadMaxCll((AVContentLightMetadata*)light->data) : 0;
             frameMastering = mastering != null ? ReadMasteringPeak((AVMasteringDisplayMetadata*)mastering->data) : 0;
         }
 
         if (stream != null && stream->codecpar != null)
         {
-            AVCodecParameters* parameters = stream->codecpar;
-            AVPacketSideData* light = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_CONTENT_LIGHT_LEVEL);
-            AVPacketSideData* mastering = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_MASTERING_DISPLAY_METADATA);
+            var parameters = stream->codecpar;
+            var light = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_CONTENT_LIGHT_LEVEL);
+            var mastering = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_MASTERING_DISPLAY_METADATA);
             streamMaxCll = light != null ? ReadMaxCll((AVContentLightMetadata*)light->data) : 0;
             streamMastering = mastering != null ? ReadMasteringPeak((AVMasteringDisplayMetadata*)mastering->data) : 0;
         }
@@ -111,7 +111,7 @@ internal static unsafe class FFmpegVideoColor
         return (DefaultHdrPeakNits, "assumed, no usable metadata");
     }
 
-    private static bool IsUsablePeak(double nits, double referenceWhiteNits) =>
+    static bool IsUsablePeak(double nits, double referenceWhiteNits) =>
         nits >= referenceWhiteNits && nits <= 10000;
 
     /// <summary>swscale's <c>SWS_CS_*</c> table for a resolved matrix.</summary>
@@ -122,7 +122,7 @@ internal static unsafe class FFmpegVideoColor
         _ => ffmpeg.SWS_CS_ITU601
     };
 
-    private static bool IsJpegRangeFormat(AVPixelFormat pixelFormat) => pixelFormat is
+    static bool IsJpegRangeFormat(AVPixelFormat pixelFormat) => pixelFormat is
         AVPixelFormat.AV_PIX_FMT_YUVJ420P
         or AVPixelFormat.AV_PIX_FMT_YUVJ422P
         or AVPixelFormat.AV_PIX_FMT_YUVJ444P

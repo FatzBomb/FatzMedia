@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// </summary>
 public partial class PlayerViewModel
 {
-    private string _lastStreamTitle = string.Empty;
+    string _lastStreamTitle = string.Empty;
 
     public AsyncRelayCommand OpenUrlCommand { get; private set; } = null!;
 
@@ -29,13 +29,13 @@ public partial class PlayerViewModel
     [ObservableProperty]
     public partial string StreamInfoText { get; private set; } = string.Empty;
 
-    private void InitializeNetworkControls()
+    void InitializeNetworkControls()
     {
         OpenUrlCommand = new AsyncRelayCommand(OpenUrlAsync, () => CanUsePlayer() && TryParseNetworkUrl(NetworkUrl, out _));
         NetworkUrl = Options.NetworkUri?.AbsoluteUri ?? string.Empty;
     }
 
-    private void StartNetworkValidation(PlayerCore player)
+    void StartNetworkValidation(PlayerCore player)
     {
         player.BufferingChanged += OnPlayerBufferingChanged;
         player.StreamMetadataChanged += OnPlayerStreamMetadataChanged;
@@ -43,18 +43,18 @@ public partial class PlayerViewModel
             _ = LoadNetworkAsync(player, uri);
     }
 
-    private void StopNetworkValidation(PlayerCore player)
+    void StopNetworkValidation(PlayerCore player)
     {
         player.BufferingChanged -= OnPlayerBufferingChanged;
         player.StreamMetadataChanged -= OnPlayerStreamMetadataChanged;
     }
 
-    private async Task OpenUrlAsync()
+    async Task OpenUrlAsync()
     {
         if (Player is not { } player)
             return;
 
-        if (!TryParseNetworkUrl(NetworkUrl, out Uri? uri))
+        if (!TryParseNetworkUrl(NetworkUrl, out var uri))
         {
             StatusText = "Enter an http:// or https:// URL.";
             return;
@@ -73,7 +73,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private async Task LoadNetworkAsync(PlayerCore player, Uri uri)
+    async Task LoadNetworkAsync(PlayerCore player, Uri uri)
     {
         RunOnUiThread(() =>
         {
@@ -84,7 +84,7 @@ public partial class PlayerViewModel
         try
         {
             var loaded = await player.LoadAsync(MediaInputSource.FromUri(uri)).ConfigureAwait(false);
-            MediaSourceCapabilities? capabilities = player.CurrentSourceCapabilities;
+            var capabilities = player.CurrentSourceCapabilities;
             var summary = loaded
                 ? $"{capabilities?.SourceClass}, seekable={capabilities?.IsSeekable}, duration={player.Duration}"
                 : $"Could not load {uri}";
@@ -104,7 +104,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private void OnPlayerBufferingChanged(object? sender, MediaBufferingChangedEventArgs e)
+    void OnPlayerBufferingChanged(object? sender, MediaBufferingChangedEventArgs e)
     {
         ReportNetwork($"Buffering={e.IsBuffering} fill={e.BufferFill:P0}");
         RunOnUiThread(() => StreamInfoText = e.IsBuffering
@@ -112,7 +112,7 @@ public partial class PlayerViewModel
             : _lastStreamTitle.Length > 0 ? _lastStreamTitle : "Streaming");
     }
 
-    private void OnPlayerStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
+    void OnPlayerStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
     {
         ReportNetwork($"Stream metadata: artist='{e.Artist}' title='{e.Title}'");
         RunOnUiThread(() =>
@@ -127,6 +127,6 @@ public partial class PlayerViewModel
         Uri.TryCreate(text.Trim(), UriKind.Absolute, out uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    private void ReportNetwork(string message) =>
+    void ReportNetwork(string message) =>
         RunOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "Network", message));
 }

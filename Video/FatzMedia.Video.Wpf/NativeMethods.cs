@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzMedia.Video.Wpf;
 
-internal static partial class NativeMethods
+static partial class NativeMethods
 {
     [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     internal static partial IntPtr CreateWindowEx(
@@ -75,7 +75,7 @@ internal static partial class NativeMethods
     [StructLayout(LayoutKind.Sequential, Size = 32)]
     internal readonly struct RgbReservedBuffer
     {
-        private readonly byte _element0;
+        readonly byte _element0;
     }
 
     internal const int GWL_EXSTYLE = -20;

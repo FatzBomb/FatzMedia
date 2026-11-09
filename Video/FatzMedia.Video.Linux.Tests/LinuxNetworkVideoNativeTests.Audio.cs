@@ -1,8 +1,8 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Network;
 using FFmpeg.AutoGen;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -15,9 +15,9 @@ namespace FatzMedia.Video.Linux.Tests;
 /// </summary>
 public sealed partial class LinuxNetworkVideoNativeTests
 {
-    private const string ToneMp3 = "audio/tone.mp3";
-    private const string ToneOgg = "audio/tone.ogg";
-    private const string FaststartMp4 = "faststart.mp4";
+    const string ToneMp3 = "audio/tone.mp3";
+    const string ToneOgg = "audio/tone.ogg";
+    const string FaststartMp4 = "faststart.mp4";
 
     [Fact]
     public void HttpsAudio_SelfSignedServer_IsRejectedByDefault_AndAcceptedWithItsCaFile()
@@ -42,7 +42,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         using var accepted = new SharedDemuxer();
         var options = FfmpegNetworkOptions.Default with { Tls = new NetworkTlsPolicy { CertificateAuthorityFile = certificate.PemPath } };
         Assert.True(accepted.Open(url, options), accepted.LastNetworkError);
-        MediaSourceCapabilities row = NetworkAudioPolicy.Resolve(accepted.GetNetworkProbe());
+        var row = NetworkAudioPolicy.Resolve(accepted.GetNetworkProbe());
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.True(row.IsSeekable);
         Assert.False(row.HasStreamMetadata);
@@ -92,8 +92,8 @@ public sealed partial class LinuxNetworkVideoNativeTests
         using var demuxer = new SharedDemuxer();
         var options = FfmpegNetworkOptions.Default with { Tls = new NetworkTlsPolicy { CertificateAuthorityFile = certificate.PemPath } };
         Assert.True(demuxer.Open(server.UriFor(ToneMp3).AbsoluteUri, options), demuxer.LastNetworkError);
-        NetworkVideoProbe probe = demuxer.GetNetworkProbe();
-        MediaSourceCapabilities row = NetworkAudioPolicy.Resolve(probe);
+        var probe = demuxer.GetNetworkProbe();
+        var row = NetworkAudioPolicy.Resolve(probe);
         Assert.True(probe.HasIcyMetadata);
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.True(row.HasStreamMetadata);
@@ -104,14 +104,14 @@ public sealed partial class LinuxNetworkVideoNativeTests
         var timeBase = ffmpeg.av_q2d(demuxer.GetStream(audio)->time_base);
 
         // Nothing played yet: the first title (read with the header) is due at once.
-        Assert.True(demuxer.TryTakeStreamMetadata(0, out StreamMetadata first), "no title at the start");
+        Assert.True(demuxer.TryTakeStreamMetadata(0, out var first), "no title at the start");
         Assert.Equal("Song 0", first.Title);
         Assert.Equal("Test Artist", first.Artist);
 
         // "Play" to 13 s by taking packets; titles are asked for at the played position. ICY puts
         // block k after (k + 1) s of audio, so "Song 1" starts at 6 s and "Song 2" at 11 s.
         List<(double At, string Title)> taken = [];
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -125,7 +125,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
                 Assert.True(demuxer.ReadAudioPacket(packet) >= 0, "the stream ended early");
                 played = (packet->pts + packet->duration) * timeBase;
                 ffmpeg.av_packet_unref(packet);
-                if (demuxer.TryTakeStreamMetadata(played, out StreamMetadata metadata))
+                if (demuxer.TryTakeStreamMetadata(played, out var metadata))
                     taken.Add((played, metadata.Title!));
             }
         }
@@ -153,7 +153,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         var options = FfmpegNetworkOptions.Default with { Tls = new NetworkTlsPolicy { CertificateAuthorityFile = certificate.PemPath } };
         Assert.True(demuxer.Open(server.UriFor(ToneOgg).AbsoluteUri, options), demuxer.LastNetworkError);
 
-        Assert.True(demuxer.TryTakeStreamMetadata(0, out StreamMetadata metadata), "no Ogg tags");
+        Assert.True(demuxer.TryTakeStreamMetadata(0, out var metadata), "no Ogg tags");
         Assert.Equal("Ogg Title", metadata.Title);
         Assert.Equal("Ogg Artist", metadata.Artist);
         Assert.False(demuxer.TryTakeStreamMetadata(0, out _));
@@ -181,7 +181,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
 
         var errorsBefore = session.ErrorList.Count;
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(FaststartMp4))), session.Errors);
-        MediaSourceCapabilities? row = session.Player.CurrentSourceCapabilities;
+        var row = session.Player.CurrentSourceCapabilities;
         Assert.NotNull(row);
         Assert.False(row.IsSeekable);
         Assert.True(session.Player.Play());
@@ -212,7 +212,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         demuxer.DiscardUnregisteredNetworkStreams();
         Assert.Equal(AVDiscard.AVDISCARD_DEFAULT, demuxer.GetStream(audio)->discard);
 
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         try
         {
             // The reader is running now.

@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Software;
 /// </summary>
 public sealed class SoftwareRenderOutput
 {
-    private readonly byte[] _pixels;
+    readonly byte[] _pixels;
 
     internal SoftwareRenderOutput(
         SoftwareRenderStatus status,

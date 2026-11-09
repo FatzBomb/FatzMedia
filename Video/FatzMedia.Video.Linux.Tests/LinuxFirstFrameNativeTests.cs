@@ -14,8 +14,8 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
 {
-    private const string DefaultSample = "/opt/fatzbomb-native/media/h264_1080p.mp4";
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    const string DefaultSample = "/opt/fatzbomb-native/media/h264_1080p.mp4";
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
     [Fact]
     public void ALoadBeforeTheSurfaceAttaches_StillReachesTheSurface_AndArmsTheFirstFrame()
@@ -57,7 +57,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
             AudioEngineFactory = engine == "fatz" ? new FatzAudioEngineFactory(nullOutput: true) : null,
         };
         using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], configuration, attachSurface: false);
-        PlayerCore player = session.Player;
+        var player = session.Player;
         player.PlayOnLoad = false;
         using var tracker = new MediaSurfaceContentTracker { Session = player };
         Assert.True(player.Load(sample), string.Join(" | ", session.Errors));
@@ -117,7 +117,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         }
         finally
         {
-            foreach (MediaSurfaceContentTracker tracker in trackers)
+            foreach (var tracker in trackers)
                 tracker.Dispose();
             for (var i = 0; i < 2; i++)
             {
@@ -127,7 +127,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         }
     }
 
-    private static bool TryGetSample(out string ffmpeg, out string sample)
+    static bool TryGetSample(out string ffmpeg, out string sample)
     {
         ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR") ?? string.Empty;
         sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO") is { Length: > 0 } configured ? configured : DefaultSample;
@@ -135,7 +135,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
     }
 
     // Background mode: picture only, so no BASS is needed; the application folder is empty.
-    private static PlayerCore CreatePlayer(string ffmpeg)
+    static PlayerCore CreatePlayer(string ffmpeg)
     {
         var appBase = Directory.CreateTempSubdirectory("fbm-first-frame-").FullName;
         var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
@@ -144,16 +144,16 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         return new PlayerCore(factory, configuration, [ffmpeg]);
     }
 
-    private static MediaPresentationSurfaceDescriptor Descriptor(MediaPresentationFrameSinkHandle handle) => new(
+    static MediaPresentationSurfaceDescriptor Descriptor(MediaPresentationFrameSinkHandle handle) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
         MediaPresentationSurfaceRole.Primary,
         handle.CreateSurfaceDescriptor(),
         640,
         360);
 
-    private sealed class FrameCounter : IMediaPresentationFrameSink
+    sealed class FrameCounter : IMediaPresentationFrameSink
     {
-        private int _frames;
+        int _frames;
 
         public int Frames => Volatile.Read(ref _frames);
 

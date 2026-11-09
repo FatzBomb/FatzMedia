@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Video.Hdr;
 using Vortice.Direct3D;
@@ -21,21 +20,21 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Video;
 /// target instead: PQ through the BT.2390 curve with the display's peak as target, HLG through
 /// the OOTF for the display's peak, BT.2020 to BT.709 unclipped, 1.0 = 80 nits.
 /// </summary>
-internal sealed class D3D11HdrToneMapPresenter : IDisposable
+sealed class D3D11HdrToneMapPresenter : IDisposable
 {
-    private ID3D11Device? _device;
-    private ID3D11VertexShader? _vertexShader;
-    private ID3D11PixelShader? _pixelShader;
-    private ID3D11Buffer? _constantBuffer;
-    private ID3D11SamplerState? _sampler;
-    private ID3D11RasterizerState? _rasterizerState;
-    private ID3D11Texture2D? _source;
-    private ID3D11ShaderResourceView? _lumaView;
-    private ID3D11ShaderResourceView? _chromaView;
-    private ID3D11RenderTargetView? _targetView;
-    private nint _targetViewTexture;
-    private bool _failed;
-    private nint _failedDevice;
+    ID3D11Device? _device;
+    ID3D11VertexShader? _vertexShader;
+    ID3D11PixelShader? _pixelShader;
+    ID3D11Buffer? _constantBuffer;
+    ID3D11SamplerState? _sampler;
+    ID3D11RasterizerState? _rasterizerState;
+    ID3D11Texture2D? _source;
+    ID3D11ShaderResourceView? _lumaView;
+    ID3D11ShaderResourceView? _chromaView;
+    ID3D11RenderTargetView? _targetView;
+    nint _targetViewTexture;
+    bool _failed;
+    nint _failedDevice;
 
     /// <summary>Why the last <see cref="TryPresent"/> failed, or null.</summary>
     public string? LastFailure { get; private set; }
@@ -73,7 +72,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
             _failed = false;
         }
 
-        Texture2DDescription sourceDescription = sourceTexture.Description;
+        var sourceDescription = sourceTexture.Description;
         if (sourceDescription.Format != Format.P010)
         {
             LastFailure = $"the decoder's frames are {sourceDescription.Format}, not P010";
@@ -166,7 +165,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
 
     public void Dispose() => Reset();
 
-    private void EnsurePipeline(ID3D11Device device)
+    void EnsurePipeline(ID3D11Device device)
     {
         if (_device != null && _device.NativePointer == device.NativePointer && _pixelShader != null)
             return;
@@ -195,7 +194,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         _rasterizerState = device.CreateRasterizerState(RasterizerDescription.CullNone);
     }
 
-    private void EnsureSource(ID3D11Device device, Texture2DDescription decoderDescription)
+    void EnsureSource(ID3D11Device device, Texture2DDescription decoderDescription)
     {
         if (_source is { } existing
             && existing.Description.Width == decoderDescription.Width
@@ -224,7 +223,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         _chromaView = device.CreateShaderResourceView(_source, PlaneView(Format.R16G16_UNorm));
     }
 
-    private void EnsureTargetView(ID3D11Device device, ID3D11Texture2D target)
+    void EnsureTargetView(ID3D11Device device, ID3D11Texture2D target)
     {
         if (_targetView != null && _targetViewTexture == target.NativePointer)
             return;
@@ -234,14 +233,14 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         _targetViewTexture = target.NativePointer;
     }
 
-    private static ShaderResourceViewDescription PlaneView(Format format) => new()
+    static ShaderResourceViewDescription PlaneView(Format format) => new()
     {
         Format = format,
         ViewDimension = ShaderResourceViewDimension.Texture2D,
         Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 },
     };
 
-    private void WriteConstants(
+    void WriteConstants(
         ID3D11DeviceContext context,
         VideoColorSpace colorSpace,
         HdrToneMapRequest toneMap,
@@ -252,7 +251,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         Vortice.RawRect destinationRect,
         HdrOutputDecision? hdrOutput)
     {
-        ToneMapConstants constants = CreateConstants(
+        var constants = CreateConstants(
             colorSpace,
             toneMap,
             (int)sourceDescription.Width,
@@ -293,14 +292,14 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
             toneMap = ForScRgbOutput(toneMap, hdrOutput!.Value.DisplayPeakNits);
 
         // P010 keeps 10-bit codes in the top bits of 16: a sampled value v is code * 64 / 65535.
-        const double codeScale = 65535.0 / 64;
+        const double CodeScale = 65535.0 / 64;
         var full = colorSpace.Range == VideoColorRange.Full;
-        var lumaScale = codeScale / (full ? 1023 : 876);
+        var lumaScale = CodeScale / (full ? 1023 : 876);
         var lumaOffset = full ? 0 : -64.0 / 876;
-        var chromaScale = codeScale / (full ? 1023 : 896);
+        var chromaScale = CodeScale / (full ? 1023 : 896);
         var chromaOffset = -512.0 / (full ? 1023 : 896);
 
-        (double kr, double kb) = colorSpace.Matrix switch
+        (var kr, var kb) = colorSpace.Matrix switch
         {
             VideoColorMatrix.Bt601 => (0.299, 0.114),
             VideoColorMatrix.Bt709 => (0.2126, 0.0722),

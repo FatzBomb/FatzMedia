@@ -2,12 +2,12 @@ using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class MediaState
+sealed class MediaState
 {
-    private readonly Lock _gate = new();
-    private MediaPlayerState _playbackState = MediaPlayerState.Null;
-    private double _positionSeconds;
-    private double _durationSeconds;
+    readonly Lock _gate = new();
+    MediaPlayerState _playbackState = MediaPlayerState.Null;
+    double _positionSeconds;
+    double _durationSeconds;
 
     public MediaContent Content
     {
@@ -149,5 +149,5 @@ internal sealed class MediaState
         }
     }
 
-    private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+    static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

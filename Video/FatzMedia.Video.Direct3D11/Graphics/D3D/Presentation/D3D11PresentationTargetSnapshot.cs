@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// stable target id, and revision together so resize/adoption changes do not get
 /// mixed with stale frame state.
 /// </summary>
-internal readonly struct D3D11PresentationTargetSnapshot(
+readonly struct D3D11PresentationTargetSnapshot(
     string targetId,
     ID3D11Texture2D texture,
     int width,

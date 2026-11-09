@@ -59,18 +59,15 @@ public class BackgroundSurface : Panel, IDisposable
 
     public static readonly DirectProperty<BackgroundSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<BackgroundSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
-
-    private readonly MediaSurface _surface = new() { Background = new SolidColorBrush(Colors.Black) };
-    private readonly ContentPresenter _overlayPresenter = new() { IsHitTestVisible = false, IsVisible = false };
-    private readonly LightweightSurfaceHost _host;
+    readonly LightweightSurfaceHost _host;
 
     public BackgroundSurface()
     {
         ClipToBounds = true;
-        _host = new LightweightSurfaceHost(_surface, LightweightPlayerKind.Background, DiagnosticCategory, ReloadSourceAsync);
+        _host = new LightweightSurfaceHost(Surface, LightweightPlayerKind.Background, DiagnosticCategory, ReloadSourceAsync);
         _host.ContentVisibilityChanged += OnContentVisibilityChanged;
-        Children.Add(_surface);
-        Children.Add(_overlayPresenter);
+        Children.Add(Surface);
+        Children.Add(OverlayPresenter);
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
@@ -103,7 +100,7 @@ public class BackgroundSurface : Panel, IDisposable
         get => _host.PlatformFactory;
         set
         {
-            IPlatformFactory? old = _host.PlatformFactory;
+            var old = _host.PlatformFactory;
             _host.PlatformFactory = value;
             RaisePropertyChanged(PlatformFactoryProperty, old, value);
         }
@@ -162,10 +159,10 @@ public class BackgroundSurface : Panel, IDisposable
     }
 
     /// <summary>The inner surface (tests).</summary>
-    internal MediaSurface Surface => _surface;
+    internal MediaSurface Surface { get; } = new() { Background = new SolidColorBrush(Colors.Black) };
 
     /// <summary>The overlay presenter (tests).</summary>
-    internal ContentPresenter OverlayPresenter => _overlayPresenter;
+    internal ContentPresenter OverlayPresenter { get; } = new() { IsHitTestVisible = false, IsVisible = false };
 
     /// <summary>Shows a solid colour: sets <see cref="BackgroundColor"/> and <see cref="Source"/>.</summary>
     public void SetColor(Color color)
@@ -209,24 +206,24 @@ public class BackgroundSurface : Panel, IDisposable
         }
         else if (change.Property == AutoHideProperty)
         {
-            _surface.AutoHide = change.NewValue is true;
+            Surface.AutoHide = change.NewValue is true;
         }
         else if (change.Property == PreferGpuSharedSurfaceProperty)
         {
-            _surface.PreferGpuSharedSurface = change.NewValue is true;
+            Surface.PreferGpuSharedSurface = change.NewValue is true;
         }
         else if (change.Property == BackgroundColorProperty && change.NewValue is Color color)
         {
-            _surface.Background = new SolidColorBrush(Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
+            Surface.Background = new SolidColorBrush(Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
         }
         else if (change.Property == OverlayContentProperty)
         {
-            _overlayPresenter.Content = change.NewValue;
-            _overlayPresenter.IsVisible = change.NewValue is not null;
+            OverlayPresenter.Content = change.NewValue;
+            OverlayPresenter.IsVisible = change.NewValue is not null;
         }
         else if (change.Property == OverlayHitTestVisibleProperty)
         {
-            _overlayPresenter.IsHitTestVisible = change.NewValue is true;
+            OverlayPresenter.IsHitTestVisible = change.NewValue is true;
         }
     }
 
@@ -242,7 +239,7 @@ public class BackgroundSurface : Panel, IDisposable
         base.OnDetachedFromVisualTree(e);
     }
 
-    private Task<bool> LoadMediaAsync(MediaInputSource source)
+    Task<bool> LoadMediaAsync(MediaInputSource source)
     {
         // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
         Dispatcher.UIThread.VerifyAccess();
@@ -252,7 +249,7 @@ public class BackgroundSurface : Panel, IDisposable
 
     // A newer Source abandons a load in progress: Core's controller checks after every await, and
     // a solid colour releases the player.
-    private Task ReloadSourceAsync() => Source switch
+    Task ReloadSourceAsync() => Source switch
     {
         null => ShowSolidColor(BackgroundColor),
         Color color => ShowSolidColor(color),
@@ -263,14 +260,14 @@ public class BackgroundSurface : Panel, IDisposable
         _ => throw new NotSupportedException($"Background source type {Source.GetType().Name} is not supported."),
     };
 
-    private Task ShowSolidColor(Color color)
+    Task ShowSolidColor(Color color)
     {
         SetCurrentValue(BackgroundColorProperty, Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
         _host.Controller.ReleasePlayer();
         return Task.CompletedTask;
     }
 
-    private void OnContentVisibilityChanged(object? sender, EventArgs e)
+    void OnContentVisibilityChanged(object? sender, EventArgs e)
     {
         Dispatcher.UIThread.VerifyAccess();
         var isVisible = _host.IsContentVisible;

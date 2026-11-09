@@ -21,7 +21,7 @@ public sealed class SystemPrecisionWaiterFactory : IPrecisionWaiterFactory
 {
     public IPrecisionWaiter Create() => new SystemPrecisionWaiter();
 
-    private sealed class SystemPrecisionWaiter : IPrecisionWaiter
+    sealed class SystemPrecisionWaiter : IPrecisionWaiter
     {
         public bool IsHighResolution => false;
 

@@ -9,19 +9,19 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// (60000/1001 for 59.94 Hz). DWM's composition rate, the previous source, is one rate for the
 /// whole desktop and can belong to a different monitor.
 /// </summary>
-internal static unsafe partial class Win32MonitorRefreshRate
+static unsafe partial class Win32MonitorRefreshRate
 {
     internal const uint MonitorDefaultToNearest = 2;
-    private const uint QdcOnlyActivePaths = 2;
-    private const uint DisplayConfigDeviceInfoGetSourceName = 1;
+    const uint QdcOnlyActivePaths = 2;
+    const uint DisplayConfigDeviceInfoGetSourceName = 1;
     internal const int ErrorSuccess = 0;
-    private const int ErrorInsufficientBuffer = 122;
-    private const int MaxQueryAttempts = 3;
+    const int ErrorInsufficientBuffer = 122;
+    const int MaxQueryAttempts = 3;
 
     /// <summary>Refresh rate in Hz of the monitor showing <paramref name="hwnd"/>, or null when Windows cannot tell.</summary>
     public static double? TryGet(nint hwnd)
     {
-        if (hwnd == 0 || !TryGetMonitorDeviceName(hwnd, out var deviceName) || !TryQueryActivePaths(out DisplayConfigPathInfo[] paths))
+        if (hwnd == 0 || !TryGetMonitorDeviceName(hwnd, out var deviceName) || !TryQueryActivePaths(out var paths))
             return null;
 
         // QDC_ONLY_ACTIVE_PATHS returns active paths only. A duplicated (cloned) desktop has
@@ -30,14 +30,14 @@ internal static unsafe partial class Win32MonitorRefreshRate
         double? found = null;
         for (var index = 0; index < paths.Length; index++)
         {
-            ref DisplayConfigPathInfo path = ref paths[index];
+            ref var path = ref paths[index];
             if (!TryGetSourceDeviceName(path.SourceInfo.AdapterId, path.SourceInfo.Id, out var sourceName)
                 || !string.Equals(sourceName, deviceName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            DisplayConfigRational rate = path.TargetInfo.RefreshRate;
+            var rate = path.TargetInfo.RefreshRate;
             if (rate.Numerator == 0 || rate.Denominator == 0)
                 return null;
 

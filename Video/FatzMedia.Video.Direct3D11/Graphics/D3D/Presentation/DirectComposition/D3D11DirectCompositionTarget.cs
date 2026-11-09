@@ -1,9 +1,9 @@
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 using FatzMedia.Video.Core.Graphics.Rendering;
-using Vortice.DirectComposition;
-using Vortice.Direct3D11;
-using Vortice.DXGI;
 using SharpGen.Runtime;
+using Vortice.Direct3D11;
+using Vortice.DirectComposition;
+using Vortice.DXGI;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.DirectComposition;
 
@@ -13,16 +13,16 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.DirectComposition;
 /// D3D11 renderer coordinator. Both swap chains are always the window's size, so the
 /// visuals carry no transform.
 /// </summary>
-internal sealed class D3D11DirectCompositionTarget : IDisposable
+sealed class D3D11DirectCompositionTarget : IDisposable
 {
-    private IDCompositionDevice? _compositionDevice;
-    private IDCompositionTarget? _compositionTarget;
-    private IDCompositionVisual? _rootVisual;
-    private IDCompositionVisual? _baseVisual;
-    private IDCompositionVisual? _overlayVisual;
-    private bool _deviceLostReported;
+    IDCompositionDevice? _compositionDevice;
+    IDCompositionTarget? _compositionTarget;
+    IDCompositionVisual? _rootVisual;
+    IDCompositionVisual? _baseVisual;
+    IDCompositionVisual? _overlayVisual;
+    bool _deviceLostReported;
     // Commit failures other than device loss repeat every frame: one report.
-    private readonly RendererDiagnosticLatch _commitFailure = new();
+    readonly RendererDiagnosticLatch _commitFailure = new();
 
     public IDXGISwapChain1? OverlaySwapChain { get; private set; }
     public ID3D11Texture2D? OverlayTexture { get; private set; }
@@ -47,7 +47,7 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
             OverlaySwapChain = overlaySwapChain;
             _compositionDevice = DComp.DCompositionCreateDevice<IDCompositionDevice>(dxgiDevice);
 
-            Result createTargetResult = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
+            var createTargetResult = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
             ThrowIfCompositionCallFailed(createTargetResult, "CreateTargetForHwnd");
 
             _rootVisual = _compositionDevice.CreateVisual();
@@ -77,8 +77,8 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         }
         catch (Exception ex)
         {
-            Result removedReason = GetDeviceRemovedReason(baseSwapChain);
-            string category = D3D11DeviceLostClassifier.IsDeviceLost(removedReason)
+            var removedReason = GetDeviceRemovedReason(baseSwapChain);
+            var category = D3D11DeviceLostClassifier.IsDeviceLost(removedReason)
                 ? "D3D11.DeviceLost"
                 : "D3D11";
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, category, $"DirectComposition target creation failed: {ex.Message}", innerException: ex);
@@ -87,19 +87,19 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         }
     }
 
-    private static void ThrowIfCompositionCallFailed(Result result, string operation)
+    static void ThrowIfCompositionCallFailed(Result result, string operation)
     {
         if (result.Success)
             return;
 
-        string message = $"DirectComposition {operation} failed with {result}";
+        var message = $"DirectComposition {operation} failed with {result}";
         if (D3D11DeviceLostClassifier.IsDeviceLost(result))
             throw new DirectCompositionDeviceLostException(message);
 
         throw new InvalidOperationException(message);
     }
 
-    private sealed class DirectCompositionDeviceLostException(string message) : Exception(message);
+    sealed class DirectCompositionDeviceLostException(string message) : Exception(message);
 
     /// <summary>Commits the visual tree after both swap chains were resized to <paramref name="contentWidth"/> x <paramref name="contentHeight"/>.</summary>
     public void SetContentSize(int contentWidth, int contentHeight)
@@ -132,14 +132,14 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
 
     public bool Commit() => CommitCore("Commit");
 
-    private bool CommitCore(string caller)
+    bool CommitCore(string caller)
     {
         if (_compositionDevice == null)
         {
             return false;
         }
 
-        Result result = _compositionDevice.Commit();
+        var result = _compositionDevice.Commit();
         if (result.Failure)
         {
             if (D3D11DeviceLostClassifier.IsDeviceLost(result))
@@ -165,11 +165,11 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         return true;
     }
 
-    private static Result GetDeviceRemovedReason(IDXGISwapChain swapChain)
+    static Result GetDeviceRemovedReason(IDXGISwapChain swapChain)
     {
         try
         {
-            using ID3D11Device? device = swapChain.GetDevice<ID3D11Device>();
+            using var device = swapChain.GetDevice<ID3D11Device>();
             return device?.DeviceRemovedReason ?? default;
         }
         catch

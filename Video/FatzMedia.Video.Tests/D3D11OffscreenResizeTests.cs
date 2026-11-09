@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Graphics.Composition;
-using FatzMedia.Video.Direct3D11;
 
 namespace FatzMedia.Video.Tests;
 
@@ -13,15 +12,15 @@ namespace FatzMedia.Video.Tests;
 public sealed class D3D11OffscreenResizeTests
 {
     // ConfiguredColor 0xFF336699 composes to BGRA (0x99, 0x66, 0x33, 0xFF).
-    private static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+    static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
 
     [Fact]
     public void ManagedFrameSink_ResizeAnnouncesNoFrameUntilTheNextComposition()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var sink = new D3D11MultiTargetTests.CopyingFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
-        MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
+        var primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
 
         Assert.True(bridge.AttachSurface(primary));
         Assert.True(bridge.PresentComposition(BlueGrey), bridge.LastPresentFailureReason);
@@ -41,7 +40,7 @@ public sealed class D3D11OffscreenResizeTests
     [Fact]
     public void ManagedFrameSink_ANewSink_StillStartsBlack()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var first = new D3D11MultiTargetTests.CopyingFrameSink();
         var second = new D3D11MultiTargetTests.CopyingFrameSink();
         using var firstHandle = new MediaPresentationFrameSinkHandle(first);
@@ -58,17 +57,17 @@ public sealed class D3D11OffscreenResizeTests
     [Fact]
     public void SharedTextures_ResizeAnnouncesNoBlackFrame()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var consumer = new CountingConsumer();
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
-        MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
+        var primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
 
         Assert.True(bridge.AttachSurface(primary), string.Join("; ", consumer.Unavailable));
         Assert.True(bridge.PresentComposition(BlueGrey), bridge.LastPresentFailureReason);
         var frames = consumer.Frames.Count;
 
         Assert.True(bridge.ResizeSurface(primary.WithSize(12, 6)), string.Join("; ", consumer.Unavailable));
-        MediaSharedGpuImageSet resized = consumer.Sets.Last();
+        var resized = consumer.Sets.Last();
         Assert.Equal((12, 6), (resized.Width, resized.Height));
         Assert.Equal(frames, consumer.Frames.Count);
 
@@ -93,14 +92,14 @@ public sealed class D3D11OffscreenResizeTests
         DiagnosticRouter.DiagnosticOccurred += Record;
         try
         {
-            using DiagnosticRouter.OwnerScope scope = DiagnosticRouter.EnterOwner(owner);
-            using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+            using var scope = DiagnosticRouter.EnterOwner(owner);
+            using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
             var consumer = new CountingConsumer();
             using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
-            MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
+            var primary = Primary(handle.CreateSurfaceDescriptor(), 16, 8);
 
             Assert.True(bridge.AttachSurface(primary), string.Join("; ", consumer.Unavailable));
-            foreach ((int width, int height) in new[] { (15, 8), (14, 7), (13, 7), (12, 6), (16, 8) })
+            foreach ((var width, var height) in new[] { (15, 8), (14, 7), (13, 7), (12, 6), (16, 8) })
                 Assert.True(bridge.ResizeSurface(primary.WithSize(width, height)), string.Join("; ", consumer.Unavailable));
 
             Assert.Equal(6, consumer.Sets.Count);
@@ -113,11 +112,11 @@ public sealed class D3D11OffscreenResizeTests
         }
     }
 
-    private static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
+    static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
         new(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, MediaPresentationSurfaceRole.Primary, native, width, height);
 
     /// <summary>Records sets and frames; releases nothing (a resize starts a new set and ring).</summary>
-    private sealed class CountingConsumer : IMediaSharedGpuImageConsumer
+    sealed class CountingConsumer : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<MediaSharedGpuImageFrame> Frames { get; } = new();
@@ -138,7 +137,7 @@ public sealed class D3D11OffscreenResizeTests
         /// <summary>Lets the producer close the NT handles of every set (nothing was imported).</summary>
         public void CompleteImports()
         {
-            foreach (MediaSharedGpuImageSet set in Sets)
+            foreach (var set in Sets)
                 set.CompleteImport(handlesConsumed: false);
         }
     }

@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Vulkan;
 /// <summary>What the device can decode with Vulkan Video, when it was created for it (Stage 045A slice 2).</summary>
 /// <param name="DecodeFamily">The queue family with <c>VK_QUEUE_VIDEO_DECODE_BIT_KHR</c>.</param>
 /// <param name="Codecs">The decode operations both the family and the enabled extensions support.</param>
-internal sealed record VulkanVideoDecodeSupport(uint DecodeFamily, VideoCodecOperationFlagsKHR Codecs)
+sealed record VulkanVideoDecodeSupport(uint DecodeFamily, VideoCodecOperationFlagsKHR Codecs)
 {
     /// <summary>The codecs as a short list for the log, such as <c>H.264, HEVC, AV1</c>.</summary>
     public string Describe()
@@ -34,26 +34,26 @@ internal sealed record VulkanVideoDecodeSupport(uint DecodeFamily, VideoCodecOpe
 /// device context made from it holds another, so neither outlives the device the other still
 /// uses. Every queue submission, the renderer's and FFmpeg's, takes <see cref="QueueLock"/>.
 /// </summary>
-internal sealed unsafe class VulkanSharedDevice
+sealed unsafe class VulkanSharedDevice
 {
-    private static readonly ConcurrentDictionary<nint, VulkanSharedDevice> Devices = new();
+    static readonly ConcurrentDictionary<nint, VulkanSharedDevice> Devices = new();
 
-    private readonly Lock _contextGate = new();
-    private readonly GCHandle _self;
-    private readonly byte** _deviceExtensionNames;
-    private readonly int _deviceExtensionCount;
-    private readonly VulkanFeatureChain? _features;
-    private readonly Lock _heartbeatGate = new();
-    private Fence _probeFence;
-    private Fence _heartbeatFence;
-    private bool _heartbeatPending;
-    private int _heartbeatTimeouts;
-    private int _references = 1;
-    private int _lost;
-    private int _lossConfirmed;
-    private string? _lostReason;
-    private AVBufferRef* _ffmpegContext;
-    private string? _ffmpegContextFailure;
+    readonly Lock _contextGate = new();
+    readonly GCHandle _self;
+    readonly byte** _deviceExtensionNames;
+    readonly int _deviceExtensionCount;
+    readonly VulkanFeatureChain? _features;
+    readonly Lock _heartbeatGate = new();
+    Fence _probeFence;
+    Fence _heartbeatFence;
+    bool _heartbeatPending;
+    int _heartbeatTimeouts;
+    int _references = 1;
+    int _lost;
+    int _lossConfirmed;
+    string? _lostReason;
+    AVBufferRef* _ffmpegContext;
+    string? _ffmpegContextFailure;
 
     public VulkanSharedDevice(
         Vk vk,
@@ -135,7 +135,7 @@ internal sealed unsafe class VulkanSharedDevice
 
     /// <summary>Finds the shared device behind a native device handle, while it exists.</summary>
     public static VulkanSharedDevice? Find(nint deviceHandle) =>
-        deviceHandle != 0 && Devices.TryGetValue(deviceHandle, out VulkanSharedDevice? device) ? device : null;
+        deviceHandle != 0 && Devices.TryGetValue(deviceHandle, out var device) ? device : null;
 
     /// <summary>Whether the device is lost: already marked, or its status query says so now.</summary>
     public bool ProbeLost()
@@ -179,8 +179,8 @@ internal sealed unsafe class VulkanSharedDevice
 
         try
         {
-            Fence fence = _heartbeatFence;
-            Result result = Result.Success;
+            var fence = _heartbeatFence;
+            var result = Result.Success;
             // A submission that timed out is still pending: wait for it again rather than reset
             // a fence the queue still holds.
             if (!_heartbeatPending)
@@ -229,7 +229,7 @@ internal sealed unsafe class VulkanSharedDevice
         }
     }
 
-    private bool CountTimeout(string what, out string? reason)
+    bool CountTimeout(string what, out string? reason)
     {
         if (++_heartbeatTimeouts < HeartbeatTimeoutsBeforeLost)
         {
@@ -311,7 +311,7 @@ internal sealed unsafe class VulkanSharedDevice
                 return 0;
             }
 
-            AVBufferRef* reference = ffmpeg.av_buffer_ref(_ffmpegContext);
+            var reference = ffmpeg.av_buffer_ref(_ffmpegContext);
             failure = reference == null ? "av_buffer_ref failed" : null;
             return (nint)reference;
         }
@@ -325,13 +325,13 @@ internal sealed unsafe class VulkanSharedDevice
             if (_ffmpegContext == null)
                 return;
 
-            AVBufferRef* context = _ffmpegContext;
+            var context = _ffmpegContext;
             _ffmpegContext = null;
             ffmpeg.av_buffer_unref(&context);
         }
     }
 
-    private AVBufferRef* CreateFfmpegDeviceContext(out string? failure)
+    AVBufferRef* CreateFfmpegDeviceContext(out string? failure)
     {
         if (VideoDecode is not { } decode)
         {
@@ -425,28 +425,28 @@ internal sealed unsafe class VulkanSharedDevice
         vulkan->QueueCreateFlags = 0;
     }
 
-    private static string DescribeError(int error)
+    static string DescribeError(int error)
     {
         var buffer = stackalloc byte[256];
         _ = ffmpeg.av_strerror(error, buffer, 256);
         return $"{Marshal.PtrToStringAnsi((nint)buffer)} ({error})";
     }
 
-    private static VulkanSharedDevice? FromContext(AVHWDeviceContext* context) =>
+    static VulkanSharedDevice? FromContext(AVHWDeviceContext* context) =>
         context == null || context->user_opaque == null
             ? null
             : GCHandle.FromIntPtr((nint)context->user_opaque).Target as VulkanSharedDevice;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OnLockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Enter();
+    static void OnLockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Enter();
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OnUnlockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Exit();
+    static void OnUnlockQueue(AVHWDeviceContext* context, uint family, uint index) => FromContext(context)?.QueueLock.Exit();
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OnContextFree(AVHWDeviceContext* context)
+    static void OnContextFree(AVHWDeviceContext* context)
     {
-        VulkanSharedDevice? device = FromContext(context);
+        var device = FromContext(context);
         context->user_opaque = null;
         device?.Release();
     }
@@ -457,9 +457,9 @@ internal sealed unsafe class VulkanSharedDevice
 /// <c>VkPhysicalDeviceFeatures2</c> chain: passed to <c>vkCreateDevice</c>, then to FFmpeg, which
 /// reads it for as long as its device context lives.
 /// </summary>
-internal sealed unsafe class VulkanFeatureChain : IDisposable
+sealed unsafe class VulkanFeatureChain : IDisposable
 {
-    private VulkanFeatureChain(bool withVideoMaintenance1)
+    VulkanFeatureChain(bool withVideoMaintenance1)
     {
         Features = Allocate<PhysicalDeviceFeatures2>();
         Vulkan11 = Allocate<PhysicalDeviceVulkan11Features>();
@@ -503,8 +503,8 @@ internal sealed unsafe class VulkanFeatureChain : IDisposable
     public static VulkanFeatureChain EnableForVideo(VulkanFeatureChain supported)
     {
         var enabled = new VulkanFeatureChain(supported.VideoMaintenance1 != null);
-        PhysicalDeviceFeatures* s = &supported.Features->Features;
-        PhysicalDeviceFeatures* e = &enabled.Features->Features;
+        var s = &supported.Features->Features;
+        var e = &enabled.Features->Features;
         e->ShaderImageGatherExtended = s->ShaderImageGatherExtended;
         e->ShaderStorageImageReadWithoutFormat = s->ShaderStorageImageReadWithoutFormat;
         e->ShaderStorageImageWriteWithoutFormat = s->ShaderStorageImageWriteWithoutFormat;
@@ -514,15 +514,15 @@ internal sealed unsafe class VulkanFeatureChain : IDisposable
         e->ShaderInt16 = s->ShaderInt16;
         e->ShaderFloat64 = s->ShaderFloat64;
 
-        PhysicalDeviceVulkan11Features* s11 = supported.Vulkan11;
-        PhysicalDeviceVulkan11Features* e11 = enabled.Vulkan11;
+        var s11 = supported.Vulkan11;
+        var e11 = enabled.Vulkan11;
         e11->SamplerYcbcrConversion = s11->SamplerYcbcrConversion;
         e11->StoragePushConstant16 = s11->StoragePushConstant16;
         e11->StorageBuffer16BitAccess = s11->StorageBuffer16BitAccess;
         e11->UniformAndStorageBuffer16BitAccess = s11->UniformAndStorageBuffer16BitAccess;
 
-        PhysicalDeviceVulkan12Features* s12 = supported.Vulkan12;
-        PhysicalDeviceVulkan12Features* e12 = enabled.Vulkan12;
+        var s12 = supported.Vulkan12;
+        var e12 = enabled.Vulkan12;
         e12->TimelineSemaphore = s12->TimelineSemaphore;
         e12->ScalarBlockLayout = s12->ScalarBlockLayout;
         e12->BufferDeviceAddress = s12->BufferDeviceAddress;
@@ -545,8 +545,8 @@ internal sealed unsafe class VulkanFeatureChain : IDisposable
         e12->ShaderStorageBufferArrayNonUniformIndexing = s12->ShaderStorageBufferArrayNonUniformIndexing;
         e12->ShaderStorageImageArrayNonUniformIndexing = s12->ShaderStorageImageArrayNonUniformIndexing;
 
-        PhysicalDeviceVulkan13Features* s13 = supported.Vulkan13;
-        PhysicalDeviceVulkan13Features* e13 = enabled.Vulkan13;
+        var s13 = supported.Vulkan13;
+        var e13 = enabled.Vulkan13;
         e13->DynamicRendering = s13->DynamicRendering;
         e13->Maintenance4 = s13->Maintenance4;
         e13->Synchronization2 = s13->Synchronization2;
@@ -573,10 +573,10 @@ internal sealed unsafe class VulkanFeatureChain : IDisposable
         VideoMaintenance1 = null;
     }
 
-    private static T* Allocate<T>()
+    static T* Allocate<T>()
         where T : unmanaged => (T*)NativeMemory.AllocZeroed((nuint)sizeof(T));
 
-    private static void Free(void* pointer)
+    static void Free(void* pointer)
     {
         if (pointer != null)
             NativeMemory.Free(pointer);

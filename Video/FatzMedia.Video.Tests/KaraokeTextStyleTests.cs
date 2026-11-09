@@ -7,7 +7,7 @@ public sealed class KaraokeTextStyleTests
     [Fact]
     public void Normalize_UsesIndependentKaraokeDefaults()
     {
-        KaraokeTextStyle style = default(KaraokeTextStyle).Normalize();
+        var style = default(KaraokeTextStyle).Normalize();
 
         Assert.Equal("Segoe UI", style.FontFamily);
         Assert.Equal(72, style.FontSize);
@@ -25,7 +25,7 @@ public sealed class KaraokeTextStyleTests
     [Fact]
     public void Normalize_ClampsDimensionsAndPreservesKaraokeColors()
     {
-        KaraokeTextStyle style = new KaraokeTextStyle
+        var style = new KaraokeTextStyle
         {
             FontFamily = "",
             FontSize = 1000,

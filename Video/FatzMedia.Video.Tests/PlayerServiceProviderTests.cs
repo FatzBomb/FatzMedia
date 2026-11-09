@@ -20,7 +20,7 @@ public sealed class PlayerServiceProviderTests
         Assert.NotNull(serviceProvider);
     }
 
-    private sealed class TestPlatformServices : IPlatformServices
+    sealed class TestPlatformServices : IPlatformServices
     {
         public IReadOnlyList<string> NativeLibraryPaths { get; private set; } = [];
         public bool PlatformServicesRegistered { get; private set; }

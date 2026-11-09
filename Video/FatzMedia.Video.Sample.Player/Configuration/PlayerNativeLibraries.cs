@@ -1,4 +1,6 @@
+#pragma warning disable IDE0005 // needed in the WPF build; the linked WinForms copy has System.IO implicitly
 using System.IO;
+#pragma warning restore IDE0005
 
 namespace FatzMedia.Video.Sample.Player.Configuration;
 
@@ -10,13 +12,13 @@ public static class PlayerNativeLibraries
 {
     public static IReadOnlyList<string> ResolveSearchPaths()
     {
-        IReadOnlyList<string> defaultPaths = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
+        var defaultPaths = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
         return defaultPaths.Count > 0
             ? defaultPaths
             : [ResolveFromAppBase(WindowsNativeLibraryPaths.AppNativeRelativePath)];
     }
 
-    private static string ResolveFromAppBase(string path)
+    static string ResolveFromAppBase(string path)
     {
         var resolvedPath = Path.IsPathRooted(path)
             ? path

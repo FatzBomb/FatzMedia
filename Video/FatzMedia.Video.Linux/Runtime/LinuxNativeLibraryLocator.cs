@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Linux.Runtime;
 /// deployment); this locator only searches the host paths and the application's own folders.
 /// System library directories are not searched implicitly.
 /// </summary>
-internal static class LinuxNativeLibraryLocator
+static class LinuxNativeLibraryLocator
 {
     /// <summary>
     /// Application-relative default folders, searched after host paths: the app folder,
@@ -79,7 +79,7 @@ internal static class LinuxNativeLibraryLocator
         return found;
     }
 
-    private static void AddDistinct(List<string> paths, string path)
+    static void AddDistinct(List<string> paths, string path)
     {
         if (!paths.Contains(path, StringComparer.Ordinal))
             paths.Add(path);

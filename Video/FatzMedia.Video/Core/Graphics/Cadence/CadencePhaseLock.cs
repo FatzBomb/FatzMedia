@@ -26,14 +26,14 @@ namespace FatzMedia.Video.Core.Graphics.Cadence;
 /// no boundary to protect, so the lock stays out of the way. Single-threaded.
 /// </para>
 /// </remarks>
-internal sealed class CadencePhaseLock
+sealed class CadencePhaseLock
 {
-    private const int MaxFamilies = 4;
-    private const double RatioTolerance = 0.02;
+    const int MaxFamilies = 4;
+    const double RatioTolerance = 0.02;
 
-    private double _spacingSeconds;
-    private double _periodSeconds;
-    private double _framesPerSecond;
+    double _spacingSeconds;
+    double _periodSeconds;
+    double _framesPerSecond;
 
     /// <summary>Gets the offset added to the selection time, in seconds.</summary>
     public double Offset { get; private set; }
@@ -82,7 +82,7 @@ internal sealed class CadencePhaseLock
         }
     }
 
-    private static bool IsClose(double value, double reference) =>
+    static bool IsClose(double value, double reference) =>
         reference > 0 && Math.Abs(value - reference) <= reference * 0.001;
 
     /// <summary>

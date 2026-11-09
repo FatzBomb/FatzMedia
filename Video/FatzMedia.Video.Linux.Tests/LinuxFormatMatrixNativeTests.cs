@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Audio;
+using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using Xunit.Abstractions;
 
@@ -16,9 +16,9 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxFormatMatrixNativeTests(ITestOutputHelper output)
 {
-    private static readonly string Formats = Path.Combine(LinuxNativeTestPlayer.MediaDir, "formats");
+    static readonly string Formats = Path.Combine(LinuxNativeTestPlayer.MediaDir, "formats");
 
-    private static readonly string[] Files =
+    static readonly string[] Files =
     [
         "tone.mp3", "tone.mp2", "tone.ac3", "tone-aac.m4a", "tone-alac.m4a", "tone-alac.caf", "tone.m4r",
         "tone.flac", "tone.wav", "tone.aiff", "tone.ogg", "tone.opus", "tone.wma", "tone.wv", "tone.tta",
@@ -119,13 +119,13 @@ public sealed class LinuxFormatMatrixNativeTests(ITestOutputHelper output)
         }
     }
 
-    private static MediaPlayerConfiguration Configuration(string engine) =>
+    static MediaPlayerConfiguration Configuration(string engine) =>
         new(VideoDecodingMethod.Software)
         {
             AudioEngineFactory = engine == "fatz" ? new FatzAudioEngineFactory(nullOutput: true) : null,
         };
 
-    private static string Route(LinuxNativeTestPlayer session)
+    static string Route(LinuxNativeTestPlayer session)
     {
         if (session.HasDiagnostic("has no video stream") || session.HasDiagnostic("opening it as audio"))
             return "video container without picture: FFmpeg soundtrack path";
@@ -136,6 +136,6 @@ public sealed class LinuxFormatMatrixNativeTests(ITestOutputHelper output)
         return session.Player.Content.HasFlag(MediaContent.Video) ? "video pipeline (FFmpeg picture and soundtrack)" : "BASS decodes it";
     }
 
-    private static string[] WavFiles(string folder) =>
+    static string[] WavFiles(string folder) =>
         Directory.Exists(folder) ? Directory.GetFiles(folder, "*.wav") : [];
 }

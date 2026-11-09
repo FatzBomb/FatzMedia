@@ -7,7 +7,6 @@ using FatzMedia.Video.Core.Graphics.D3D.Presentation;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation.Managed;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation.NativeHwnd;
-using FatzMedia.Video.Core.Graphics.D3D.SwapChain;
 using FatzMedia.Video.Direct3D11;
 
 namespace FatzMedia.Video.Tests;
@@ -20,11 +19,11 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11MultiTargetTests
 {
-    private const string SecondaryId = "singer";
+    const string SecondaryId = "singer";
 
     // ConfiguredColor 0xFF336699 composes to BGRA (0x99, 0x66, 0x33, 0xFF).
-    private static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
-    private static readonly byte[] BlueGreyBgra = [0x99, 0x66, 0x33, 0xFF];
+    static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+    static readonly byte[] BlueGreyBgra = [0x99, 0x66, 0x33, 0xFF];
 
     [Theory]
     [InlineData("native-hwnd-secondary:singer", "singer")]
@@ -36,7 +35,7 @@ public sealed class D3D11MultiTargetTests
     [Fact]
     public void SecondaryOffscreenTarget_WithoutADevice_IsNotKept()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
         using var deviceResources = new D3D11DeviceResources(Direct3D11DeviceSelection.Warp);
 
         Assert.False(backends.CreateSecondaryManagedFrameSinkTarget(deviceResources, SecondaryId, new CopyingFrameSink(), 8, 2));
@@ -48,13 +47,13 @@ public sealed class D3D11MultiTargetTests
     [Fact]
     public void PrimaryAndSecondaryFrameSinks_EachReceiveTheFrameAtTheirOwnSize()
     {
-        using NativeD3D11PresentationBridge bridge = CreateWarpBridge();
+        using var bridge = CreateWarpBridge();
         var primarySink = new CopyingFrameSink();
         var secondarySink = new CopyingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         using var secondaryHandle = new MediaPresentationFrameSinkHandle(secondarySink);
-        MediaPresentationSurfaceDescriptor primary = Primary(primaryHandle.CreateSurfaceDescriptor(), 4, 4);
-        MediaPresentationSurfaceDescriptor secondary = Secondary(secondaryHandle.CreateSurfaceDescriptor(), 8, 2);
+        var primary = Primary(primaryHandle.CreateSurfaceDescriptor(), 4, 4);
+        var secondary = Secondary(secondaryHandle.CreateSurfaceDescriptor(), 8, 2);
 
         Assert.True(bridge.AttachSurface(primary));
         Assert.True(bridge.AttachSurface(secondary));
@@ -89,7 +88,7 @@ public sealed class D3D11MultiTargetTests
     [Fact]
     public void SecondarySharedTextures_AreExportedAtTheSecondarySize()
     {
-        using NativeD3D11PresentationBridge bridge = CreateWarpBridge();
+        using var bridge = CreateWarpBridge();
         var primarySink = new CopyingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         var consumer = new RecordingConsumer(new MediaSharedGpuImageRequest(
@@ -98,18 +97,18 @@ public sealed class D3D11MultiTargetTests
             new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex)
         ]));
         using var consumerHandle = new MediaSharedGpuImageConsumerHandle(consumer);
-        MediaPresentationSurfaceDescriptor secondary = Secondary(consumerHandle.CreateSurfaceDescriptor(), 9, 5);
+        var secondary = Secondary(consumerHandle.CreateSurfaceDescriptor(), 9, 5);
 
         Assert.True(bridge.AttachSurface(Primary(primaryHandle.CreateSurfaceDescriptor(), 4, 4)));
         Assert.True(bridge.AttachSurface(secondary), string.Join("; ", consumer.Unavailable));
-        MediaSharedGpuImageSet set = Assert.Single(consumer.Sets);
+        var set = Assert.Single(consumer.Sets);
         Assert.Equal((9, 5, 2), (set.Width, set.Height, set.Buffers.Count));
         Assert.Equal(MediaSharedGpuImageSyncKinds.KeyedMutex, set.SyncKind);
 
         var primaryFrames = primarySink.Frames;
         Assert.True(bridge.PresentComposition(BlueGrey), bridge.LastPresentFailureReason);
         Assert.Equal(primaryFrames + 1, primarySink.Frames);
-        MediaSharedGpuImageFrame frame = Assert.Single(consumer.Frames);
+        var frame = Assert.Single(consumer.Frames);
         Assert.Equal(set.Generation, frame.Generation);
 
         // A resize exports a new pair for the secondary only; a detach retires it.
@@ -132,7 +131,7 @@ public sealed class D3D11MultiTargetTests
         return bridge;
     }
 
-    private static D3D11PresentationBackendSet CreateInactiveBackendSet()
+    static D3D11PresentationBackendSet CreateInactiveBackendSet()
     {
         var configuration = new MediaPlayerConfiguration();
         var diagnostics = new D3D11PresentationDiagnostics(configuration);
@@ -142,13 +141,13 @@ public sealed class D3D11MultiTargetTests
             new D3D11ManagedFrameSinkBackend());
     }
 
-    private static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
+    static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
         new(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, MediaPresentationSurfaceRole.Primary, native, width, height);
 
-    private static MediaPresentationSurfaceDescriptor Secondary(MediaNativeSurfaceDescriptor native, int width, int height) =>
+    static MediaPresentationSurfaceDescriptor Secondary(MediaNativeSurfaceDescriptor native, int width, int height) =>
         new(SecondaryId, MediaPresentationSurfaceRole.Projector, native, width, height);
 
-    private static void AssertUniform(byte[] pixels, byte[] expected)
+    static void AssertUniform(byte[] pixels, byte[] expected)
     {
         Assert.NotEmpty(pixels);
         for (var offset = 0; offset < pixels.Length; offset += 4)
@@ -173,7 +172,7 @@ public sealed class D3D11MultiTargetTests
         }
     }
 
-    private sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
+    sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<MediaSharedGpuImageFrame> Frames { get; } = new();

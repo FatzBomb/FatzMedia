@@ -28,7 +28,7 @@ public interface ISubtitleRasterizer : IDisposable
         if (result.Pixels.IsEmpty)
             return result;
 
-        Memory<byte> pixels = rentPixels(result.Pixels.Length)[..result.Pixels.Length];
+        var pixels = rentPixels(result.Pixels.Length)[..result.Pixels.Length];
         result.Pixels.CopyTo(pixels);
         return result with { Pixels = pixels };
     }

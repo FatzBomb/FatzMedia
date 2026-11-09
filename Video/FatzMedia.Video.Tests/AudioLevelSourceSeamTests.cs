@@ -54,7 +54,7 @@ public sealed class AudioLevelSourceSeamTests
 
         Assert.Equal(0, await normalizer.AnalyzePeakQuickAsync(null));
         Assert.Equal(0, await normalizer.AnalyzePeakAsync(null));
-        SilenceScanResult scan = await new AudioSilenceAnalyzer().ScanAsync(null, 10, -60, CancellationToken.None);
+        var scan = await new AudioSilenceAnalyzer().ScanAsync(null, 10, -60, CancellationToken.None);
         Assert.Equal(10, scan.SourceDuration);
         Assert.Empty(scan.SilenceRegions);
     }
@@ -64,7 +64,7 @@ public sealed class AudioLevelSourceSeamTests
     {
         var source = new FakeLevelSource(durationSeconds: 0.25, peaks: [0.5, 0, 0.5]);
 
-        SilenceScanResult scan = await new AudioSilenceAnalyzer().ScanAsync(source, 0.25, -60, CancellationToken.None);
+        var scan = await new AudioSilenceAnalyzer().ScanAsync(source, 0.25, -60, CancellationToken.None);
 
         Assert.Equal(
             ["SeekStart", "Position", "Read:0.1", "Position", "Position", "Read:0.1", "Position", "Position", "Read:0.05", "Position", "Position"],
@@ -78,16 +78,16 @@ public sealed class AudioLevelSourceSeamTests
     {
         var source = new FakeLevelSource(durationSeconds: 1, peaks: [0.5]) { FailSeekToStart = true };
 
-        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => new AudioSilenceAnalyzer().ScanAsync(source, 1, -60, CancellationToken.None));
 
         Assert.Equal("Unable to seek the analysis stream to its start: Handle", error.Message);
     }
 
-    private sealed class FakeLevelSource(double durationSeconds, double[] peaks) : IAudioLevelSource
+    sealed class FakeLevelSource(double durationSeconds, double[] peaks) : IAudioLevelSource
     {
-        private double _position;
-        private int _reads;
+        double _position;
+        int _reads;
 
         public List<string> Calls { get; } = [];
         public int ReadsAvailable { get; init; } = int.MaxValue;

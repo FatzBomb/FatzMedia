@@ -65,32 +65,29 @@ public class MediaSurface : Control
     public static readonly DirectProperty<MediaSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
-    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
-    private AvaloniaFrameSink? _sink;
-    private AvaloniaSharedImageSurface? _gpuSurface;
-    private IPlayerSession? _attachedSession;
-    private (int Width, int Height) _attachedPixelSize;
-    private bool _isAttachedToTree;
-    private TopLevel? _topLevel;
-    private Compositor? _compositor;
-    private GpuInteropCapabilities? _gpuInterop;
-    private bool _gpuInteropResolved;
-    private int _gpuInteropQuery;
-    private IPlayerSession? _gpuRejectedSession;
-    private string? _gpuRejectedReason;
+    readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
+    AvaloniaSharedImageSurface? _gpuSurface;
+    IPlayerSession? _attachedSession;
+    (int Width, int Height) _attachedPixelSize;
+    bool _isAttachedToTree;
+    TopLevel? _topLevel;
+    Compositor? _compositor;
+    GpuInteropCapabilities? _gpuInterop;
+    bool _gpuInteropResolved;
+    int _gpuInteropQuery;
+    IPlayerSession? _gpuRejectedSession;
+    string? _gpuRejectedReason;
     // ENG-039: the compositor's graphics context was lost (a GPU reset). The frame sink is used
     // and the interop is asked for again until it works, instead of ruling the path out.
-    private string? _gpuContextLostReason;
-    private DispatcherTimer? _gpuRetryTimer;
-    private int _gpuRetryAttempts;
-    private bool _gpuLeavingContextLoss;
-    private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
-    private readonly MediaSurfaceContentTracker _contentTracker = new();
-    private int _contentStateQueued;
-    private bool _isPresentationSuspended;
-    private bool _contentShown;
-    private bool _isContentVisible;
-    private int _firstFrameReadyLoad;
+    string? _gpuContextLostReason;
+    DispatcherTimer? _gpuRetryTimer;
+    int _gpuRetryAttempts;
+    bool _gpuLeavingContextLoss;
+    string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
+    readonly MediaSurfaceContentTracker _contentTracker = new();
+    int _contentStateQueued;
+    bool _contentShown;
+    int _firstFrameReadyLoad;
 
     static MediaSurface()
     {
@@ -194,7 +191,7 @@ public class MediaSurface : Control
     }
 
     /// <summary>Gets whether auto-hide shows the content now (always false while <see cref="AutoHide"/> is off).</summary>
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     public bool IsSurfaceAttached => _attachedSession is not null;
@@ -209,7 +206,7 @@ public class MediaSurface : Control
     /// <see cref="IPlayerSession.HasPresentation"/>, Stage 046A). The last video frame is not
     /// left on screen; frames show again once the session leaves Audio mode.
     /// </summary>
-    public bool IsPresentationSuspended => _isPresentationSuspended;
+    public bool IsPresentationSuspended { get; private set; }
 
     /// <summary>Gets the pixel size last sent to the session.</summary>
     public PixelSize AttachedPixelSize => new(_attachedPixelSize.Width, _attachedPixelSize.Height);
@@ -220,7 +217,7 @@ public class MediaSurface : Control
     /// <summary>Gets why the current path was chosen (for example why the GPU path was not used).</summary>
     public string? PresentationPathReason => _bookkeeping.Reason;
 
-    internal AvaloniaFrameSink? FrameSink => _sink;
+    internal AvaloniaFrameSink? FrameSink { get; private set; }
 
     /// <summary>Test seam: how the compositor's GPU interop is obtained.</summary>
     internal Func<Compositor, ValueTask<GpuInteropCapabilities?>> GpuInteropProvider { get; set; } = GpuInteropCapabilities.QueryAsync;
@@ -237,7 +234,7 @@ public class MediaSurface : Control
         if (Background is { } background)
             context.FillRectangle(background, bounds);
 
-        if (_contentShown && _sink?.Bitmap is { } bitmap)
+        if (_contentShown && FrameSink?.Bitmap is { } bitmap)
         {
             // The renderer already composed for this pixel size (letterboxing included), so the
             // bitmap fills the surface. The shared-image path draws in a child composition visual.
@@ -249,13 +246,12 @@ public class MediaSurface : Control
     {
         base.OnAttachedToVisualTree(e);
         _isAttachedToTree = true;
-        _sink ??= new AvaloniaFrameSink(OnSinkFrameUpdated);
+        FrameSink ??= new AvaloniaFrameSink(OnSinkFrameUpdated);
 
         // Moving to a monitor with another scale keeps Bounds (DIPs) unchanged, so size changes
         // alone would miss the new pixel size.
         _topLevel = TopLevel.GetTopLevel(this);
-        if (_topLevel is not null)
-            _topLevel.ScalingChanged += OnTopLevelScalingChanged;
+        _topLevel?.ScalingChanged += OnTopLevelScalingChanged;
 
         _compositor = ElementComposition.GetElementVisual(this)?.Compositor;
         FollowSession(Player);
@@ -266,16 +262,13 @@ public class MediaSurface : Control
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttachedToTree = false;
-        if (_topLevel is not null)
-        {
-            _topLevel.ScalingChanged -= OnTopLevelScalingChanged;
-            _topLevel = null;
-        }
+        _topLevel?.ScalingChanged -= OnTopLevelScalingChanged;
+        _topLevel = null;
 
         Detach();
         FollowSession(null);
-        _sink?.Dispose();
-        _sink = null;
+        FrameSink?.Dispose();
+        FrameSink = null;
         _compositor = null;
         _gpuInterop = null;
         _gpuInteropResolved = false;
@@ -293,7 +286,7 @@ public class MediaSurface : Control
         AttachOrResize();
     }
 
-    private void OnTopLevelScalingChanged(object? sender, EventArgs e) => AttachOrResize();
+    void OnTopLevelScalingChanged(object? sender, EventArgs e) => AttachOrResize();
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -367,7 +360,7 @@ public class MediaSurface : Control
     /// Asks the compositor for its GPU interop once per tree attachment. The answer is usually
     /// immediate; when it is not, the attach waits for it so the path is chosen once.
     /// </summary>
-    private void QueryGpuInterop()
+    void QueryGpuInterop()
     {
         if (!_isAttachedToTree || _gpuInteropResolved || !PreferGpuSharedSurface)
             return;
@@ -399,7 +392,7 @@ public class MediaSurface : Control
         _ = AwaitGpuInteropAsync(query.AsTask(), ++_gpuInteropQuery);
     }
 
-    private async Task AwaitGpuInteropAsync(Task<GpuInteropCapabilities?> query, int queryNumber)
+    async Task AwaitGpuInteropAsync(Task<GpuInteropCapabilities?> query, int queryNumber)
     {
         GpuInteropCapabilities? interop = null;
         try
@@ -421,14 +414,14 @@ public class MediaSurface : Control
             AttachOrResize();
     }
 
-    private void AttachOrResize()
+    void AttachOrResize()
     {
-        IPlayerSession? session = Player;
-        if (!_isAttachedToTree || session is null || _sink is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+        var session = Player;
+        if (!_isAttachedToTree || session is null || FrameSink is null || Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
         var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
-        (int Width, int Height) pixelSize = ToPixelSize(Bounds.Size, scaling);
+        var pixelSize = ToPixelSize(Bounds.Size, scaling);
         if (ReferenceEquals(session, _attachedSession))
         {
             if (pixelSize != _attachedPixelSize
@@ -441,8 +434,7 @@ public class MediaSurface : Control
         }
 
         Detach();
-        string fallbackReason;
-        switch (ChooseGpuPath(session, out MediaSharedGpuImageRequest? request, out fallbackReason))
+        switch (ChooseGpuPath(session, out var request, out var fallbackReason))
         {
             case GpuPathChoice.Pending:
                 // AwaitGpuInteropAsync attaches when the compositor answers.
@@ -451,7 +443,7 @@ public class MediaSurface : Control
                 return;
         }
 
-        var attached = session.AttachPresentationSurface(CreateDescriptor(_sink.CreateSurfaceDescriptor(), pixelSize, scaling));
+        var attached = session.AttachPresentationSurface(CreateDescriptor(FrameSink.CreateSurfaceDescriptor(), pixelSize, scaling));
         if (attached)
         {
             _attachedSession = session;
@@ -467,14 +459,14 @@ public class MediaSurface : Control
         }
     }
 
-    private enum GpuPathChoice
+    enum GpuPathChoice
     {
         Use,
         Pending,
         FrameSink,
     }
 
-    private GpuPathChoice ChooseGpuPath(IPlayerSession session, out MediaSharedGpuImageRequest? request, out string reason)
+    GpuPathChoice ChooseGpuPath(IPlayerSession session, out MediaSharedGpuImageRequest? request, out string reason)
     {
         request = null;
         if (!PreferGpuSharedSurface)
@@ -532,7 +524,7 @@ public class MediaSurface : Control
         return GpuPathChoice.Use;
     }
 
-    private bool TryAttachGpu(
+    bool TryAttachGpu(
         IPlayerSession session,
         MediaSharedGpuImageRequest request,
         (int Width, int Height) pixelSize,
@@ -593,7 +585,7 @@ public class MediaSurface : Control
     /// A lost graphics context (<paramref name="contextLost"/>, a GPU reset) rules the path out only
     /// until the compositor offers a working interop again (ENG-039); anything else, for the session.
     /// </summary>
-    private void OnGpuSurfaceUnavailable(AvaloniaSharedImageSurface gpuSurface, string reason, bool contextLost)
+    void OnGpuSurfaceUnavailable(AvaloniaSharedImageSurface gpuSurface, string reason, bool contextLost)
     {
         if (!ReferenceEquals(gpuSurface, _gpuSurface) || _attachedSession is not { } session)
             return;
@@ -643,7 +635,7 @@ public class MediaSurface : Control
     }
 
     /// <summary>Back to the shared images once the compositor's interop works again; true when it re-attached.</summary>
-    private bool TryLeaveGpuContextLoss()
+    bool TryLeaveGpuContextLoss()
     {
         if (_gpuContextLostReason is null || !_gpuInteropResolved || _gpuInterop is not { IsLost: false } interop || !interop.CreateRequest().IsValid)
             return false;
@@ -664,7 +656,7 @@ public class MediaSurface : Control
         return true;
     }
 
-    private void StartGpuRetry()
+    void StartGpuRetry()
     {
         if (_gpuRetryTimer is null)
         {
@@ -675,9 +667,9 @@ public class MediaSurface : Control
         _gpuRetryTimer.Start();
     }
 
-    private void StopGpuRetry() => _gpuRetryTimer?.Stop();
+    void StopGpuRetry() => _gpuRetryTimer?.Stop();
 
-    private MediaPresentationSurfaceDescriptor CreateDescriptor(
+    MediaPresentationSurfaceDescriptor CreateDescriptor(
         MediaNativeSurfaceDescriptor nativeSurface,
         (int Width, int Height) pixelSize,
         double scaling) => new(
@@ -689,20 +681,20 @@ public class MediaSurface : Control
             scaling,
             scaling);
 
-    private void SetPath(MediaSurfacePresentationPath path, string? reason)
+    void SetPath(MediaSurfacePresentationPath path, string? reason)
     {
         if (_bookkeeping.SetPath(path, reason, _attachedSession, EffectiveSurfaceId))
             PresentationPathChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
+    string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
     /// <summary>
     /// Follows the session while the control is in the visual tree (Stage 046A): Core's tracker
     /// decides auto-hide and reports Audio mode (Stage 043A), which keeps surfaces attached but
     /// presents nothing, so the last video frame would stay on screen.
     /// </summary>
-    private void FollowSession(IPlayerSession? session)
+    void FollowSession(IPlayerSession? session)
     {
         _contentTracker.Session = session;
         UpdateContentState();
@@ -711,7 +703,7 @@ public class MediaSurface : Control
     // Raised on the thread that changed the state (a session event or render thread): marshal,
     // coalesce, then read the tracker's current state, so a quick Audio -> Full switch never
     // leaves the surface cleared.
-    private void OnContentTrackerChanged(object? sender, EventArgs e)
+    void OnContentTrackerChanged(object? sender, EventArgs e)
     {
         if (Interlocked.Exchange(ref _contentStateQueued, 1) != 0)
             return;
@@ -723,17 +715,17 @@ public class MediaSurface : Control
         });
     }
 
-    private void UpdateContentState()
+    void UpdateContentState()
     {
-        IPlayerSession? session = _contentTracker.Session;
+        var session = _contentTracker.Session;
         var suspended = session is not null && !_contentTracker.HasPresentation;
-        if (suspended != _isPresentationSuspended)
+        if (suspended != IsPresentationSuspended)
         {
-            _isPresentationSuspended = suspended;
+            IsPresentationSuspended = suspended;
             if (suspended)
             {
                 // The renderer that drew the last frame is gone: show the background, not that frame.
-                _sink?.Clear();
+                FrameSink?.Clear();
                 DiagnosticRouter.Raise(
                     session,
                     MediaDiagnosticLevel.Info,
@@ -747,17 +739,17 @@ public class MediaSurface : Control
         if (wasShown && !_contentShown)
         {
             // Hidden content is dropped, so a later load shows its own first frame, not this one.
-            _sink?.Clear();
+            FrameSink?.Clear();
         }
 
         _gpuSurface?.SetVisible(_contentShown);
         InvalidateVisual();
 
         var isContentVisible = _contentTracker.IsContentVisible;
-        if (isContentVisible != _isContentVisible)
+        if (isContentVisible != IsContentVisible)
         {
-            var wasVisible = _isContentVisible;
-            _isContentVisible = isContentVisible;
+            var wasVisible = IsContentVisible;
+            IsContentVisible = isContentVisible;
             RaisePropertyChanged(IsContentVisibleProperty, wasVisible, isContentVisible);
             ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -765,27 +757,27 @@ public class MediaSurface : Control
         RaiseFirstFrameReadyIfDue();
     }
 
-    private void OnSinkFrameUpdated()
+    void OnSinkFrameUpdated()
     {
         InvalidateVisual();
         RaiseFirstFrameReadyIfDue();
     }
 
     // UI thread: after the content state changed or the sink published a frame (Stage 051A).
-    private void RaiseFirstFrameReadyIfDue()
+    void RaiseFirstFrameReadyIfDue()
     {
         var load = _contentTracker.FirstFrameLoad;
         // Also reached from the sink's Clear (Audio mode, hidden content) before _contentShown is
         // updated: a cleared or suspended surface must not publish a frame back or signal.
         if (load == 0 || load == _firstFrameReadyLoad || _attachedSession is null || !_contentShown
-            || _isPresentationSuspended || !_contentTracker.ShowsContent)
+            || IsPresentationSuspended || !_contentTracker.ShowsContent)
             return;
 
         if (_gpuSurface is null)
         {
             // The renderer hands the frame to the sink before it announces it, so a frame still
             // waiting is at least as new as the announced one: publish it now, in this turn.
-            if (_sink is not { } sink)
+            if (FrameSink is not { } sink)
                 return;
 
             if (sink.PublishPending())
@@ -798,9 +790,9 @@ public class MediaSurface : Control
         FirstFrameReady?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Detach()
+    void Detach()
     {
-        IPlayerSession? session = _attachedSession;
+        var session = _attachedSession;
         _attachedSession = null;
         _attachedPixelSize = default;
         if (session is not null)
@@ -808,7 +800,7 @@ public class MediaSurface : Control
 
         _gpuSurface?.Dispose();
         _gpuSurface = null;
-        _sink?.Clear();
+        FrameSink?.Clear();
         SetPath(MediaSurfacePresentationPath.None, null);
     }
 }

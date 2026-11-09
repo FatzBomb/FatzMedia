@@ -16,12 +16,12 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// </summary>
 public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
 {
-    private readonly PlayerStartupOptions _options = StartupOptions.Current;
-    private readonly IReadOnlyList<string> _nativePaths;
-    private readonly PlayerSetController<PlayerPanel> _players;
-    private IReadOnlyList<RendererOption> _renderers = [];
-    private IReadOnlyList<string> _startupWarnings = [];
-    private WindowState _restoreWindowState;
+    readonly PlayerStartupOptions _options = StartupOptions.Current;
+    readonly IReadOnlyList<string> _nativePaths;
+    readonly PlayerSetController<PlayerPanel> _players;
+    IReadOnlyList<RendererOption> _renderers = [];
+    IReadOnlyList<string> _startupWarnings = [];
+    WindowState _restoreWindowState;
 
     public MainWindow()
     {
@@ -35,7 +35,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         KeyDown += OnWindowEscapeKey;
     }
 
-    private async void OnOpened(object? sender, EventArgs e)
+    async void OnOpened(object? sender, EventArgs e)
     {
         try
         {
@@ -48,15 +48,15 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         }
     }
 
-    private async Task OpenAsync()
+    async Task OpenAsync()
     {
         InfoText.Text = "probing renderers...";
         _renderers = await Task.Run(Renderers.Probe);
 
-        foreach (RendererOption option in _renderers)
+        foreach (var option in _renderers)
             RendererBox.Items.Add(new ComboBoxItem { Content = option.Label, IsEnabled = option.IsAvailable, Tag = option.Kind });
 
-        (RendererKind chosen, var rendererWarning) = Renderers.Choose(_options.RendererRequest, _renderers);
+        (var chosen, var rendererWarning) = Renderers.Choose(_options.RendererRequest, _renderers);
         RendererBox.SelectedIndex = _renderers.ToList().FindIndex(option => option.Kind == chosen);
         // The command line's problems, logged by the first build's players (Stage 046A slice 3).
         List<string> warnings = [.. _options.DescribeUnknownValues()];
@@ -77,7 +77,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
     }
 
     /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
-    private void ShowLightweightSurfaces(RendererKind kind) =>
+    void ShowLightweightSurfaces(RendererKind kind) =>
         new LightweightSurfacesWindow(
             () => PlatformComposition.Create(Renderers.Create(kind)),
             _nativePaths,
@@ -85,9 +85,9 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
             _options.AutoHideSurfaces).Show(this);
 
     // Before the first build (OpenAsync fills the boxes) the controller rebuilds nothing; a rebuild never throws.
-    private void OnLayoutChanged(object? sender, SelectionChangedEventArgs e) => _ = _players.RebuildAsync();
+    void OnLayoutChanged(object? sender, SelectionChangedEventArgs e) => _ = _players.RebuildAsync();
 
-    private void ReportFailure(string what, Exception ex)
+    void ReportFailure(string what, Exception ex)
     {
         System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] {what}: {ex}");
         InfoText.Text = $"{what}: {ex.Message}";
@@ -98,7 +98,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
     PlayerPanel IPlayerSetHost<PlayerPanel>.CreateSlot(int index, bool atStartup)
     {
         var kind = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
-        RendererOption option = _renderers.First(candidate => candidate.Kind == kind);
+        var option = _renderers.First(candidate => candidate.Kind == kind);
         // Only the first player of the first build gets the startup media and second screen.
         return new PlayerPanel(index, atStartup, option, _nativePaths, _options.ForBuild(index, atStartup), atStartup ? _startupWarnings : []);
     }
@@ -110,7 +110,7 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
     void IPlayerSetHost<PlayerPanel>.Layout(IReadOnlyList<PlayerPanel> slots, PlayerPanel? fullScreen)
     {
         Toolbar.IsVisible = fullScreen is null;
-        foreach (PlayerPanel panel in slots)
+        foreach (var panel in slots)
             panel.IsVisible = fullScreen is null || ReferenceEquals(panel, fullScreen);
         PlayersGrid.Columns = fullScreen is not null || slots.Count == 1 ? 1 : 2;
     }
@@ -132,9 +132,9 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
 
     void IPlayerSetHost<PlayerPanel>.FallBackRenderer()
     {
-        RendererKind current = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
+        var current = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
         var options = _renderers.ToList();
-        PlayerRendererRequest? next = PlayerRendererRules.NextAvailableAfterDeviceLoss(
+        var next = PlayerRendererRules.NextAvailableAfterDeviceLoss(
             ToRequest(current),
             OperatingSystem.IsWindows(),
             request => ToKind(request) is { } kind && options.Exists(option => option.Kind == kind && option.IsAvailable));
@@ -166,13 +166,13 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         };
     }
 
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.F11 && _players.HandleFullScreenKey())
             e.Handled = true;
     }
 
-    private void OnWindowEscapeKey(object? sender, KeyEventArgs e)
+    void OnWindowEscapeKey(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && !e.Handled && _players.HandleEscapeKey())
             e.Handled = true;

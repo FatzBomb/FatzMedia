@@ -3,23 +3,23 @@ using System.Threading.Channels;
 
 namespace FatzMedia.Video.Core.Threading;
 
-internal sealed class PlayerOperationQueue : IDisposable
+sealed class PlayerOperationQueue : IDisposable
 {
     // ENG-024: which operation (and which event handler inside it) the current code runs in. A
     // scope ends when its operation or handler returns, so work it started that outlives it (a
     // task, a timer, a UI-thread callback that captured the execution context) is no longer
     // "inside" and is serialized like any other caller.
-    private static readonly AsyncLocal<OperationScope?> CurrentScope = new();
+    static readonly AsyncLocal<OperationScope?> CurrentScope = new();
 
-    private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions
+    readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions
     {
         SingleReader = true,
         SingleWriter = false
     });
-    private readonly Task _workerTask;
-    private readonly string _name;
-    private int _disposed;
-    private int _exclusiveTurnThreadId;
+    readonly Task _workerTask;
+    readonly string _name;
+    int _disposed;
+    int _exclusiveTurnThreadId;
 
     /// <summary>
     /// Gets whether the calling code runs inside one of this queue's operations: on the worker
@@ -48,7 +48,7 @@ internal sealed class PlayerOperationQueue : IDisposable
         if (!_queue.Writer.TryWrite(() =>
         {
             // A synchronous operation runs on the worker thread only.
-            OperationScope? previous = CurrentScope.Value;
+            var previous = CurrentScope.Value;
             var scope = new OperationScope(parent: null, this, Environment.CurrentManagedThreadId);
             CurrentScope.Value = scope;
             try
@@ -173,7 +173,7 @@ internal sealed class PlayerOperationQueue : IDisposable
     /// </summary>
     internal static HandlerScope EnterHandlerScope()
     {
-        OperationScope? parent = CurrentScope.Value;
+        var parent = CurrentScope.Value;
         if (parent is null || !parent.IsActive)
             return default;
 
@@ -182,10 +182,10 @@ internal sealed class PlayerOperationQueue : IDisposable
         return new HandlerScope(scope, parent);
     }
 
-    private static bool IsInScope(PlayerOperationQueue queue)
+    static bool IsInScope(PlayerOperationQueue queue)
     {
         var threadId = Environment.CurrentManagedThreadId;
-        for (OperationScope? scope = CurrentScope.Value; scope is not null; scope = scope.Parent)
+        for (var scope = CurrentScope.Value; scope is not null; scope = scope.Parent)
         {
             // An ended scope, or one bound to another thread, cuts the chain: what was captured
             // inside it is not inside the scopes below it either.
@@ -199,11 +199,11 @@ internal sealed class PlayerOperationQueue : IDisposable
         return false;
     }
 
-    private async Task RunAsync()
+    async Task RunAsync()
     {
         try
         {
-            await foreach (Func<Task> operation in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (var operation in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 try
                 {
@@ -255,7 +255,7 @@ internal sealed class PlayerOperationQueue : IDisposable
         }
     }
 
-    private async Task ObserveWorkerCompletionAsync()
+    async Task ObserveWorkerCompletionAsync()
     {
         try
         {
@@ -267,10 +267,12 @@ internal sealed class PlayerOperationQueue : IDisposable
         }
     }
 
+    /// <param name="parent">The scope this one is nested in, or <see langword="null"/> for an outermost scope.</param>
+    /// <param name="queue">The queue whose operation this is, or <see langword="null"/> for an event handler.</param>
     /// <param name="threadId">The only thread the scope applies on, or 0 for any thread.</param>
     internal sealed class OperationScope(OperationScope? parent, PlayerOperationQueue? queue, int threadId)
     {
-        private volatile bool _active = true;
+        volatile bool _active = true;
 
         public OperationScope? Parent { get; } = parent;
 
@@ -287,8 +289,8 @@ internal sealed class PlayerOperationQueue : IDisposable
     /// <summary>Ends an event handler's scope (see <see cref="EnterHandlerScope"/>).</summary>
     internal readonly struct HandlerScope : IDisposable
     {
-        private readonly OperationScope? _scope;
-        private readonly OperationScope? _parent;
+        readonly OperationScope? _scope;
+        readonly OperationScope? _parent;
 
         internal HandlerScope(OperationScope scope, OperationScope? parent)
         {
@@ -313,15 +315,15 @@ internal sealed class PlayerOperationQueue : IDisposable
     /// </summary>
     internal sealed class ExclusiveTurn
     {
-        private const int Pending = 0;
-        private const int Granted = 1;
-        private const int Abandoned = 2;
+        const int Pending = 0;
+        const int Granted = 1;
+        const int Abandoned = 2;
 
-        private readonly PlayerOperationQueue _queue;
-        private readonly bool _inline;
-        private readonly TaskCompletionSource _granted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _state;
+        readonly PlayerOperationQueue _queue;
+        readonly bool _inline;
+        readonly TaskCompletionSource _granted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int _state;
 
         internal ExclusiveTurn(PlayerOperationQueue queue, bool inline)
         {

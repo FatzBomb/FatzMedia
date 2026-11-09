@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class DisplayLockedTimingTests
 {
-    private static readonly long Frequency = Stopwatch.Frequency;
+    static readonly long Frequency = Stopwatch.Frequency;
 
     [Fact]
     public void AnEvenClock_PassesThroughUnchanged()
@@ -114,7 +114,7 @@ public sealed class DisplayLockedTimingTests
     {
         // Exact 3:2 (the ratio is 2.5). Half the frame boundaries sit phaseSeconds from a refresh;
         // with +-2 ms clock jitter the raw clock moves those frames between refreshes.
-        (List<int> filteredHolds, List<int> rawHolds) = Simulate(FrameRate.Fps23_976, FrameRate.Hz59_94, phaseSeconds, seconds: 60);
+        (var filteredHolds, var rawHolds) = Simulate(FrameRate.Fps23_976, FrameRate.Hz59_94, phaseSeconds, seconds: 60);
 
         Assert.All(filteredHolds, hold => Assert.True(hold is 2 or 3, $"hold {hold}"));
         Assert.Equal(0, CountBrokenAlternations(filteredHolds));
@@ -125,7 +125,7 @@ public sealed class DisplayLockedTimingTests
     [Fact]
     public void TwentyFourOnSixty_IsJudderFreeThreeTwo()
     {
-        (List<int> holds, _) = Simulate(FrameRate.FromInteger(24), FrameRate.FromInteger(60), 0.002, seconds: 30);
+        (var holds, _) = Simulate(FrameRate.FromInteger(24), FrameRate.FromInteger(60), 0.002, seconds: 30);
 
         Assert.Equal(0, CountBrokenAlternations(holds));
     }
@@ -135,8 +135,8 @@ public sealed class DisplayLockedTimingTests
     {
         // 0.1 % drift: the model breaks the 3:2 pattern about 4 times a minute. Jitter must not add
         // more (each crossing happens once, cleanly).
-        (List<int> holds, List<int> rawHolds) = Simulate(FrameRate.Fps23_976, FrameRate.FromInteger(60), 0.003, seconds: 120);
-        CadenceReport exact = DisplayCadence.Analyze(FrameRate.Fps23_976, FrameRate.FromInteger(60), 120 * 60);
+        (var holds, var rawHolds) = Simulate(FrameRate.Fps23_976, FrameRate.FromInteger(60), 0.003, seconds: 120);
+        var exact = DisplayCadence.Analyze(FrameRate.Fps23_976, FrameRate.FromInteger(60), 120 * 60);
 
         var modelBreaks = CountBrokenAlternations([.. exact.HoldPattern]);
         var filteredBreaks = CountBrokenAlternations(holds);
@@ -151,7 +151,7 @@ public sealed class DisplayLockedTimingTests
         var timing = new PresentationVsyncTiming(1, Start, period);
         var budget = Ticks(0.004);
 
-        Assert.True(DisplayLockedTiming.TryGetNextSlot(timing, Start + Ticks(0.001), budget, lastVsync: 0, out DisplayLockedSlot slot));
+        Assert.True(DisplayLockedTiming.TryGetNextSlot(timing, Start + Ticks(0.001), budget, lastVsync: 0, out var slot));
         Assert.Equal(Start + period, slot.VsyncTimestamp);
         Assert.Equal(slot.VsyncTimestamp - budget, slot.WakeTimestamp);
 
@@ -300,7 +300,7 @@ public sealed class DisplayLockedTimingTests
         // The next blank moved the grid's prediction of that refresh 0.4 ms later.
         var moved = new PresentationVsyncTiming(1, handled + Ticks(0.0004), period);
 
-        Assert.True(DisplayLockedTiming.TryGetNextSlot(moved, handled - Ticks(0.0035), Ticks(0.004), handled, out DisplayLockedSlot slot));
+        Assert.True(DisplayLockedTiming.TryGetNextSlot(moved, handled - Ticks(0.0035), Ticks(0.004), handled, out var slot));
         Assert.Equal(handled + Ticks(0.0004) + period, slot.VsyncTimestamp);
     }
 
@@ -308,7 +308,7 @@ public sealed class DisplayLockedTimingTests
     public void TwentyFiveOnSixty_KeepsItsModelCadence()
     {
         // No phase families: the lock stays out of the way and the 2/3 mix is the model's.
-        (List<int> holds, _) = Simulate(FrameRate.FromInteger(25), FrameRate.FromInteger(60), 0.003, seconds: 30);
+        (var holds, _) = Simulate(FrameRate.FromInteger(25), FrameRate.FromInteger(60), 0.003, seconds: 30);
 
         Assert.All(holds, hold => Assert.True(hold is 2 or 3, $"hold {hold}"));
         Assert.InRange(holds.Average(), 2.39, 2.41);
@@ -320,7 +320,7 @@ public sealed class DisplayLockedTimingTests
         // Stage 017A slice 5: 25 fps on a 60 Hz primary and a 50 Hz projector. The loop serves the
         // display whose refresh comes next; the shared frame moves forward once, and a display
         // whose refresh reaches it later shows it then. Each display keeps its own model cadence.
-        (List<int> primary, List<int> projector) = SimulateTwoDisplays(25, 60, 50, seconds: 30);
+        (var primary, var projector) = SimulateTwoDisplays(25, 60, 50, seconds: 30);
 
         Assert.All(projector, hold => Assert.Equal(2, hold)); // 50 / 25: every frame twice
         Assert.All(primary, hold => Assert.True(hold is 2 or 3, $"hold {hold}"));
@@ -331,7 +331,7 @@ public sealed class DisplayLockedTimingTests
     /// Mirrors the pipeline's multi-display loop: per display a filtered clock, phase lock and
     /// last frame shown; one shared current frame that only moves forward.
     /// </summary>
-    private static (List<int> Primary, List<int> Secondary) SimulateTwoDisplays(double fps, double primaryHz, double secondaryHz, int seconds)
+    static (List<int> Primary, List<int> Secondary) SimulateTwoDisplays(double fps, double primaryHz, double secondaryHz, int seconds)
     {
         var random = new Random(17);
         var frameSeconds = 1 / fps;
@@ -344,9 +344,9 @@ public sealed class DisplayLockedTimingTests
             // The display whose wake-up comes first.
             SimulatedDisplay? next = null;
             DisplayLockedSlot slot = default;
-            foreach (SimulatedDisplay display in displays)
+            foreach (var display in displays)
             {
-                Assert.True(DisplayLockedTiming.TryGetNextSlot(display.TimingAt(display.LastVsync + 1), display.LastVsync + 1, budget, display.LastVsync, out DisplayLockedSlot candidate));
+                Assert.True(DisplayLockedTiming.TryGetNextSlot(display.TimingAt(display.LastVsync + 1), display.LastVsync + 1, budget, display.LastVsync, out var candidate));
                 if (next is null || candidate.WakeTimestamp < slot.WakeTimestamp)
                 {
                     next = display;
@@ -377,10 +377,10 @@ public sealed class DisplayLockedTimingTests
         return (displays[0].Holds(skip: 30), displays[1].Holds(skip: 30));
     }
 
-    private sealed class SimulatedDisplay(double hertz, double phase)
+    sealed class SimulatedDisplay(double hertz, double phase)
     {
-        private readonly List<int> _holds = [];
-        private long _frameStart;
+        readonly List<int> _holds = [];
+        long _frameStart;
 
         public double PeriodSeconds { get; } = 1 / hertz;
 
@@ -427,7 +427,7 @@ public sealed class DisplayLockedTimingTests
     /// Mirrors the pipeline's pass scheduling for two displays over 60 s, each pass taking 3 ms:
     /// returns the refreshes the displays did not get a pass for.
     /// </summary>
-    private static long CountMissedRefreshes(bool batch)
+    static long CountMissedRefreshes(bool batch)
     {
         var periods = new[] { Ticks(1 / 59.96), Ticks(1 / 60.0) };
         var phases = new[] { 0L, Ticks(0.009) };
@@ -465,16 +465,16 @@ public sealed class DisplayLockedTimingTests
         return missed;
     }
 
-    private static readonly long Start = Frequency * 100;
+    static readonly long Start = Frequency * 100;
 
-    private static long Ticks(double seconds) => (long)Math.Round(seconds * Frequency);
+    static long Ticks(double seconds) => (long)Math.Round(seconds * Frequency);
 
     /// <summary>
     /// Runs the display-locked selection on a refresh grid with a jittered audio clock: the
     /// frame each refresh shows, through the filter and phase lock, and straight from the raw clock. Returns the
     /// refreshes each frame stayed (the first and last frame left out).
     /// </summary>
-    private static (List<int> Filtered, List<int> Raw) Simulate(FrameRate source, FrameRate display, double phaseSeconds, int seconds)
+    static (List<int> Filtered, List<int> Raw) Simulate(FrameRate source, FrameRate display, double phaseSeconds, int seconds)
     {
         var random = new Random(11);
         var clock = new VsyncMediaClock(Frequency);
@@ -504,9 +504,9 @@ public sealed class DisplayLockedTimingTests
         return (Holds(filteredFrames, skip: 120), Holds(rawFrames, skip: 120));
     }
 
-    private static long FrameAt(double selectionTime, double frameSeconds) => (long)Math.Floor((selectionTime / frameSeconds) + 1e-9);
+    static long FrameAt(double selectionTime, double frameSeconds) => (long)Math.Floor((selectionTime / frameSeconds) + 1e-9);
 
-    private static List<int> Holds(List<long> frames, int skip)
+    static List<int> Holds(List<long> frames, int skip)
     {
         var holds = new List<int>();
         var run = 0;
@@ -525,7 +525,7 @@ public sealed class DisplayLockedTimingTests
     }
 
     /// <summary>Places where an alternating hold pattern (3,2,3,2) repeats or changes length.</summary>
-    private static int CountBrokenAlternations(IReadOnlyList<int> holds)
+    static int CountBrokenAlternations(IReadOnlyList<int> holds)
     {
         var broken = 0;
         for (var index = 1; index < holds.Count; index++)

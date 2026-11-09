@@ -17,13 +17,13 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Frame;
 /// The renderer decides when frames arrive and how HDR output is chosen; this class owns the
 /// per-frame plumbing and names the failed step in <see cref="LastFailureReason"/>.
 /// </summary>
-internal sealed class D3D11HardwareFramePresenter(
+sealed class D3D11HardwareFramePresenter(
     D3D11FrameUploadResources uploadResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter,
     ID3D11PresentationSurfaceProvider presentationSurfaces,
     D3D11PresentationState presentationState)
 {
-    private readonly RendererDiagnosticLatch _failure = new();
+    readonly RendererDiagnosticLatch _failure = new();
 
     /// <summary>Why the last <see cref="PresentHardwareFrame"/> returned false, or null (ENG-039).</summary>
     public string? LastFailureReason { get; private set; }
@@ -55,7 +55,7 @@ internal sealed class D3D11HardwareFramePresenter(
         if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "hardware frame presentation",
-                out D3D11PresentationTargetSnapshot target))
+                out var target))
         {
             LastFailureReason = "no active D3D11 presentation target";
             return false;

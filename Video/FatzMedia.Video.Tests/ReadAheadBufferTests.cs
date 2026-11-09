@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Network;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Tests;
 
@@ -11,14 +11,14 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class ReadAheadBufferTests
 {
-    private const int Video = 0;
-    private const int Audio = 1;
-    private const double FrameSeconds = 1 / 30.0;
-    private const double AudioPacketSeconds = 1024 / 48000.0;
+    const int Video = 0;
+    const int Audio = 1;
+    const double FrameSeconds = 1 / 30.0;
+    const double AudioPacketSeconds = 1024 / 48000.0;
 
-    private readonly List<int> _released = [];
+    readonly List<int> _released = [];
 
-    private ReadAheadBuffer<int> CreateBuffer(bool withAudio = true)
+    ReadAheadBuffer<int> CreateBuffer(bool withAudio = true)
     {
         var buffer = new ReadAheadBuffer<int>(_released.Add);
         buffer.Register(Video, lead: true);
@@ -28,7 +28,7 @@ public sealed class ReadAheadBufferTests
     }
 
     /// <summary>Adds <paramref name="seconds"/> of interleaved 30 fps video (a keyframe every 2 s) and 48 kHz AAC.</summary>
-    private static void AddMedia(ReadAheadBuffer<int> buffer, double from, double seconds, bool withAudio = true, long videoBytes = 1000, long audioBytes = 100)
+    static void AddMedia(ReadAheadBuffer<int> buffer, double from, double seconds, bool withAudio = true, long videoBytes = 1000, long audioBytes = 100)
     {
         var audioTime = from;
         for (var frame = 0; frame < (int)Math.Round(seconds / FrameSeconds); frame++)
@@ -45,11 +45,11 @@ public sealed class ReadAheadBufferTests
     }
 
     // Packet ids encode the stream and the time in milliseconds, so tests can tell what is next.
-    private static int VideoId(double time) => (int)Math.Round(time * 1000);
+    static int VideoId(double time) => (int)Math.Round(time * 1000);
 
-    private static int AudioId(double time) => 1_000_000 + (int)Math.Round(time * 1000);
+    static int AudioId(double time) => 1_000_000 + (int)Math.Round(time * 1000);
 
-    private static double TakeTime(ReadAheadBuffer<int> buffer, int stream)
+    static double TakeTime(ReadAheadBuffer<int> buffer, int stream)
     {
         Assert.Equal(ReadAheadTake.Packet, buffer.TryTake(stream, Stopwatch.GetTimestamp(), out var id));
         return (id % 1_000_000) / 1000.0;
@@ -58,7 +58,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Accounting_MeasuresTheLeadStreamsTimeAndAllBytes()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 4);
 
         Assert.InRange(buffer.BufferedSeconds, 3.99, 4.01);
@@ -89,7 +89,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Caps_TheFirstOneReachedMakesTheBufferFull()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 4);
 
         Assert.False(buffer.IsFull(maxSeconds: 20, maxBytes: 64L << 20));
@@ -100,7 +100,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void ResumeFill_ReachesOneAtTheResumeTimeAQuarterOfTheBytesOrACap()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer(withAudio: false);
+        var buffer = CreateBuffer(withAudio: false);
         AddMedia(buffer, 0, 1, withAudio: false);
 
         Assert.InRange(buffer.ResumeFill(resumeSeconds: 2, maxSeconds: 20, maxBytes: 64L << 20), 0.49, 0.51);
@@ -114,7 +114,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void UnregisteredStreams_AreReleasedNotQueued()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer(withAudio: false);
+        var buffer = CreateBuffer(withAudio: false);
 
         Assert.False(buffer.Add(42, new ReadAheadPacketInfo(Audio, 0, 0, AudioPacketSeconds, 100, true)));
         Assert.Equal([42], _released);
@@ -124,7 +124,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void EndMarker_EndsEachStreamAfterItsPackets_UntilCleared()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 0.1);
         buffer.AddEndOfStream();
 
@@ -145,7 +145,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void LoopWrap_KeepsTheSoundsTailAndEndBeforeTheNextLap()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 9.5, 0.5);
         buffer.AddEndOfStream();
         while (buffer.TryTake(Video, 1, out _) == ReadAheadTake.Packet)
@@ -172,7 +172,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void ClearEnd_AfterTheEnd_AwaitsTheNextLapUntilSomethingIsTaken()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         buffer.MarkEnded(Audio);
         buffer.ClearEnd(Audio);
         Assert.True(buffer.IsAwaitingNextLap(Audio));
@@ -193,7 +193,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Starvation_IsTimedFromTheFirstEmptyTake_AndEndsWithAPacketOrTheEnd()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         var start = Stopwatch.GetTimestamp();
 
         Assert.Equal(ReadAheadTake.Empty, buffer.TryTake(Video, start, out _));
@@ -219,7 +219,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void SeekWithin_AForwardBufferedTarget_DropsToTheKeyframeAtOrBeforeIt()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 20);
         _ = TakeTime(buffer, Video);
         _ = TakeTime(buffer, Audio);
@@ -239,7 +239,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void SeekWithin_ATargetOnAKeyframeStartsThere()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 10);
 
         Assert.True(buffer.TrySeekWithin(Video, 4));
@@ -252,7 +252,7 @@ public sealed class ReadAheadBufferTests
     [InlineData(double.NaN)]
     public void SeekWithin_ATargetOutsideTheBuffer_ChangesNothing(double target)
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 20);
         for (var i = 0; i < 70; i++) // the picture is at 2.33 s
             _ = TakeTime(buffer, Video);
@@ -269,7 +269,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void SeekWithin_IsRefusedWhenTheSoundAlreadyTookTheTargetsPackets()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 20);
         // The sound runs about 4 s ahead of the picture (its output buffer).
         while (TakeTime(buffer, Audio) < 4.5)
@@ -286,7 +286,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void SeekWithin_IsRefusedAfterAStreamEnded_AndWithoutTimes()
     {
-        ReadAheadBuffer<int> ended = CreateBuffer(withAudio: false);
+        var ended = CreateBuffer(withAudio: false);
         AddMedia(ended, 0, 2, withAudio: false);
         ended.AddEndOfStream();
         while (ended.TryTake(Video, 1, out _) == ReadAheadTake.Packet)
@@ -295,7 +295,7 @@ public sealed class ReadAheadBufferTests
 
         Assert.False(ended.TrySeekWithin(Video, 1));
 
-        ReadAheadBuffer<int> untimed = CreateBuffer(withAudio: false);
+        var untimed = CreateBuffer(withAudio: false);
         for (var i = 0; i < 60; i++)
             _ = untimed.Add(i, new ReadAheadPacketInfo(Video, null, null, 0, 1000, i % 30 == 0));
         Assert.False(untimed.TrySeekWithin(Video, 1.5));
@@ -305,7 +305,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Flush_ReleasesEverythingAndRearmsTheStreams()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 1);
         buffer.AddEndOfStream();
         var queued = 30 + (int)Math.Ceiling(1 / AudioPacketSeconds);
@@ -321,7 +321,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Unregister_DropsTheStreamsPackets()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 1);
         var videoBytes = 30 * 1000;
 
@@ -335,7 +335,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void Policy_DefaultsAndClamps()
     {
-        NetworkReadAheadPolicy policy = NetworkReadAheadPolicy.Default;
+        var policy = NetworkReadAheadPolicy.Default;
         Assert.Equal(TimeSpan.FromSeconds(20), policy.MaxDuration);
         Assert.Equal(64L << 20, policy.MaxBytes);
         Assert.Equal(TimeSpan.FromSeconds(2), policy.ResumeDuration);
@@ -467,7 +467,7 @@ public sealed class ReadAheadBufferTests
     [Fact]
     public void WithoutItsOwnEnd_AStreamEndsOnlyWithTheSource()
     {
-        ReadAheadBuffer<int> buffer = CreateBuffer();
+        var buffer = CreateBuffer();
         AddMedia(buffer, 0, 1);
         AddMedia(buffer, 1, 10, withAudio: false);
 

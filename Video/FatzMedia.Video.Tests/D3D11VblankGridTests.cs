@@ -8,9 +8,9 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11VblankGridTests
 {
-    private const long Frequency = 10_000_000;
-    private const double Period = Frequency / 60.0;
-    private const long Start = 50_000_000;
+    const long Frequency = 10_000_000;
+    const double Period = Frequency / 60.0;
+    const long Start = 50_000_000;
 
     [Fact]
     public void WakeUpJitter_LeavesAStableGrid()

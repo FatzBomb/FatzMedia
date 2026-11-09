@@ -12,12 +12,12 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class WpfFirstFrameReadyTests
 {
-    private static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
+    static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
 
     [Fact]
     public void Composited_RaisesOncePerLoad_AfterTheBitmapWrite_AndCountsTheUiThreadTime() => RunSta(() =>
     {
-        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (var session, var recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var surface = new MediaSurface { PresentationMode = WpfPresentationMode.WpfComposited, Player = session };
         var window = new Window { Width = 160, Height = 90, Content = surface, ShowActivated = false, ShowInTaskbar = false };
         var published = new List<long>();
@@ -29,8 +29,8 @@ public sealed class WpfFirstFrameReadyTests
         window.Show();
         Drain();
         Assert.True(surface.IsPrimarySurfaceAttached);
-        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle));
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink));
+        Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink));
         var (width, height) = (recorder.LastAttached.PixelWidth, recorder.LastAttached.PixelHeight);
         var pixels = new byte[width * height * 4];
         void Present()
@@ -60,14 +60,14 @@ public sealed class WpfFirstFrameReadyTests
         window.Close();
     });
 
-    private static void Drain()
+    static void Drain()
     {
         var frame = new DispatcherFrame();
         _ = Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
     }
 
-    private static void RunSta(Action action)
+    static void RunSta(Action action)
     {
         Exception? failure = null;
         var thread = new Thread(() =>

@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
@@ -15,8 +15,8 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore
 {
-    private INetworkAudioSource? _networkAudioSource;
-    private INetworkPlayer? _networkMediaControl;
+    INetworkAudioSource? _networkAudioSource;
+    INetworkPlayer? _networkMediaControl;
 
     public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
 
@@ -25,7 +25,7 @@ public partial class PlayerCore
     public MediaSourceCapabilities? CurrentSourceCapabilities =>
         IsOpen ? (_mediaEngine as IMediaSourceCapabilityProvider)?.CurrentCapabilities : null;
 
-    private void SubscribeNetworkEvents()
+    void SubscribeNetworkEvents()
     {
         _networkMediaControl = _mediaEngine as INetworkPlayer;
         if (_networkMediaControl is not null)
@@ -42,7 +42,7 @@ public partial class PlayerCore
         _networkAudioSource.StreamMetadataChanged += OnNetworkStreamMetadataChanged;
     }
 
-    private void UnsubscribeNetworkEvents()
+    void UnsubscribeNetworkEvents()
     {
         if (_networkMediaControl is not null)
         {
@@ -63,7 +63,7 @@ public partial class PlayerCore
     /// Cancels a network video open in progress (Stage 039A) so a Close or Dispose issued while it
     /// connects runs at once instead of waiting for the connect timeout and retries.
     /// </summary>
-    private void CancelPendingNetworkOpen()
+    void CancelPendingNetworkOpen()
     {
         try
         {
@@ -75,7 +75,7 @@ public partial class PlayerCore
         }
     }
 
-    private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
+    void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
         RaiseOnControlQueue(() =>
         {
             // Queued behind a Close or a Load of another source, the old stream's state is stale.
@@ -87,7 +87,7 @@ public partial class PlayerCore
     /// Always queued, never raised inline: the engine publishes the first title while the load
     /// operation is still running, and hosts must see it after that load's <c>MediaLoaded</c>.
     /// </remarks>
-    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
+    void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
     {
         if (_disposed)
             return;

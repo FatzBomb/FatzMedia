@@ -67,7 +67,7 @@ public static class ViewportGeometry
                 FullViewport(outputWidth, outputHeight));
         }
 
-        RectD desiredDestination = DestinationRect(inputWidth, inputHeight, outputWidth, outputHeight, stretch);
+        var desiredDestination = DestinationRect(inputWidth, inputHeight, outputWidth, outputHeight, stretch);
         var visibleLeft = Math.Max(0, desiredDestination.Left);
         var visibleTop = Math.Max(0, desiredDestination.Top);
         var visibleRight = Math.Min(outputWidth, desiredDestination.Right);

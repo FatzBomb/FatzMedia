@@ -2,7 +2,7 @@ namespace FatzMedia.Video.Core.Graphics.Composition.Planning;
 
 public sealed class CompositionTargetPlan(long captureSequence, IEnumerable<CompositionTargetUpdate> targets)
 {
-    private readonly CompositionTargetUpdate[] _targets = [.. targets];
+    readonly CompositionTargetUpdate[] _targets = [.. targets];
 
     public long CaptureSequence { get; } = captureSequence;
     public int ActiveTargetCount => _targets.Count(static target => target.IsActive);
@@ -17,7 +17,7 @@ public sealed class CompositionTargetPlan(long captureSequence, IEnumerable<Comp
     public bool ShouldPresentTarget(string targetId)
     {
         // Called per target per frame: a loop, not a capturing lambda (ENG-026).
-        foreach (CompositionTargetUpdate target in _targets)
+        foreach (var target in _targets)
         {
             if (target.IsActive
                 && target.Action.HasFlag(CompositionTargetUpdateAction.Present)

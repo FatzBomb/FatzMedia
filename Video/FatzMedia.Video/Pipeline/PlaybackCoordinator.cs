@@ -7,12 +7,12 @@ using FatzMedia.Video.Core.Subtitle;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed partial class PlaybackCoordinator : IDisposable
+sealed partial class PlaybackCoordinator : IDisposable
 {
-    private const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
-    private readonly MediaSession _session;
-    private readonly TimeSpan _karaokeTransitionDuration;
-    private readonly IMidiLyricProvider _midiLyricProvider;
+    const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
+    readonly MediaSession _session;
+    readonly TimeSpan _karaokeTransitionDuration;
+    readonly IMidiLyricProvider _midiLyricProvider;
 
     public PlaybackCoordinator(
         IAudioEngine audioEngine,
@@ -34,7 +34,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
         // Stage 043A: each mode attaches only the pipelines it plays. Background is video and
         // images on the clock (no audio, CD+G or subtitles); Audio is audio files plus video
         // soundtracks (no video, CD+G or subtitles).
-        MediaPlayerMode mode = configuration.Mode;
+        var mode = configuration.Mode;
         if (mode != MediaPlayerMode.Background)
         {
             var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
@@ -109,7 +109,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
                 return;
 
             field = value;
-            SubtitleTrack? midiTrack = SubtitleTracks.FirstOrDefault(static track => track.DisplayName == MidiLyricsDisplayName);
+            var midiTrack = SubtitleTracks.FirstOrDefault(static track => track.DisplayName == MidiLyricsDisplayName);
             if (midiTrack == null)
                 return;
 
@@ -126,7 +126,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
     public bool LoopPlayback
     {
-        get => field;
+        get;
         set
         {
             field = value;
@@ -134,8 +134,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
                 audioLoopControl.LoopPlayback = value;
             if (_session.Soundtrack?.Engine is IAudioLoopControl soundtrackLoopControl)
                 soundtrackLoopControl.LoopPlayback = value;
-            if (_session.Video != null)
-                _session.Video.LoopPlayback = value;
+            _session.Video?.LoopPlayback = value;
         }
     }
 
@@ -206,7 +205,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
     /// <inheritdoc cref="OpenSoundtrack(string)"/>
     public bool OpenSoundtrack(IArchiveEntryInfo videoEntry) => OpenSoundtrack(pipeline => pipeline.Open(videoEntry));
 
-    private bool OpenSoundtrack(Func<AudioPipeline, bool> open)
+    bool OpenSoundtrack(Func<AudioPipeline, bool> open)
     {
         if (_session.Soundtrack is not { } soundtrack)
             return false;
@@ -435,15 +434,15 @@ internal sealed partial class PlaybackCoordinator : IDisposable
         _session.Dispose();
     }
 
-    private void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+    void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
 
-    private void OnPlaybackLooped(object? sender, EventArgs e) => PlaybackLooped?.Invoke(this, EventArgs.Empty);
+    void OnPlaybackLooped(object? sender, EventArgs e) => PlaybackLooped?.Invoke(this, EventArgs.Empty);
 
-    private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
+    void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
-    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
+    void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
 
-    private bool TryLoadMidiLyrics(string audioPath, IArchiveEntryInfo? archiveEntry = null)
+    bool TryLoadMidiLyrics(string audioPath, IArchiveEntryInfo? archiveEntry = null)
     {
         if (_session.Subtitle == null || !_midiLyricProvider.IsMidiFile(audioPath))
             return true;
@@ -452,8 +451,8 @@ internal sealed partial class PlaybackCoordinator : IDisposable
         {
             // 037A slice 1: the built-in provider reads MIDI through an engine-neutral reader; a
             // host-supplied provider still gets the BASS source handle.
-            IAudioEngine? engine = _session.Audio?.Engine;
-            IReadOnlyList<SubtitleCue>? cues = _midiLyricProvider is IMidiLyricReaderProvider readerProvider
+            var engine = _session.Audio?.Engine;
+            var cues = _midiLyricProvider is IMidiLyricReaderProvider readerProvider
                 ? readerProvider.ExtractLyrics(
                     GetMidiEventReader(engine),
                     audioPath,

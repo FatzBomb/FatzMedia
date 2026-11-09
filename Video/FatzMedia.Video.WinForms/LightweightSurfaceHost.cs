@@ -7,16 +7,13 @@ namespace FatzMedia.Video.WinForms;
 /// stands for the WPF control's Loaded state: created, the source loads; destroyed, the player is
 /// released (not when the handle is only recreated).
 /// </summary>
-internal sealed class LightweightSurfaceHost : IDisposable
+sealed class LightweightSurfaceHost : IDisposable
 {
-    private readonly Control _owner;
-    private readonly Func<Task> _reload;
-    private IPlatformFactory? _platformFactory;
-    private bool _isContentVisible;
-    private bool _reloadScheduled;
-    private bool _reloadDropped;
-    private bool _recreatingHandle;
-    private bool _disposed;
+    readonly Control _owner;
+    readonly Func<Task> _reload;
+    bool _reloadScheduled;
+    bool _reloadDropped;
+    bool _recreatingHandle;
 
     public LightweightSurfaceHost(Control owner, MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
     {
@@ -35,29 +32,29 @@ internal sealed class LightweightSurfaceHost : IDisposable
 
     public LightweightPlayerController Controller { get; }
 
-    public bool IsDisposed => _disposed;
+    public bool IsDisposed { get; private set; }
 
-    public bool IsContentVisible => _isContentVisible;
+    public bool IsContentVisible { get; private set; }
 
     public IPlatformFactory? PlatformFactory
     {
-        get => _platformFactory;
+        get;
         set
         {
-            if (ReferenceEquals(_platformFactory, value))
+            if (ReferenceEquals(field, value))
                 return;
 
             if (Controller.HasPlayerOrPendingCreation)
                 throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
 
-            _platformFactory = value;
+            field = value;
         }
     }
 
     /// <summary>Schedules one reload of the source on the UI thread (several changes reload once).</summary>
     public void QueueReload()
     {
-        if (_disposed || !_owner.IsHandleCreated || !Controller.TryQueueReload())
+        if (IsDisposed || !_owner.IsHandleCreated || !Controller.TryQueueReload())
             return;
 
         try
@@ -94,7 +91,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
         _reloadDropped = _reloadScheduled;
         _reloadScheduled = false;
         Controller.ClearQueuedReload();
-        if (_disposed)
+        if (IsDisposed)
             return;
 
         if (_owner.RecreatingHandle)
@@ -108,32 +105,32 @@ internal sealed class LightweightSurfaceHost : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        if (IsDisposed)
             return;
 
-        _disposed = true;
+        IsDisposed = true;
         // Releases the player: PlayerChanged unbinds the surface first.
         Controller.Dispose();
         Controller.PlayerChanged -= OnPlayerChanged;
         Surface.ContentVisibilityChanged -= OnSurfaceContentVisibilityChanged;
     }
 
-    private async void RunQueuedReload()
+    async void RunQueuedReload()
     {
         _reloadScheduled = false;
-        await Controller.RunQueuedReloadAsync(() => !_disposed && _owner.IsHandleCreated, _reload);
+        await Controller.RunQueuedReloadAsync(() => !IsDisposed && _owner.IsHandleCreated, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
-    private void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
+    void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
 
-    private void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
+    void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = Surface.IsContentVisible;
-        if (isVisible == _isContentVisible)
+        if (isVisible == IsContentVisible)
             return;
 
-        _isContentVisible = isVisible;
+        IsContentVisible = isVisible;
         ContentVisibilityChanged?.Invoke(_owner, EventArgs.Empty);
     }
 }

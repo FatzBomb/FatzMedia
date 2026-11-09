@@ -19,12 +19,12 @@ public sealed class FullScreenChromeController : IDisposable
     /// <summary>How long the chrome stays after the last pointer move.</summary>
     public static readonly TimeSpan HideDelay = TimeSpan.FromSeconds(2.5);
 
-    private readonly IPlayerTimer _timer;
-    private readonly Action<bool> _showChrome;
-    private readonly Func<bool> _keepChrome;
-    private readonly Func<(double X, double Y)?>? _pointerPosition;
-    private (double X, double Y)? _lastPointer;
-    private bool _disposed;
+    readonly IPlayerTimer _timer;
+    readonly Action<bool> _showChrome;
+    readonly Func<bool> _keepChrome;
+    readonly Func<(double X, double Y)?>? _pointerPosition;
+    (double X, double Y)? _lastPointer;
+    bool _disposed;
 
     /// <param name="dispatcher">The host's UI thread; its timer runs the delay.</param>
     /// <param name="showChrome">Shows (true) or hides (false) the bars and the cursor; called only on a change.</param>
@@ -102,14 +102,14 @@ public sealed class FullScreenChromeController : IDisposable
         _timer.Dispose();
     }
 
-    private void ShowAndRestart()
+    void ShowAndRestart()
     {
         SetChrome(true);
         _timer.Stop();
         _timer.Start();
     }
 
-    private void OnTick()
+    void OnTick()
     {
         _timer.Stop();
         if (!IsFullScreen || _disposed)
@@ -127,7 +127,7 @@ public sealed class FullScreenChromeController : IDisposable
         SetChrome(false);
     }
 
-    private void SetChrome(bool visible)
+    void SetChrome(bool visible)
     {
         if (IsChromeVisible == visible)
             return;

@@ -1,6 +1,6 @@
-using FatzMedia.Video.Wpf;
 using System.Runtime.ExceptionServices;
 using System.Windows.Threading;
+using FatzMedia.Video.Wpf;
 
 namespace FatzMedia.Video.Tests;
 
@@ -62,7 +62,7 @@ public sealed class WpfCompositedSurfaceHostTests
         Assert.Equal(1, host.BufferAllocations);
     });
 
-    private static void RunOnSta(Action scenario)
+    static void RunOnSta(Action scenario)
     {
         Exception? threadException = null;
         var thread = new Thread(() =>
@@ -89,7 +89,7 @@ public sealed class WpfCompositedSurfaceHostTests
             ExceptionDispatchInfo.Capture(threadException).Throw();
     }
 
-    private static void DrainDispatcher()
+    static void DrainDispatcher()
     {
         var frame = new DispatcherFrame();
         _ = Dispatcher.CurrentDispatcher.BeginInvoke(

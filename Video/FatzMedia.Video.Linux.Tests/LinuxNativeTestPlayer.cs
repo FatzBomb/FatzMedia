@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -12,17 +12,17 @@ namespace FatzMedia.Video.Linux.Tests;
 /// <c>FATZBOMB_LINUX_FFMPEG_DIR</c> (<c>scripts/setup-linux-native.sh</c> prints both) and run a sound
 /// server (PulseAudio or PipeWire; a null sink is enough).
 /// </summary>
-internal sealed class LinuxNativeTestPlayer : IDisposable
+sealed class LinuxNativeTestPlayer : IDisposable
 {
     /// <summary>The media <c>scripts/setup-linux-native.sh</c> makes.</summary>
     public const string MediaDir = "/opt/fatzbomb-native/media";
 
-    private readonly string _appBase;
-    private readonly MediaPresentationFrameSinkHandle? _handle;
-    private readonly ConcurrentQueue<string> _errors = new();
-    private readonly ConcurrentQueue<string> _diagnostics = new();
+    readonly string _appBase;
+    readonly MediaPresentationFrameSinkHandle? _handle;
+    readonly ConcurrentQueue<string> _errors = new();
+    readonly ConcurrentQueue<string> _diagnostics = new();
 
-    private LinuxNativeTestPlayer(string appBase, PlayerCore player, NativeTestFrameSink sink, MediaPresentationFrameSinkHandle? handle)
+    LinuxNativeTestPlayer(string appBase, PlayerCore player, NativeTestFrameSink sink, MediaPresentationFrameSinkHandle? handle)
     {
         _appBase = appBase;
         Player = player;
@@ -58,7 +58,7 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
         var appBase = Directory.CreateTempSubdirectory("fbm-native-").FullName;
         var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
         var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-        MediaPlayerConfiguration config = configuration ?? new MediaPlayerConfiguration(VideoDecodingMethod.Software);
+        var config = configuration ?? new MediaPlayerConfiguration(VideoDecodingMethod.Software);
         if (config.Normalization.CacheDirectory is null)
             config = config with { Normalization = config.Normalization with { CacheDirectory = string.Empty } };
 
@@ -100,10 +100,10 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
 }
 
 /// <summary>Counts presented frames and checks the last one is not blank (a middle row with more than 8 values).</summary>
-internal sealed class NativeTestFrameSink : IMediaPresentationFrameSink
+sealed class NativeTestFrameSink : IMediaPresentationFrameSink
 {
-    private int _frames;
-    private volatile bool _lastFrameHasContent;
+    int _frames;
+    volatile bool _lastFrameHasContent;
 
     public int Frames => Volatile.Read(ref _frames);
 
@@ -112,11 +112,11 @@ internal sealed class NativeTestFrameSink : IMediaPresentationFrameSink
     /// <summary>The blue value of the last presented frame's centre pixel.</summary>
     public int LastCentreBlue => Volatile.Read(ref _lastCentreBlue);
 
-    private int _lastCentreBlue;
+    int _lastCentreBlue;
 
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
     {
-        ReadOnlySpan<byte> row = bgraPixels.Slice(height / 2 * stride, width * 4);
+        var row = bgraPixels.Slice(height / 2 * stride, width * 4);
         var distinct = new HashSet<byte>();
         foreach (var value in row)
         {

@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Files;
 using System.Globalization;
+using FatzMedia.Video.Core.Files;
 
 namespace FatzMedia.Video.Core.Network;
 
@@ -11,20 +11,20 @@ namespace FatzMedia.Video.Core.Network;
 /// <param name="SupportsByteSeeking">Whether the progressive file accepts byte-range requests.</param>
 /// <param name="DurationSeconds">The container duration, or 0 when unknown (a live playlist or an unindexed stream).</param>
 /// <param name="HasIcyMetadata">Whether the server sent ICY (Shoutcast/Icecast) headers.</param>
-internal readonly record struct NetworkVideoProbe(bool IsSegmented, long? ContentLength, bool SupportsByteSeeking, double DurationSeconds, bool HasIcyMetadata = false);
+readonly record struct NetworkVideoProbe(bool IsSegmented, long? ContentLength, bool SupportsByteSeeking, double DurationSeconds, bool HasIcyMetadata = false);
 
 /// <summary>
 /// Pure decisions for network video (Stage 039A): classification, the capability row, looping,
 /// and the FFmpeg options derived from the host's <see cref="NetworkRetryPolicy"/>.
 /// </summary>
-internal static class NetworkVideoPolicy
+static class NetworkVideoPolicy
 {
     /// <summary>Path extensions of segmented playlists played through FFmpeg's HLS demuxer.</summary>
     public static IReadOnlySet<string> SegmentedPlaylistExtensions { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".m3u8" };
 
     /// <summary>FFmpeg demuxer names that read a playlist of segments (no byte seeking).</summary>
-    private static readonly HashSet<string> SegmentedDemuxers = new(StringComparer.Ordinal) { "hls", "dash" };
+    static readonly HashSet<string> SegmentedDemuxers = new(StringComparer.Ordinal) { "hls", "dash" };
 
     /// <summary>
     /// Whether a network source is video: the host hint, else the URI path extension through the
@@ -74,7 +74,7 @@ internal static class NetworkVideoPolicy
             };
         }
 
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.ForNetwork(
+        var row = MediaSourceCapabilityMatrix.ForNetwork(
             new NetworkStreamProbe(probe.ContentLength, probe.SupportsByteSeeking, HasIcyMetadata: false));
         return row with
         {

@@ -172,8 +172,8 @@ foreach ($player in @(
 
 Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescriptor>\s+_surfaces' 'Core coordinator must retain all attached surface descriptors in one registry.'
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
-Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+MediaPresentationSurfaceDescriptor\?\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
-Assert-Match $coordinator 'foreach\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s+in\s+_surfaces\.Values\s*\)' 'Core coordinator must recreate all registered surfaces from the shared registry.'
+Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+(?:var|MediaPresentationSurfaceDescriptor\?)\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
+Assert-Match $coordinator 'foreach\s*\(\s*(?:var|MediaPresentationSurfaceDescriptor)\s+surface\s+in\s+_surfaces\.Values\s*\)' 'Core coordinator must recreate all registered surfaces from the shared registry.'
 Assert-Match $coordinator '_rendererBackend\.AttachSurface\s*\(\s*surface\s*\)' 'Core coordinator must route all neutral surface descriptors through the selected renderer backend.'
 
 Assert-Match $backendSet '_secondaryNativeHwndTargets' 'D3D11 backend set must own secondary native HWND targets.'
@@ -182,7 +182,7 @@ Assert-Match $backendSet 'CreateSecondaryNativeHwndTarget' 'D3D11 backend set mu
 Assert-Match $backendSet '_secondaryNativeHwndTargets\.Values' 'D3D11 backend set must enumerate secondary targets.'
 Assert-Match $backendSet 'targets\.Add\s*\(\s*new\s+D3D11PresentationBackendTarget\s*\(\s*nativeIds\[i\],\s*natives\[i\],\s*natives\[i\]\.Hwnd,\s*"NativeHwndSwapChain"' 'Secondary targets must enter the same active target snapshot list as native HWND swap-chain outputs.'
 Assert-Match $backendSet 'NotifyTargetsPresented\s*\(\s*IReadOnlyList<D3D11PresentationTargetSnapshot>\s+targets' 'D3D11 backend set must notify/present a list of target snapshots.'
-Assert-Match $backendSet 'D3D11PresentationTargetSnapshot\s+target\s*=\s*targets\[i\]' 'D3D11 backend set must notify each presented target.'
+Assert-Match $backendSet '(?:var|D3D11PresentationTargetSnapshot)\s+target\s*=\s*targets\[i\]' 'D3D11 backend set must notify each presented target.'
 Assert-Match $backendSet 'NormalizeSecondaryNativeHwndTargetId' 'D3D11 backend set must normalize secondary target ids.'
 
 Assert-Match $surfaceController 'backends\.CollectActiveTargetBackends\s*\(\s*_scratchBackends\s*\)' 'Surface controller must build snapshots from all active primary and secondary backends.'
@@ -193,7 +193,7 @@ Assert-Match $presentationServices 'MediaCompositor\.PresentToTargets' 'Visible 
 Assert-Match $presentationServices 'Surfaces\.NotifyTargetsPresented' 'Visible composition must notify/present all compositor-presented targets.'
 
 Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets\.Select' 'D3D11 composition presenter must capture all valid presentation targets.'
-Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
+Assert-Match $compositionPresenter 'foreach\s*\(\s*(?:var|D3D11PresentationTargetSnapshot)\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
 Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, every adapter offers a Player facade, every test player uses the Player.Shared helpers, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'

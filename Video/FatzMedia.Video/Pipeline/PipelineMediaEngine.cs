@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
@@ -8,40 +9,39 @@ using FatzMedia.Video.Core.Network;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
+sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
-    private const string NetworkDiagnosticCategory = "Network";
+    const string NetworkDiagnosticCategory = "Network";
 
-    private MediaSourceCapabilities? _currentCapabilities;
+    MediaSourceCapabilities? _currentCapabilities;
 
     public MediaSourceCapabilities? CurrentCapabilities => Volatile.Read(ref _currentCapabilities);
 
-    private readonly IAudioEngine _audioEngine;
-    private readonly IArchiveService _archiveService;
-    private readonly PlaybackCoordinator _coordinator;
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly MediaPlayerMode _mode;
-    private readonly bool _audioAvailable;
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
-    private readonly RendererVideoDecodeServices _hardwareAccelerationServices;
-    private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
-    private readonly Lock _backgroundGate = new();
-    private VideoDecoder? _backgroundVideoDecoder;
-    private string? _backgroundVideoTempPath;
-    private VideoFrameEventArgs? _currentImageFrame;
-    private volatile int _backgroundGeneration;
+    readonly IAudioEngine _audioEngine;
+    readonly IArchiveService _archiveService;
+    readonly PlaybackCoordinator _coordinator;
+    readonly MediaPlayerConfiguration _configuration;
+    readonly MediaPlayerMode _mode;
+    readonly bool _audioAvailable;
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly RendererVideoDecodeServices _hardwareAccelerationServices;
+    readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
+    readonly Lock _backgroundGate = new();
+    VideoDecoder? _backgroundVideoDecoder;
+    string? _backgroundVideoTempPath;
+    VideoFrameEventArgs? _currentImageFrame;
+    volatile int _backgroundGeneration;
     // A Stop or end asked for the first frame again and no run has rewound yet (under
     // _backgroundGate): a Play that cancels the queued restart still starts from the beginning.
-    private bool _backgroundRewindPending;
+    bool _backgroundRewindPending;
     // The host paused the background explicitly (under _backgroundGate): no run starts until it resumes.
-    private bool _backgroundHostPaused;
-    private bool _disposed;
+    bool _backgroundHostPaused;
+    bool _disposed;
     // The cancellation of the network video open in progress (Stage 039A), or null.
-    private CancellationTokenSource? _pendingNetworkOpen;
+    CancellationTokenSource? _pendingNetworkOpen;
 
     event Action<MediaErrorInfo>? IMediaErrorSource.ErrorOccurred
     {
@@ -49,9 +49,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         remove => ErrorOccurred -= value;
     }
 
-    private event Action<MediaErrorInfo>? ErrorOccurred;
+    event Action<MediaErrorInfo>? ErrorOccurred;
 
-    private void RaiseError(MediaErrorCode code, string message, string? sourcePath = null, Exception? innerException = null)
+    void RaiseError(MediaErrorCode code, string message, string? sourcePath = null, Exception? innerException = null)
     {
         Debug.WriteLine($"[PipelineMediaEngine] Error {code}: {message}");
         ErrorOccurred?.Invoke(new MediaErrorInfo(code, message, sourcePath, innerException));
@@ -101,7 +101,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
     public void CancelPendingNetworkOpen()
     {
-        CancellationTokenSource? pending = Volatile.Read(ref _pendingNetworkOpen);
+        var pending = Volatile.Read(ref _pendingNetworkOpen);
         try
         {
             pending?.Cancel();
@@ -112,14 +112,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
+    void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
-    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
+    void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
 
     /// <inheritdoc />
     public event EventHandler? SubtitleTracksChanged;
 
-    private void OnSubtitleTracksChanged(object? sender, EventArgs e) => SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
+    void OnSubtitleTracksChanged(object? sender, EventArgs e) => SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
 
     public IVideoEngine? Video => _coordinator.Video;
     public ICdgEngine? Cdg => _coordinator.Cdg;
@@ -204,8 +204,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             return false;
         }
 
-        using FileTree fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
-        MediaModeRoute route = MediaPlayerModePolicy.RouteFile(_mode, fileTree.Type);
+        using var fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
+        var route = MediaPlayerModePolicy.RouteFile(_mode, fileTree.Type);
         if (route == MediaModeRoute.Reject)
             return RejectForMode(MediaPlayerModePolicy.Describe(fileTree.Type), Path.GetFileName(path), path);
 
@@ -252,7 +252,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         if (!opened)
         {
-            MediaErrorCode code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
+            var code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
                 ? MediaErrorCode.UnsupportedFormat
                 : MediaErrorCode.OpenFailed;
             RaiseError(code, $"Failed to open media: {Path.GetFileName(path)}", path);
@@ -280,7 +280,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         };
     }
 
-    private bool OpenInMemoryImage(MediaInputSource source)
+    bool OpenInMemoryImage(MediaInputSource source)
     {
         var opened = OpenImage(source);
         if (opened)
@@ -296,16 +296,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// network path into the soundtrack engine for https and HLS (ENG-034: BASS cannot verify
     /// certificates; <see cref="NetworkAudioPolicy"/>).
     /// </summary>
-    private bool OpenNetwork(MediaInputSource source)
+    bool OpenNetwork(MediaInputSource source)
     {
         if (IsOpen)
             Close();
         ImagePath = null;
         _currentImageFrame = null;
 
-        Uri uri = source.Uri!;
+        var uri = source.Uri!;
         var isVideo = NetworkVideoPolicy.IsVideo(uri, source.NetworkContent);
-        MediaModeRoute route = MediaPlayerModePolicy.RouteNetwork(_mode, isVideo);
+        var route = MediaPlayerModePolicy.RouteNetwork(_mode, isVideo);
         if (route == MediaModeRoute.Reject)
             return RejectForMode(MediaPlayerModePolicy.Describe(MediaInputSourceKind.NetworkUri, isVideo), source.DisplayName, uri.AbsoluteUri);
 
@@ -335,7 +335,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     /// <summary>What an FFmpeg network open plays.</summary>
-    private enum FfmpegNetworkRoute
+    enum FfmpegNetworkRoute
     {
         /// <summary>Network video (Stage 039A), picture and sound.</summary>
         Video,
@@ -354,12 +354,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// <see cref="CancelPendingNetworkOpen"/>. An HLS playlist with no playable video stream (an
     /// audio-only stream) plays as audio when the soundtrack engine is there (one more connect).
     /// </summary>
-    private bool OpenThroughFfmpeg(MediaInputSource source, FfmpegNetworkRoute requested)
+    bool OpenThroughFfmpeg(MediaInputSource source, FfmpegNetworkRoute requested)
     {
-        Uri uri = source.Uri!;
+        var uri = source.Uri!;
         var url = uri.AbsoluteUri;
-        NetworkRetryPolicy policy = _configuration.NetworkRetry ?? NetworkRetryPolicy.Default;
-        NetworkTlsPolicy tls = _configuration.NetworkTls ?? NetworkTlsPolicy.Default;
+        var policy = _configuration.NetworkRetry ?? NetworkRetryPolicy.Default;
+        var tls = _configuration.NetworkTls ?? NetworkTlsPolicy.Default;
         if (FfmpegNetwork.GetTlsSetupWarning(url, tls) is { } tlsWarning)
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, NetworkDiagnosticCategory, tlsWarning, sourcePath: url);
         else if (tls.AllowInvalidCertificates && NetworkTlsRules.IsHttps(url))
@@ -367,10 +367,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         // Linked to the load's cancellation (ENG-024: the host's token, the player's Reset or
         // Dispose), so those stop the connect and the retry delays as Close does.
-        CancellationToken loadCancellation = MediaOpenCancellation.Current;
-        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation);
+        var loadCancellation = MediaOpenCancellation.Current;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation);
         Volatile.Write(ref _pendingNetworkOpen, cancellation);
-        FfmpegNetworkRoute route = requested;
+        var route = requested;
         var audioFallback = requested == FfmpegNetworkRoute.Video && _coordinator.CanOpenSoundtrack && NetworkVideoPolicy.IsSegmentedPlaylist(uri);
         NetworkOpenOutcome outcome;
         int attempts;
@@ -416,7 +416,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         switch (outcome)
         {
             case NetworkOpenOutcome.Opened:
-                MediaSourceCapabilities capabilities = _coordinator.NetworkVideoCapabilities ?? MediaSourceCapabilityMatrix.NetworkUnprobed;
+                var capabilities = _coordinator.NetworkVideoCapabilities ?? MediaSourceCapabilityMatrix.NetworkUnprobed;
                 Volatile.Write(ref _currentCapabilities, capabilities);
                 DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Info,
@@ -469,7 +469,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// A failed attempt with no FFmpeg error connected but found no usable stream; a rejected
     /// certificate or an MP4 the server cannot stream fails again. None of those is retried.
     /// </summary>
-    private static NetworkAttemptResult ClassifyFailedAttempt(string? error) =>
+    static NetworkAttemptResult ClassifyFailedAttempt(string? error) =>
         error is null || NetworkVideoPolicy.IsPermanentOpenError(error) ? NetworkAttemptResult.Unusable : NetworkAttemptResult.Failed;
 
     /// <summary>
@@ -478,7 +478,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// </summary>
     // A video container with no video stream (an audio-only .mp4 or .ts, or one with only cover
     // art) plays its audio, as Audio mode plays a video's soundtrack.
-    private bool OpenSoundtrackWhenNoVideo(string path)
+    bool OpenSoundtrackWhenNoVideo(string path)
     {
         if (!_coordinator.LastVideoOpenHadNoVideo)
             return false;
@@ -487,7 +487,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return _coordinator.OpenSoundtrack(path);
     }
 
-    private bool OpenAudioOnly(FileTree fileTree, string path)
+    bool OpenAudioOnly(FileTree fileTree, string path)
     {
         var isVideo = fileTree.Type is FileType.Video or FileType.VideoSubtitle or FileType.VideoArchive;
         var opened = fileTree.Type switch
@@ -520,7 +520,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     /// <summary>Rejects a load the player's mode does not accept (043A): a Warning diagnostic and an error event.</summary>
-    private bool RejectForMode(string what, string displayName, string? sourcePath)
+    bool RejectForMode(string what, string displayName, string? sourcePath)
     {
         var message = MediaPlayerModePolicy.RejectionMessage(_mode, what, displayName);
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, MediaPlayerModePolicy.DiagnosticCategory, message, sourcePath: sourcePath);
@@ -532,7 +532,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// Rejects a load that needs audio while the audio engine's native libraries (BASS) are not
     /// loaded (ENG-033): an Error diagnostic and an error event.
     /// </summary>
-    private bool RejectAudioUnavailable(string displayName, string? sourcePath)
+    bool RejectAudioUnavailable(string displayName, string? sourcePath)
     {
         var message = $"{MediaPlayerModePolicy.AudioUnavailableMessage}; {displayName} was not loaded.";
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", message, sourcePath: sourcePath);
@@ -540,7 +540,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return false;
     }
 
-    private bool RejectUnknownSource(MediaInputSource source)
+    bool RejectUnknownSource(MediaInputSource source)
     {
         RaiseError(MediaErrorCode.UnsupportedFormat, $"Unsupported media source kind: {source.Kind}", source.DisplayName);
         return false;
@@ -666,18 +666,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _disposed = true;
     }
 
-    private bool PresentBackgroundImage(MediaBackgroundCandidate background)
+    bool PresentBackgroundImage(MediaBackgroundCandidate background)
     {
         if (background.Source?.IsBgraImage == true)
         {
             return RaiseBackgroundFrame(background.Source);
         }
 
-        using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
+        using var decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
         if (decoder == null)
             return false;
 
-        VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
+        var frame = DecodeFirstBackgroundFrame(decoder);
         if (frame == null)
             return false;
 
@@ -685,9 +685,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    private bool StartBackgroundVideo(MediaBackgroundCandidate background)
+    bool StartBackgroundVideo(MediaBackgroundCandidate background)
     {
-        VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
+        var decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
         if (decoder == null)
         {
             return false;
@@ -701,7 +701,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 $"width={decoder.Width}, height={decoder.Height}, source={background.DisplayName}");
         }
 
-        VideoFrameData? firstFrame = DecodeFirstBackgroundFrame(decoder);
+        var firstFrame = DecodeFirstBackgroundFrame(decoder);
         if (firstFrame == null)
         {
             decoder.Dispose();
@@ -731,7 +731,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    private void BackgroundVideoLoop(int generation, CancellationToken cancellationToken)
+    void BackgroundVideoLoop(int generation, CancellationToken cancellationToken)
     {
         using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
         var startTimestamp = Stopwatch.GetTimestamp();
@@ -741,13 +741,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         var restartCount = 0;
         while (!cancellationToken.IsCancellationRequested && generation == _backgroundGeneration)
         {
-            VideoDecoder? decoder = _backgroundVideoDecoder;
+            var decoder = _backgroundVideoDecoder;
             if (decoder == null)
             {
                 return;
             }
 
-            VideoFrameData? frame = DecodeNextBackgroundVideoFrame(decoder, restartCount: restartCount, lastPresentedPts: lastPresentedPts, iterationCount: iterationCount, startTimestamp: startTimestamp);
+            var frame = DecodeNextBackgroundVideoFrame(decoder, restartCount: restartCount, lastPresentedPts: lastPresentedPts, iterationCount: iterationCount, startTimestamp: startTimestamp);
             if (frame == null)
             {
                 restartCount++;
@@ -806,12 +806,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private VideoFrameData? DecodeNextBackgroundVideoFrame(VideoDecoder decoder, int restartCount, double lastPresentedPts, int iterationCount, long startTimestamp)
+    VideoFrameData? DecodeNextBackgroundVideoFrame(VideoDecoder decoder, int restartCount, double lastPresentedPts, int iterationCount, long startTimestamp)
     {
         var attempts = 0;
         for (var i = 0; i < 120; i++)
         {
-            VideoFrameData? frame = decoder.GetNextFrame();
+            var frame = decoder.GetNextFrame();
             if (frame != null)
                 return frame;
 
@@ -842,7 +842,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             }
         }
 
-        VideoFrameData? finalFrame = decoder.GetNextFrame();
+        var finalFrame = decoder.GetNextFrame();
         if (finalFrame == null && _configuration.EnableVerboseLogging)
         {
             var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
@@ -854,7 +854,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return finalFrame;
     }
 
-    private VideoFrameData? RestartBackgroundVideo(VideoDecoder decoder)
+    VideoFrameData? RestartBackgroundVideo(VideoDecoder decoder)
     {
         if (_configuration.EnableVerboseLogging)
             Trace.WriteLine(
@@ -864,11 +864,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return !decoder.Seek(0, exact: false) ? null : DecodeFirstBackgroundFrame(decoder);
     }
 
-    private static VideoFrameData? DecodeFirstBackgroundFrame(VideoDecoder decoder)
+    static VideoFrameData? DecodeFirstBackgroundFrame(VideoDecoder decoder)
     {
         for (var i = 0; i < 240; i++)
         {
-            VideoFrameData? frame = decoder.GetNextFrame();
+            var frame = decoder.GetNextFrame();
             if (frame != null)
                 return frame;
 
@@ -878,7 +878,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return decoder.GetNextFrame();
     }
 
-    private VideoDecoder? OpenBackgroundDecoder(MediaBackgroundCandidate background, bool enableHardwareFrameOutput)
+    VideoDecoder? OpenBackgroundDecoder(MediaBackgroundCandidate background, bool enableHardwareFrameOutput)
     {
         var path = background.Source?.FilePath ?? background.Path;
         if (string.IsNullOrWhiteSpace(path)
@@ -902,7 +902,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return null;
     }
 
-    private string? CreateTempBackgroundPath(MediaBackgroundCandidate background)
+    string? CreateTempBackgroundPath(MediaBackgroundCandidate background)
     {
         var extension = Path.GetExtension(background.DisplayName);
         if (string.IsNullOrWhiteSpace(extension))
@@ -914,13 +914,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             if (!string.IsNullOrWhiteSpace(background.ArchivePath)
                 && !string.IsNullOrWhiteSpace(background.ArchiveEntryKey))
             {
-                using IArchiveHandle archive = _archiveService.Open(background.ArchivePath);
-                IArchiveEntryInfo? entry = archive.Entries.FirstOrDefault(candidate =>
+                using var archive = _archiveService.Open(background.ArchivePath);
+                var entry = archive.Entries.FirstOrDefault(candidate =>
                     string.Equals(candidate.Key, background.ArchiveEntryKey, StringComparison.Ordinal));
                 if (entry == null)
                     return null;
 
-                using FileStream stream = File.Create(path);
+                using var stream = File.Create(path);
                 entry.WriteTo(stream);
             }
             else
@@ -944,7 +944,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private void RaiseBackgroundFrame(VideoDecoder decoder, VideoFrameData frame, double framesPerSecond)
+    void RaiseBackgroundFrame(VideoDecoder decoder, VideoFrameData frame, double framesPerSecond)
     {
         try
         {
@@ -989,7 +989,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private void StartBackgroundVideoPlayback()
+    void StartBackgroundVideoPlayback()
     {
         _backgroundVideoScheduler.StopAndWait();
 
@@ -1007,7 +1007,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private void StopBackgroundVideoPlayback(bool wait)
+    void StopBackgroundVideoPlayback(bool wait)
     {
         if (wait)
             _ = _backgroundVideoScheduler.StopAndWait();
@@ -1023,7 +1023,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// the decoder after it opened: never on the caller's thread, which may be BASS's mixing
     /// thread (an end or loop sync) and must not seek, decode or present.
     /// </summary>
-    private void RequestBackgroundRestart(bool resume)
+    void RequestBackgroundRestart(bool resume)
     {
         lock (_backgroundGate)
         {
@@ -1036,7 +1036,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private void RestartBackgroundRun(int generation, bool resume, CancellationToken cancellationToken)
+    void RestartBackgroundRun(int generation, bool resume, CancellationToken cancellationToken)
     {
         VideoDecoder? decoder;
         lock (_backgroundGate)
@@ -1055,7 +1055,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             BackgroundVideoLoop(generation, cancellationToken);
     }
 
-    private void ClearBackgroundCore(bool raiseEvent)
+    void ClearBackgroundCore(bool raiseEvent)
     {
         // Unpublish the decoder first, so no restart requested meanwhile can start using it.
         VideoDecoder? decoder;
@@ -1093,7 +1093,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     // ENG-051 (owner 2026-11-06): by default a background video loops on its own while it is
     // shown, so the media's end or loop leaves it playing. With BackgroundFollowsMedia it shows its
     // first frame again at the end, and restarts with the media's loop, as before.
-    private void OnPlaybackEnded(object? sender, EventArgs e)
+    void OnPlaybackEnded(object? sender, EventArgs e)
     {
         if (BackgroundFollowsMedia)
             RequestBackgroundRestart(resume: LoopPlayback && HandlesLoopInternally);
@@ -1101,7 +1101,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         MediaEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private bool BackgroundFollowsMedia => _configuration.BackgroundFollowsMedia;
+    bool BackgroundFollowsMedia => _configuration.BackgroundFollowsMedia;
 
     public bool IsBackgroundPaused
     {
@@ -1138,24 +1138,24 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    private void OnPlaybackLooped(object? sender, EventArgs e) => MediaLooped?.Invoke(this, EventArgs.Empty);
+    void OnPlaybackLooped(object? sender, EventArgs e) => MediaLooped?.Invoke(this, EventArgs.Empty);
 
-    private static bool RejectUnsupported(string path, FileType fileType)
+    static bool RejectUnsupported(string path, FileType fileType)
     {
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PipelineMediaEngine", $"Rejected {Path.GetFileName(path)} ({fileType})", sourcePath: path);
         return false;
     }
 
-    private bool OpenImage(string imagePath)
+    bool OpenImage(string imagePath)
     {
         var source = MediaInputSource.FromFile(imagePath);
         return OpenImage(source);
     }
 
-    private bool OpenImage(MediaInputSource source) =>
+    bool OpenImage(MediaInputSource source) =>
         source.Kind == MediaInputSourceKind.FilePath ? OpenImageFile(source) : source.IsBgraImage && OpenImageBgra(source);
 
-    private bool OpenImageFile(MediaInputSource source)
+    bool OpenImageFile(MediaInputSource source)
     {
         var imagePath = source.FilePath;
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
@@ -1164,14 +1164,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             return false;
         }
 
-        using VideoDecoder? decoder = OpenImageDecoder(imagePath);
+        using var decoder = OpenImageDecoder(imagePath);
         if (decoder == null)
         {
             RaiseError(MediaErrorCode.OpenFailed, $"Failed to open image decoder: {imagePath}", imagePath);
             return false;
         }
 
-        VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
+        var frame = DecodeFirstBackgroundFrame(decoder);
         if (frame == null)
         {
             RaiseError(MediaErrorCode.DecodeFailed, $"Failed to decode image frame: {imagePath}", imagePath);
@@ -1192,7 +1192,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
     }
 
-    private bool OpenImageBgra(MediaInputSource source)
+    bool OpenImageBgra(MediaInputSource source)
     {
         if (!source.IsBgraImage)
             return false;
@@ -1203,7 +1203,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return RaiseImageFrame(source);
     }
 
-    private VideoDecoder? OpenImageDecoder(string imagePath)
+    VideoDecoder? OpenImageDecoder(string imagePath)
     {
         var decoder = VideoDecoder.FromConfiguration(
             _configuration,
@@ -1216,7 +1216,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return null;
     }
 
-    private bool RaiseImageFrame(MediaInputSource source)
+    bool RaiseImageFrame(MediaInputSource source)
     {
         if (!source.IsBgraImage || source.BgraPixels == null)
             return false;
@@ -1240,7 +1240,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    private void RaiseImageFrame(VideoDecoder decoder, VideoFrameData frame)
+    void RaiseImageFrame(VideoDecoder decoder, VideoFrameData frame)
     {
         if (frame.Data == null || frame.Length <= 0 || frame.Width <= 0 || frame.Height <= 0 || frame.Stride < frame.Width * 4)
             return;
@@ -1262,7 +1262,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ImageFrameReady?.Invoke(this, args);
     }
 
-    private bool RaiseBackgroundFrame(MediaInputSource source)
+    bool RaiseBackgroundFrame(MediaInputSource source)
     {
         if (!source.IsBgraImage || source.BgraPixels == null)
             return false;
@@ -1284,5 +1284,5 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+    void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

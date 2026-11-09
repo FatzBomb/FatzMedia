@@ -8,13 +8,16 @@ namespace FatzMedia.Video.Pipeline;
 /// <summary>
 /// Portable video implementation factory supplied with platform timing and device services.
 /// </summary>
-internal sealed class VideoPipelineFactory : IVideoEngineFactory
+sealed class VideoPipelineFactory : IVideoEngineFactory
 {
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
-    private readonly IVideoPipelinePlatformServices _platformServices;
-    private readonly RendererVideoDecodeServices _hardwareAccelerationServices;
-    private readonly bool _audioAvailable;
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly IVideoPipelinePlatformServices _platformServices;
+    readonly RendererVideoDecodeServices _hardwareAccelerationServices;
+    readonly bool _audioAvailable;
 
+    /// <param name="precisionWaiterFactory">Creates the precise waiters that pace frame presentation.</param>
+    /// <param name="platformServices">The platform's timing and device services for the pipeline.</param>
+    /// <param name="hardwareAccelerationServices">What the renderer offers for decoding on its own device.</param>
     /// <param name="audioAvailable">
     /// False when the audio engine's native libraries (BASS) did not load: video then plays its
     /// picture on the playback clock, as in Background mode, and never touches BASS.

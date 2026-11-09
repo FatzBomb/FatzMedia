@@ -7,10 +7,10 @@ using FatzMedia.Video.Core.Graphics.D3D.SwapChain;
 using FatzMedia.Video.Core.Graphics.Rendering;
 using FatzMedia.Video.Core.Video.Hdr;
 using FatzMedia.Video.Direct3D11;
+using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using SharpGen.Runtime;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.DirectComposition;
 
@@ -21,23 +21,23 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.DirectComposition;
 /// future true layered DirectComposition backend should replace this class rather than
 /// adding more DirectComposition conditionals to VorticeD3D11Renderer.
 /// </summary>
-internal sealed class D3D11DirectCompositionSingleTargetBackend(
+sealed class D3D11DirectCompositionSingleTargetBackend(
     MediaPlayerConfiguration configuration,
     NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState) : ID3D11PresentationBackend, ID3D11HdrOutputBackend
 {
-    private readonly D3D11DirectCompositionTarget _target = new();
+    readonly D3D11DirectCompositionTarget _target = new();
 
-    private IDXGISwapChain? _baseSwapChain;
-    private int _pendingWidth;
-    private int _pendingHeight;
-    private bool _baseDeviceLostReported;
-    private bool _overlayDeviceLostReported;
+    IDXGISwapChain? _baseSwapChain;
+    int _pendingWidth;
+    int _pendingHeight;
+    bool _baseDeviceLostReported;
+    bool _overlayDeviceLostReported;
     // Failures other than device loss that can repeat every frame or resize retry: one report each.
-    private readonly RendererDiagnosticLatch _resizeFailure = new();
-    private readonly RendererDiagnosticLatch _overlayPresentFailure = new();
-    private readonly RendererDiagnosticLatch _basePresentFailure = new();
+    readonly RendererDiagnosticLatch _resizeFailure = new();
+    readonly RendererDiagnosticLatch _overlayPresentFailure = new();
+    readonly RendererDiagnosticLatch _basePresentFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -59,13 +59,13 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     /// <inheritdoc />
     public string? HdrOutputFailure { get; private set; }
 
-    private Hdr10MetadataValues? _hdrMetadata;
+    Hdr10MetadataValues? _hdrMetadata;
     // Borrowed from the renderer (not owned): re-creates the swap chain in SDR when going back
     // from scRGB fails.
-    private D3D11DeviceResources? _deviceResources;
+    D3D11DeviceResources? _deviceResources;
 
     // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
-    private long _resizeRetryNotBefore;
+    long _resizeRetryNotBefore;
 
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
@@ -81,11 +81,11 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
         try
         {
-            using IDXGIDevice dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
-            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
-            using IDXGIFactory2 factory = adapter.GetParent<IDXGIFactory2>();
+            using var dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
+            using var adapter = dxgiDevice.GetAdapter();
+            using var factory = adapter.GetParent<IDXGIFactory2>();
 
-            SwapChainDescription1 baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
+            var baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
             _baseSwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, baseDescription);
             if (_baseSwapChain == null)
             {
@@ -93,8 +93,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 return false;
             }
 
-            SwapChainDescription1 overlayDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
-            IDXGISwapChain1 overlaySwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, overlayDescription);
+            var overlayDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
+            var overlaySwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, overlayDescription);
             if (overlaySwapChain == null || !_target.Create(dxgiDevice, hwnd, _baseSwapChain, overlaySwapChain, width, height))
             {
                 Cleanup();
@@ -150,7 +150,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         return ResizeCore(width, height);
     }
 
-    private bool ResizeCore(int width, int height)
+    bool ResizeCore(int width, int height)
     {
         if (!IsActive || _baseSwapChain == null || _target.OverlaySwapChain == null)
             return false;
@@ -171,7 +171,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             TargetTexture = null;
             _target.ReleaseOverlayBackBuffer();
 
-            Result baseResizeResult = _baseSwapChain.ResizeBuffers(
+            var baseResizeResult = _baseSwapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
@@ -179,7 +179,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 SwapChainFlags.None);
             ReportResizeFailure(baseResizeResult, _baseSwapChain, "base", width, height, ref _baseDeviceLostReported);
 
-            Result overlayResizeResult = _target.OverlaySwapChain.ResizeBuffers(
+            var overlayResizeResult = _target.OverlaySwapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
@@ -274,13 +274,13 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         return applied;
     }
 
-    private bool RecreateInSdr(string? failure)
+    bool RecreateInSdr(string? failure)
     {
         if (_deviceResources is not { } deviceResources)
             return false;
 
-        (IntPtr hwnd, int width, int height) = (Hwnd, Width, Height);
-        (bool pending, int pendingWidth, int pendingHeight) = (HasPendingResize, _pendingWidth, _pendingHeight);
+        (var hwnd, var width, var height) = (Hwnd, Width, Height);
+        (var pending, var pendingWidth, var pendingHeight) = (HasPendingResize, _pendingWidth, _pendingHeight);
         if (!Create(deviceResources, hwnd, width, height))
             return false;
 
@@ -292,7 +292,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         return OutputMode == HdrOutputMode.Sdr;
     }
 
-    private void ReportResizeFailure(Result result, IDXGISwapChain? swapChain, string chainName, int width, int height, ref bool alreadyReported)
+    void ReportResizeFailure(Result result, IDXGISwapChain? swapChain, string chainName, int width, int height, ref bool alreadyReported)
     {
         if (result.Failure)
         {
@@ -341,7 +341,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         if (_target.OverlaySwapChain == null)
             return false;
 
-        Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
+        var result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
         if (result.Failure)
         {
 
@@ -385,10 +385,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 if (_target.OverlayTexture == null)
                     return;
 
-                using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
+                using var renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
                 deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));
                 deviceResources.Context.Flush();
-                Result result = _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
+                var result = _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
                 if (result.Failure)
                 {
                     if (D3D11DeviceLostClassifier.IsDeviceLost(result))

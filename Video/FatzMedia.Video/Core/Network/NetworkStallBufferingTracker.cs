@@ -13,7 +13,7 @@ namespace FatzMedia.Video.Core.Network;
 /// the fill the decoded queue against its target, with the default exit fill.
 /// </para>
 /// </summary>
-internal sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, double exitFill = NetworkStallBufferingTracker.DefaultExitFill)
+sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, double exitFill = NetworkStallBufferingTracker.DefaultExitFill)
 {
     /// <summary>The default stall threshold: far longer than a healthy read, short enough to report a visible stall.</summary>
     public static readonly TimeSpan DefaultStallThreshold = TimeSpan.FromMilliseconds(500);
@@ -21,9 +21,9 @@ internal sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, doub
     /// <summary>The default exit fill: a quarter of the queue target.</summary>
     public const double DefaultExitFill = 0.25;
 
-    private readonly TimeSpan _stallThreshold = stallThreshold > TimeSpan.Zero ? stallThreshold : DefaultStallThreshold;
-    private readonly double _exitFill = Math.Clamp(exitFill, 0, 1);
-    private double _lastReportedFill = -1;
+    readonly TimeSpan _stallThreshold = stallThreshold > TimeSpan.Zero ? stallThreshold : DefaultStallThreshold;
+    readonly double _exitFill = Math.Clamp(exitFill, 0, 1);
+    double _lastReportedFill = -1;
 
     public bool IsBuffering { get; private set; }
 

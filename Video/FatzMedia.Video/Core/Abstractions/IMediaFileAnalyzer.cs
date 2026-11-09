@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// <summary>
 /// Analyzes a local media file ahead of playback without touching the current media.
 /// </summary>
-internal interface IMediaFileAnalyzer
+interface IMediaFileAnalyzer
 {
     /// <summary>
     /// Analyzes the file and warms the shared media-analysis cache. Returns <see langword="null"/>
@@ -15,11 +15,11 @@ internal interface IMediaFileAnalyzer
 /// <summary>
 /// Analyzer used when the audio engine cannot analyze files; every request reports no analysis.
 /// </summary>
-internal sealed class UnavailableMediaFileAnalyzer : IMediaFileAnalyzer
+sealed class UnavailableMediaFileAnalyzer : IMediaFileAnalyzer
 {
     public static UnavailableMediaFileAnalyzer Instance { get; } = new();
 
-    private UnavailableMediaFileAnalyzer()
+    UnavailableMediaFileAnalyzer()
     {
     }
 

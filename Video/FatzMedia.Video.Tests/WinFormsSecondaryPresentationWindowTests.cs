@@ -11,7 +11,7 @@ public sealed class WinFormsSecondaryPresentationWindowTests
     [Fact]
     public void Window_AttachesAProjectorSurfaceAndDetachesItWhenClosed() => RunSta(() =>
     {
-        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (var session, var recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var window = new SecondaryPresentationWindow(session, " singer ") { ShowInTaskbar = false };
         Assert.Equal(MediaPresentationSurfaceRole.Projector, window.Surface.Role);
         Assert.Equal("singer", window.Surface.SurfaceId);
@@ -31,9 +31,9 @@ public sealed class WinFormsSecondaryPresentationWindowTests
     [Fact]
     public void F11AndEscape_ToggleAndLeaveFullScreen() => RunSta(() =>
     {
-        (IPlayerSession session, _) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (var session, _) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         using var window = new KeyWindow(session);
-        FormBorderStyle border = window.FormBorderStyle;
+        var border = window.FormBorderStyle;
 
         window.Press(Keys.F11);
         Assert.True(window.IsFullScreen);
@@ -63,7 +63,7 @@ public sealed class WinFormsSecondaryPresentationWindowTests
     [Fact]
     public void ProjectorSurfaceInAnyForm_DoesNotTouchTheDisplayMode() => RunSta(() =>
     {
-        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (var session, var recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Role = MediaPresentationSurfaceRole.Projector, Player = session };
 
         surface.VideoDisplayMode = VideoDisplayMode.Stretch;
@@ -71,12 +71,12 @@ public sealed class WinFormsSecondaryPresentationWindowTests
         Assert.Equal(0, recorder.VideoDisplayModeSets);
     });
 
-    private sealed class KeyWindow(IPlayerSession session) : SecondaryPresentationWindow(session)
+    sealed class KeyWindow(IPlayerSession session) : SecondaryPresentationWindow(session)
     {
         public void Press(Keys key) => OnKeyDown(new KeyEventArgs(key));
     }
 
-    private static void RunSta(Action action)
+    static void RunSta(Action action)
     {
         Exception? failure = null;
         var thread = new Thread(() =>

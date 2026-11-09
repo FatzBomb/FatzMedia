@@ -13,7 +13,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// cumulative offset subtracted from the continuous position to report a value that wraps
 /// naturally back into [0, lap duration).
 /// </summary>
-internal static class AudioLoopBoundaryTracker
+static class AudioLoopBoundaryTracker
 {
     /// <summary>
     /// Advances loop-completion bookkeeping given the current continuous (never-wrapping)

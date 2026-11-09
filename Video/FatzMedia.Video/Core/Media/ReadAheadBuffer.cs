@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Core.Media;
 /// <param name="DurationSeconds">Its duration in seconds, or 0 when unknown.</param>
 /// <param name="Bytes">The memory it holds.</param>
 /// <param name="IsKeyframe">Whether decoding can start at it.</param>
-internal readonly record struct ReadAheadPacketInfo(
+readonly record struct ReadAheadPacketInfo(
     int StreamIndex,
     double? PresentationSeconds,
     double? DecodeSeconds,
@@ -18,7 +18,7 @@ internal readonly record struct ReadAheadPacketInfo(
     bool IsKeyframe);
 
 /// <summary>The outcome of <see cref="ReadAheadBuffer{T}.TryTake"/>.</summary>
-internal enum ReadAheadTake
+enum ReadAheadTake
 {
     /// <summary>A packet was taken.</summary>
     Packet,
@@ -50,7 +50,7 @@ internal enum ReadAheadTake
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The packet handle (an <c>AVPacket*</c> in the engine).</typeparam>
-internal sealed class ReadAheadBuffer<T>(Action<T> release)
+sealed class ReadAheadBuffer<T>(Action<T> release)
 {
     /// <summary>How far another stream's next packet may start after a seek target and still play it.</summary>
     internal const double OtherStreamToleranceSeconds = 0.05;
@@ -61,9 +61,9 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     /// </summary>
     internal const double StreamEndToleranceSeconds = 2.0;
 
-    private readonly Action<T> _release = release ?? throw new ArgumentNullException(nameof(release));
-    private readonly List<StreamQueue> _streams = [];
-    private int _leadStream = -1;
+    readonly Action<T> _release = release ?? throw new ArgumentNullException(nameof(release));
+    readonly List<StreamQueue> _streams = [];
+    int _leadStream = -1;
 
     /// <summary>Gets the packet memory held, in bytes.</summary>
     public long Bytes { get; private set; }
@@ -92,7 +92,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         if (streamIndex < 0)
             return;
 
-        StreamQueue? stream = Find(streamIndex);
+        var stream = Find(streamIndex);
         if (stream is null)
         {
             stream = new StreamQueue(streamIndex);
@@ -143,7 +143,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     /// <summary>Appends the end-of-stream marker to every queue (the reader reached the end of the source).</summary>
     public void AddEndOfStream()
     {
-        foreach (StreamQueue stream in _streams)
+        foreach (var stream in _streams)
         {
             // A stream already ended at its own end has its marker.
             if (!stream.EndQueued)
@@ -158,12 +158,12 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     /// <see cref="StreamEndToleranceSeconds"/>). A stream is never ended by its own packets: they
     /// show its end was underestimated (a duration FFmpeg estimated from the bitrate).
     /// </summary>
-    private void EndStreamsReadPast(StreamQueue readStream, double? readSeconds)
+    void EndStreamsReadPast(StreamQueue readStream, double? readSeconds)
     {
         if (readSeconds is not { } read)
             return;
 
-        foreach (StreamQueue stream in _streams)
+        foreach (var stream in _streams)
         {
             if (ReferenceEquals(stream, readStream) || stream.EndQueued || stream.Ended || stream.EndSeconds is not { } end || read < end + StreamEndToleranceSeconds)
                 continue;
@@ -188,7 +188,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         if (stream.Ended)
             return ReadAheadTake.EndOfStream;
 
-        if (!stream.Entries.TryDequeue(out Entry entry))
+        if (!stream.Entries.TryDequeue(out var entry))
         {
             if (stream.StarvedSince == 0)
                 stream.StarvedSince = now == 0 ? 1 : now;
@@ -244,7 +244,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     public TimeSpan LongestStarvation(long now)
     {
         long earliest = 0;
-        foreach (StreamQueue stream in _streams)
+        foreach (var stream in _streams)
         {
             if (stream.StarvedSince != 0 && (earliest == 0 || stream.StarvedSince < earliest))
                 earliest = stream.StarvedSince;
@@ -256,7 +256,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     /// <summary>Drops every queued packet and marker and re-arms every stream (a seek outside the buffer).</summary>
     public void Flush()
     {
-        foreach (StreamQueue stream in _streams)
+        foreach (var stream in _streams)
             Clear(stream);
     }
 
@@ -298,7 +298,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         var keySeconds = 0.0;
         var bufferedTo = double.NegativeInfinity;
         var position = 0;
-        foreach (Entry entry in seekStream.Entries)
+        foreach (var entry in seekStream.Entries)
         {
             if (!entry.IsEnd && entry.Info.PresentationSeconds is { } start)
             {
@@ -317,7 +317,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         if (keyPosition < 0 || bufferedTo < targetSeconds)
             return false;
 
-        foreach (StreamQueue other in _streams)
+        foreach (var other in _streams)
         {
             if (ReferenceEquals(other, seekStream))
                 continue;
@@ -329,12 +329,12 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         for (var index = 0; index < keyPosition; index++)
             Drop(seekStream, seekStream.Entries.Dequeue());
 
-        foreach (StreamQueue other in _streams)
+        foreach (var other in _streams)
         {
             if (ReferenceEquals(other, seekStream))
                 continue;
 
-            while (other.Entries.TryPeek(out Entry head)
+            while (other.Entries.TryPeek(out var head)
                 && !head.IsEnd
                 && head.Info.PresentationSeconds is { } start
                 && start + Math.Max(0, head.Info.DurationSeconds) <= keySeconds)
@@ -344,12 +344,12 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         }
 
         seekStream.RecomputeTail();
-        foreach (StreamQueue other in _streams)
+        foreach (var other in _streams)
             other.RecomputeTail();
         return true;
     }
 
-    private void Drop(StreamQueue stream, Entry entry)
+    void Drop(StreamQueue stream, Entry entry)
     {
         if (entry.IsEnd)
             return;
@@ -360,9 +360,9 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         _release(entry.Item);
     }
 
-    private void Clear(StreamQueue stream)
+    void Clear(StreamQueue stream)
     {
-        while (stream.Entries.TryDequeue(out Entry entry))
+        while (stream.Entries.TryDequeue(out var entry))
         {
             if (!entry.IsEnd)
                 _release(entry.Item);
@@ -372,9 +372,9 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         stream.Reset();
     }
 
-    private StreamQueue? Find(int streamIndex)
+    StreamQueue? Find(int streamIndex)
     {
-        foreach (StreamQueue stream in _streams)
+        foreach (var stream in _streams)
         {
             if (stream.Index == streamIndex)
                 return stream;
@@ -383,9 +383,9 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         return null;
     }
 
-    private readonly record struct Entry(T Item, ReadAheadPacketInfo Info, bool IsEnd);
+    readonly record struct Entry(T Item, ReadAheadPacketInfo Info, bool IsEnd);
 
-    private sealed class StreamQueue(int index)
+    sealed class StreamQueue(int index)
     {
         public int Index { get; } = index;
 
@@ -411,14 +411,14 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         /// <summary>The end of the last packet taken (the consumer's position), when known.</summary>
         public double? LastTakenEnd { get; private set; }
 
-        private double? _tailDecodeEnd;
+        double? _tailDecodeEnd;
 
         /// <summary>The presentation time of the next packet the consumer gets, or where it stands when none is queued.</summary>
         public double? NextPresentationSeconds
         {
             get
             {
-                foreach (Entry entry in Entries)
+                foreach (var entry in Entries)
                 {
                     if (entry.IsEnd)
                         break;
@@ -434,7 +434,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         {
             get
             {
-                if (_tailDecodeEnd is not { } tail || !Entries.TryPeek(out Entry head) || head.IsEnd || DecodeStart(head.Info) is not { } start)
+                if (_tailDecodeEnd is not { } tail || !Entries.TryPeek(out var head) || head.IsEnd || DecodeStart(head.Info) is not { } start)
                     return 0;
 
                 return Math.Max(0, tail - start);
@@ -461,7 +461,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         public void RecomputeTail()
         {
             _tailDecodeEnd = null;
-            foreach (Entry entry in Entries)
+            foreach (var entry in Entries)
             {
                 if (!entry.IsEnd)
                     NoteAdded(entry.Info);
@@ -479,6 +479,6 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
             _tailDecodeEnd = null;
         }
 
-        private static double? DecodeStart(ReadAheadPacketInfo info) => info.DecodeSeconds ?? info.PresentationSeconds;
+        static double? DecodeStart(ReadAheadPacketInfo info) => info.DecodeSeconds ?? info.PresentationSeconds;
     }
 }

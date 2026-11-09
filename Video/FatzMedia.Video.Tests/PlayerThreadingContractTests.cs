@@ -1,8 +1,7 @@
-using FatzMedia.Video.Controllers;
-using FatzMedia.Video.Core.Configuration;
-using FatzMedia.Video.Core.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Core.Threading;
 using static FatzMedia.Video.Tests.PlayerModeSwitchTests;
 
 namespace FatzMedia.Video.Tests;
@@ -11,7 +10,7 @@ namespace FatzMedia.Video.Tests;
 public sealed class PlayerThreadingContractTests
 {
     /// <summary>How long a call that must not block may take; far below the blocked operation.</summary>
-    private static readonly TimeSpan PromptReturn = TimeSpan.FromSeconds(2);
+    static readonly TimeSpan PromptReturn = TimeSpan.FromSeconds(2);
 
     [Fact]
     public async Task AsyncCalls_DuringASlowSynchronousLoad_ReturnWithoutWaiting()
@@ -27,12 +26,12 @@ public sealed class PlayerThreadingContractTests
             }
         };
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        Task<bool> syncLoad = Task.Run(() => player.Load("slow.mp3"));
+        var syncLoad = Task.Run(() => player.Load("slow.mp3"));
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         // Each call only queues: it returns while the synchronous load still holds the queue.
         var stopwatch = Stopwatch.StartNew();
-        (Task<bool> play, Task<bool> seek, Task<bool> load) = await Task.Run(() =>
+        (var play, var seek, var load) = await Task.Run(() =>
             (player.PlayAsync(), player.SeekAsync(5), player.LoadAsync("next.mp3"))).WaitAsync(PromptReturn);
         Assert.True(stopwatch.Elapsed < PromptReturn);
         Assert.False(play.IsCompleted || seek.IsCompleted || load.IsCompleted);
@@ -61,10 +60,10 @@ public sealed class PlayerThreadingContractTests
             }
         };
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+        var reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
         await rebuildEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
-        Exception? refused = await Task.Run(() => Record.Exception(() => { _ = player.PlayAsync(); })).WaitAsync(PromptReturn);
+        var refused = await Task.Run(() => Record.Exception(() => { _ = player.PlayAsync(); })).WaitAsync(PromptReturn);
         Assert.IsType<InvalidOperationException>(refused);
 
         releaseRebuild.Set();
@@ -88,7 +87,7 @@ public sealed class PlayerThreadingContractTests
             }
         };
         var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        Task<bool> load = player.LoadAsync("stream.mp3");
+        var load = player.LoadAsync("stream.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var stopwatch = Stopwatch.StartNew();
@@ -96,7 +95,7 @@ public sealed class PlayerThreadingContractTests
 
         Assert.True(stopwatch.Elapsed < player.DisposeWaitTimeout, $"Dispose took {stopwatch.Elapsed}.");
         Assert.False(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
-        TestMediaEngine engine = Assert.Single(factory.Engines);
+        var engine = Assert.Single(factory.Engines);
         Assert.Equal(1, engine.DisposeCount);
         Assert.False(engine.IsOpen);
         Assert.Throws<ObjectDisposedException>(() => player.Play());
@@ -121,14 +120,14 @@ public sealed class PlayerThreadingContractTests
             DisposeWaitTimeout = TimeSpan.FromMilliseconds(200)
         };
         Assert.True(player.AttachPresentationSurface(Surface("primary", 640, 360)));
-        RecordingCoordinator coordinator = Assert.Single(factory.Coordinators);
-        Task<bool> load = player.LoadAsync("stream.mp3");
+        var coordinator = Assert.Single(factory.Coordinators);
+        var load = player.LoadAsync("stream.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         await Task.Run(player.Dispose).WaitAsync(TestEnvironment.EventuallyTimeout);
 
         // Returned without the teardown: calls are refused and the host's surfaces are released.
-        TestMediaEngine engine = Assert.Single(factory.Engines);
+        var engine = Assert.Single(factory.Engines);
         Assert.Equal(0, engine.DisposeCount);
         Assert.Throws<ObjectDisposedException>(() => player.Play());
         Assert.Throws<ObjectDisposedException>(() => { _ = player.PlayAsync(); });
@@ -160,16 +159,16 @@ public sealed class PlayerThreadingContractTests
             }
         };
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
-        Task<bool> first = player.LoadAsync("first.mp3");
+        var first = player.LoadAsync("first.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         using var cancellation = new CancellationTokenSource();
-        Task<bool> second = player.LoadAsync("second.mp3", cancellation.Token);
+        var second = player.LoadAsync("second.mp3", cancellation.Token);
 
         cancellation.Cancel();
         releaseOpen.Set();
 
         Assert.True(await first.WaitAsync(TestEnvironment.EventuallyTimeout));
-        OperationCanceledException cancelled = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        var cancelled = await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => second.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Equal(cancellation.Token, cancelled.CancellationToken);
         Assert.True(second.IsCanceled);
@@ -203,7 +202,7 @@ public sealed class PlayerThreadingContractTests
         Volatile.Write(ref waitForCancellation, true);
         using var cancellation = new CancellationTokenSource();
 
-        Task<bool> second = player.LoadAsync(MediaInputSource.FromFile("second.mp3"), null, ignoreSidecar: false, cancellation.Token);
+        var second = player.LoadAsync(MediaInputSource.FromFile("second.mp3"), null, ignoreSidecar: false, cancellation.Token);
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         cancellation.Cancel();
 
@@ -225,7 +224,7 @@ public sealed class PlayerThreadingContractTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Task<bool> load = player.LoadAsync("song.mp3", cancellation.Token);
+        var load = player.LoadAsync("song.mp3", cancellation.Token);
 
         Assert.True(load.IsCanceled);
         await player.FlushControlOperationsAsync();
@@ -253,7 +252,7 @@ public sealed class PlayerThreadingContractTests
         {
             ResetWaitTimeout = TimeSpan.FromMilliseconds(200)
         };
-        Task<bool> load = player.LoadAsync("stream.mp3");
+        var load = player.LoadAsync("stream.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.False(await Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, [])).WaitAsync(TestEnvironment.EventuallyTimeout));
@@ -292,7 +291,7 @@ public sealed class PlayerThreadingContractTests
 
         Assert.True(player.Reset(MediaPlayerConfiguration.Auto, []));
         Assert.True(player.Load("song.mp3"));
-        RecordingCoordinator rebuilt = factory.Coordinators[^1];
+        var rebuilt = factory.Coordinators[^1];
         Assert.Equal(1280, rebuilt.Surfaces["primary"].PixelWidth);
 
         player.Dispose();
@@ -338,11 +337,11 @@ public sealed class PlayerThreadingContractTests
 
         Assert.True(player.Reset(MediaPlayerConfiguration.Auto, []));
 
-        MediaValueChangedEventArgs<double> volumeChange = await volume.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var volumeChange = await volume.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal((0.5, player.Effects.Volume, MediaChangeReason.PlayerReset), (volumeChange.PreviousValue, volumeChange.CurrentValue, volumeChange.Reason));
-        MediaValueChangedEventArgs<int> pitchChange = await pitch.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var pitchChange = await pitch.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal((2, 0), (pitchChange.PreviousValue, pitchChange.CurrentValue));
-        MediaValueChangedEventArgs<bool> loopChange = await loop.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        var loopChange = await loop.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal((true, false), (loopChange.PreviousValue, loopChange.CurrentValue));
         await player.FlushControlOperationsAsync();
         Assert.Equal(0, tempoChanges);
@@ -357,7 +356,7 @@ public sealed class PlayerThreadingContractTests
         using var stop = new CancellationTokenSource();
         string[] ids = ["s0", "s1", "s2", "s3"];
 
-        Task hammer = Task.Run(() =>
+        var hammer = Task.Run(() =>
         {
             var random = new Random(24);
             while (!stop.IsCancellationRequested)
@@ -389,7 +388,7 @@ public sealed class PlayerThreadingContractTests
         }
 
         // Every earlier graph was freed and the last one has exactly the host's surfaces.
-        RecordingCoordinator last = factory.Coordinators[^1];
+        var last = factory.Coordinators[^1];
         Assert.All(factory.Coordinators.SkipLast(1), coordinator => Assert.True(coordinator.Disposed));
         Assert.Equal(ids, last.Surfaces.Keys.Order(StringComparer.Ordinal));
         for (var i = 0; i < ids.Length; i++)
@@ -415,7 +414,7 @@ public sealed class PlayerThreadingContractTests
         };
 
         player.MediaLoaded += (_, _) => handlerReturned.TrySetResult();
-        Task<bool> load = player.LoadAsync("song.mp3");
+        var load = player.LoadAsync("song.mp3");
 
         Assert.True(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Null(await disposeResult.Task.WaitAsync(TestEnvironment.EventuallyTimeout));
@@ -425,7 +424,7 @@ public sealed class PlayerThreadingContractTests
     [Fact]
     public async Task MediaDiagnostic_RaisedDuringALongOperation_ReachesTheHostBeforeItEnds_InOrder()
     {
-        const string category = "ThreadingTest.Retry";
+        const string Category = "ThreadingTest.Retry";
         PlayerCore? owner = null;
         var received = new ConcurrentQueue<string>();
         using var allReceived = new CountdownEvent(3);
@@ -438,7 +437,7 @@ public sealed class PlayerThreadingContractTests
                 using (DiagnosticRouter.EnterOwner(owner!))
                 {
                     for (var attempt = 1; attempt <= 3; attempt++)
-                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, category, $"retry {attempt}/3");
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"retry {attempt}/3");
                 }
 
                 deliveredDuringOpen = allReceived.Wait(TestEnvironment.EventuallyTimeout);
@@ -448,7 +447,7 @@ public sealed class PlayerThreadingContractTests
         owner = player;
         player.MediaDiagnostic += (_, e) =>
         {
-            if (e.Category != category)
+            if (e.Category != Category)
                 return;
             received.Enqueue(e.Message);
             allReceived.Signal();
@@ -463,23 +462,23 @@ public sealed class PlayerThreadingContractTests
     [Fact]
     public async Task MediaDiagnostic_IsNotDeliveredAfterDispose()
     {
-        const string category = "ThreadingTest.AfterDispose";
+        const string Category = "ThreadingTest.AfterDispose";
         var player = new PlayerCore(new SwitchTestPlatformFactory(), MediaPlayerConfiguration.Auto, []);
         var received = new ConcurrentQueue<string>();
         player.MediaDiagnostic += (_, e) =>
         {
-            if (e.Category == category)
+            if (e.Category == Category)
                 received.Enqueue(e.Message);
         };
         using (DiagnosticRouter.EnterOwner(player))
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "before");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, "before");
 
         player.Dispose();
         // Queued before Dispose: delivered by the time it returned.
         Assert.Equal(["before"], received);
 
         using (DiagnosticRouter.EnterOwner(player))
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "after");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, "after");
         await Task.Delay(100);
         Assert.Equal(["before"], received);
     }
@@ -509,7 +508,7 @@ public sealed class PlayerThreadingContractTests
         Assert.Contains("MediaStopped handler failed: host bug", await reported.Task.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    static async Task WaitUntilAsync(Func<bool> condition)
     {
         var stopwatch = Stopwatch.StartNew();
         while (!condition())

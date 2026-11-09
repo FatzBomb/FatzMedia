@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// source sample rate, downmixed to at most two channels. Shared by
 /// <see cref="FfmpegAudioReader"/> and <see cref="VideoAudioEngine"/>.
 /// </summary>
-internal static unsafe class FfmpegAudioDecoderSetup
+static unsafe class FfmpegAudioDecoderSetup
 {
     /// <summary>
     /// Opens the decoder and resampler. On success the caller owns <paramref name="codecContext"/>
@@ -25,11 +25,11 @@ internal static unsafe class FfmpegAudioDecoderSetup
         sampleRate = 0;
         channels = 0;
 
-        AVCodec* codec = ffmpeg.avcodec_find_decoder(stream->codecpar->codec_id);
+        var codec = ffmpeg.avcodec_find_decoder(stream->codecpar->codec_id);
         if (codec == null)
             return false;
 
-        AVCodecContext* context = ffmpeg.avcodec_alloc_context3(codec);
+        var context = ffmpeg.avcodec_alloc_context3(codec);
         if (context == null)
             return false;
 
@@ -48,7 +48,7 @@ internal static unsafe class FfmpegAudioDecoderSetup
         return true;
     }
 
-    private static bool TryCreateResampler(AVCodecContext* context, out SwrContext* resampler, out int sampleRate, out int channels)
+    static bool TryCreateResampler(AVCodecContext* context, out SwrContext* resampler, out int sampleRate, out int channels)
     {
         resampler = null;
         channels = 0;
@@ -59,7 +59,7 @@ internal static unsafe class FfmpegAudioDecoderSetup
         var sourceChannels = Math.Max(1, context->ch_layout.nb_channels);
         channels = sourceChannels > 2 ? 2 : sourceChannels;
 
-        AVChannelLayout inputLayout = context->ch_layout;
+        var inputLayout = context->ch_layout;
         if (inputLayout.nb_channels <= 0 || ffmpeg.av_channel_layout_check(&inputLayout) == 0)
             ffmpeg.av_channel_layout_default(&inputLayout, sourceChannels);
 

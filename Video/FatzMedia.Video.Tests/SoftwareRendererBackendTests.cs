@@ -11,7 +11,7 @@ public sealed class SoftwareRendererBackendTests
         var sink = new RecordingFrameSink();
         using var sinkHandle = new MediaPresentationFrameSinkHandle(sink);
         var backend = new SoftwareRendererBackend();
-        MediaPresentationSurfaceDescriptor surface = CreateSurface(sinkHandle, 2, 1);
+        var surface = CreateSurface(sinkHandle, 2, 1);
         var presentedCount = 0;
         backend.FramePresented += (_, _) => presentedCount++;
 
@@ -23,7 +23,7 @@ public sealed class SoftwareRendererBackendTests
         Assert.Equal(1, sink.Height);
         Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, sink.Pixels);
 
-        MediaPresentationSurfaceDescriptor resized = surface.WithSize(1, 2);
+        var resized = surface.WithSize(1, 2);
         Assert.True(backend.ResizeSurface(resized));
         Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty()));
         Assert.Equal(1, sink.Width);
@@ -40,7 +40,7 @@ public sealed class SoftwareRendererBackendTests
         var backend = new SoftwareRendererBackend();
         var invalidNativeSurface = new MediaNativeSurfaceDescriptor(
             MediaNativeSurfaceTypeIds.ManagedBgraFrameSink,
-            [new MediaNativeHandle(MediaNativeHandleIds.FrameSink, (nint)123456)]);
+            [new MediaNativeHandle(MediaNativeHandleIds.FrameSink, 123456)]);
         var invalid = new MediaPresentationSurfaceDescriptor(
             "invalid",
             MediaPresentationSurfaceRole.Primary,
@@ -62,7 +62,7 @@ public sealed class SoftwareRendererBackendTests
         var projectorSink = new RecordingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
-        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 3, 2) with
+        var projector = CreateSurface(projectorHandle, 3, 2) with
         {
             Id = "secondary",
             Role = MediaPresentationSurfaceRole.Projector
@@ -100,7 +100,7 @@ public sealed class SoftwareRendererBackendTests
         var projectorSink = new RecordingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
-        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 3, 2) with
+        var projector = CreateSurface(projectorHandle, 3, 2) with
         {
             Id = "secondary",
             Role = MediaPresentationSurfaceRole.Projector
@@ -139,8 +139,8 @@ public sealed class SoftwareRendererBackendTests
         var projectorSink = new RecordingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
-        MediaPresentationSurfaceDescriptor primary = CreateSurface(primaryHandle, 2, 1);
-        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 2, 1) with
+        var primary = CreateSurface(primaryHandle, 2, 1);
+        var projector = CreateSurface(projectorHandle, 2, 1) with
         {
             Id = "secondary",
             Role = MediaPresentationSurfaceRole.Projector
@@ -174,13 +174,13 @@ public sealed class SoftwareRendererBackendTests
         var projectorSink = new RecordingFrameSink();
         using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
         using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
-        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 8, 2) with
+        var projector = CreateSurface(projectorHandle, 8, 2) with
         {
             Id = "singer",
             Role = MediaPresentationSurfaceRole.Projector
         };
         // A 2x1 red|blue picture, fitted (letterboxed) into a 4x4 and an 8x2 target.
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             BackgroundBgra = new byte[] { 0, 0, 255, 255, 255, 0, 0, 255 },
             BackgroundWidth = 2,
@@ -222,7 +222,7 @@ public sealed class SoftwareRendererBackendTests
         backend.Dispose();
     }
 
-    private static MediaPresentationSurfaceDescriptor CreateSurface(
+    static MediaPresentationSurfaceDescriptor CreateSurface(
         MediaPresentationFrameSinkHandle sinkHandle,
         int width,
         int height) => new(
@@ -232,7 +232,7 @@ public sealed class SoftwareRendererBackendTests
             width,
             height);
 
-    private sealed class RecordingFrameSink : IMediaPresentationFrameSink
+    sealed class RecordingFrameSink : IMediaPresentationFrameSink
     {
         public byte[] Pixels { get; private set; } = [];
         public int Width { get; set; }

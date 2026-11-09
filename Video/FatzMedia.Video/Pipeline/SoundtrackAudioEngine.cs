@@ -1,9 +1,9 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Network;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Pipeline;
 
@@ -33,26 +33,25 @@ namespace FatzMedia.Video.Pipeline;
 /// rest.
 /// </para>
 /// </remarks>
-internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide, IMidiEventReaderSource
+sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide, IMidiEventReaderSource
 {
     internal const double EndToleranceSeconds = 0.05;
     internal const double EndStallSeconds = 1.0;
-    private const double StallPositionEpsilonSeconds = 0.0005;
+    const double StallPositionEpsilonSeconds = 0.0005;
     // Open and Play prebuffer on the caller's thread (the control queue): a stalled download must
     // not hold it (ENG-034).
-    private static readonly TimeSpan NetworkPrebufferWait = TimeSpan.FromMilliseconds(500);
+    static readonly TimeSpan NetworkPrebufferWait = TimeSpan.FromMilliseconds(500);
 
-    private readonly VideoAudioEngine _audio;
-    private readonly PlaybackScheduler _pump = new("SoundtrackDecode");
-    private readonly Lock _gate = new();
-    private int _generation;
-    private int _observedLoopCount;
-    private bool _ended;
-    private bool _loopPlayback;
-    private bool _disposed;
-    private volatile bool _isNetwork;
-    private MediaSourceCapabilities? _networkCapabilities;
-    private NetworkBufferingMonitor? _bufferingMonitor;
+    readonly VideoAudioEngine _audio;
+    readonly PlaybackScheduler _pump = new("SoundtrackDecode");
+    readonly Lock _gate = new();
+    int _generation;
+    int _observedLoopCount;
+    bool _ended;
+    bool _disposed;
+    volatile bool _isNetwork;
+    MediaSourceCapabilities? _networkCapabilities;
+    NetworkBufferingMonitor? _bufferingMonitor;
 
     public SoundtrackAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
     {
@@ -92,10 +91,10 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     /// <summary>Gets or sets whether the soundtrack loops. A network soundtrack never loops.</summary>
     public bool LoopPlayback
     {
-        get => Volatile.Read(ref _loopPlayback) && !_isNetwork;
+        get => Volatile.Read(ref field) && !_isNetwork;
         set
         {
-            Volatile.Write(ref _loopPlayback, value);
+            Volatile.Write(ref field, value);
             _audio.LoopPlayback = LoopPlayback;
         }
     }
@@ -136,9 +135,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         if (!OpenCore(() => _audio.OpenNetwork(url, options), network: true))
             return false;
 
-        NetworkVideoProbe probe = _audio.GetNetworkProbe();
+        var probe = _audio.GetNetworkProbe();
         Volatile.Write(ref _networkCapabilities, audioSource ? NetworkAudioPolicy.Resolve(probe) : NetworkVideoPolicy.Resolve(probe));
-        MediaSourceCapabilities? opened = _networkCapabilities;
+        var opened = _networkCapabilities;
         // The soundtrack's own cursor has a read-ahead too (slice 2): buffering starts when its
         // queue runs dry and ends at the resume threshold, as for network video.
         _bufferingMonitor = new NetworkBufferingMonitor(
@@ -158,10 +157,10 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         return true;
     }
 
-    private bool IsCurrent(MediaSourceCapabilities? opened) =>
+    bool IsCurrent(MediaSourceCapabilities? opened) =>
         ReferenceEquals(Volatile.Read(ref _networkCapabilities), opened) && _audio.IsOpen;
 
-    private bool IsEnded
+    bool IsEnded
     {
         get
         {
@@ -171,15 +170,15 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     }
 
     /// <summary>Raises the in-stream title playback has reached, if it changed (from the monitor's timer thread).</summary>
-    private void PublishStreamMetadata(MediaSourceCapabilities? opened)
+    void PublishStreamMetadata(MediaSourceCapabilities? opened)
     {
-        if (!IsCurrent(opened) || !_audio.TryTakeStreamMetadata(out StreamMetadata metadata) || !IsCurrent(opened))
+        if (!IsCurrent(opened) || !_audio.TryTakeStreamMetadata(out var metadata) || !IsCurrent(opened))
             return;
 
         StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(metadata.Title, metadata.Artist, metadata.RawTitle));
     }
 
-    private bool OpenCore(Func<bool> open, bool network = false)
+    bool OpenCore(Func<bool> open, bool network = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         AbortNetworkRead();
@@ -196,7 +195,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         return true;
     }
 
-    private void Prebuffer()
+    void Prebuffer()
     {
         using (_isNetwork ? NetworkReadAhead.WaitAtMost(NetworkPrebufferWait) : default)
             _ = _audio.PrebufferAudio();
@@ -237,7 +236,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         return _audio.Stop();
     }
 
-    private void Seek(double seconds)
+    void Seek(double seconds)
     {
         ResetEndTracking();
         // The pump may be waiting for a network packet while holding the engine's I/O gate: give
@@ -259,7 +258,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     /// A network read can block for the read timeout: retire the pump's generation (so the aborted
     /// read is not taken for the end), then abort the read before joining the pump.
     /// </summary>
-    private void AbortNetworkRead()
+    void AbortNetworkRead()
     {
         lock (_gate)
             _generation++;
@@ -267,7 +266,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         StopNetworkMonitoring();
     }
 
-    private void StopNetworkMonitoring()
+    void StopNetworkMonitoring()
     {
         _bufferingMonitor?.Dispose();
         _bufferingMonitor = null;
@@ -310,7 +309,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         _audio.Dispose();
     }
 
-    private void StartPump()
+    void StartPump()
     {
         int generation;
         lock (_gate)
@@ -318,14 +317,14 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         _pump.Start(token => PumpLoop(generation, token));
     }
 
-    private void StopPump()
+    void StopPump()
     {
         lock (_gate)
             _generation++;
         _pump.StopAndWait();
     }
 
-    private void ResetEndTracking()
+    void ResetEndTracking()
     {
         lock (_gate)
         {
@@ -334,11 +333,11 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         }
     }
 
-    private void PumpLoop(int generation, CancellationToken cancellationToken)
+    void PumpLoop(int generation, CancellationToken cancellationToken)
     {
         // A network read waits for the read-ahead's packets (so a stall is not taken for the end
         // below), but Pause, Stop and Close cancel the wait instead of waiting for the network.
-        using NetworkReadAhead.WaitScope waits = NetworkReadAhead.CancelWaitsWith(cancellationToken);
+        using var waits = NetworkReadAhead.CancelWaitsWith(cancellationToken);
         var lastPosition = double.NaN;
         var stallStarted = 0L;
         while (!cancellationToken.IsCancellationRequested && IsCurrent(generation))
@@ -383,13 +382,13 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     internal static bool HasReachedEnd(double position, double duration, double stalledSeconds) =>
         (duration > 0 && position >= duration - EndToleranceSeconds) || stalledSeconds >= EndStallSeconds;
 
-    private bool IsCurrent(int generation)
+    bool IsCurrent(int generation)
     {
         lock (_gate)
             return generation == _generation;
     }
 
-    private bool ReportLoopWraps(int generation)
+    bool ReportLoopWraps(int generation)
     {
         var completed = _audio.CompletedLoopCount;
         lock (_gate)
@@ -404,7 +403,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         return true;
     }
 
-    private void CompleteAtEnd(int generation)
+    void CompleteAtEnd(int generation)
     {
         lock (_gate)
         {
@@ -420,13 +419,13 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnAudioStateChanged(object? sender, AudioEngineState state) => StateChanged?.Invoke(this, state);
+    void OnAudioStateChanged(object? sender, AudioEngineState state) => StateChanged?.Invoke(this, state);
 
-    private void OnAudioOpened(object? sender, EventArgs e) => Opened?.Invoke(this, e);
+    void OnAudioOpened(object? sender, EventArgs e) => Opened?.Invoke(this, e);
 
-    private void OnAudioClosed(object? sender, EventArgs e) => Closed?.Invoke(this, e);
+    void OnAudioClosed(object? sender, EventArgs e) => Closed?.Invoke(this, e);
 
-    private void OnAudioPositionChanged(object? sender, double position) => PositionChanged?.Invoke(this, position);
+    void OnAudioPositionChanged(object? sender, double position) => PositionChanged?.Invoke(this, position);
 
-    private void OnAudioNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
+    void OnAudioNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
 }

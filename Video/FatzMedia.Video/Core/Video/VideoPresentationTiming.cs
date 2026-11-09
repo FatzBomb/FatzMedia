@@ -1,8 +1,8 @@
 namespace FatzMedia.Video.Core.Video;
 
-internal static class VideoPresentationTiming
+static class VideoPresentationTiming
 {
-    private const double DefaultFrameDurationSeconds = 1.0 / 30.0;
+    const double DefaultFrameDurationSeconds = 1.0 / 30.0;
 
     public static double GetPrimaryFrameLeadTolerance(double fps) => GetFrameLeadTolerance(fps, leadFraction: 0.25, minSeconds: 0.004, maxSeconds: 0.012);
 
@@ -20,7 +20,7 @@ internal static class VideoPresentationTiming
             ? DefaultFrameDurationSeconds
             : Math.Clamp(1.0 / fps, 1.0 / 120.0, 1.0 / 15.0);
 
-    private static double GetFrameLeadTolerance(double fps, double leadFraction, double minSeconds, double maxSeconds)
+    static double GetFrameLeadTolerance(double fps, double leadFraction, double minSeconds, double maxSeconds)
     {
         if (!double.IsFinite(fps) || fps <= 0)
             return DefaultFrameDurationSeconds;

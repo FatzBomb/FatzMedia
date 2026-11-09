@@ -1,8 +1,6 @@
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
-using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
-using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Pipeline;
 
@@ -14,13 +12,13 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class EmbeddedSubtitleScanTests : IDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
-    private static readonly EmbeddedSubtitleTrack[] EmbeddedTracks =
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    static readonly EmbeddedSubtitleTrack[] EmbeddedTracks =
     [
         new(2, "SUBRIP", [new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "Embedded")]),
     ];
 
-    private readonly string _sidecar = Path.Combine(Path.GetTempPath(), $"fatzbomb-scan-{Guid.NewGuid():N}.srt");
+    readonly string _sidecar = Path.Combine(Path.GetTempPath(), $"fatzbomb-scan-{Guid.NewGuid():N}.srt");
 
     public EmbeddedSubtitleScanTests() =>
         File.WriteAllText(_sidecar, "1\n00:00:01,000 --> 00:00:02,000\nSidecar\n");
@@ -31,7 +29,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public async Task EmbeddedTracksArrivingLater_AreAddedAndSelected_WithoutBlockingTheOpen()
     {
         var decoder = new GatedDecoder(EmbeddedTracks);
-        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        using var coordinator = CreateCoordinator(decoder.Decode);
         var changes = 0;
         coordinator.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref changes);
 
@@ -42,7 +40,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         decoder.Release();
         await coordinator.EmbeddedSubtitleScan.WaitAsync(Timeout);
 
-        SubtitleTrack track = Assert.Single(coordinator.SubtitleTracks);
+        var track = Assert.Single(coordinator.SubtitleTracks);
         Assert.Equal("embedded:2", track.Id);
         Assert.Equal("embedded:2", coordinator.SelectedSubtitleTrackId);
         Assert.Equal(1, Volatile.Read(ref changes));
@@ -52,7 +50,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public async Task EmbeddedTracksArrivingLater_TakePrecedenceOverTheAutoSelectedSidecar()
     {
         var decoder = new GatedDecoder(EmbeddedTracks);
-        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        using var coordinator = CreateCoordinator(decoder.Decode);
 
         Assert.True(coordinator.OpenVideo("movie.mkv", _sidecar));
         Assert.Equal("sidecar", coordinator.SelectedSubtitleTrackId);
@@ -70,7 +68,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public async Task EmbeddedTracksArrivingLater_NeverOverrideTheTrackTheUserChose(string? chosen)
     {
         var decoder = new GatedDecoder(EmbeddedTracks);
-        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv", _sidecar));
 
         Assert.True(coordinator.SelectSubtitleTrack(chosen));
@@ -91,7 +89,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
             new(3, "ASS", [new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "Second")]),
         ];
         var decoder = new GatedDecoder(tracks);
-        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv"));
 
         Assert.False(coordinator.SelectSubtitleTrack("embedded:3"));
@@ -108,13 +106,13 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         // already past its last packet would.
         var first = new GatedDecoder(EmbeddedTracks, honourCancellation: false);
         var second = new GatedDecoder([]);
-        using PlaybackCoordinator coordinator = CreateCoordinator((path, token) =>
+        using var coordinator = CreateCoordinator((path, token) =>
             path == "first.mkv" ? first.Decode(path, token) : second.Decode(path, token));
         var changes = 0;
         coordinator.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref changes);
 
         Assert.True(coordinator.OpenVideo("first.mkv"));
-        Task firstScan = coordinator.EmbeddedSubtitleScan;
+        var firstScan = coordinator.EmbeddedSubtitleScan;
         Assert.True(first.Started.Wait(Timeout));
 
         Assert.True(coordinator.OpenVideo("second.mkv"));
@@ -134,7 +132,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public async Task Close_CancelsScan_AndACancelledDecoderEndsQuietly()
     {
         var decoder = new GatedDecoder(EmbeddedTracks);
-        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        using var coordinator = CreateCoordinator(decoder.Decode);
         Assert.True(coordinator.OpenVideo("movie.mkv"));
         Assert.True(decoder.Started.Wait(Timeout));
 
@@ -166,7 +164,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         engine.RaiseSubtitleTracksChanged();
         Volatile.Write(ref raising, false);
 
-        (SubtitleTracksChangedEventArgs args, var afterLoaded, var inline) = await changed.Task.WaitAsync(Timeout);
+        (var args, var afterLoaded, var inline) = await changed.Task.WaitAsync(Timeout);
         Assert.True(afterLoaded, "SubtitleTracksChanged arrived before MediaLoaded");
         Assert.False(inline, "SubtitleTracksChanged was raised on the engine's thread, inside its raise call");
         Assert.Equal("embedded:2", Assert.Single(args.Tracks).Id);
@@ -190,7 +188,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         Assert.Equal(0, Volatile.Read(ref raised));
     }
 
-    private static PlaybackCoordinator CreateCoordinator(Func<string, CancellationToken, IReadOnlyList<EmbeddedSubtitleTrack>> decoder)
+    static PlaybackCoordinator CreateCoordinator(Func<string, CancellationToken, IReadOnlyList<EmbeddedSubtitleTrack>> decoder)
     {
         var configuration = MediaPlayerConfiguration.Auto;
         Assert.Equal(MediaPlayerMode.Full, configuration.Mode);
@@ -206,9 +204,9 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     }
 
     /// <summary>A decoder that blocks until released, then returns its tracks or, when cancelled, throws.</summary>
-    private sealed class GatedDecoder(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool honourCancellation = true)
+    sealed class GatedDecoder(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool honourCancellation = true)
     {
-        private readonly ManualResetEventSlim _release = new();
+        readonly ManualResetEventSlim _release = new();
 
         public ManualResetEventSlim Started { get; } = new();
 
@@ -234,20 +232,20 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         }
     }
 
-    private sealed class OpenVideoFactory : IVideoEngineFactory
+    sealed class OpenVideoFactory : IVideoEngineFactory
     {
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) =>
             new TestVideoEngine { IsOpen = false };
     }
 
-    private sealed class NoMidiLyrics : IMidiLyricProvider
+    sealed class NoMidiLyrics : IMidiLyricProvider
     {
         public bool IsMidiFile(string path) => false;
 
         public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string sourcePath, TimeSpan transitionDuration) => null;
     }
 
-    private sealed class ScanTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class ScanTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 
@@ -260,9 +258,9 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
             new Provider(engine);
     }
 
-    private sealed class Provider(TestMediaEngine engine) : IServiceProvider
+    sealed class Provider(TestMediaEngine engine) : IServiceProvider
     {
-        private readonly IArchiveService _archives = new NotSupportedArchiveService();
+        readonly IArchiveService _archives = new NotSupportedArchiveService();
 
         public object? GetService(Type serviceType) =>
             serviceType == typeof(IMediaEngine) ? engine

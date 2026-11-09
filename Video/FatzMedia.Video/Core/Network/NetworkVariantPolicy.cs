@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Core.Network;
 /// <param name="Bandwidth">The variant's advertised bandwidth in bits/s (HLS <c>BANDWIDTH</c>, DASH <c>bandwidth</c>), or 0 when unknown.</param>
 /// <param name="Width">Coded width in pixels, or 0 when unknown.</param>
 /// <param name="Height">Coded height in pixels, or 0 when unknown.</param>
-internal readonly record struct NetworkVariantCandidate(int StreamIndex, long Bandwidth, int Width, int Height);
+readonly record struct NetworkVariantCandidate(int StreamIndex, long Bandwidth, int Width, int Height);
 
 /// <summary>
 /// Picks the one video variant to play from an adaptive network source. FFmpeg's HLS and DASH
@@ -19,7 +19,7 @@ internal readonly record struct NetworkVariantCandidate(int StreamIndex, long Ba
 /// <item>a variant with an unknown height counts as within the cap.</item>
 /// </list>
 /// </summary>
-internal static class NetworkVariantPolicy
+static class NetworkVariantPolicy
 {
     /// <summary>The height cap: 1080p. The engine does not know the display size when it opens.</summary>
     public const int DefaultMaxHeight = 1080;
@@ -35,7 +35,7 @@ internal static class NetworkVariantPolicy
             return -1;
 
         NetworkVariantCandidate? best = null;
-        foreach (NetworkVariantCandidate candidate in candidates)
+        foreach (var candidate in candidates)
         {
             if (candidate.Height <= maxHeight && (best is null || IsBetterWithinCap(candidate, best.Value)))
                 best = candidate;
@@ -45,8 +45,8 @@ internal static class NetworkVariantPolicy
             return best.Value.StreamIndex;
 
         // Every variant is above the cap: take the smallest picture, then the lower bandwidth.
-        NetworkVariantCandidate smallest = candidates[0];
-        foreach (NetworkVariantCandidate candidate in candidates)
+        var smallest = candidates[0];
+        foreach (var candidate in candidates)
         {
             if (candidate.Height < smallest.Height
                 || (candidate.Height == smallest.Height && candidate.Bandwidth < smallest.Bandwidth))
@@ -58,7 +58,7 @@ internal static class NetworkVariantPolicy
         return smallest.StreamIndex;
     }
 
-    private static bool IsBetterWithinCap(NetworkVariantCandidate candidate, NetworkVariantCandidate best) =>
+    static bool IsBetterWithinCap(NetworkVariantCandidate candidate, NetworkVariantCandidate best) =>
         candidate.Bandwidth != best.Bandwidth
             ? candidate.Bandwidth > best.Bandwidth
             : (long)candidate.Width * candidate.Height > (long)best.Width * best.Height;

@@ -5,10 +5,10 @@ using System.Windows.Media;
 
 namespace FatzMedia.Video.Wpf;
 
-internal sealed class MediaOverlayWindow : Window
+sealed class MediaOverlayWindow : Window
 {
-    private readonly ContentPresenter _contentPresenter = new();
-    private bool _hitTestVisible;
+    readonly ContentPresenter _contentPresenter = new();
+    bool _hitTestVisible;
 
     public MediaOverlayWindow()
     {
@@ -37,7 +37,7 @@ internal sealed class MediaOverlayWindow : Window
         if (!owner.IsLoaded || owner.ActualWidth <= 0 || owner.ActualHeight <= 0)
             return;
 
-        Point topLeft = owner.PointToScreen(new Point(0, 0));
+        var topLeft = owner.PointToScreen(new Point(0, 0));
         var source = PresentationSource.FromVisual(owner);
         if (source?.CompositionTarget != null)
             topLeft = source.CompositionTarget.TransformFromDevice.Transform(topLeft);
@@ -55,7 +55,7 @@ internal sealed class MediaOverlayWindow : Window
         ApplyHitTestStyle();
     }
 
-    private void ApplyHitTestStyle()
+    void ApplyHitTestStyle()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero)

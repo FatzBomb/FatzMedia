@@ -4,15 +4,15 @@ namespace FatzMedia.Video.Tests;
 
 public class AudioOutputRecoveryTrackerTests
 {
-    private static readonly TimeSpan T0 = TimeSpan.FromSeconds(100);
+    static readonly TimeSpan T0 = TimeSpan.FromSeconds(100);
 
-    private static AudioOutputObservation Healthy(int playing = 1) => new(BassOutputStatus.Started, playing, 0);
+    static AudioOutputObservation Healthy(int playing = 1) => new(BassOutputStatus.Started, playing, 0);
 
-    private static AudioOutputObservation OutputStopped(int playing = 1, int parked = 1) => new(BassOutputStatus.Stopped, playing, parked);
+    static AudioOutputObservation OutputStopped(int playing = 1, int parked = 1) => new(BassOutputStatus.Stopped, playing, parked);
 
-    private static AudioOutputObservation Parked(BassOutputStatus output = BassOutputStatus.Started, int playing = 1, int parked = 1) => new(output, playing, parked);
+    static AudioOutputObservation Parked(BassOutputStatus output = BassOutputStatus.Started, int playing = 1, int parked = 1) => new(output, playing, parked);
 
-    private static AudioOutputRecoveryTracker LostTracker()
+    static AudioOutputRecoveryTracker LostTracker()
     {
         var tracker = new AudioOutputRecoveryTracker();
         Assert.Equal(AudioOutputRecoveryAction.ReportLost, tracker.Decide(OutputStopped(), T0));
@@ -66,7 +66,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_AfterReportLost_StartsOutputImmediately()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
 
         Assert.True(tracker.OutageReported);
         Assert.Equal(AudioOutputRecoveryAction.Start, tracker.Decide(OutputStopped(), T0));
@@ -75,12 +75,12 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_LossIsReportedOncePerOutage()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
 
         for (var second = 0; second < 5; second++)
         {
-            TimeSpan now = T0 + TimeSpan.FromSeconds(second);
-            AudioOutputRecoveryAction action = tracker.Decide(OutputStopped(), now);
+            var now = T0 + TimeSpan.FromSeconds(second);
+            var action = tracker.Decide(OutputStopped(), now);
             Assert.NotEqual(AudioOutputRecoveryAction.ReportLost, action);
             if (action != AudioOutputRecoveryAction.None)
                 tracker.Record(action, succeeded: false, now);
@@ -90,7 +90,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_RetriesAboutOnceASecond()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: false, T0);
 
         Assert.Equal(AudioOutputRecoveryAction.None, tracker.Decide(OutputStopped(), T0 + TimeSpan.FromMilliseconds(500)));
@@ -101,7 +101,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_FailedStart_ReinitializesNext()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: false, T0);
 
         Assert.Equal(AudioOutputRecoveryAction.Reinit, tracker.Decide(OutputStopped(), T0 + TimeSpan.FromSeconds(1)));
@@ -110,7 +110,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_FailedReinit_AlternatesWithStart()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: false, T0);
         tracker.Record(AudioOutputRecoveryAction.Reinit, succeeded: false, T0 + TimeSpan.FromSeconds(1));
 
@@ -120,7 +120,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_OutputBackWithChannelsParked_ResumesChannels()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: true, T0);
 
         Assert.Equal(AudioOutputRecoveryAction.ResumeChannels, tracker.Decide(Parked(), T0));
@@ -129,7 +129,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_ResumeThatLeavesChannelsParked_ReinitializesAtNextRetry()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: true, T0);
         tracker.Record(AudioOutputRecoveryAction.ResumeChannels, succeeded: false, T0);
 
@@ -140,7 +140,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_AfterReinit_ResumesParkedChannelsAgain()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: true, T0);
         tracker.Record(AudioOutputRecoveryAction.ResumeChannels, succeeded: false, T0);
         tracker.Record(AudioOutputRecoveryAction.Reinit, succeeded: true, T0 + TimeSpan.FromSeconds(1));
@@ -151,7 +151,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_HealthyAfterOutage_ReportsRecoveredOnce()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: true, T0);
 
         Assert.Equal(AudioOutputRecoveryAction.ReportRecovered, tracker.Decide(Healthy(), T0));
@@ -164,7 +164,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_SecondOutage_IsReportedAgain()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.ReportRecovered, true, T0);
 
         Assert.Equal(AudioOutputRecoveryAction.ReportLost, tracker.Decide(OutputStopped(), T0 + TimeSpan.FromSeconds(10)));
@@ -173,7 +173,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_SecondOutage_StartsWithPlainRestart()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: false, T0);
         tracker.Record(AudioOutputRecoveryAction.ReportRecovered, true, T0 + TimeSpan.FromSeconds(1));
         tracker.Record(AudioOutputRecoveryAction.ReportLost, true, T0 + TimeSpan.FromSeconds(2));
@@ -184,7 +184,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Decide_OutageWithEveryPlayerPaused_StopsRetrying()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
 
         Assert.Equal(AudioOutputRecoveryAction.None, tracker.Decide(new AudioOutputObservation(BassOutputStatus.Stopped, 0, 0), T0 + TimeSpan.FromSeconds(5)));
     }
@@ -204,7 +204,7 @@ public class AudioOutputRecoveryTrackerTests
     [Fact]
     public void Reset_ForgetsTheOutage()
     {
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         tracker.Record(AudioOutputRecoveryAction.Start, succeeded: false, T0);
 
         tracker.Reset();
@@ -223,16 +223,16 @@ public class AudioOutputRecoveryTrackerTests
     {
         // Another application holds the device exclusively for three seconds: BASS_Start fails,
         // the reinit fails while the device is busy, and the next reinit brings it back.
-        AudioOutputRecoveryTracker tracker = LostTracker();
+        var tracker = LostTracker();
         var outputUp = false;
         var steps = new List<AudioOutputRecoveryAction>();
         for (var second = 0; second <= 4 && tracker.OutageReported; second++)
         {
-            TimeSpan now = T0 + TimeSpan.FromSeconds(second);
+            var now = T0 + TimeSpan.FromSeconds(second);
             for (var step = 0; step < 8; step++)
             {
-                AudioOutputObservation observation = outputUp ? Healthy() : OutputStopped();
-                AudioOutputRecoveryAction action = tracker.Decide(observation, now);
+                var observation = outputUp ? Healthy() : OutputStopped();
+                var action = tracker.Decide(observation, now);
                 if (action == AudioOutputRecoveryAction.None)
                     break;
 

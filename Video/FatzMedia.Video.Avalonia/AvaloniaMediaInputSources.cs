@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 
@@ -16,18 +15,16 @@ public static class AvaloniaMediaInputSources
     public static unsafe MediaInputSource FromBitmap(Bitmap bitmap, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
-        PixelSize size = bitmap.PixelSize;
+        var size = bitmap.PixelSize;
         var stride = size.Width * 4;
         var pixels = new byte[stride * size.Height];
         using (var converted = new WriteableBitmap(size, bitmap.Dpi, PixelFormat.Bgra8888, AlphaFormat.Unpremul))
         {
-            using (ILockedFramebuffer framebuffer = converted.Lock())
-            {
-                bitmap.CopyPixels(framebuffer);
-                var source = new ReadOnlySpan<byte>((void*)framebuffer.Address, framebuffer.RowBytes * size.Height);
-                for (var y = 0; y < size.Height; y++)
-                    source.Slice(y * framebuffer.RowBytes, stride).CopyTo(pixels.AsSpan(y * stride, stride));
-            }
+            using var framebuffer = converted.Lock();
+            bitmap.CopyPixels(framebuffer);
+            var source = new ReadOnlySpan<byte>((void*)framebuffer.Address, framebuffer.RowBytes * size.Height);
+            for (var y = 0; y < size.Height; y++)
+                source.Slice(y * framebuffer.RowBytes, stride).CopyTo(pixels.AsSpan(y * stride, stride));
         }
 
         return MediaInputSource.FromOwnedBgra32Image(pixels, size.Width, size.Height, stride, displayName ?? "Avalonia bitmap");

@@ -1,8 +1,8 @@
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Direct3D11;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
-using FatzMedia.Video.Direct3D11;
 using FatzMedia.Video.Software;
 using FatzMedia.Video.Vulkan;
 
@@ -21,7 +21,7 @@ namespace FatzMedia.Video.Sample.Player.Configuration;
 /// Auto device being the GPU, then WARP. Each player gets its own factory
 /// (<see cref="CreateFactory"/>) of the chosen kind; nothing is shared between players.
 /// </remarks>
-internal sealed class PlayerRendererSelection
+sealed class PlayerRendererSelection
 {
     /// <summary>
     /// The renderers the Windows players' toolbar offers (the Avalonia player's toolbar lists its
@@ -37,10 +37,10 @@ internal sealed class PlayerRendererSelection
         (PlayerRendererRequest.Direct3D11, "Direct3D11 (GPU, else WARP)"),
     ];
 
-    private readonly Func<IMediaPresentationCoordinatorFactory> _createFactory;
-    private readonly List<(MediaDiagnosticLevel Level, string Message)> _logLines;
+    readonly Func<IMediaPresentationCoordinatorFactory> _createFactory;
+    readonly List<(MediaDiagnosticLevel Level, string Message)> _logLines;
 
-    private PlayerRendererSelection(
+    PlayerRendererSelection(
         Func<IMediaPresentationCoordinatorFactory> createFactory,
         bool usesFrameSinkRenderer,
         bool usesSoftwareDecoding,
@@ -82,7 +82,7 @@ internal sealed class PlayerRendererSelection
     public PlayerRendererInfo ToRendererInfo(PlayerStartupOptions options, IEnumerable<(MediaDiagnosticLevel Level, string Message)>? extraLines = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        (VideoDecodingMethod decoding, var forced) = options.ApplyDecoding(
+        (var decoding, var forced) = options.ApplyDecoding(
             UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
         List<(MediaDiagnosticLevel Level, string Message)> lines = [.. _logLines];
         if (forced is not null)
@@ -137,7 +137,7 @@ internal sealed class PlayerRendererSelection
 
             case PlayerRendererRequest.Vulkan:
                 {
-                    MediaPresentationAvailability vulkan = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
+                    var vulkan = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
                     if (vulkan.IsAvailable)
                     {
                         // Stage 045A slice 3: hardware decoding (Vulkan Video on the renderer's
@@ -151,7 +151,7 @@ internal sealed class PlayerRendererSelection
                             [(MediaDiagnosticLevel.Info, $"Vulkan forced (--renderer=vulkan): {vulkan.Detail}; shown through frame sinks, with {decoding}.")]);
                     }
 
-                    PlayerRendererSelection auto = Resolve(PlayerRendererRequest.Auto, hdrOutput);
+                    var auto = Resolve(PlayerRendererRequest.Auto, hdrOutput);
                     auto.AddLogLine(MediaDiagnosticLevel.Warning, $"--renderer=vulkan is not usable here ({vulkan.Detail}); using auto.");
                     return auto;
                 }
@@ -161,7 +161,7 @@ internal sealed class PlayerRendererSelection
                     var chain = new FallbackPresentationCoordinatorFactory(
                         Direct3D11(Direct3D11DeviceSelection.Auto)(),
                         new SoftwarePresentationCoordinatorFactory());
-                    MediaPresentationAvailability selected = chain.SelectedAvailability;
+                    var selected = chain.SelectedAvailability;
                     var lines = chain.Selection
                         .Select(result => (
                             result.IsSelected
@@ -169,7 +169,7 @@ internal sealed class PlayerRendererSelection
                                 : MediaDiagnosticLevel.Warning,
                             $"{result.BackendName}: {(result.IsAvailable ? "available" : "unavailable")} - {result.Detail}{(result.IsSelected ? " (selected)" : "")}"))
                         .ToList();
-                    Func<IMediaPresentationCoordinatorFactory> create = chain.Selected is SoftwarePresentationCoordinatorFactory
+                    var create = chain.Selected is SoftwarePresentationCoordinatorFactory
                         ? static () => new SoftwarePresentationCoordinatorFactory()
                         : Direct3D11(Direct3D11DeviceSelection.Auto);
                     return new PlayerRendererSelection(

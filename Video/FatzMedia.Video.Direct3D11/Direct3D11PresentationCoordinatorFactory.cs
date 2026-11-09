@@ -9,8 +9,8 @@ namespace FatzMedia.Video.Direct3D11;
 
 public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
-    private readonly Direct3D11PresentationOptions _options;
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly Direct3D11PresentationOptions _options;
 
     public Direct3D11PresentationCoordinatorFactory(IPrecisionWaiterFactory precisionWaiterFactory)
         : this(precisionWaiterFactory, new Direct3D11PresentationOptions())

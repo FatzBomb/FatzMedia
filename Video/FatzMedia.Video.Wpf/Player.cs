@@ -1,6 +1,6 @@
+using System.Windows.Media;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Configuration;
-using System.Windows.Media;
 
 namespace FatzMedia.Video.Wpf;
 
@@ -67,5 +67,5 @@ public sealed class Player : PlayerCore
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
-    private static MediaInputSource ToMediaInputSource(ImageSource source) => WpfMediaInputSources.FromImageSource(source);
+    static MediaInputSource ToMediaInputSource(ImageSource source) => WpfMediaInputSources.FromImageSource(source);
 }

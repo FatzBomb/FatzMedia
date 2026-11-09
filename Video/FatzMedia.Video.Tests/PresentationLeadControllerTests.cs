@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 041A: the adaptive presentation-lead rules extracted from VideoPipeline.</summary>
 public sealed class PresentationLeadControllerTests
 {
-    private const double Refresh60Ms = 1000.0 / 60;
+    const double Refresh60Ms = 1000.0 / 60;
 
     [Theory]
     [InlineData(0.75, 0.75)]

@@ -9,9 +9,9 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// VorticeD3D11Renderer a thinner composition root while preserving the existing public
 /// methods used by higher-level host code.
 /// </summary>
-internal sealed class D3D11PresentationState
+sealed class D3D11PresentationState
 {
-    private int _nativeLiveResizeInProgress;
+    int _nativeLiveResizeInProgress;
 
     public MediaCompositionStretchMode NativePresentationStretch { get; private set; } = MediaCompositionStretchMode.UniformFit;
 

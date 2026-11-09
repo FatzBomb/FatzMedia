@@ -1,13 +1,13 @@
-using FatzMedia.Video.Core.Abstractions;
-using ManagedBass;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Abstractions;
+using ManagedBass;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>An audio engine whose BASS channel the output watchdog looks after.</summary>
-internal interface IBassOutputClient
+interface IBassOutputClient
 {
     /// <summary>The engine's play handle while it intends to be playing; 0 otherwise.</summary>
     int PlayingHandle { get; }
@@ -39,7 +39,7 @@ internal interface IBassOutputClient
 /// while holding either lock.
 /// </para>
 /// </remarks>
-internal static class BassOutputWatchdog
+static class BassOutputWatchdog
 {
     /// <summary><c>BASS_ACTIVE_PAUSED_DEVICE</c>: not in ManagedBass 4.0.2's <see cref="PlaybackState"/>.</summary>
     internal const int ActivePausedDevice = 4;
@@ -49,21 +49,21 @@ internal static class BassOutputWatchdog
     internal const string OutputLostMessage = "Audio output unavailable (another application may be using the device exclusively); retrying";
 
     /// <summary><c>BASS_ERROR_REINIT</c>: not in ManagedBass 4.0.2's <see cref="Errors"/>.</summary>
-    private const int ErrorReinit = 11;
+    const int ErrorReinit = 11;
 
     /// <summary><c>BASS_DEVICE_REINIT</c>: not in ManagedBass 4.0.2's <see cref="DeviceInitFlags"/>.</summary>
-    private const DeviceInitFlags DeviceReinit = (DeviceInitFlags)128;
+    const DeviceInitFlags DeviceReinit = (DeviceInitFlags)128;
 
-    private const int FallbackSampleRate = 44100;
-    private const int MaxStepsPerTick = 8;
+    const int FallbackSampleRate = 44100;
+    const int MaxStepsPerTick = 8;
 
-    private static readonly Lock Gate = new();
-    private static readonly Lock RestoreGate = new();
-    private static readonly HashSet<IBassOutputClient> Clients = new(ReferenceEqualityComparer.Instance);
-    private static readonly Dictionary<int, DeviceState> Devices = [];
-    private static readonly long StartTimestamp = Stopwatch.GetTimestamp();
-    private static Timer? _timer;
-    private static int _ticking;
+    static readonly Lock Gate = new();
+    static readonly Lock RestoreGate = new();
+    static readonly HashSet<IBassOutputClient> Clients = new(ReferenceEqualityComparer.Instance);
+    static readonly Dictionary<int, DeviceState> Devices = [];
+    static readonly long StartTimestamp = Stopwatch.GetTimestamp();
+    static Timer? _timer;
+    static int _ticking;
 
     /// <summary>
     /// Raised (process-wide) when a device's output becomes unavailable or available again.
@@ -71,7 +71,7 @@ internal static class BassOutputWatchdog
     /// </summary>
     internal static event Action<AudioDeviceChangeInfo>? OutputAvailabilityChanged;
 
-    private static TimeSpan Now => Stopwatch.GetElapsedTime(StartTimestamp);
+    static TimeSpan Now => Stopwatch.GetElapsedTime(StartTimestamp);
 
     /// <summary>Watches the client while it intends to be playing.</summary>
     public static void Register(IBassOutputClient client)
@@ -102,7 +102,7 @@ internal static class BassOutputWatchdog
             // Nothing is playing any more: stop retrying.
             timer = _timer;
             _timer = null;
-            foreach (DeviceState device in Devices.Values)
+            foreach (var device in Devices.Values)
                 abandonedOutage |= device.Tracker.OutageReported;
             Devices.Clear();
         }
@@ -166,7 +166,7 @@ internal static class BassOutputWatchdog
         ? $"Audio output unavailable (another application may be using the device exclusively); playback could not start ({error})."
         : $"Audio playback could not start ({error}).";
 
-    private static void Tick()
+    static void Tick()
     {
         if (Interlocked.Exchange(ref _ticking, 1) == 1)
             return;
@@ -178,7 +178,7 @@ internal static class BassOutputWatchdog
                 clients = [.. Clients];
 
             Dictionary<int, List<Entry>> byDevice = [];
-            foreach (IBassOutputClient client in clients)
+            foreach (var client in clients)
             {
                 var handle = client.PlayingHandle;
                 if (handle == 0)
@@ -188,12 +188,12 @@ internal static class BassOutputWatchdog
                 if (device <= 0)
                     continue;
 
-                if (!byDevice.TryGetValue(device, out List<Entry>? entries))
+                if (!byDevice.TryGetValue(device, out var entries))
                     byDevice[device] = entries = [];
                 entries.Add(new Entry(client, handle));
             }
 
-            foreach ((var device, List<Entry> entries) in byDevice)
+            foreach ((var device, var entries) in byDevice)
                 RecoverDevice(device, entries);
         }
         catch (Exception ex)
@@ -207,7 +207,7 @@ internal static class BassOutputWatchdog
         }
     }
 
-    private static void RecoverDevice(int device, List<Entry> entries)
+    static void RecoverDevice(int device, List<Entry> entries)
     {
         DeviceState state;
         lock (Gate)
@@ -215,7 +215,7 @@ internal static class BassOutputWatchdog
 
         for (var step = 0; step < MaxStepsPerTick; step++)
         {
-            AudioOutputObservation observation = Observe(device, entries, state);
+            var observation = Observe(device, entries, state);
             AudioOutputRecoveryAction action;
             lock (Gate)
                 action = state.Tracker.Decide(observation, Now);
@@ -229,7 +229,7 @@ internal static class BassOutputWatchdog
         }
     }
 
-    private static bool Execute(AudioOutputRecoveryAction action, int device, List<Entry> entries, DeviceState state)
+    static bool Execute(AudioOutputRecoveryAction action, int device, List<Entry> entries, DeviceState state)
     {
         switch (action)
         {
@@ -247,7 +247,7 @@ internal static class BassOutputWatchdog
 
             case AudioOutputRecoveryAction.ResumeChannels:
                 var resumed = true;
-                foreach (Entry entry in entries)
+                foreach (var entry in entries)
                 {
                     if (entry.Client.PlayingHandle == entry.Handle
                         && (int)MBass.ChannelIsActive(entry.Handle) == ActivePausedDevice)
@@ -267,11 +267,11 @@ internal static class BassOutputWatchdog
         }
     }
 
-    private static AudioOutputObservation Observe(int device, List<Entry> entries, DeviceState state)
+    static AudioOutputObservation Observe(int device, List<Entry> entries, DeviceState state)
     {
         var playing = 0;
         var parked = 0;
-        foreach (Entry entry in entries)
+        foreach (var entry in entries)
         {
             // An engine paused or stopped by the host since the tick began no longer counts.
             if (entry.Client.PlayingHandle != entry.Handle)
@@ -282,8 +282,8 @@ internal static class BassOutputWatchdog
                 parked++;
         }
 
-        BassOutputStatus output = ReadOutputStatus(device);
-        if (output == BassOutputStatus.Started && parked == 0 && MBass.GetInfo(out BassInfo info) && info.SampleRate > 0)
+        var output = ReadOutputStatus(device);
+        if (output == BassOutputStatus.Started && parked == 0 && MBass.GetInfo(out var info) && info.SampleRate > 0)
         {
             lock (Gate)
                 state.SampleRate = info.SampleRate;
@@ -292,7 +292,7 @@ internal static class BassOutputWatchdog
         return new AudioOutputObservation(output, playing, parked);
     }
 
-    private static bool StartOutput(int device)
+    static bool StartOutput(int device)
     {
         if (!BassAudioOutputDevices.TrySetCurrentDevice(device, DiagnosticCategory, raiseDiagnostic: false))
             return false;
@@ -307,7 +307,7 @@ internal static class BassOutputWatchdog
         return ReadOutputStatus(device) != BassOutputStatus.Stopped;
     }
 
-    private static bool ReinitOutput(int device, DeviceState state)
+    static bool ReinitOutput(int device, DeviceState state)
     {
         int sampleRate;
         lock (Gate)
@@ -323,14 +323,14 @@ internal static class BassOutputWatchdog
         return ReadOutputStatus(device) != BassOutputStatus.Stopped;
     }
 
-    private static BassOutputStatus ReadOutputStatus(int device) =>
+    static BassOutputStatus ReadOutputStatus(int device) =>
         BassAudioOutputDevices.TrySetCurrentDevice(device, DiagnosticCategory, raiseDiagnostic: false)
             ? BassIsStarted.Read()
             : BassOutputStatus.Unknown;
 
-    private static void Report(int device, bool lost)
+    static void Report(int device, bool lost)
     {
-        var name = MBass.GetDeviceInfo(device, out DeviceInfo info) && !string.IsNullOrWhiteSpace(info.Name)
+        var name = MBass.GetDeviceInfo(device, out var info) && !string.IsNullOrWhiteSpace(info.Name)
             ? info.Name
             : $"device {device}";
         if (lost)
@@ -354,16 +354,16 @@ internal static class BassOutputWatchdog
         }
     }
 
-    private static DeviceState GetDeviceState(int device)
+    static DeviceState GetDeviceState(int device)
     {
-        if (!Devices.TryGetValue(device, out DeviceState? state))
+        if (!Devices.TryGetValue(device, out var state))
             Devices[device] = state = new DeviceState();
         return state;
     }
 
-    private readonly record struct Entry(IBassOutputClient Client, int Handle);
+    readonly record struct Entry(IBassOutputClient Client, int Handle);
 
-    private sealed class DeviceState
+    sealed class DeviceState
     {
         public AudioOutputRecoveryTracker Tracker { get; } = new();
 
@@ -375,9 +375,9 @@ internal static class BassOutputWatchdog
     /// ManagedBass assembly's own library resolution, so it calls the same loaded BASS module
     /// (the Linux package installs a DllImport resolver on that assembly only).
     /// </summary>
-    private static unsafe class BassIsStarted
+    static unsafe class BassIsStarted
     {
-        private static readonly delegate* unmanaged<uint> Function = Resolve();
+        static readonly delegate* unmanaged<uint> Function = Resolve();
 
         // DWORD BASS_IsStarted(void): 0 = not started (stopped, paused, or paused by BASS when
         // the device became unavailable); 1 = started and active; 2 = started but inactive
@@ -394,7 +394,7 @@ internal static class BassOutputWatchdog
             };
         }
 
-        private static delegate* unmanaged<uint> Resolve()
+        static delegate* unmanaged<uint> Resolve()
         {
             try
             {

@@ -6,17 +6,16 @@ namespace FatzMedia.Video.Controllers;
 /// <summary>
 /// Handles file loading and management operations.
 /// </summary>
-internal sealed class MediaFile
+sealed class MediaFile
 {
-    private readonly IMediaEngine _mediaEngine;
-    private readonly IMediaRenderCoordinator? _mediaRenderer;
-    private readonly MediaControls? _mediaControls;
-    private readonly MediaEffects? _mediaEffects;
-    private readonly CdgVisuals? _cdgVisuals;
-    private readonly IArchiveService? _archiveService;
-    private MediaSourceInfo? _currentSource;
-    private LoadRequest? _currentLoad;
-    private int _loadGeneration;
+    readonly IMediaEngine _mediaEngine;
+    readonly IMediaRenderCoordinator? _mediaRenderer;
+    readonly MediaControls? _mediaControls;
+    readonly MediaEffects? _mediaEffects;
+    readonly CdgVisuals? _cdgVisuals;
+    readonly IArchiveService? _archiveService;
+    MediaSourceInfo? _currentSource;
+    int _loadGeneration;
 
     internal MediaFile(
         IMediaEngine mediaEngine,
@@ -101,7 +100,7 @@ internal sealed class MediaFile
     /// Gets how the open media was loaded (source, explicit background, sidecar choice), or
     /// <see langword="null"/> when nothing is open. A mode switch (043A) reopens it in the new graph.
     /// </summary>
-    internal LoadRequest? CurrentLoad => _currentLoad;
+    internal LoadRequest? CurrentLoad { get; private set; }
 
     /// <summary>
     /// Loads <paramref name="request"/> again as the same item: without honoring
@@ -139,7 +138,7 @@ internal sealed class MediaFile
     /// Handles PlayOnLoad with proper normalization timing.
     /// Waits for quick normalization before starting playback to avoid audio jumps.
     /// </summary>
-    private async Task HandlePlayOnLoadAsync(int loadGeneration, CancellationToken cancellationToken)
+    async Task HandlePlayOnLoadAsync(int loadGeneration, CancellationToken cancellationToken)
     {
         try
         {
@@ -181,13 +180,13 @@ internal sealed class MediaFile
     /// Waits for quick normalization analysis to complete.
     /// This ensures we don't get sudden audio level changes when auto-playing.
     /// </summary>
-    private async Task WaitForQuickNormalizationAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    async Task WaitForQuickNormalizationAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
-        IAudioEngine audioEngine = _mediaEngine.Audio;
+        var audioEngine = _mediaEngine.Audio;
         if (audioEngine == null || !audioEngine.Normalize) return;
         if (audioEngine.IsNormalizationReady) return;
 
-        DateTime startTime = DateTime.UtcNow;
+        var startTime = DateTime.UtcNow;
         var gainChanged = false;
 
         // Subscribe to gain change event
@@ -220,9 +219,9 @@ internal sealed class MediaFile
     public void Close()
     {
         InvalidatePendingPlayOnLoad();
-        MediaSourceInfo? closedSource = _currentSource;
+        var closedSource = _currentSource;
         _currentSource = null;
-        _currentLoad = null;
+        CurrentLoad = null;
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
@@ -239,14 +238,14 @@ internal sealed class MediaFile
 
     internal int LoadGeneration => Volatile.Read(ref _loadGeneration);
 
-    private int BeginLoadOperation() => Interlocked.Increment(ref _loadGeneration);
+    int BeginLoadOperation() => Interlocked.Increment(ref _loadGeneration);
 
-    private void InvalidatePendingPlayOnLoad() => _ = Interlocked.Increment(ref _loadGeneration);
+    void InvalidatePendingPlayOnLoad() => _ = Interlocked.Increment(ref _loadGeneration);
 
-    private bool IsCurrentLoadOperation(int loadGeneration) =>
+    bool IsCurrentLoadOperation(int loadGeneration) =>
         Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
 
-    private bool LoadCore(
+    bool LoadCore(
         MediaInputSource source,
         MediaInputSource? backgroundSource,
         bool ignoreSidecar,
@@ -309,7 +308,7 @@ internal sealed class MediaFile
         if (applyLoadReset)
             _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
         _cdgVisuals?.Apply();
-        _currentLoad = new LoadRequest(source, backgroundSource, ignoreSidecar);
+        CurrentLoad = new LoadRequest(source, backgroundSource, ignoreSidecar);
         _currentSource = new MediaSourceInfo(
             source,
             _mediaEngine.Content,
@@ -322,14 +321,14 @@ internal sealed class MediaFile
         return true;
     }
 
-    private void RaiseMediaClosed()
+    void RaiseMediaClosed()
     {
-        MediaSourceInfo? closedSource = _currentSource;
+        var closedSource = _currentSource;
         if (closedSource == null)
             return;
 
         _currentSource = null;
-        _currentLoad = null;
+        CurrentLoad = null;
         HostEventDispatcher.Raise(
             this,
             MediaClosed,
@@ -337,9 +336,9 @@ internal sealed class MediaFile
             nameof(MediaClosed));
     }
 
-    private void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
+    void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
-        MediaBackgroundCandidate? background = ResolveCoreBackground(source, backgroundSource, ignoreSidecar);
+        var background = ResolveCoreBackground(source, backgroundSource, ignoreSidecar);
         if (background == null)
             return;
 
@@ -348,9 +347,9 @@ internal sealed class MediaFile
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "SetBackground failed");
     }
 
-    private MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
+    MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
-        MediaContent content = _mediaEngine.Content;
+        var content = _mediaEngine.Content;
         if (!CanUseExplicitBackground(content))
             return null;
 
@@ -358,7 +357,7 @@ internal sealed class MediaFile
             return ResolveExplicitBackground(backgroundSource);
 
         MediaBackgroundCandidate? sidecar = null;
-        IArchiveService? archiveService = _archiveService;
+        var archiveService = _archiveService;
         if (archiveService != null && ShouldResolveAutomaticBackground(
             content,
             ignoreSidecar,
@@ -390,7 +389,7 @@ internal sealed class MediaFile
         && sourceIsFile
         && resolverAvailable;
 
-    private static MediaBackgroundCandidate? ResolveExplicitBackground(MediaInputSource? backgroundSource)
+    static MediaBackgroundCandidate? ResolveExplicitBackground(MediaInputSource? backgroundSource)
     {
         if (backgroundSource == null)
             return null;

@@ -5,10 +5,10 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 039A follow-up: which variant of an adaptive (HLS/DASH) network video plays.</summary>
 public sealed class NetworkVariantPolicyTests
 {
-    private static readonly NetworkVariantCandidate P480 = new(0, 950_400, 854, 480);
-    private static readonly NetworkVariantCandidate P720 = new(2, 2_270_400, 1280, 720);
-    private static readonly NetworkVariantCandidate P1080 = new(4, 4_470_400, 1920, 1080);
-    private static readonly NetworkVariantCandidate P2160 = new(6, 16_000_000, 3840, 2160);
+    static readonly NetworkVariantCandidate P480 = new(0, 950_400, 854, 480);
+    static readonly NetworkVariantCandidate P720 = new(2, 2_270_400, 1280, 720);
+    static readonly NetworkVariantCandidate P1080 = new(4, 4_470_400, 1920, 1080);
+    static readonly NetworkVariantCandidate P2160 = new(6, 16_000_000, 3840, 2160);
 
     [Fact]
     public void FewerThanTwoCandidates_LeavesTheChoiceToFfmpeg()

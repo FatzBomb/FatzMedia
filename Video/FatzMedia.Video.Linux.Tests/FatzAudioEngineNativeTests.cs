@@ -20,8 +20,8 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection(FatzAudioNativeCollection.Name)]
 public sealed class FatzAudioEngineNativeTests : IDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
-    private readonly string _root = Directory.CreateTempSubdirectory("fbm-fatzaudio-").FullName;
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    readonly string _root = Directory.CreateTempSubdirectory("fbm-fatzaudio-").FullName;
 
     public void Dispose()
     {
@@ -35,7 +35,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "tone.wav", new FatzAudioTestMedia.Section(6));
-        using FatzAudioEngine engine = CreateEngine();
+        using var engine = CreateEngine();
         List<AudioEngineState> states = [];
         engine.StateChanged += (_, state) => { lock (states) states.Add(state); };
 
@@ -77,15 +77,15 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "short.wav", new FatzAudioTestMedia.Section(0.6));
-        using FatzAudioEngine engine = CreateEngine();
+        using var engine = CreateEngine();
         var ends = new BlockingCollection<AudioEngineState>();
         engine.PlaybackEnded += (_, _) => ends.Add(engine.State);
         ((IAudioLoopControl)engine).LoopPlayback = true;
 
         Assert.True(engine.Open(wav));
         Assert.True(engine.Play());
-        Assert.True(ends.TryTake(out AudioEngineState first, Timeout));
-        Assert.True(ends.TryTake(out AudioEngineState second, Timeout));
+        Assert.True(ends.TryTake(out var first, Timeout));
+        Assert.True(ends.TryTake(out var second, Timeout));
         Assert.Equal(AudioEngineState.Playing, first);
         Assert.Equal(AudioEngineState.Playing, second);
         Assert.Equal(AudioEngineState.Playing, engine.State);
@@ -116,13 +116,13 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             new FatzAudioTestMedia.Section(1.45, Amplitude: 0),
             new FatzAudioTestMedia.Section(3),
             new FatzAudioTestMedia.Section(2, Amplitude: 0));
-        using FatzAudioEngine engine = CreateEngine(new MediaPlayerConfiguration { SilenceTrim = new SilenceTrimOptions { Enabled = true } });
+        using var engine = CreateEngine(new MediaPlayerConfiguration { SilenceTrim = new SilenceTrimOptions { Enabled = true } });
         using var pipeline = new AudioPipeline(engine);
         var ended = new ManualResetEventSlim();
         pipeline.PlaybackEnded += (_, _) => ended.Set();
 
         Assert.True(pipeline.Open(wav));
-        MediaAnalysisResult? window = ((IAudioTrimWindowProvider)engine).ActiveTrimWindow;
+        var window = ((IAudioTrimWindowProvider)engine).ActiveTrimWindow;
         Assert.NotNull(window);
         // Our padding (0.1 s) stays at each edge.
         Assert.InRange(window.PlayableStart, 1.85, 1.95);
@@ -149,7 +149,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "1k.wav", new FatzAudioTestMedia.Section(8, Hz: 1000));
-        using FatzAudioEngine engine = CreateEngine();
+        using var engine = CreateEngine();
         Assert.True(engine.Open(wav));
         Assert.True(engine.Play());
         var flat = SettledRms(engine);
@@ -160,7 +160,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             Bands = [new AudioEqualizerBand(1000, -15)],
         };
         Assert.True(((IAudioFilterHost)engine).SetEqualizer(cut));
-        Fa.EqualizerBand band = Assert.Single(engine.CurrentStream!.GetEqualizer());
+        var band = Assert.Single(engine.CurrentStream!.GetEqualizer());
         Assert.Equal(1000, band.Frequency, 0);
         Assert.Equal(-15, band.GainDb, 1);
         var equalized = SettledRms(engine);
@@ -178,7 +178,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "fade.wav", new FatzAudioTestMedia.Section(6));
-        using FatzAudioEngine engine = CreateEngine();
+        using var engine = CreateEngine();
         IAudioFadeGainTarget fade = engine;
         Assert.Equal(0, fade.BeginFadeSession());
 
@@ -214,7 +214,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         // Two levels that do not exist yet, as the default per-user folder on a fresh machine.
         var cache = Path.Combine(_root, "FatzMedia.Video", "AudioCache");
         var configuration = new MediaPlayerConfiguration { Normalization = new NormalizationOptions { CacheDirectory = cache } };
-        using (FatzAudioEngine engine = CreateEngine(configuration))
+        using (var engine = CreateEngine(configuration))
         {
             Assert.Equal(0, await engine.AnalyzePeakAsync(CancellationToken.None));
             var gains = new BlockingCollection<double>();
@@ -226,7 +226,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             Assert.True(gains.TryTake(out var gain, Timeout));
             Assert.InRange(gain, 1.9, 2.1);
             Assert.Equal(gain, engine.NormalizationGain, 6);
-            Fa.Loudness loudness = engine.CurrentStream!.GetLoudness();
+            var loudness = engine.CurrentStream!.GetLoudness();
             Assert.Equal(Fa.LoudnessSource.Scan, loudness.Source);
             Assert.InRange(loudness.IntegratedLufs, -20.5, -19.5);
 
@@ -248,7 +248,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         // The scan went to the cache folder (one shared file, loudness.fac, since FatzAudio rc.4);
         // a new engine (a new run) reads it back at open.
         Assert.True(File.Exists(Path.Combine(cache, "loudness.fac")));
-        using (FatzAudioEngine engine = CreateEngine(configuration with { Normalization = configuration.Normalization with { TargetLufs = -20 } }))
+        using (var engine = CreateEngine(configuration with { Normalization = configuration.Normalization with { TargetLufs = -20 } }))
         {
             var gains = new BlockingCollection<double>();
             engine.NormalizationGainChanged += (_, gain) => gains.Add(gain);
@@ -268,10 +268,10 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 
         var soundFont = FatzAudioTestMedia.WriteSoundFont(_root);
         var kar = FatzAudioTestMedia.WriteKaraoke(_root);
-        using FatzAudioEngine engine = CreateEngine(new MediaPlayerConfiguration { MidiSoundfontPath = soundFont });
+        using var engine = CreateEngine(new MediaPlayerConfiguration { MidiSoundfontPath = soundFont });
 
         Assert.True(engine.Open(kar));
-        IMidiEventReader? reader = ((IMidiEventReaderSource)engine).GetMidiEventReader();
+        var reader = ((IMidiEventReaderSource)engine).GetMidiEventReader();
         Assert.NotNull(reader);
         Assert.Equal(["\\Hel", "lo ", "world", "/Sec", "ond ", "line", "\\Third ", "page"], reader.GetMarks(MidiMarkKind.Lyric).Select(static mark => mark.Text));
         Assert.Equal(2.0, reader.PositionToSeconds(reader.GetMarks(MidiMarkKind.Lyric)[0].Position), 3);
@@ -281,7 +281,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         Assert.NotNull(cues);
         var lines = cues.SelectMany(static cue => cue.KaraokeTiming!.Lines).Select(static line => line.Text.Trim()).Distinct().ToArray();
         Assert.Equal(FatzAudioTestMedia.KaraokeLines, lines);
-        KaraokeMetadata metadata = cues[0].KaraokeTiming!.Metadata!;
+        var metadata = cues[0].KaraokeTiming!.Metadata!;
         Assert.Equal("Test Title", metadata.Title);
         Assert.Equal("Test Artist", metadata.Artist);
         Assert.Equal("3/4", metadata.TimeSignature);
@@ -299,7 +299,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "entry.wav", new FatzAudioTestMedia.Section(2));
-        using FatzAudioEngine engine = CreateEngine();
+        using var engine = CreateEngine();
         Assert.True(engine.Open(new FileArchiveEntry(wav)));
         Assert.InRange(engine.Duration, 1.99, 2.01);
         Assert.Null(((IAudioTrimWindowProvider)engine).ActiveTrimWindow);
@@ -313,7 +313,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         if (!OperatingSystem.IsLinux())
             return;
 
-        IServiceProvider services = PlayerServiceProvider.Create(
+        var services = PlayerServiceProvider.Create(
             WithoutUserCache(new MediaPlayerConfiguration { AudioEngineFactory = new FatzAudioEngineFactory(nullOutput: true) }),
             [],
             new AudioPlatformServices());
@@ -330,15 +330,15 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     }
 
     // The loudness cache is off unless a test sets its own folder: tests never write to the user's.
-    private static FatzAudioEngine CreateEngine(MediaPlayerConfiguration? configuration = null) =>
+    static FatzAudioEngine CreateEngine(MediaPlayerConfiguration? configuration = null) =>
         (FatzAudioEngine)new FatzAudioEngineFactory(nullOutput: true).Create(WithoutUserCache(configuration ?? new MediaPlayerConfiguration()));
 
-    private static MediaPlayerConfiguration WithoutUserCache(MediaPlayerConfiguration configuration) =>
+    static MediaPlayerConfiguration WithoutUserCache(MediaPlayerConfiguration configuration) =>
         configuration.Normalization.CacheDirectory is null
             ? configuration with { Normalization = configuration.Normalization with { CacheDirectory = string.Empty } }
             : configuration;
 
-    private static List<double> Sample(FatzAudioEngine engine, TimeSpan duration)
+    static List<double> Sample(FatzAudioEngine engine, TimeSpan duration)
     {
         List<double> positions = [];
         var watch = Stopwatch.StartNew();
@@ -352,15 +352,15 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     }
 
     // The RMS heard after the EQ glide and the meter window have settled.
-    private static double SettledRms(FatzAudioEngine engine)
+    static double SettledRms(FatzAudioEngine engine)
     {
         _ = engine.CurrentStream!.GetLevels(TimeSpan.FromMilliseconds(200));
         Thread.Sleep(600);
-        Fa.StreamLevels levels = engine.CurrentStream!.GetLevels(TimeSpan.FromMilliseconds(200));
+        var levels = engine.CurrentStream!.GetLevels(TimeSpan.FromMilliseconds(200));
         return levels.Rms.Max();
     }
 
-    private static bool SpinUntil(Func<bool> condition) => SpinWait.SpinUntil(() =>
+    static bool SpinUntil(Func<bool> condition) => SpinWait.SpinUntil(() =>
     {
         if (condition())
             return true;
@@ -368,7 +368,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         return false;
     }, Timeout);
 
-    private sealed class FileArchiveEntry(string path) : IArchiveEntryInfo
+    sealed class FileArchiveEntry(string path) : IArchiveEntryInfo
     {
         public string Key => Path.GetFileName(path);
 
@@ -376,14 +376,14 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 
         public void WriteTo(Stream stream)
         {
-            using FileStream file = File.OpenRead(path);
+            using var file = File.OpenRead(path);
             file.CopyTo(stream);
         }
     }
 
     // Reports audio as available without loading BASS: the BASS engine is still created (and
     // fails to initialize here), then the factory's engine replaces it.
-    private sealed class AudioPlatformServices : IPlatformServices
+    sealed class AudioPlatformServices : IPlatformServices
     {
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {

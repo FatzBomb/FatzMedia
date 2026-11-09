@@ -19,10 +19,10 @@ public sealed unsafe class FfmpegLogCaptureNativeTests
             return;
 
         ActivateFfmpeg(directory);
-        AVCodec* codec = ffmpeg.avcodec_find_decoder(AVCodecID.AV_CODEC_ID_H264);
+        var codec = ffmpeg.avcodec_find_decoder(AVCodecID.AV_CODEC_ID_H264);
         Assert.True(codec != null);
-        AVCodecContext* context = ffmpeg.avcodec_alloc_context3(codec);
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var context = ffmpeg.avcodec_alloc_context3(codec);
+        var packet = ffmpeg.av_packet_alloc();
         try
         {
             FfmpegLogCapture.Begin(context);
@@ -36,11 +36,11 @@ public sealed unsafe class FfmpegLogCaptureNativeTests
 
             _ = ffmpeg.avcodec_send_packet(context, packet);
             _ = ffmpeg.avcodec_send_packet(context, null);
-            AVFrame* frame = ffmpeg.av_frame_alloc();
+            var frame = ffmpeg.av_frame_alloc();
             _ = ffmpeg.avcodec_receive_frame(context, frame);
             ffmpeg.av_frame_free(&frame);
 
-            IReadOnlyList<string> lines = FfmpegLogCapture.Peek(context);
+            var lines = FfmpegLogCapture.Peek(context);
             Assert.NotEmpty(lines);
             Assert.All(lines, line => Assert.False(string.IsNullOrWhiteSpace(line)));
 
@@ -55,7 +55,7 @@ public sealed unsafe class FfmpegLogCaptureNativeTests
         }
     }
 
-    private static void ActivateFfmpeg(string directory)
+    static void ActivateFfmpeg(string directory)
     {
         var operations = new LinuxNativeOperations();
         foreach (var fileName in LinuxNativeLibraryCatalog.FfmpegInLoadOrder)

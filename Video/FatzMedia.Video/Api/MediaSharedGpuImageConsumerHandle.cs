@@ -8,10 +8,10 @@ namespace FatzMedia.Video;
 /// </summary>
 public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
 {
-    private static readonly OpaqueTokenRegistry<IMediaSharedGpuImageConsumer> Registry =
+    static readonly OpaqueTokenRegistry<IMediaSharedGpuImageConsumer> Registry =
         new("The shared GPU image consumer token space has been exhausted.");
 
-    private long _token;
+    long _token;
 
     public MediaSharedGpuImageConsumerHandle(IMediaSharedGpuImageConsumer consumer)
     {
@@ -29,7 +29,7 @@ public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
     /// <exception cref="ObjectDisposedException">The handle was disposed.</exception>
     public MediaNativeSurfaceDescriptor CreateSurfaceDescriptor()
     {
-        long token = Volatile.Read(ref _token);
+        var token = Volatile.Read(ref _token);
         ObjectDisposedException.ThrowIf(token == 0, this);
         return new(
             MediaNativeSurfaceTypeIds.SharedGpuImage,
@@ -48,14 +48,14 @@ public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
         consumer = null;
         return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.SharedGpuImage
-            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.SharedImageConsumer, out nint handle)
+            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.SharedImageConsumer, out var handle)
             && TryResolve(handle, out consumer)
             && consumer is not null;
     }
 
     public void Dispose()
     {
-        long token = Interlocked.Exchange(ref _token, 0);
+        var token = Interlocked.Exchange(ref _token, 0);
         if (token != 0)
             Registry.Remove(token);
     }

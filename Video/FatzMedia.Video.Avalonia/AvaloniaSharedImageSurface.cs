@@ -21,25 +21,25 @@ namespace FatzMedia.Video.Avalonia;
 /// reset, ENG-039) is also reported to the renderer, which checks its own device, and lets
 /// <see cref="MediaSurface"/> come back to this path once the compositor recovers.
 /// </remarks>
-internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposable
+sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposable
 {
-    private readonly Lock _gate = new();
-    private readonly Visual _owner;
-    private readonly IPlayerSession _session;
-    private readonly GpuInteropCapabilities _interop;
-    private readonly Action<AvaloniaSharedImageSurface, string, bool> _unavailable;
-    private readonly MediaSharedGpuImageConsumerHandle _handle;
-    private readonly CompositionSurfaceVisual _visual;
-    private readonly CompositionDrawingSurface _surface;
-    private readonly Queue<MediaSharedGpuImageFrame> _frames = new();
-    private MediaSharedGpuImageSet? _pendingSet;
+    readonly Lock _gate = new();
+    readonly Visual _owner;
+    readonly IPlayerSession _session;
+    readonly GpuInteropCapabilities _interop;
+    readonly Action<AvaloniaSharedImageSurface, string, bool> _unavailable;
+    readonly MediaSharedGpuImageConsumerHandle _handle;
+    readonly CompositionSurfaceVisual _visual;
+    readonly CompositionDrawingSurface _surface;
+    readonly Queue<MediaSharedGpuImageFrame> _frames = new();
+    MediaSharedGpuImageSet? _pendingSet;
     // The newest set the renderer sent (guarded by _gate): where a context loss is reported.
-    private MediaSharedGpuImageSet? _latestSet;
-    private ImportedSet? _current;
-    private MediaSharedGpuImageSelection? _reportedSelection;
-    private string? _unavailableReason;
-    private bool _pumpQueued;
-    private bool _disposed;
+    MediaSharedGpuImageSet? _latestSet;
+    ImportedSet? _current;
+    MediaSharedGpuImageSelection? _reportedSelection;
+    string? _unavailableReason;
+    bool _pumpQueued;
+    bool _disposed;
 
     public AvaloniaSharedImageSurface(
         Visual owner,
@@ -137,10 +137,10 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         ReportUnavailable(reason, contextLost: true);
     }
 
-    private static bool IsContextLost(Exception? exception) => exception?.GetBaseException() is PlatformGraphicsContextLostException;
+    static bool IsContextLost(Exception? exception) => exception?.GetBaseException() is PlatformGraphicsContextLostException;
 
     /// <summary>Reports a failure: a lost context as <see cref="ReportContextLost"/>, anything else as unavailable for the session.</summary>
-    private void ReportFailure(string reason, Exception? exception)
+    void ReportFailure(string reason, Exception? exception)
     {
         if (IsContextLost(exception))
             ReportContextLost(reason);
@@ -173,7 +173,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         _current = null;
     }
 
-    private void QueuePump()
+    void QueuePump()
     {
         lock (_gate)
         {
@@ -187,7 +187,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
     }
 
     /// <summary>Imports a new image set if one arrived, then submits the queued frames in order (UI thread).</summary>
-    private void Pump()
+    void Pump()
     {
         MediaSharedGpuImageSet? set;
         MediaSharedGpuImageFrame[] frames;
@@ -214,11 +214,11 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         if (set is not null)
             Import(set);
 
-        foreach (MediaSharedGpuImageFrame frame in frames)
+        foreach (var frame in frames)
             Submit(frame);
     }
 
-    private void Import(MediaSharedGpuImageSet set)
+    void Import(MediaSharedGpuImageSet set)
     {
         Retire(_current);
         _current = null;
@@ -241,7 +241,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             var semaphoreType = set.SyncKind == MediaSharedGpuImageSyncKinds.Semaphores
                 ? AvaloniaGpuInterop.ToAvaloniaSemaphoreHandleType(set.SemaphoreHandleKind)
                 : null;
-            foreach (MediaSharedGpuImageBuffer buffer in set.Buffers)
+            foreach (var buffer in set.Buffers)
             {
                 imported.Images.Add(interop.ImportImage(
                     new PlatformHandle(buffer.ImageHandle, imageType),
@@ -271,7 +271,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         // a quick resize close a set's handles before the compositor opened them (owner's 045A
         // smoke: OpenSharedResource1 failed, and the surface stayed on the frame sink).
         ICompositionGpuImportedObject[] objects = [.. imported.Objects];
-        Task importsCompleted = Task.WhenAll(objects.Select(static importedObject => importedObject.ImportCompleted));
+        var importsCompleted = Task.WhenAll(objects.Select(static importedObject => importedObject.ImportCompleted));
         _ = importsCompleted.ContinueWith(
             _ => set.CompleteImport(handlesConsumed: true),
             CancellationToken.None,
@@ -288,7 +288,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
-        foreach (ICompositionGpuImportedObject importedObject in objects)
+        foreach (var importedObject in objects)
             ObserveImport(imported, importedObject);
 
         if (_reportedSelection != set.Selection)
@@ -302,19 +302,19 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         }
     }
 
-    private void Submit(MediaSharedGpuImageFrame frame)
+    void Submit(MediaSharedGpuImageFrame frame)
     {
-        ImportedSet? current = _current;
+        var current = _current;
         // Frames of a set that was replaced or failed to import: the renderer reset its ring for
         // the newer set (or this path is being abandoned), so there is nothing to give back.
         if (current is null || frame.Generation != current.Set.Generation || (uint)frame.BufferIndex >= (uint)current.Images.Count)
             return;
 
-        MediaSharedGpuImageSet set = current.Set;
+        var set = current.Set;
         Task update;
         try
         {
-            ICompositionImportedGpuImage image = current.Images[frame.BufferIndex];
+            var image = current.Images[frame.BufferIndex];
             update = set.SyncKind switch
             {
                 MediaSharedGpuImageSyncKinds.KeyedMutex => _surface.UpdateWithKeyedMutexAsync(image, (uint)frame.AcquireKey, (uint)frame.ReleaseKey),
@@ -345,7 +345,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             TaskScheduler.Default);
     }
 
-    private void ObserveImport(ImportedSet imported, ICompositionGpuImportedObject importedObject) =>
+    void ObserveImport(ImportedSet imported, ICompositionGpuImportedObject importedObject) =>
         _ = importedObject.ImportCompleted.ContinueWith(
             completed =>
             {
@@ -357,7 +357,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             TaskContinuationOptions.NotOnRanToCompletion,
             TaskScheduler.Default);
 
-    private void ReportUnavailable(string reason, bool contextLost)
+    void ReportUnavailable(string reason, bool contextLost)
     {
         lock (_gate)
         {
@@ -371,7 +371,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
     }
 
     /// <summary>Disposes a set's imports once the compositor finished every update that uses them.</summary>
-    private static void Retire(ImportedSet? imported, Action? then = null)
+    static void Retire(ImportedSet? imported, Action? then = null)
     {
         if (imported is null)
         {
@@ -382,7 +382,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         _ = Task.WhenAll(imported.PendingUpdates()).ContinueWith(
             _ => Dispatcher.UIThread.Post(() =>
             {
-                foreach (ICompositionGpuImportedObject importedObject in imported.Objects)
+                foreach (var importedObject in imported.Objects)
                     _ = DisposeQuietlyAsync(importedObject);
                 then?.Invoke();
             }),
@@ -391,7 +391,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             TaskScheduler.Default);
     }
 
-    private static async Task DisposeQuietlyAsync(IAsyncDisposable disposable)
+    static async Task DisposeQuietlyAsync(IAsyncDisposable disposable)
     {
         try
         {
@@ -403,9 +403,9 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         }
     }
 
-    private sealed class ImportedSet(MediaSharedGpuImageSet set)
+    sealed class ImportedSet(MediaSharedGpuImageSet set)
     {
-        private readonly List<Task> _updates = [];
+        readonly List<Task> _updates = [];
 
         public MediaSharedGpuImageSet Set { get; } = set;
         public List<ICompositionImportedGpuImage> Images { get; } = [];

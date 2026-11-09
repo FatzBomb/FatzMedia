@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -20,9 +19,9 @@ public sealed class LightweightSurfacesTests
     public void KaraokeSurface_CentresA43SurfaceOnItsCanvasColour()
     {
         var karaoke = new KaraokeSurface { CanvasColor = Colors.Navy };
-        Window window = Show(karaoke, 400, 200);
+        var window = Show(karaoke, 400, 200);
 
-        Rect bounds = karaoke.Surface.Bounds;
+        var bounds = karaoke.Surface.Bounds;
         // Layout rounding snaps to whole pixels.
         Assert.Equal(200, bounds.Height, tolerance: 1.0);
         Assert.Equal(200 * 4.0 / 3.0, bounds.Width, tolerance: 1.0);
@@ -40,7 +39,7 @@ public sealed class LightweightSurfacesTests
     {
         var overlay = new TextBlock { Text = "overlay" };
         var background = new BackgroundSurface { OverlayContent = overlay };
-        Window window = Show(background, 160, 90);
+        var window = Show(background, 160, 90);
 
         background.SetColor(Color.FromArgb(0x80, 0x10, 0x20, 0x30));
         Dispatcher.UIThread.RunJobs();
@@ -63,14 +62,14 @@ public sealed class LightweightSurfacesTests
     [AvaloniaFact]
     public void BackgroundSurface_WithoutPlatformFactory_WarnsAndLoadsNothing()
     {
-        ConcurrentQueue<MediaDiagnosticInfo> notices = Record(BackgroundSurface.DiagnosticCategory, out Action stop);
+        var notices = Record(BackgroundSurface.DiagnosticCategory, out var stop);
         try
         {
             var background = new BackgroundSurface { Source = "picture.png" };
-            Window window = Show(background, 160, 90);
+            var window = Show(background, 160, 90);
             PumpUntil(() => !notices.IsEmpty);
 
-            MediaDiagnosticInfo warning = Assert.Single(notices);
+            var warning = Assert.Single(notices);
             Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
             Assert.Null(background.Session);
             window.Close();
@@ -84,12 +83,12 @@ public sealed class LightweightSurfacesTests
     [AvaloniaFact]
     public void KaraokeSurface_CoalescesSourceChanges_AndReportsAFailedPlayerCreation()
     {
-        ConcurrentQueue<MediaDiagnosticInfo> notices = Record(KaraokeSurface.DiagnosticCategory, out Action stop);
+        var notices = Record(KaraokeSurface.DiagnosticCategory, out var stop);
         try
         {
             var factory = new FailingPlatformFactory();
             var karaoke = new KaraokeSurface(factory);
-            Window window = Show(karaoke, 160, 120);
+            var window = Show(karaoke, 160, 120);
 
             // Two changes in one turn reload once: one creation attempt, one Error.
             karaoke.Source = "first.cdg";
@@ -97,7 +96,7 @@ public sealed class LightweightSurfacesTests
             PumpUntil(() => !notices.IsEmpty);
             Dispatcher.UIThread.RunJobs();
 
-            MediaDiagnosticInfo error = Assert.Single(notices);
+            var error = Assert.Single(notices);
             Assert.Equal(MediaDiagnosticLevel.Error, error.Level);
             Assert.Equal(1, factory.Attempts);
             Assert.Null(karaoke.Session);
@@ -125,7 +124,7 @@ public sealed class LightweightSurfacesTests
         Assert.False(karaoke.Surface.PreferGpuSharedSurface);
     }
 
-    private static ConcurrentQueue<MediaDiagnosticInfo> Record(string category, out Action stop)
+    static ConcurrentQueue<MediaDiagnosticInfo> Record(string category, out Action stop)
     {
         var notices = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Handler(MediaDiagnosticInfo info)
@@ -139,7 +138,7 @@ public sealed class LightweightSurfacesTests
         return notices;
     }
 
-    private static void PumpUntil(Func<bool> condition)
+    static void PumpUntil(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (!condition())
@@ -150,7 +149,7 @@ public sealed class LightweightSurfacesTests
         }
     }
 
-    private static Window Show(Control content, double width, double height)
+    static Window Show(Control content, double width, double height)
     {
         var window = new Window { Width = width, Height = height, Content = content };
         window.Show();
@@ -158,9 +157,9 @@ public sealed class LightweightSurfacesTests
         return window;
     }
 
-    private sealed class FailingPlatformFactory : IPlatformFactory
+    sealed class FailingPlatformFactory : IPlatformFactory
     {
-        private int _attempts;
+        int _attempts;
 
         public int Attempts => Volatile.Read(ref _attempts);
 

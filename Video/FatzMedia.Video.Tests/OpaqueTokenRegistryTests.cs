@@ -2,7 +2,7 @@ namespace FatzMedia.Video.Tests;
 
 public class OpaqueTokenRegistryTests
 {
-    private static OpaqueTokenRegistry<object> Create() => new("exhausted");
+    static OpaqueTokenRegistry<object> Create() => new("exhausted");
 
     [Fact]
     public void Register_ReturnsDistinctPositiveTokensThatResolve()

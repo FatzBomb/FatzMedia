@@ -6,7 +6,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using FatzMedia.Video.Avalonia;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
@@ -24,14 +23,14 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// </summary>
 public partial class PlayerPanel : UserControl, IPlayerSlot
 {
-    private readonly int _index;
-    private readonly bool _atStartup;
-    private readonly FullScreenChromeController _chrome;
-    private bool _isDragging;
-    private bool _isUpdatingSeek;
-    private bool _isUpdatingSecondScreen;
-    private SecondaryPresentationWindow? _secondScreen;
-    private bool _disposed;
+    readonly int _index;
+    readonly bool _atStartup;
+    readonly FullScreenChromeController _chrome;
+    bool _isDragging;
+    bool _isUpdatingSeek;
+    bool _isUpdatingSecondScreen;
+    SecondaryPresentationWindow? _secondScreen;
+    bool _disposed;
 
     // Designer/XAML loader constructor.
     public PlayerPanel()
@@ -39,10 +38,15 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     {
     }
 
+    /// <param name="index">The player's number, starting at 1: names the panel and decides which player gets the second screen.</param>
     /// <param name="atStartup">
     /// Whether this panel is part of the window's first build: only then does player 1 open the
     /// <c>--second-screen=</c> screen (rebuilt players start empty, as in the WPF and WinForms players).
     /// </param>
+    /// <param name="renderer">The renderer picked in the toolbar for this player's engine.</param>
+    /// <param name="nativePaths">The folders searched for the native libraries.</param>
+    /// <param name="options">The command-line options this player starts with.</param>
+    /// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
     internal PlayerPanel(int index, bool atStartup, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options, IReadOnlyList<string> startupWarnings)
     {
         _index = index;
@@ -102,7 +106,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         remove => ViewModel.RendererDeviceLost -= value;
     }
 
-    private string Label => $"P{_index}";
+    string Label => $"P{_index}";
 
     /// <summary>Creates the engine and loads the startup media; then, in the first build, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
     public async Task InitializeAsync()
@@ -131,7 +135,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
 
     public void UpdateStatus(ProcessSample process)
     {
-        PixelSize size = Surface.AttachedPixelSize;
+        var size = Surface.AttachedPixelSize;
         var surface = PlayerStatsLine.DescribeSurface(size.Width, size.Height, Surface.PresentationPath, Surface.IsPresentationSuspended);
         ViewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, DescribeSecondScreen()));
     }
@@ -162,7 +166,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         return true;
     }
 
-    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
@@ -173,7 +177,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         }
     }
 
-    private void UpdateSeekSlider()
+    void UpdateSeekSlider()
     {
         _isUpdatingSeek = true;
         try
@@ -188,7 +192,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         }
     }
 
-    private void OnSeekPressed(object? sender, PointerPressedEventArgs e)
+    void OnSeekPressed(object? sender, PointerPressedEventArgs e)
     {
         if (_isDragging || !ViewModel.CanSeek)
             return;
@@ -197,11 +201,11 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         ViewModel.BeginSeekPreview();
     }
 
-    private void OnSeekReleased(object? sender, PointerReleasedEventArgs e) => EndDrag(cancelled: false);
+    void OnSeekReleased(object? sender, PointerReleasedEventArgs e) => EndDrag(cancelled: false);
 
-    private void OnSeekCaptureLost(object? sender, PointerCaptureLostEventArgs e) => EndDrag(cancelled: true);
+    void OnSeekCaptureLost(object? sender, PointerCaptureLostEventArgs e) => EndDrag(cancelled: true);
 
-    private void EndDrag(bool cancelled)
+    void EndDrag(bool cancelled)
     {
         if (!_isDragging)
             return;
@@ -213,7 +217,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
             ViewModel.EndSeekPreview();
     }
 
-    private void OnSeekValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    void OnSeekValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
         if (_isUpdatingSeek)
             return;
@@ -226,34 +230,34 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // A click on the picture closes the open flyout, as in the WPF player.
-    private void OnSurfaceTapped(object? sender, TappedEventArgs e)
+    void OnSurfaceTapped(object? sender, TappedEventArgs e)
     {
         _ = Focus();
         ViewModel.CloseFlyout();
     }
 
-    private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
+    void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
     {
         FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
         e.Handled = true;
     }
 
-    private void OnFullScreenClick(object? sender, RoutedEventArgs e) => FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
+    void OnFullScreenClick(object? sender, RoutedEventArgs e) => FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnPanelPointerMoved(object? sender, PointerEventArgs e)
+    void OnPanelPointerMoved(object? sender, PointerEventArgs e)
     {
         // Window coordinates: the same for every element of this panel.
         if (TopLevel.GetTopLevel(this) is { } topLevel)
         {
-            Point position = e.GetPosition(topLevel);
+            var position = e.GetPosition(topLevel);
             _chrome.PointerMoved(position.X, position.Y);
         }
     }
 
-    private bool IsPointerOverChrome() =>
+    bool IsPointerOverChrome() =>
         TopBar.IsPointerOver || SeekRow.IsPointerOver || TransportRow.IsPointerOver || FlyoutHost.IsPointerOver;
 
-    private void ShowChrome(bool visible)
+    void ShowChrome(bool visible)
     {
         TopBar.IsVisible = visible;
         SeekRow.IsVisible = visible;
@@ -264,13 +268,13 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         Cursor = visible ? Cursor.Default : new Cursor(StandardCursorType.None);
     }
 
-    private void OnDragOver(object? sender, DragEventArgs e)
+    void OnDragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = e.DataTransfer.Contains(DataFormat.File) && ViewModel.CanOpen ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
-    private async void OnDrop(object? sender, DragEventArgs e)
+    async void OnDrop(object? sender, DragEventArgs e)
     {
         e.Handled = true;
         if (e.DataTransfer.TryGetFiles() is not { Length: > 0 } items || items[0].TryGetLocalPath() is not { } path)
@@ -281,7 +285,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // Raised on the UI thread. The surface also raises an Info diagnostic for every MediaSurface.
-    private void OnPresentationPathChanged(object? sender, EventArgs e)
+    void OnPresentationPathChanged(object? sender, EventArgs e)
     {
         if (Surface.PresentationPath != MediaSurfacePresentationPath.None)
         {
@@ -292,17 +296,17 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         }
     }
 
-    private string? DescribeSecondScreen()
+    string? DescribeSecondScreen()
     {
         if (_secondScreen?.Surface is not { } surface)
             return null;
 
-        PixelSize size = surface.AttachedPixelSize;
+        var size = surface.AttachedPixelSize;
         return PlayerStatsLine.DescribeSurface(size.Width, size.Height, surface.PresentationPath, surface.IsPresentationSuspended);
     }
 
     /// <summary>Opens or closes this player's second screen (Stage 027A slice 5).</summary>
-    private void OnSecondScreenChanged(object? sender, RoutedEventArgs e)
+    void OnSecondScreenChanged(object? sender, RoutedEventArgs e)
     {
         if (_isUpdatingSecondScreen)
             return;
@@ -313,7 +317,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
             CloseSecondScreen();
     }
 
-    private void OpenSecondScreen()
+    void OpenSecondScreen()
     {
         if (ViewModel.Player is not { } player || _secondScreen is not null || TopLevel.GetTopLevel(this) is not Window owner)
         {
@@ -321,7 +325,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
             return;
         }
 
-        (Screen? screen, var fullScreen, var where) = ChooseSecondScreen(owner);
+        (var screen, var fullScreen, var where) = ChooseSecondScreen(owner);
         var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
         window.Surface.PreferGpuSharedSurface = !StartupOptions.Current.PreferFrameSinkSurface;
         window.Surface.AutoHide = StartupOptions.Current.AutoHideSurfaces;
@@ -333,22 +337,22 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     }
 
     /// <summary>The shared rule (<see cref="PlayerScreenChooser"/>) over Avalonia's screens.</summary>
-    private static (Screen? Screen, bool FullScreen, string Where) ChooseSecondScreen(Window owner)
+    static (Screen? Screen, bool FullScreen, string Where) ChooseSecondScreen(Window owner)
     {
-        IReadOnlyList<Screen> screens = owner.Screens.All;
-        PixelRect? ownerBounds = owner.Screens.ScreenFromWindow(owner)?.Bounds;
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose(
+        var screens = owner.Screens.All;
+        var ownerBounds = owner.Screens.ScreenFromWindow(owner)?.Bounds;
+        var choice = PlayerScreenChooser.Choose(
             [.. screens.Select(static screen => new PlayerScreen(screen.DisplayName ?? string.Empty, ToBounds(screen.Bounds), screen.IsPrimary))],
             ownerBounds is { } bounds ? ToBounds(bounds) : null,
             StartupOptions.Current.SecondScreen);
         return (choice.ScreenIndex is { } index ? screens[index] : null, choice.FullScreen, choice.Where);
     }
 
-    private static PlayerScreenBounds ToBounds(PixelRect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+    static PlayerScreenBounds ToBounds(PixelRect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
-    private void CloseSecondScreen()
+    void CloseSecondScreen()
     {
-        SecondaryPresentationWindow? window = _secondScreen;
+        var window = _secondScreen;
         if (window is null)
             return;
 
@@ -360,7 +364,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // The user closed the window.
-    private void OnSecondScreenClosed(object? sender, EventArgs e)
+    void OnSecondScreenClosed(object? sender, EventArgs e)
     {
         if (_secondScreen is not { } window || !ReferenceEquals(sender, window))
             return;
@@ -371,7 +375,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         SetSecondScreenBox(false);
     }
 
-    private void SetSecondScreenBox(bool isChecked)
+    void SetSecondScreenBox(bool isChecked)
     {
         _isUpdatingSecondScreen = true;
         try
@@ -384,7 +388,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         }
     }
 
-    private void OnSecondScreenPathChanged(object? sender, EventArgs e)
+    void OnSecondScreenPathChanged(object? sender, EventArgs e)
     {
         if (sender is MediaSurface { PresentationPath: not MediaSurfacePresentationPath.None } surface)
         {

@@ -10,18 +10,18 @@ public sealed class RendererResourcePolicyTests
     [Fact]
     public void DiagnosticLatch_ReportsOncePerEpisode()
     {
-        const string category = "Eng026Test.Latch";
+        const string Category = "Eng026Test.Latch";
         var latch = new RendererDiagnosticLatch();
-        List<MediaDiagnosticInfo> raised = Capture(category, () =>
+        var raised = Capture(Category, () =>
         {
-            Assert.True(latch.Raise(MediaDiagnosticLevel.Warning, category, "first"));
-            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, category, "repeat"));
-            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, category, "repeat"));
+            Assert.True(latch.Raise(MediaDiagnosticLevel.Warning, Category, "first"));
+            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, Category, "repeat"));
+            Assert.False(latch.Raise(MediaDiagnosticLevel.Warning, Category, "repeat"));
             Assert.True(latch.IsLatched);
 
             latch.Reset();
             Assert.False(latch.IsLatched);
-            Assert.True(latch.Raise(MediaDiagnosticLevel.Error, category, "next episode", new InvalidOperationException("cause")));
+            Assert.True(latch.Raise(MediaDiagnosticLevel.Error, Category, "next episode", new InvalidOperationException("cause")));
         });
 
         Assert.Equal(["first", "next episode"], raised.Select(static info => info.Message));
@@ -33,10 +33,10 @@ public sealed class RendererResourcePolicyTests
     [Fact]
     public void DiagnosticLatch_ConcurrentFailuresRaiseOnce()
     {
-        const string category = "Eng026Test.LatchConcurrent";
+        const string Category = "Eng026Test.LatchConcurrent";
         var latch = new RendererDiagnosticLatch();
-        List<MediaDiagnosticInfo> raised = Capture(category, () =>
-            Parallel.For(0, 64, _ => latch.Raise(MediaDiagnosticLevel.Warning, category, "failure")));
+        var raised = Capture(Category, () =>
+            Parallel.For(0, 64, _ => latch.Raise(MediaDiagnosticLevel.Warning, Category, "failure")));
 
         _ = Assert.Single(raised);
     }
@@ -94,8 +94,8 @@ public sealed class RendererResourcePolicyTests
     public void RetainedPixelBuffer_SurvivesResizeChurnWithoutReallocating()
     {
         // A live resize: the window grows and shrinks around 1280x720 a few pixels at a time.
-        byte[] buffer = RetainedPixelBuffer.Ensure(null, 1300 * 740 * 4);
-        byte[] first = buffer;
+        var buffer = RetainedPixelBuffer.Ensure(null, 1300 * 740 * 4);
+        var first = buffer;
         foreach (var (width, height) in new[] { (1280, 720), (1290, 730), (1270, 715), (1300, 740), (1250, 700) })
             buffer = RetainedPixelBuffer.Ensure(buffer, width * height * 4);
 
@@ -123,7 +123,7 @@ public sealed class RendererResourcePolicyTests
         registry.Capture([primary]);
         Assert.Equal(1, registry.ActiveTargetCount);
         Assert.False(registry.HasMultipleActiveTargets);
-        CompositionTargetPlan plan = registry.CreatePlan();
+        var plan = registry.CreatePlan();
         Assert.Equal(1, plan.DeactivatedTargetCount);
         registry.MarkPlanConsumed();
 
@@ -132,7 +132,7 @@ public sealed class RendererResourcePolicyTests
         Assert.DoesNotContain("offscreen-secondary:2", registry.LifecycleSummary, StringComparison.Ordinal);
     }
 
-    private static List<MediaDiagnosticInfo> Capture(string category, Action action)
+    static List<MediaDiagnosticInfo> Capture(string category, Action action)
     {
         var captured = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
@@ -154,7 +154,7 @@ public sealed class RendererResourcePolicyTests
         return [.. captured];
     }
 
-    private sealed class TrackedResource : IDisposable
+    sealed class TrackedResource : IDisposable
     {
         public bool Disposed { get; private set; }
 

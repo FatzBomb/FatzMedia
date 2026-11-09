@@ -10,12 +10,12 @@ namespace FatzMedia.Video.Vulkan.Tests;
 /// </summary>
 public sealed class VulkanMultiTargetTests
 {
-    private const string SecondaryId = "secondary";
+    const string SecondaryId = "secondary";
 
     // ConfiguredColor 0xFF336699 composes to BGRA (0x99, 0x66, 0x33, 0xFF); exported images are RGBA.
-    private static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
-    private static readonly byte[] BlueGreyBgra = [0x99, 0x66, 0x33, 0xFF];
-    private static readonly byte[] BlueGreyRgba = [0x33, 0x66, 0x99, 0xFF];
+    static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+    static readonly byte[] BlueGreyBgra = [0x99, 0x66, 0x33, 0xFF];
+    static readonly byte[] BlueGreyRgba = [0x33, 0x66, 0x99, 0xFF];
 
     [Fact]
     public void PrimaryAndSecondaryFrameSinks_EachReceiveTheFrameAtTheirOwnSize()
@@ -30,8 +30,8 @@ public sealed class VulkanMultiTargetTests
         using var backend = new VulkanRendererBackend(() => VulkanOffscreenCompositor.TryCreate(out _));
         var presented = 0;
         backend.FramePresented += (_, _) => presented++;
-        MediaPresentationSurfaceDescriptor primary = Primary(primaryHandle.CreateSurfaceDescriptor(), 8, 6);
-        MediaPresentationSurfaceDescriptor secondary = Secondary(secondaryHandle.CreateSurfaceDescriptor(), 20, 4);
+        var primary = Primary(primaryHandle.CreateSurfaceDescriptor(), 8, 6);
+        var secondary = Secondary(secondaryHandle.CreateSurfaceDescriptor(), 20, 4);
 
         Assert.True(backend.AttachSurface(primary));
         Assert.True(backend.AttachSurface(secondary));
@@ -88,14 +88,14 @@ public sealed class VulkanMultiTargetTests
     [Fact]
     public void Compositor_KeepsOneRenderTargetPerSizeUpToTheLimit()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
         for (var frame = 0; frame < 3; frame++)
         {
             Assert.Equal(64 * 48 * 4, compositor.Render(VulkanCompositionPlanner.Plan(BlueGrey, 64, 48)).Length);
-            ReadOnlySpan<byte> small = compositor.Render(VulkanCompositionPlanner.Plan(BlueGrey, 5, 3));
+            var small = compositor.Render(VulkanCompositionPlanner.Plan(BlueGrey, 5, 3));
             Assert.Equal(5 * 3 * 4, small.Length);
             AssertUniform(small.ToArray(), BlueGreyBgra);
         }
@@ -118,18 +118,18 @@ public sealed class VulkanMultiTargetTests
         var consumer = new RecordingConsumer(HostSynchronizedRequest());
         using var consumerHandle = new MediaSharedGpuImageConsumerHandle(consumer);
         using var backend = new VulkanRendererBackend(() => VulkanOffscreenCompositor.TryCreate(out _));
-        MediaPresentationSurfaceDescriptor secondary = Secondary(consumerHandle.CreateSurfaceDescriptor(), 9, 5);
+        var secondary = Secondary(consumerHandle.CreateSurfaceDescriptor(), 9, 5);
 
         Assert.True(backend.AttachSurface(Primary(primaryHandle.CreateSurfaceDescriptor(), 4, 4)));
         Assert.True(backend.AttachSurface(secondary));
-        MediaSharedGpuImageSet set = Assert.Single(consumer.Sets);
+        var set = Assert.Single(consumer.Sets);
         Assert.Equal((9, 5), (set.Width, set.Height));
 
         Assert.True(backend.PresentComposition(BlueGrey));
         Assert.Equal(1, primarySink.Frames);
-        MediaSharedGpuImageFrame frame = Assert.Single(consumer.Frames);
+        var frame = Assert.Single(consumer.Frames);
         Assert.Equal(set.Generation, frame.Generation);
-        using (VulkanOffscreenCompositor importer = VulkanOffscreenCompositor.TryCreate(out _)!)
+        using (var importer = VulkanOffscreenCompositor.TryCreate(out _)!)
         {
             AssertUniform(importer.ImportAndReadBack((int)set.Buffers[frame.BufferIndex].ImageHandle, set.Buffers[frame.BufferIndex].MemorySize, 9, 5), BlueGreyRgba);
             VulkanOffscreenCompositor.CloseDescriptor((int)set.Buffers[1 - frame.BufferIndex].ImageHandle);
@@ -164,8 +164,8 @@ public sealed class VulkanMultiTargetTests
 
         Assert.True(backend.AttachSurface(Primary(primaryHandle.CreateSurfaceDescriptor(), 8, 8)));
         Assert.True(backend.AttachSurface(Secondary(secondaryHandle.CreateSurfaceDescriptor(), 16, 4)));
-        MediaSharedGpuImageSet primarySet = Assert.Single(primary.Sets);
-        MediaSharedGpuImageSet secondarySet = Assert.Single(secondary.Sets);
+        var primarySet = Assert.Single(primary.Sets);
+        var secondarySet = Assert.Single(secondary.Sets);
         Assert.NotEqual(primarySet.Generation, secondarySet.Generation);
         Assert.Equal((16, 4), (secondarySet.Width, secondarySet.Height));
 
@@ -181,7 +181,7 @@ public sealed class VulkanMultiTargetTests
         Assert.Equal(2, primary.Frames.Count);
         Assert.Equal(3, secondary.Frames.Count);
 
-        foreach (MediaSharedGpuImageSet set in new[] { primarySet, secondarySet })
+        foreach (var set in new[] { primarySet, secondarySet })
         {
             backend.Dispose();
             Assert.True(set.IsRetired);
@@ -189,9 +189,9 @@ public sealed class VulkanMultiTargetTests
         }
     }
 
-    private static bool CanExport()
+    static bool CanExport()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return false;
 
@@ -201,23 +201,23 @@ public sealed class VulkanMultiTargetTests
         return compositor.CanExportMemoryFd;
     }
 
-    private static MediaSharedGpuImageRequest HostSynchronizedRequest() => new(
+    static MediaSharedGpuImageRequest HostSynchronizedRequest() => new(
         [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.HostSynchronized)]);
 
-    private static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
+    static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native, int width, int height) =>
         new(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, MediaPresentationSurfaceRole.Primary, native, width, height);
 
-    private static MediaPresentationSurfaceDescriptor Secondary(MediaNativeSurfaceDescriptor native, int width, int height) =>
+    static MediaPresentationSurfaceDescriptor Secondary(MediaNativeSurfaceDescriptor native, int width, int height) =>
         new(SecondaryId, MediaPresentationSurfaceRole.Projector, native, width, height);
 
-    private static void AssertUniform(byte[] pixels, byte[] expected)
+    static void AssertUniform(byte[] pixels, byte[] expected)
     {
         Assert.NotEmpty(pixels);
         for (var offset = 0; offset < pixels.Length; offset += 4)
             Assert.Equal(expected, pixels[offset..(offset + 4)]);
     }
 
-    private sealed class CopyingFrameSink : IMediaPresentationFrameSink
+    sealed class CopyingFrameSink : IMediaPresentationFrameSink
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -233,7 +233,7 @@ public sealed class VulkanMultiTargetTests
         }
     }
 
-    private sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
+    sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<MediaSharedGpuImageFrame> Frames { get; } = new();

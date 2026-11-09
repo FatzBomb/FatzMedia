@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
-using System.Collections.Concurrent;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -15,7 +15,7 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
 {
-    private const string DefaultSample = "/opt/fatzbomb-native/media/h264_1080p.mp4";
+    const string DefaultSample = "/opt/fatzbomb-native/media/h264_1080p.mp4";
 
     [Fact]
     public void BackgroundMode_WithoutBass_PresentsFramesThroughTheSoftwareRenderer() =>
@@ -25,7 +25,7 @@ public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
     public void FullMode_WithoutBass_PlaysPictureOnTheClockWithoutSound() =>
         PlaysPictureWithoutBass(MediaPlayerMode.Full);
 
-    private void PlaysPictureWithoutBass(MediaPlayerMode mode)
+    void PlaysPictureWithoutBass(MediaPlayerMode mode)
     {
         var ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         var sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO") is { Length: > 0 } configured ? configured : DefaultSample;
@@ -77,10 +77,10 @@ public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
         }
     }
 
-    private sealed class CountingFrameSink : IMediaPresentationFrameSink
+    sealed class CountingFrameSink : IMediaPresentationFrameSink
     {
-        private int _frames;
-        private volatile bool _lastFrameHasContent;
+        int _frames;
+        volatile bool _lastFrameHasContent;
 
         public int Frames => Volatile.Read(ref _frames);
 
@@ -89,7 +89,7 @@ public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
         public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
         {
             // Sample one row in the middle: a decoded picture has more than a handful of values.
-            ReadOnlySpan<byte> row = bgraPixels.Slice(height / 2 * stride, width * 4);
+            var row = bgraPixels.Slice(height / 2 * stride, width * 4);
             var distinct = new HashSet<byte>();
             foreach (var value in row)
             {

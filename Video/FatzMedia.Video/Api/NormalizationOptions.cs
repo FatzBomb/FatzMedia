@@ -21,13 +21,10 @@ public readonly record struct NormalizationOptions
     /// <summary>The default limiter ceiling: -1 dBTP.</summary>
     public const double DefaultTruePeakCeilingDbtp = -1;
 
-    private const double MinimumTargetLufs = -60;
-    private const double MaximumTargetLufs = 0;
-    private const double MinimumCeilingDbtp = -20;
-    private const double MaximumCeilingDbtp = 0;
-
-    private readonly double _targetOffset;
-    private readonly double _ceilingOffset;
+    const double MinimumTargetLufs = -60;
+    const double MaximumTargetLufs = 0;
+    const double MinimumCeilingDbtp = -20;
+    const double MaximumCeilingDbtp = 0;
 
     /// <summary>
     /// Gets the integrated loudness every song is brought to, in LUFS (-60 to 0). A karaoke host
@@ -35,8 +32,8 @@ public readonly record struct NormalizationOptions
     /// </summary>
     public double TargetLufs
     {
-        get => DefaultTargetLufs + _targetOffset;
-        init => _targetOffset = Clamp(value, MinimumTargetLufs, MaximumTargetLufs, DefaultTargetLufs) - DefaultTargetLufs;
+        get => DefaultTargetLufs + field;
+        init => field = Clamp(value, MinimumTargetLufs, MaximumTargetLufs, DefaultTargetLufs) - DefaultTargetLufs;
     }
 
     /// <summary>
@@ -45,8 +42,8 @@ public readonly record struct NormalizationOptions
     /// </summary>
     public double TruePeakCeilingDbtp
     {
-        get => DefaultTruePeakCeilingDbtp + _ceilingOffset;
-        init => _ceilingOffset = Clamp(value, MinimumCeilingDbtp, MaximumCeilingDbtp, DefaultTruePeakCeilingDbtp) - DefaultTruePeakCeilingDbtp;
+        get => DefaultTruePeakCeilingDbtp + field;
+        init => field = Clamp(value, MinimumCeilingDbtp, MaximumCeilingDbtp, DefaultTruePeakCeilingDbtp) - DefaultTruePeakCeilingDbtp;
     }
 
     /// <summary>
@@ -60,6 +57,6 @@ public readonly record struct NormalizationOptions
     /// </summary>
     public string? CacheDirectory { get; init; }
 
-    private static double Clamp(double value, double minimum, double maximum, double fallback)
+    static double Clamp(double value, double minimum, double maximum, double fallback)
         => double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : fallback;
 }

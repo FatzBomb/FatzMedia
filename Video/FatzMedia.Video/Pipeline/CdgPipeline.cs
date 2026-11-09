@@ -3,21 +3,21 @@ using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
+sealed class CdgPipeline : ISeekPumpHost, IDisposable
 {
     // CDG seek is already relatively cheap, but callers may still send many seek requests while
     // scrubbing. The shared seek pump keeps only the latest target and renders it at a small
     // internal cadence. This is intentionally not public API; hosts should simply call Seek(time).
-    private const int CdgSeekIntervalMilliseconds = 50;
+    const int CdgSeekIntervalMilliseconds = 50;
 
-    private readonly MediaState _state;
-    private readonly Lock _transportGate = new();
-    private readonly SeekPump _seekPump;
-    private CancellationTokenSource? _completionCts;
-    private bool _isPairedWithAudio;
-    private int _completionGeneration;
-    private int _completionSignaled;
-    private bool _disposed;
+    readonly MediaState _state;
+    readonly Lock _transportGate = new();
+    readonly SeekPump _seekPump;
+    CancellationTokenSource? _completionCts;
+    bool _isPairedWithAudio;
+    int _completionGeneration;
+    int _completionSignaled;
+    bool _disposed;
 
     public CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, MediaState state)
     {
@@ -27,7 +27,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         _seekPump = new SeekPump(this, "CdgSeek", "CdgPipeline");
     }
 
-    private IClockSource Clock { get; }
+    IClockSource Clock { get; }
     public ICdgEngine Engine { get; }
     public bool IsOpen { get; private set; }
     public double DurationSeconds => Engine.TotalDurationSeconds;
@@ -146,7 +146,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         return true;
     }
 
-    private bool SeekCore(double seconds)
+    bool SeekCore(double seconds)
     {
         lock (_transportGate)
         {
@@ -171,9 +171,9 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         }
     }
 
-    private void StartSeekWorker() => _seekPump.Start();
+    void StartSeekWorker() => _seekPump.Start();
 
-    private void StopSeekWorker() => _seekPump.Stop();
+    void StopSeekWorker() => _seekPump.Stop();
 
     double ISeekPumpHost.NormalizeSeekTarget(double seconds) => NormalizeSeekTarget(seconds);
 
@@ -194,7 +194,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
 
     void ISeekPumpHost.WaitForPumpInterval() => _seekPump.WaitInterval(CdgSeekIntervalMilliseconds);
 
-    private double NormalizeSeekTarget(double seconds) => SeekHelpers.NormalizeSeekTarget(seconds, DurationSeconds);
+    double NormalizeSeekTarget(double seconds) => SeekHelpers.NormalizeSeekTarget(seconds, DurationSeconds);
 
     public void RenderAt(double seconds, bool forceRebuild)
     {
@@ -228,7 +228,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         _isPairedWithAudio = false;
     }
 
-    private void StartCompletionMonitor()
+    void StartCompletionMonitor()
     {
         StopCompletionMonitor();
         if (!IsOpen || _isPairedWithAudio || DurationSeconds <= 0)
@@ -241,9 +241,9 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         _ = MonitorCompletionAsync(generation, cts);
     }
 
-    private void StopCompletionMonitor()
+    void StopCompletionMonitor()
     {
-        CancellationTokenSource? cts = Interlocked.Exchange(ref _completionCts, null);
+        var cts = Interlocked.Exchange(ref _completionCts, null);
         if (cts == null)
             return;
 
@@ -256,9 +256,9 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         }
     }
 
-    private async Task MonitorCompletionAsync(int generation, CancellationTokenSource cts)
+    async Task MonitorCompletionAsync(int generation, CancellationTokenSource cts)
     {
-        CancellationToken cancellationToken = cts.Token;
+        var cancellationToken = cts.Token;
         try
         {
             while (!cancellationToken.IsCancellationRequested && generation == _completionGeneration)
@@ -282,7 +282,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         }
     }
 
-    private void CompleteStandalonePlayback(int generation)
+    void CompleteStandalonePlayback(int generation)
     {
         if (generation != _completionGeneration || Interlocked.Exchange(ref _completionSignaled, 1) != 0)
             return;
@@ -294,7 +294,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private static void ThrowIfInvalidPath(string path)
+    static void ThrowIfInvalidPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             throw new FileNotFoundException("CDG file was not found.", path);

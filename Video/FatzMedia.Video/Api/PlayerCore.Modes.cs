@@ -14,10 +14,9 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore
 {
-    private MediaPlayerConfiguration _configuration;
-    private IReadOnlyList<string> _nativeLibraryPaths = [];
-    private bool? _autoBackground;
-    private bool _transparentBackground;
+    MediaPlayerConfiguration _configuration;
+    IReadOnlyList<string> _nativeLibraryPaths = [];
+    bool? _autoBackground;
 
     /// <summary>
     /// Raised on the control queue after <see cref="SetModeAsync"/> switched to another mode, after
@@ -90,13 +89,13 @@ public partial class PlayerCore
     /// </summary>
     public bool TransparentBackground
     {
-        get => _transparentBackground;
+        get;
         set
         {
-            if (_transparentBackground == value)
+            if (field == value)
                 return;
 
-            _transparentBackground = value;
+            field = value;
             if (_disposed)
                 return;
 
@@ -109,33 +108,33 @@ public partial class PlayerCore
     /// Audio mode creates no presentation coordinator (no renderer, GPU device or surfaces); the
     /// other modes ask the platform for one.
     /// </summary>
-    private IMediaPresentationCoordinator CreatePresentationCoordinator(MediaPlayerConfiguration configuration) =>
+    IMediaPresentationCoordinator CreatePresentationCoordinator(MediaPlayerConfiguration configuration) =>
         MediaPlayerModePolicy.UsesPresentation(configuration.Mode)
             ? _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration)
             : new AudioOnlyPresentationCoordinator();
 
     /// <summary>Background mode has no audio output, so it runs no audio device monitor.</summary>
-    private IAudioDeviceMonitor? ResolveAudioDeviceMonitor() =>
+    IAudioDeviceMonitor? ResolveAudioDeviceMonitor() =>
         MediaPlayerModePolicy.UsesAudioOutput(Mode) ? _serviceProvider.GetService<IAudioDeviceMonitor>() : null;
 
     /// <summary>
     /// Applies the mode and the options the host set to a newly built session graph (creation,
     /// Reset). Options never set leave the graph's defaults untouched.
     /// </summary>
-    private void ApplyModeToSessionGraph()
+    void ApplyModeToSessionGraph()
     {
         if (_autoBackground is { } autoBackground)
             File.BackgroundAutoDetect = autoBackground;
-        if (_transparentBackground)
+        if (TransparentBackground)
             ApplyTransparentBackground();
         Controls.ForcesLoop = MediaPlayerModePolicy.ForcesLoop(Mode);
     }
 
-    private void ApplyTransparentBackground()
+    void ApplyTransparentBackground()
     {
-        CdgVisuals.ForceTransparentBackground = _transparentBackground;
+        CdgVisuals.ForceTransparentBackground = TransparentBackground;
         if (_presentationCoordinator is MediaPresentationCoordinator coordinator)
-            coordinator.TransparentBackground = _transparentBackground;
+            coordinator.TransparentBackground = TransparentBackground;
     }
 
     /// <summary>
@@ -143,15 +142,15 @@ public partial class PlayerCore
     /// see <see cref="Dispose()"/>). Never calls through the admission gate: the caller is already in
     /// the queue.
     /// </summary>
-    private bool SwitchMode(MediaPlayerMode mode)
+    bool SwitchMode(MediaPlayerMode mode)
     {
-        MediaPlayerMode previousMode = Mode;
+        var previousMode = Mode;
         if (mode == previousMode)
             return true;
 
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
-        ModeSwitchState state = CaptureModeSwitchState();
-        MediaPlayerConfiguration previousConfiguration = _configuration;
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        var state = CaptureModeSwitchState();
+        var previousConfiguration = _configuration;
         var switched = true;
         try
         {
@@ -197,7 +196,7 @@ public partial class PlayerCore
         return switched;
     }
 
-    private ModeSwitchState CaptureModeSwitchState() => new(
+    ModeSwitchState CaptureModeSwitchState() => new(
         File.CurrentLoad,
         _mediaEngine.Position,
         _mediaEngine.State,
@@ -223,7 +222,7 @@ public partial class PlayerCore
     /// Carries the host's settings into a new graph, before its events reach the host, so the
     /// switch raises no change events for values that did not change.
     /// </summary>
-    private void RestoreSettings(ModeSwitchState state)
+    void RestoreSettings(ModeSwitchState state)
     {
         File.PlayOnLoad = state.PlayOnLoad;
         File.ResetPitchOnMediaLoad = state.ResetPitchOnMediaLoad;
@@ -247,9 +246,10 @@ public partial class PlayerCore
     /// pitch/tempo reset), then restores its sync offsets, position and transport state: after a
     /// mode switch, and after a GPU device recovery (ENG-039). On the control queue.
     /// </summary>
+    /// <param name="state">The state captured before the switch: the load to reopen and the settings to restore.</param>
     /// <param name="diagnosticCategory">The category of the warning when it cannot be reopened.</param>
     /// <param name="context">Who could not reopen it, for that warning (for example "Audio mode").</param>
-    private void ReopenMedia(ModeSwitchState state, string diagnosticCategory, string context)
+    void ReopenMedia(ModeSwitchState state, string diagnosticCategory, string context)
     {
         if (state.Load is not { } load)
             return;
@@ -300,7 +300,7 @@ public partial class PlayerCore
     /// Pauses freshly opened media. An audio stream that never played cannot pause, so it plays
     /// muted for an instant first.
     /// </summary>
-    private void RestorePaused()
+    void RestorePaused()
     {
         if (Controls.Pause())
             return;
@@ -318,7 +318,7 @@ public partial class PlayerCore
     }
 
     /// <summary>What a mode switch carries from the old graph to the new one.</summary>
-    private sealed record ModeSwitchState(
+    sealed record ModeSwitchState(
         MediaFile.LoadRequest? Load,
         double Position,
         MediaPlayerState State,

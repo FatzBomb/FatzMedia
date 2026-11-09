@@ -3,7 +3,7 @@ using FatzMedia.Video.Core.Files;
 
 namespace FatzMedia.Video.Controllers;
 
-internal static class MediaBackgroundResolver
+static class MediaBackgroundResolver
 {
     public static MediaBackgroundCandidate? Resolve(string sourcePath, IArchiveService archiveService, MediaContent content) => string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath)
             ? null
@@ -13,34 +13,34 @@ internal static class MediaBackgroundResolver
                     ? ResolveArchiveBackground(sourcePath, archiveService)
                     : ResolveSidecarBackground(sourcePath);
 
-    private static MediaBackgroundCandidate? ResolveArchiveBackground(string sourcePath, IArchiveService archiveService)
+    static MediaBackgroundCandidate? ResolveArchiveBackground(string sourcePath, IArchiveService archiveService)
     {
-        using IArchiveHandle archive = archiveService.Open(sourcePath);
+        using var archive = archiveService.Open(sourcePath);
         IArchiveEntryInfo[] entries = [.. archive.Entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Key))];
         List<MediaBackgroundMatch> matches = [];
 
-        foreach (IArchiveEntryInfo entry in entries)
+        foreach (var entry in entries)
         {
-            MediaBackgroundKind? kind = GetBackgroundKind(entry.Key);
+            var kind = GetBackgroundKind(entry.Key);
             if (kind != null)
                 matches.Add(MediaBackgroundMatch.FromArchiveEntry(kind.Value, sourcePath, entry.Key));
         }
 
         CollectSidecarBackgrounds(sourcePath, matches);
 
-        MediaBackgroundMatch? selected = SelectRandom(matches);
+        var selected = SelectRandom(matches);
         return selected?.ToCandidate();
     }
 
-    private static MediaBackgroundCandidate? ResolveSidecarBackground(string sourcePath)
+    static MediaBackgroundCandidate? ResolveSidecarBackground(string sourcePath)
     {
         List<MediaBackgroundMatch> matches = [];
         CollectSidecarBackgrounds(sourcePath, matches);
-        MediaBackgroundMatch? selected = SelectRandom(matches);
+        var selected = SelectRandom(matches);
         return selected?.ToCandidate();
     }
 
-    private static void CollectSidecarBackgrounds(string sourcePath, List<MediaBackgroundMatch> matches)
+    static void CollectSidecarBackgrounds(string sourcePath, List<MediaBackgroundMatch> matches)
     {
         var directory = Path.GetDirectoryName(sourcePath);
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
@@ -50,7 +50,7 @@ internal static class MediaBackgroundResolver
         CollectSidecarBackgrounds(directory, sourceBase, matches);
     }
 
-    private static void CollectSidecarBackgrounds(string directory, string sourceBase, List<MediaBackgroundMatch> matches)
+    static void CollectSidecarBackgrounds(string directory, string sourceBase, List<MediaBackgroundMatch> matches)
     {
         if (string.IsNullOrWhiteSpace(sourceBase))
         {
@@ -62,7 +62,7 @@ internal static class MediaBackgroundResolver
         // listing to match "song.PNG"; that costs one pass over the folder per load.
         if (!IsCaseSensitiveFileSystem)
         {
-            foreach (MediaBackgroundKind kind in PreferredKindOrder())
+            foreach (var kind in PreferredKindOrder())
             {
                 foreach (var extension in GetExtensions(kind))
                 {
@@ -75,10 +75,10 @@ internal static class MediaBackgroundResolver
             return;
         }
 
-        List<string> candidates = EnumerateSidecarCandidates(directory, sourceBase);
-        foreach (MediaBackgroundKind kind in PreferredKindOrder())
+        var candidates = EnumerateSidecarCandidates(directory, sourceBase);
+        foreach (var kind in PreferredKindOrder())
         {
-            HashSet<string> extensions = GetExtensions(kind);
+            var extensions = GetExtensions(kind);
             foreach (var candidatePath in candidates)
             {
                 if (extensions.Contains(Path.GetExtension(candidatePath)))
@@ -87,11 +87,11 @@ internal static class MediaBackgroundResolver
         }
     }
 
-    private static bool IsCaseSensitiveFileSystem => !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS();
+    static bool IsCaseSensitiveFileSystem => !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS();
 
-    private static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
+    static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
     {
-        const StringComparison baseComparison = StringComparison.Ordinal;
+        const StringComparison BaseComparison = StringComparison.Ordinal;
 
         // '*' and '?' are legal in Linux file names but are wildcards in search patterns.
         var pattern = sourceBase.AsSpan().IndexOfAny('*', '?') >= 0 ? "*" : sourceBase + ".*";
@@ -103,7 +103,7 @@ internal static class MediaBackgroundResolver
                     IgnoreInaccessible = true,
                     RecurseSubdirectories = false,
                 })
-                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, baseComparison))
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, BaseComparison))
                 .Order(StringComparer.Ordinal)];
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -112,25 +112,25 @@ internal static class MediaBackgroundResolver
         }
     }
 
-    private static MediaBackgroundMatch? SelectRandom(IReadOnlyList<MediaBackgroundMatch> matches) =>
+    static MediaBackgroundMatch? SelectRandom(IReadOnlyList<MediaBackgroundMatch> matches) =>
         matches.Count == 0 ? null : matches[Random.Shared.Next(matches.Count)];
 
-    private static MediaBackgroundKind? GetBackgroundKind(string path) => FileTypes.IsVideo(path)
+    static MediaBackgroundKind? GetBackgroundKind(string path) => FileTypes.IsVideo(path)
         ? MediaBackgroundKind.Video
         : FileTypes.IsImage(path)
             ? MediaBackgroundKind.Image
             : null;
 
-    private static IEnumerable<MediaBackgroundKind> PreferredKindOrder()
+    static IEnumerable<MediaBackgroundKind> PreferredKindOrder()
     {
         yield return MediaBackgroundKind.Video;
         yield return MediaBackgroundKind.Image;
     }
 
-    private static HashSet<string> GetExtensions(MediaBackgroundKind kind) =>
+    static HashSet<string> GetExtensions(MediaBackgroundKind kind) =>
         kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
-    private readonly record struct MediaBackgroundMatch(
+    readonly record struct MediaBackgroundMatch(
         MediaBackgroundKind Kind,
         string? Path,
         string? ArchivePath,

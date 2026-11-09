@@ -1,6 +1,6 @@
-using FatzMedia.Video.Core.Configuration;
-using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Controllers;
+using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Windows.Video;
 
 namespace FatzMedia.Video;
@@ -11,7 +11,7 @@ namespace FatzMedia.Video;
 /// </summary>
 public class WindowsPlatformFactory : IPlatformFactory
 {
-    private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
+    readonly IMediaPresentationCoordinatorFactory _presentationFactory;
 
     public WindowsPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory)
     {

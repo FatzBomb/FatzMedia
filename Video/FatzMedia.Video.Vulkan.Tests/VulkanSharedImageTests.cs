@@ -11,24 +11,24 @@ namespace FatzMedia.Video.Vulkan.Tests;
 public sealed class VulkanSharedImageTests
 {
     // ConfiguredColor 0xFF336699 composes to BGRA (0x99, 0x66, 0x33, 0xFF); exported images are RGBA.
-    private static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
-    private static readonly byte[] BlueGreyRgba = [0x33, 0x66, 0x99, 0xFF];
+    static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+    static readonly byte[] BlueGreyRgba = [0x33, 0x66, 0x99, 0xFF];
 
     [Fact]
     public void ExportedImage_ReimportedOnAnotherDevice_HoldsTheComposedFrame()
     {
-        using VulkanOffscreenCompositor? producer = CreateExportingCompositor();
+        using var producer = CreateExportingCompositor();
         if (producer is null)
             return;
 
-        using VulkanOffscreenCompositor consumer = VulkanOffscreenCompositor.TryCreate(out _)!;
-        VulkanExportedImageSet set = producer.CreateExportedImages(9, 5, 2, withSemaphores: false);
+        using var consumer = VulkanOffscreenCompositor.TryCreate(out _)!;
+        var set = producer.CreateExportedImages(9, 5, 2, withSemaphores: false);
         Assert.Equal(2, set.Images.Count);
         Assert.All(set.Images, image => Assert.True(image.MemoryFd >= 0 && image.MemorySize > 0));
 
         producer.RenderToExport(VulkanCompositionPlanner.Plan(BlueGrey, 9, 5), set, 1, waitForConsumerRelease: false);
         // The import takes ownership of the descriptor.
-        byte[] pixels = consumer.ImportAndReadBack(set.Images[1].MemoryFd, set.Images[1].MemorySize, 9, 5);
+        var pixels = consumer.ImportAndReadBack(set.Images[1].MemoryFd, set.Images[1].MemorySize, 9, 5);
 
         AssertUniform(pixels, BlueGreyRgba);
         producer.DestroyExportedImages(set, closeDescriptors: false);
@@ -47,10 +47,10 @@ public sealed class VulkanSharedImageTests
             [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.Semaphores | MediaSharedGpuImageSyncKinds.HostSynchronized)],
             [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd]));
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
-        MediaPresentationSurfaceDescriptor surface = Surface(handle, 9, 5);
+        var surface = Surface(handle, 9, 5);
 
         Assert.True(backend.AttachSurface(surface));
-        MediaSharedGpuImageSet set = Assert.Single(consumer.Sets);
+        var set = Assert.Single(consumer.Sets);
         Assert.Equal((9, 5, MediaSharedGpuImageFormat.Rgba8Unorm, 2), (set.Width, set.Height, set.Format, set.Buffers.Count));
         Assert.Equal(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, set.HandleKind);
         Assert.Equal((int)VulkanOffscreenCompositor.ExportLayout, set.VulkanImageLayout);
@@ -69,7 +69,7 @@ public sealed class VulkanSharedImageTests
         Assert.Equal(0, consumer.Frames.Last().BufferIndex);
 
         // What the compositor would import shows the frame.
-        using (VulkanOffscreenCompositor importer = VulkanOffscreenCompositor.TryCreate(out _)!)
+        using (var importer = VulkanOffscreenCompositor.TryCreate(out _)!)
         {
             AssertUniform(importer.ImportAndReadBack((int)set.Buffers[0].ImageHandle, set.Buffers[0].MemorySize, 9, 5), BlueGreyRgba);
             VulkanOffscreenCompositor.CloseDescriptor((int)set.Buffers[1].ImageHandle);
@@ -98,10 +98,10 @@ public sealed class VulkanSharedImageTests
         using var backend = new VulkanRendererBackend(() => VulkanOffscreenCompositor.TryCreate(out _));
         // A kind this platform's Vulkan path cannot export: on Windows it serves Direct3D11 textures
         // (Stage 045A), so ask for a Linux file descriptor there, and for a Direct3D11 texture elsewhere.
-        MediaSharedGpuImageHandleKind unservable = OperatingSystem.IsWindows()
+        var unservable = OperatingSystem.IsWindows()
             ? MediaSharedGpuImageHandleKind.VulkanOpaqueFd
             : MediaSharedGpuImageHandleKind.D3D11TextureNtHandle;
-        MediaSharedGpuImageSyncKinds sync = OperatingSystem.IsWindows()
+        var sync = OperatingSystem.IsWindows()
             ? MediaSharedGpuImageSyncKinds.Semaphores
             : MediaSharedGpuImageSyncKinds.KeyedMutex;
         var consumer = new RecordingConsumer(new MediaSharedGpuImageRequest(
@@ -134,7 +134,7 @@ public sealed class VulkanSharedImageTests
     public void ExportCapabilities_OfferHostSynchronizationAndSemaphoresWhenExportable()
     {
         Assert.Empty(VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(false, true, false, false, false)).Images);
-        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(true, false, false, false, false));
+        (var images, var semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(true, false, false, false, false));
         Assert.Equal([new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.HostSynchronized)], images);
         Assert.Empty(semaphores);
         (images, semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(true, true, false, false, false));
@@ -146,7 +146,7 @@ public sealed class VulkanSharedImageTests
     public void WindowsExport_MeetsAngleWithKeyedMutexTextures_AndAvaloniasVulkanBackendWithNtHandles()
     {
         // Stage 045A slice 3: what a Windows device with every path offers.
-        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) =
+        (var images, var semaphores) =
             VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(false, false, MemoryWin32: true, SemaphoreWin32: true, D3D11KeyedMutex: true));
         Assert.Equal(
             [
@@ -162,7 +162,7 @@ public sealed class VulkanSharedImageTests
                 new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
                 new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
             ]);
-        Assert.True(angle.TrySelect(images, semaphores, out MediaSharedGpuImageSelection selection, out var reason), reason);
+        Assert.True(angle.TrySelect(images, semaphores, out var selection, out var reason), reason);
         Assert.Equal((MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex), (selection.HandleKind, selection.SyncKind));
 
         // Avalonia's Vulkan backend takes opaque NT handles with exported semaphores.
@@ -195,9 +195,9 @@ public sealed class VulkanSharedImageTests
     }
 
     /// <summary>A compositor that can export memory descriptors; on Linux (lavapipe in CI) it must.</summary>
-    private static VulkanOffscreenCompositor? CreateExportingCompositor()
+    static VulkanOffscreenCompositor? CreateExportingCompositor()
     {
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return null;
 
@@ -211,20 +211,20 @@ public sealed class VulkanSharedImageTests
         return null;
     }
 
-    private static MediaPresentationSurfaceDescriptor Surface(MediaSharedGpuImageConsumerHandle handle, int width, int height) => new(
+    static MediaPresentationSurfaceDescriptor Surface(MediaSharedGpuImageConsumerHandle handle, int width, int height) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
         MediaPresentationSurfaceRole.Primary,
         handle.CreateSurfaceDescriptor(),
         width,
         height);
 
-    private static void AssertUniform(byte[] pixels, byte[] expected)
+    static void AssertUniform(byte[] pixels, byte[] expected)
     {
         for (var offset = 0; offset < pixels.Length; offset += 4)
             Assert.Equal(expected, pixels[offset..(offset + 4)]);
     }
 
-    private sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
+    sealed class RecordingConsumer(MediaSharedGpuImageRequest request) : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<MediaSharedGpuImageFrame> Frames { get; } = new();

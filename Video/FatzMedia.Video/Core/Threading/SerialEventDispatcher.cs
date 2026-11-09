@@ -17,19 +17,19 @@ namespace FatzMedia.Video.Core.Threading;
 /// capture the creator's execution context, so a delivery never runs "inside" a control operation
 /// or carries a diagnostic owner.
 /// </remarks>
-internal sealed class SerialEventDispatcher : IDisposable
+sealed class SerialEventDispatcher : IDisposable
 {
-    private readonly Channel<Action> _queue = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions
+    readonly Channel<Action> _queue = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions
     {
         SingleReader = true,
         SingleWriter = false,
     });
-    private readonly string _name;
-    private readonly TimeSpan _drainTimeout;
-    private readonly Task _worker;
-    private volatile bool _closed;
-    private int _deliveringThreadId;
-    private int _disposed;
+    readonly string _name;
+    readonly TimeSpan _drainTimeout;
+    readonly Task _worker;
+    volatile bool _closed;
+    int _deliveringThreadId;
+    int _disposed;
 
     public SerialEventDispatcher(string name, TimeSpan drainTimeout)
     {
@@ -59,9 +59,9 @@ internal sealed class SerialEventDispatcher : IDisposable
         return flushed.Task;
     }
 
-    private async Task RunAsync()
+    async Task RunAsync()
     {
-        await foreach (Action delivery in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
+        await foreach (var delivery in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             if (_closed)
                 break;

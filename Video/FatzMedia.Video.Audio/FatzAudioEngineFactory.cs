@@ -15,7 +15,7 @@ namespace FatzMedia.Video.Audio;
 /// </example>
 public sealed class FatzAudioEngineFactory : IAudioEngineFactory
 {
-    private readonly bool _nullOutput;
+    readonly bool _nullOutput;
 
     /// <summary>Creates a factory for engines on the system default output device.</summary>
     public FatzAudioEngineFactory()

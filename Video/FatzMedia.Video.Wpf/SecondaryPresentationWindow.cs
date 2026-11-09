@@ -23,11 +23,10 @@ public sealed class SecondaryPresentationWindow : Window
     /// <summary>The default size (DIPs) when the window is not full screen.</summary>
     public static readonly Size DefaultSize = new(960, 540);
 
-    private readonly IPlayerSession _session;
-    private bool _isFullScreen;
-    private WindowStyle _restoreWindowStyle;
-    private ResizeMode _restoreResizeMode;
-    private WindowState _restoreWindowState;
+    readonly IPlayerSession _session;
+    WindowStyle _restoreWindowStyle;
+    ResizeMode _restoreResizeMode;
+    WindowState _restoreWindowState;
 
     /// <param name="session">The session to present from.</param>
     /// <param name="surfaceId">The secondary surface id; distinct per secondary window of one session.</param>
@@ -74,13 +73,13 @@ public sealed class SecondaryPresentationWindow : Window
     /// <summary>Gets or sets whether the window covers its whole screen (borderless, maximized).</summary>
     public bool IsFullScreen
     {
-        get => _isFullScreen;
+        get;
         set
         {
-            if (_isFullScreen == value)
+            if (field == value)
                 return;
 
-            _isFullScreen = value;
+            field = value;
             if (value)
             {
                 _restoreWindowStyle = WindowStyle;
@@ -119,14 +118,14 @@ public sealed class SecondaryPresentationWindow : Window
             // monitor first. WPF rescales the window itself when that monitor's DPI differs.
             WindowStartupLocation = WindowStartupLocation.Manual;
             var hwnd = new WindowInteropHelper(this).EnsureHandle();
-            if (NativeMethods.GetWindowRect(hwnd, out NativeMethods.RECT rect))
+            if (NativeMethods.GetWindowRect(hwnd, out var rect))
             {
                 var width = (int)Math.Round(Width * screen.Scaling);
                 var height = (int)Math.Round(Height * screen.Scaling);
                 if (width <= 0 || height <= 0 || !double.IsFinite(Width) || !double.IsFinite(Height))
                     (width, height) = (rect.Right - rect.Left, rect.Bottom - rect.Top);
 
-                (int x, int y) = PresentationScreen.CenteredPosition(screen.WorkingArea, width, height);
+                (var x, var y) = PresentationScreen.CenteredPosition(screen.WorkingArea, width, height);
                 _ = NativeMethods.SetWindowPos(
                     hwnd,
                     IntPtr.Zero,
@@ -184,7 +183,7 @@ public sealed class SecondaryPresentationWindow : Window
         e.Handled = true;
     }
 
-    private void OnWindowClosed(object? sender, EventArgs e)
+    void OnWindowClosed(object? sender, EventArgs e)
     {
         Closed -= OnWindowClosed;
 

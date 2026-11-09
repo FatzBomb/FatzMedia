@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Threading;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Threading;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
@@ -11,7 +11,7 @@ namespace FatzMedia.Video;
 public partial class PlayerCore
 {
     /// <summary>Reads the settings Reset returns to defaults; <see langword="null"/> if the graph cannot say.</summary>
-    private ResetChanges? TryCaptureResetChanges()
+    ResetChanges? TryCaptureResetChanges()
     {
         try
         {
@@ -35,7 +35,7 @@ public partial class PlayerCore
     /// Queues the change events for the settings Reset changed, on the new control queue after
     /// Reset returned (handlers may call the player again).
     /// </summary>
-    private void RaiseResetChanges(ResetChanges? before)
+    void RaiseResetChanges(ResetChanges? before)
     {
         if (before is null || _disposed)
             return;
@@ -43,28 +43,28 @@ public partial class PlayerCore
         if (TryCaptureResetChanges() is not { } after || after == before)
             return;
 
-        const MediaChangeReason reason = MediaChangeReason.PlayerReset;
+        const MediaChangeReason Reason = MediaChangeReason.PlayerReset;
         var normalizationGain = Effects.NormalizationGain;
         _ = _controlOperations.Enqueue(() =>
         {
             if (before.Volume != after.Volume)
-                HostEventDispatcher.Raise(this, VolumeChanged, new MediaValueChangedEventArgs<double>(before.Volume, after.Volume, reason), nameof(VolumeChanged));
+                HostEventDispatcher.Raise(this, VolumeChanged, new MediaValueChangedEventArgs<double>(before.Volume, after.Volume, Reason), nameof(VolumeChanged));
             if (before.Pitch != after.Pitch)
-                HostEventDispatcher.Raise(this, PitchChanged, new MediaValueChangedEventArgs<int>(before.Pitch, after.Pitch, reason), nameof(PitchChanged));
+                HostEventDispatcher.Raise(this, PitchChanged, new MediaValueChangedEventArgs<int>(before.Pitch, after.Pitch, Reason), nameof(PitchChanged));
             if (before.Tempo != after.Tempo)
-                HostEventDispatcher.Raise(this, TempoChanged, new MediaValueChangedEventArgs<int>(before.Tempo, after.Tempo, reason), nameof(TempoChanged));
+                HostEventDispatcher.Raise(this, TempoChanged, new MediaValueChangedEventArgs<int>(before.Tempo, after.Tempo, Reason), nameof(TempoChanged));
             if (before.Normalize != after.Normalize)
                 HostEventDispatcher.Raise(this, NormalizeChanged, new MediaNormalizeChangedEventArgs(before.Normalize, after.Normalize, normalizationGain), nameof(NormalizeChanged));
             if (before.Equalizer != after.Equalizer)
-                HostEventDispatcher.Raise(this, EqualizerChanged, new MediaValueChangedEventArgs<AudioEqualizerSettings>(before.Equalizer, after.Equalizer, reason), nameof(EqualizerChanged));
+                HostEventDispatcher.Raise(this, EqualizerChanged, new MediaValueChangedEventArgs<AudioEqualizerSettings>(before.Equalizer, after.Equalizer, Reason), nameof(EqualizerChanged));
             if (before.LoopMedia != after.LoopMedia)
-                HostEventDispatcher.Raise(this, LoopMediaChanged, new MediaValueChangedEventArgs<bool>(before.LoopMedia, after.LoopMedia, reason), nameof(LoopMediaChanged));
+                HostEventDispatcher.Raise(this, LoopMediaChanged, new MediaValueChangedEventArgs<bool>(before.LoopMedia, after.LoopMedia, Reason), nameof(LoopMediaChanged));
             if (before.BaseVisualTransform != after.BaseVisualTransform)
-                HostEventDispatcher.Raise(this, BaseVisualTransformChanged, new MediaValueChangedEventArgs<BaseVisualTransform>(before.BaseVisualTransform, after.BaseVisualTransform, reason), nameof(BaseVisualTransformChanged));
+                HostEventDispatcher.Raise(this, BaseVisualTransformChanged, new MediaValueChangedEventArgs<BaseVisualTransform>(before.BaseVisualTransform, after.BaseVisualTransform, Reason), nameof(BaseVisualTransformChanged));
         });
     }
 
-    private sealed record ResetChanges(
+    sealed record ResetChanges(
         double Volume,
         int Pitch,
         int Tempo,

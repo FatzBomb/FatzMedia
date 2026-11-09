@@ -8,7 +8,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_NoChange_ReturnsNull()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -22,7 +22,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_DeviceIndexChanged_ReturnsDefaultDeviceChanged()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -38,7 +38,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_SampleRateDroppedToZero_ReturnsDeviceRemoved()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -55,7 +55,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_SampleRateRoseFromZero_ReturnsDeviceAdded()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 0,
             lastDevice: 0,
             lastDeviceName: null,
@@ -72,7 +72,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_SampleRateChangedBetweenNonZero_ReturnsDeviceStateChanged()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -89,7 +89,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_OnlyNameChanged_ReturnsDefaultDeviceChanged()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers (Realtek)",
@@ -104,7 +104,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_InitialStateFromZeroToNonZero_ReturnsDeviceAdded()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 0,
             lastDevice: 0,
             lastDeviceName: null,
@@ -119,7 +119,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_DeviceIndexTakesPrecedenceOverSampleRateChange()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -134,7 +134,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_DefaultEndpointIdChanged_ReturnsDefaultDeviceChanged()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",
@@ -156,7 +156,7 @@ public class PollingAudioDeviceMonitorTests
     [Fact]
     public void DetectChange_DefaultEndpointNameChangedWithoutIds_ReturnsDefaultDeviceChanged()
     {
-        AudioDeviceChangeInfo? result = AudioDeviceChangeDetector.Detect(
+        var result = AudioDeviceChangeDetector.Detect(
             lastSampleRate: 44100,
             lastDevice: 0,
             lastDeviceName: "Speakers",

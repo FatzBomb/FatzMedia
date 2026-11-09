@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Video;
 /// slice 2). The presentation coordinator attaches its renderer through this seam instead of
 /// knowing the engine's concrete type.
 /// </summary>
-internal interface IRendererVideoDecodeAttachment
+interface IRendererVideoDecodeAttachment
 {
     /// <summary>
     /// Makes every decoder of this engine decode on <paramref name="device"/> when the renderer

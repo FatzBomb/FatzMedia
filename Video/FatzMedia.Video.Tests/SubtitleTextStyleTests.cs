@@ -7,7 +7,7 @@ public class SubtitleTextStyleTests
     [Fact]
     public void Normalize_UsesDefaultsForAnUninitializedStyle()
     {
-        SubtitleTextStyle style = default(SubtitleTextStyle).Normalize();
+        var style = default(SubtitleTextStyle).Normalize();
 
         Assert.Equal("Segoe UI", style.FontFamily);
         Assert.Equal(44, style.FontSize);
@@ -20,7 +20,7 @@ public class SubtitleTextStyleTests
     [Fact]
     public void Normalize_ClampsInvalidDimensionsWhilePreservingConfiguredColors()
     {
-        SubtitleTextStyle style = new SubtitleTextStyle
+        var style = new SubtitleTextStyle
         {
             FontFamily = "",
             FontSize = 1000,

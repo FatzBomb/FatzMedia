@@ -4,13 +4,13 @@ namespace FatzMedia.Video.Pipeline;
 /// Per-item timeline corrections. Audio remains the physical clock; its offset shifts video
 /// presentation relative to that clock while CDG and subtitle offsets shift their own timelines.
 /// </summary>
-internal sealed class PlaybackSyncState
+sealed class PlaybackSyncState
 {
-    private const double MaximumOffsetSeconds = 30;
-    private readonly Lock _gate = new();
-    private double _audioVideoOffsetSeconds;
-    private double _cdgOffsetSeconds;
-    private double _subtitleOffsetSeconds;
+    const double MaximumOffsetSeconds = 30;
+    readonly Lock _gate = new();
+    double _audioVideoOffsetSeconds;
+    double _cdgOffsetSeconds;
+    double _subtitleOffsetSeconds;
 
     public double AudioVideoOffsetSeconds { get { lock (_gate) return _audioVideoOffsetSeconds; } }
     public double CdgOffsetSeconds { get { lock (_gate) return _cdgOffsetSeconds; } }
@@ -34,7 +34,7 @@ internal sealed class PlaybackSyncState
         }
     }
 
-    private double Set(PlaybackSyncTarget target, double seconds)
+    double Set(PlaybackSyncTarget target, double seconds)
     {
         var value = double.IsFinite(seconds) ? Math.Clamp(seconds, -MaximumOffsetSeconds, MaximumOffsetSeconds) : 0;
         lock (_gate)
@@ -43,7 +43,7 @@ internal sealed class PlaybackSyncState
         }
     }
 
-    private double Adjust(PlaybackSyncTarget target, double seconds)
+    double Adjust(PlaybackSyncTarget target, double seconds)
     {
         lock (_gate)
         {
@@ -58,7 +58,7 @@ internal sealed class PlaybackSyncState
         }
     }
 
-    private double SetNoLock(PlaybackSyncTarget target, double value)
+    double SetNoLock(PlaybackSyncTarget target, double value)
     {
         switch (target)
         {
@@ -74,7 +74,7 @@ internal sealed class PlaybackSyncState
         }
     }
 
-    private enum PlaybackSyncTarget
+    enum PlaybackSyncTarget
     {
         AudioVideo,
         Cdg,

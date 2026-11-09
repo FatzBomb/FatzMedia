@@ -17,7 +17,7 @@ namespace FatzMedia.Video.Controllers;
 /// </remarks>
 public sealed class FallbackPresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory
 {
-    private readonly Lazy<SelectionResult> _selection;
+    readonly Lazy<SelectionResult> _selection;
 
     public FallbackPresentationCoordinatorFactory(params IMediaPresentationCoordinatorFactory[] candidates)
     {
@@ -50,13 +50,13 @@ public sealed class FallbackPresentationCoordinatorFactory : IMediaPresentationC
         IMediaEngine mediaEngine,
         MediaPlayerConfiguration configuration) => Selected.Create(mediaEngine, configuration);
 
-    private static SelectionResult Select(IMediaPresentationCoordinatorFactory[] candidates)
+    static SelectionResult Select(IMediaPresentationCoordinatorFactory[] candidates)
     {
         var results = new List<MediaPresentationCandidateResult>(candidates.Length);
         for (var index = 0; index < candidates.Length; index++)
         {
-            IMediaPresentationCoordinatorFactory candidate = candidates[index];
-            MediaPresentationAvailability availability = Probe(candidate);
+            var candidate = candidates[index];
+            var availability = Probe(candidate);
             if (availability.IsAvailable)
             {
                 results.Add(new MediaPresentationCandidateResult(candidate.BackendName, availability, IsSelected: true));
@@ -72,7 +72,7 @@ public sealed class FallbackPresentationCoordinatorFactory : IMediaPresentationC
         return new SelectionResult(candidates[^1], results);
     }
 
-    private static MediaPresentationAvailability Probe(IMediaPresentationCoordinatorFactory candidate)
+    static MediaPresentationAvailability Probe(IMediaPresentationCoordinatorFactory candidate)
     {
         if (candidate is not IMediaPresentationAvailabilityProbe probe)
             return MediaPresentationAvailability.Available("no availability probe");
@@ -87,7 +87,7 @@ public sealed class FallbackPresentationCoordinatorFactory : IMediaPresentationC
         }
     }
 
-    private sealed record SelectionResult(
+    sealed record SelectionResult(
         IMediaPresentationCoordinatorFactory Selected,
         IReadOnlyList<MediaPresentationCandidateResult> Results);
 }

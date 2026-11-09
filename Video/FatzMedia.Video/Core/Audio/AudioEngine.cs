@@ -1,11 +1,11 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Audio.Filters;
 using FatzMedia.Video.Core.Network;
 using FatzMedia.Video.Core.Threading;
 using ManagedBass;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -17,54 +17,54 @@ namespace FatzMedia.Video.Core.Audio;
 /// </summary>
 public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
 {
-    private readonly BassEqualizerFilter _equalizer = new();
+    readonly BassEqualizerFilter _equalizer = new();
 
-    private const double CachedDurationToleranceSeconds = 0.25;
+    const double CachedDurationToleranceSeconds = 0.25;
 
     #region Private Fields
 
     // Composition: Delegate specialized responsibilities to focused components
-    private readonly AudioNormalizer _normalizer;
+    readonly AudioNormalizer _normalizer;
     // The player this engine was built for, for diagnostics raised on BASS's own threads.
-    private readonly object? _diagnosticOwner;
-    private readonly AudioSilenceAnalyzer _silenceAnalyzer;
-    private readonly MediaAnalysisCache _analysisCache;
-    private readonly AudioStreamManager _streamManager;
-    private readonly IOutputLatencyProvider _outputLatencyProvider;
-    private readonly SilenceTrimOptions _silenceTrim;
+    readonly object? _diagnosticOwner;
+    readonly AudioSilenceAnalyzer _silenceAnalyzer;
+    readonly MediaAnalysisCache _analysisCache;
+    readonly AudioStreamManager _streamManager;
+    readonly IOutputLatencyProvider _outputLatencyProvider;
+    readonly SilenceTrimOptions _silenceTrim;
 
     // Adaptive sample rate management
-    private bool _bassInitialized = false;
-    private int _currentDeviceSampleRate = 44100; // Default fallback
-    private int _requestedDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
-    private int _currentDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
-    private CancellationTokenSource? _normalizationAnalysisCts;
-    private Task? _normalizationAnalysisTask;
-    private readonly Lock _normalizationAnalysisLock = new();
-    private int _normalizationAnalysisGeneration;
-    private volatile bool _normalizationReady = true;
-    private readonly SyncProcedure _playbackEndedSyncProcedure;
-    private int _playbackEndSyncHandle;
-    private int _playbackEndSyncChannel;
-    private bool _loopPlayback;
-    private MediaAnalysisResult? _activeTrimWindow;
-    private readonly CancellationTokenSource _standaloneAnalysisLifetime = new();
-    private int _standaloneAnalysisCount;
-    private readonly BassFadeGainStage _fade = new("AudioEngine");
-    private readonly NetworkRetryPolicy _networkRetry;
-    private readonly Lock _networkGate = new();
-    private readonly SyncProcedure _networkMetadataSyncProcedure;
-    private Timer? _networkMonitor;
-    private BufferingStateTracker? _bufferingTracker;
-    private MediaSourceCapabilities? _networkCapabilities;
-    private int _networkGeneration;
-    private static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
+    bool _bassInitialized = false;
+    int _currentDeviceSampleRate = 44100; // Default fallback
+    int _requestedDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
+    int _currentDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
+    CancellationTokenSource? _normalizationAnalysisCts;
+    Task? _normalizationAnalysisTask;
+    readonly Lock _normalizationAnalysisLock = new();
+    int _normalizationAnalysisGeneration;
+    volatile bool _normalizationReady = true;
+    readonly SyncProcedure _playbackEndedSyncProcedure;
+    int _playbackEndSyncHandle;
+    int _playbackEndSyncChannel;
+    bool _loopPlayback;
+    MediaAnalysisResult? _activeTrimWindow;
+    readonly CancellationTokenSource _standaloneAnalysisLifetime = new();
+    int _standaloneAnalysisCount;
+    readonly BassFadeGainStage _fade = new("AudioEngine");
+    readonly NetworkRetryPolicy _networkRetry;
+    readonly Lock _networkGate = new();
+    readonly SyncProcedure _networkMetadataSyncProcedure;
+    Timer? _networkMonitor;
+    BufferingStateTracker? _bufferingTracker;
+    MediaSourceCapabilities? _networkCapabilities;
+    int _networkGeneration;
+    static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
 
-    private volatile bool _disposed;
+    volatile bool _disposed;
 
     // Serializes Play/Pause/Stop with the output watchdog's resume, so a channel the host just
     // paused or stopped is never resumed (ENG-032).
-    private readonly Lock _transportGate = new();
+    readonly Lock _transportGate = new();
 
     #endregion
 
@@ -93,6 +93,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     /// <param name="normalizer">Custom normalizer implementation</param>
     /// <param name="streamManager">Custom stream manager implementation</param>
     /// <param name="outputLatencyProvider">Provider for BASS-reported output latency</param>
+    /// <param name="silenceTrim">Which leading and trailing silence to skip</param>
+    /// <param name="analysisCache">Cache of analysis results per file; the shared cache when null</param>
+    /// <param name="networkRetry">Retry policy for network sources; the default policy when null</param>
     internal AudioEngine(
         AudioNormalizer normalizer,
         AudioStreamManager streamManager,
@@ -120,7 +123,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         };
     }
 
-    private double ApplyOutputLatency(double rawPositionSeconds)
+    double ApplyOutputLatency(double rawPositionSeconds)
     {
         if (rawPositionSeconds <= 0 || !double.IsFinite(rawPositionSeconds))
             return rawPositionSeconds;
@@ -270,7 +273,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 _bassInitialized = true;
                 _currentDevice = BassAudioOutputDevices.ResolveInitializedDeviceIndex(device);
                 _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine");
-                _currentDeviceSampleRate = MBass.GetInfo(out BassInfo info) && info.SampleRate > 0
+                _currentDeviceSampleRate = MBass.GetInfo(out var info) && info.SampleRate > 0
                     ? info.SampleRate
                     : sampleRate;
 
@@ -296,7 +299,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     bool IAudioAnalysisOpenControl.Open(string filePath, bool analyzeSilence) =>
         Open(filePath, analyzeSilence);
 
-    private bool Open(string filePath, bool analyzeSilence)
+    bool Open(string filePath, bool analyzeSilence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
@@ -442,7 +445,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             return PlayCore();
     }
 
-    private bool PlayCore()
+    bool PlayCore()
     {
         var playHandle = _streamManager.PlayHandle;
         if (playHandle == 0) return false;
@@ -481,7 +484,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         {
             // The output may be paused because the device became unavailable (another application
             // holding it exclusively, or unplugged): restart it once and retry (ENG-032).
-            Errors error = MBass.LastError;
+            var error = MBass.LastError;
             if (BassOutputWatchdog.IsOutputUnavailableError(error)
                 && BassOutputWatchdog.TryRestoreOutputForPlay(playHandle, _currentDevice, _currentDeviceSampleRate))
             {
@@ -631,7 +634,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (_disposed || AudioStreamManager.IsTrackerFormat(filePath) || !File.Exists(filePath))
             return null;
 
-        MediaAnalysisCacheKey? mediaKey = CreateMediaAnalysisCacheKey(filePath, analyzeSilence: true);
+        var mediaKey = CreateMediaAnalysisCacheKey(filePath, analyzeSilence: true);
         if (mediaKey is { } cachedKey
             && _analysisCache.TryGet(cachedKey, out var cached)
             && cached is not null)
@@ -752,7 +755,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
             // ENG-024: the load's cancellation (the host's token, the player's Reset or Dispose)
             // ends the retry delays and skips further attempts; a connect in progress finishes.
-            CancellationToken cancellation = MediaOpenCancellation.Current;
+            var cancellation = MediaOpenCancellation.Current;
             var success = false;
             for (var attempt = 1; attempt <= _networkRetry.MaxAttempts; attempt++)
             {
@@ -794,8 +797,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
             // No pre-analysis for network sources: normalization stays at unity gain.
             _normalizationReady = true;
-            NetworkStreamProbe probe = _streamManager.ProbeNetworkSource();
-            MediaSourceCapabilities capabilities = MediaSourceCapabilityMatrix.ForNetwork(probe);
+            var probe = _streamManager.ProbeNetworkSource();
+            var capabilities = MediaSourceCapabilityMatrix.ForNetwork(probe);
             StartNetworkMonitoring(capabilities);
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
@@ -816,7 +819,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void StartNetworkMonitoring(MediaSourceCapabilities capabilities)
+    void StartNetworkMonitoring(MediaSourceCapabilities capabilities)
     {
         var syncHandle = _streamManager.NetworkSyncHandle;
         lock (_networkGate)
@@ -834,7 +837,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void StopNetworkMonitoring()
+    void StopNetworkMonitoring()
     {
         Timer? monitor;
         lock (_networkGate)
@@ -851,7 +854,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         monitor?.Dispose();
     }
 
-    private void SampleNetworkBuffer(int generation)
+    void SampleNetworkBuffer(int generation)
     {
         try
         {
@@ -886,18 +889,18 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void OnNetworkMetadataSync(int handle, int channel, int data, IntPtr user)
+    void OnNetworkMetadataSync(int handle, int channel, int data, IntPtr user)
     {
         // A BASS callback thread: re-enter the owning player (ENG-025), as the end sync does.
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         PublishNetworkMetadata();
     }
 
-    private void PublishNetworkMetadata()
+    void PublishNetworkMetadata()
     {
         try
         {
-            StreamMetadata metadata = IcyMetadataParser.ParseIcy(_streamManager.ReadIcyMetadata());
+            var metadata = IcyMetadataParser.ParseIcy(_streamManager.ReadIcyMetadata());
             if (metadata == default)
                 metadata = IcyMetadataParser.ParseOggComments(_streamManager.ReadOggComments());
             if (metadata == default)
@@ -919,7 +922,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     bool IAudioFadeGainTarget.SetFadeGain(int session, double gain, TimeSpan ramp) => _fade.SetFadeGain(session, gain, ramp);
 
-    private void StopStandaloneAnalyses()
+    void StopStandaloneAnalyses()
     {
         _standaloneAnalysisLifetime.Cancel();
 
@@ -972,7 +975,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     #region Private Methods - Core
 
-    private void AttachPlaybackEndSync()
+    void AttachPlaybackEndSync()
     {
         RemovePlaybackEndSync();
 
@@ -1017,7 +1020,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void RemovePlaybackEndSync()
+    void RemovePlaybackEndSync()
     {
         var syncHandle = _playbackEndSyncHandle;
         var channel = _playbackEndSyncChannel;
@@ -1032,10 +1035,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     // BASS calls sync procedures on its own threads, where an exception would end the process:
     // a failing event subscriber is reported instead.
-    private void OnPlaybackEndedSync(int handle, int channel, int data, IntPtr user)
+    void OnPlaybackEndedSync(int handle, int channel, int data, IntPtr user)
     {
         // A native BASS thread carries no execution context: attribute to the engine's player.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         try
         {
             HandlePlaybackEnded(channel);
@@ -1046,7 +1049,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void HandlePlaybackEnded(int channel)
+    void HandlePlaybackEnded(int channel)
     {
         if (channel != _playbackEndSyncChannel)
         {
@@ -1091,14 +1094,14 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     #region Private Methods - Adaptive Sample Rate
 
-    private void LogAudioInfo(string filePath)
+    void LogAudioInfo(string filePath)
     {
         try
         {
             var playHandle = _streamManager.PlayHandle;
             if (playHandle == 0) return;
 
-            ChannelInfo channelInfo = MBass.ChannelGetInfo(playHandle);
+            var channelInfo = MBass.ChannelGetInfo(playHandle);
             Debug.WriteLine($"[AudioEngine] Audio opened: {Path.GetFileName(filePath)}");
             Debug.WriteLine($"  File rate: {channelInfo.Frequency} Hz, Channels: {channelInfo.Channels}");
             Debug.WriteLine($"  Device rate: {_currentDeviceSampleRate} Hz");
@@ -1117,7 +1120,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void StartNormalizationAnalysis(
+    void StartNormalizationAnalysis(
         string cacheKey,
         string sourceLabel,
         MediaAnalysisCacheKey? analysisCacheKey = null)
@@ -1174,7 +1177,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private async Task RunNormalizationAnalysisAsync(
+    async Task RunNormalizationAnalysisAsync(
         int analysisHandle,
         string cacheKey,
         string sourceLabel,
@@ -1263,7 +1266,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void ApplyCachedNormalizationGain(string cacheKey, double gain, string sourceLabel)
+    void ApplyCachedNormalizationGain(string cacheKey, double gain, string sourceLabel)
     {
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using cached normalization gain {gain:F3} ({sourceLabel})");
         NormalizationGainCache.Set(cacheKey, gain);
@@ -1275,7 +1278,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private bool TryActivateTrimWindow(MediaAnalysisResult result)
+    bool TryActivateTrimWindow(MediaAnalysisResult result)
     {
         if (!MediaAnalysisResultValidator.IsValid(result)
             || Math.Abs(result.SourceDuration - _streamManager.DurationSeconds) > CachedDurationToleranceSeconds)
@@ -1288,13 +1291,13 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         return true;
     }
 
-    private void ResetActiveTrimWindow()
+    void ResetActiveTrimWindow()
     {
         Volatile.Write(ref _activeTrimWindow, null);
         _streamManager.SetLoopPlayback(_loopPlayback);
     }
 
-    private void ApplyNormalizationGainIfCurrent(double gain, string? cacheKey, string message, int generation, CancellationToken cancellationToken)
+    void ApplyNormalizationGainIfCurrent(double gain, string? cacheKey, string message, int generation, CancellationToken cancellationToken)
     {
         if (!IsCurrentNormalizationAnalysis(generation, cancellationToken))
             return;
@@ -1310,11 +1313,11 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"{message}, gain={gain:F3}");
     }
 
-    private bool IsCurrentNormalizationAnalysis(int generation, CancellationToken cancellationToken) => !_disposed
+    bool IsCurrentNormalizationAnalysis(int generation, CancellationToken cancellationToken) => !_disposed
             && !cancellationToken.IsCancellationRequested
             && Volatile.Read(ref _normalizationAnalysisGeneration) == generation;
 
-    private void CancelNormalizationAnalysis()
+    void CancelNormalizationAnalysis()
     {
         _ = Interlocked.Increment(ref _normalizationAnalysisGeneration);
         CancellationTokenSource? previous;
@@ -1366,7 +1369,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     internal static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
 
-    private MediaAnalysisCacheKey? CreateMediaAnalysisCacheKey(string filePath, bool analyzeSilence) =>
+    MediaAnalysisCacheKey? CreateMediaAnalysisCacheKey(string filePath, bool analyzeSilence) =>
         analyzeSilence
         && _silenceTrim.Enabled
         && !AudioStreamManager.IsTrackerFormat(filePath)
@@ -1381,7 +1384,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     /// <summary>
     /// Gets the session-optimal sample rate based on a file's properties.
     /// </summary>
-    private static int GetSessionOptimalRate(string filePath)
+    static int GetSessionOptimalRate(string filePath)
     {
         try
         {
@@ -1404,7 +1407,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private static void EnsureDevNonStop()
+    static void EnsureDevNonStop()
     {
         try
         {

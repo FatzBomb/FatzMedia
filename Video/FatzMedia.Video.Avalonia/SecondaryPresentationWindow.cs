@@ -88,7 +88,7 @@ public class SecondaryPresentationWindow : Window
         if (!double.IsFinite(scaling) || scaling <= 0)
             scaling = 1;
 
-        (int x, int y) = PresentationPlacement.Center(
+        (var x, var y) = PresentationPlacement.Center(
             area.X, area.Y, area.Width, area.Height, (int)Math.Round(size.Width * scaling), (int)Math.Round(size.Height * scaling));
         return new PixelPoint(x, y);
     }

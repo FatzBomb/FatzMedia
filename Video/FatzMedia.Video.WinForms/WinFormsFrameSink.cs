@@ -11,11 +11,11 @@ namespace FatzMedia.Video.WinForms;
 /// allocate per frame), and the painted bitmap is only written on the UI thread: a paint never
 /// shows a half-copied frame.
 /// </summary>
-internal sealed class WinFormsFrameSink : IMediaPresentationFrameSink, IDisposable
+sealed class WinFormsFrameSink : IMediaPresentationFrameSink, IDisposable
 {
-    private readonly LatestFrameMailbox _mailbox = new();
-    private readonly Action _publishRequested;
-    private readonly MediaPresentationFrameSinkHandle _handle;
+    readonly LatestFrameMailbox _mailbox = new();
+    readonly Action _publishRequested;
+    readonly MediaPresentationFrameSinkHandle _handle;
 
     /// <param name="publishRequested">
     /// Called on the presentation thread when a frame waits and no publish is queued: the owner
@@ -59,7 +59,7 @@ internal sealed class WinFormsFrameSink : IMediaPresentationFrameSink, IDisposab
             Bitmap = new Bitmap(width, height, PixelFormat.Format32bppPArgb);
         }
 
-        BitmapData data = Bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+        var data = Bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
         try
         {
             var rowBytes = width * 4;

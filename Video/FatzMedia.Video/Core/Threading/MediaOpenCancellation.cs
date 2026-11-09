@@ -6,9 +6,9 @@ namespace FatzMedia.Video.Core.Threading;
 /// early without a token on every engine interface. An attempt already in progress (one BASS
 /// connect) is not interrupted.
 /// </summary>
-internal static class MediaOpenCancellation
+static class MediaOpenCancellation
 {
-    private static readonly AsyncLocal<CancellationToken> CurrentToken = new();
+    static readonly AsyncLocal<CancellationToken> CurrentToken = new();
 
     /// <summary>Gets the current open's token, or <see cref="CancellationToken.None"/> outside a load.</summary>
     public static CancellationToken Current => CurrentToken.Value;
@@ -16,7 +16,7 @@ internal static class MediaOpenCancellation
     /// <summary>Sets <paramref name="token"/> until the returned scope is disposed (on the same flow).</summary>
     public static Scope Enter(CancellationToken token)
     {
-        CancellationToken previous = CurrentToken.Value;
+        var previous = CurrentToken.Value;
         CurrentToken.Value = token;
         return new Scope(previous);
     }

@@ -83,7 +83,7 @@ public sealed class BaseVisualTransformTests
     {
         var transform = new BaseVisualTransform { HueDegrees = 90f };
 
-        (float red, float green, float blue) = BaseVisualTransformMath.ApplyStraight(1f, 0f, 0f, transform);
+        (var red, var green, var blue) = BaseVisualTransformMath.ApplyStraight(1f, 0f, 0f, transform);
 
         Assert.Equal(0.467f, red, 3);
         Assert.Equal(0f, green);
@@ -95,7 +95,7 @@ public sealed class BaseVisualTransformTests
     {
         var transform = new BaseVisualTransform { Saturation = 0f };
 
-        (float red, float green, float blue) = BaseVisualTransformMath.ApplyStraight(1f, 0f, 0f, transform);
+        (var red, var green, var blue) = BaseVisualTransformMath.ApplyStraight(1f, 0f, 0f, transform);
 
         Assert.Equal(0.2126f, red, 4);
         Assert.Equal(red, green);
@@ -121,7 +121,7 @@ public sealed class BaseVisualTransformTests
             BlueGain = blueGain
         };
 
-        (float red, float green, float blue) = BaseVisualTransformMath.ApplyStraight(0.2f, 0.4f, 0.6f, transform);
+        (var red, var green, var blue) = BaseVisualTransformMath.ApplyStraight(0.2f, 0.4f, 0.6f, transform);
 
         Assert.Equal(expectedRed, red, 4);
         Assert.Equal(expectedGreen, green, 4);
@@ -140,7 +140,7 @@ public sealed class BaseVisualTransformTests
             BlueGain = 0f
         };
 
-        (float red, float green, float blue) = BaseVisualTransformMath.ApplyStraight(0.2f, 0.4f, 0.6f, transform);
+        (var red, var green, var blue) = BaseVisualTransformMath.ApplyStraight(0.2f, 0.4f, 0.6f, transform);
 
         Assert.Equal(0.2f, red, 3);
         Assert.Equal(0.875f, green, 3);
@@ -152,7 +152,7 @@ public sealed class BaseVisualTransformTests
     {
         var transform = new BaseVisualTransform { RedGain = 0f };
 
-        uint result = BaseVisualTransformMath.ApplyPremultipliedBgra(0x80402010, transform);
+        var result = BaseVisualTransformMath.ApplyPremultipliedBgra(0x80402010, transform);
 
         Assert.Equal(0x80002010u, result);
     }
@@ -160,9 +160,9 @@ public sealed class BaseVisualTransformTests
     [Fact]
     public void PremultipliedIdentityIsByteIdentical()
     {
-        const uint pixel = 0x7F123456;
+        const uint Pixel = 0x7F123456;
 
-        Assert.Equal(pixel, BaseVisualTransformMath.ApplyPremultipliedBgra(pixel, default));
+        Assert.Equal(Pixel, BaseVisualTransformMath.ApplyPremultipliedBgra(Pixel, default));
     }
 
     [Fact]
@@ -192,11 +192,11 @@ public sealed class BaseVisualTransformTests
             (240, 20, 100, 255)
         ];
 
-        foreach (BaseVisualTransform transform in transforms)
+        foreach (var transform in transforms)
         {
-            foreach ((byte blue, byte green, byte red, byte alpha) in pixels)
+            foreach ((var blue, var green, var red, var alpha) in pixels)
             {
-                (float transformedRed, float transformedGreen, float transformedBlue) = BaseVisualTransformMath.ApplyStraight(
+                (var transformedRed, var transformedGreen, var transformedBlue) = BaseVisualTransformMath.ApplyStraight(
                     red / 255f,
                     green / 255f,
                     blue / 255f,
@@ -227,10 +227,10 @@ public sealed class BaseVisualTransformTests
             Brightness = 0.05f,
             IncludeOverlays = true
         };
-        const uint pixel = 0x80604020;
-        uint expected = BaseVisualTransformMath.ApplyPremultipliedBgra(pixel, transform);
+        const uint Pixel = 0x80604020;
+        var expected = BaseVisualTransformMath.ApplyPremultipliedBgra(Pixel, transform);
 
-        (byte blue, byte green, byte red, byte alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
+        (var blue, var green, var red, var alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
             blue: 0x20,
             green: 0x40,
             red: 0x60,

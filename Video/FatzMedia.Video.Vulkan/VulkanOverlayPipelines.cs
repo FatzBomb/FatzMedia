@@ -13,29 +13,29 @@ namespace FatzMedia.Video.Vulkan;
 /// the BGRA8 target inside one render pass that loads and stores the target. SPIR-V is compiled
 /// from <c>Shaders/*.vert|*.frag</c> (scripts/compile-vulkan-shaders.sh) and embedded.
 /// </summary>
-internal sealed unsafe class VulkanOverlayPipelines : IDisposable
+sealed unsafe class VulkanOverlayPipelines : IDisposable
 {
     // One vec4 of push constants at offset 0, visible to both stages: the vertex stage reads it as
     // the CDG or subtitle texture rectangle, the wash fragment stage as the wash colour (the wash quad ignores
     // texture coordinates). Keeping every read at offset 0 also sidesteps a Mesa lavapipe
     // (LLVM 20) issue where a fragment-stage vec4 push-constant load at offset 16 returned the
     // bytes at offset 0.
-    private const uint PushConstantSize = 4 * sizeof(float);
+    const uint PushConstantSize = 4 * sizeof(float);
 
-    private readonly Vk _vk;
-    private readonly Device _device;
-    private RenderPass _renderPass;
-    private DescriptorSetLayout _setLayout;
-    private PipelineLayout _layout;
-    private DescriptorPool _descriptorPool;
-    private DescriptorSet _cdgDescriptorSet;
-    private DescriptorSet _subtitleDescriptorSet;
-    private Sampler _sampler;
-    private VkPipeline _washPipeline;
-    private VkPipeline _cdgPipeline;
-    private VkPipeline _subtitlePipeline;
+    readonly Vk _vk;
+    readonly Device _device;
+    RenderPass _renderPass;
+    DescriptorSetLayout _setLayout;
+    PipelineLayout _layout;
+    DescriptorPool _descriptorPool;
+    DescriptorSet _cdgDescriptorSet;
+    DescriptorSet _subtitleDescriptorSet;
+    Sampler _sampler;
+    VkPipeline _washPipeline;
+    VkPipeline _cdgPipeline;
+    VkPipeline _subtitlePipeline;
 
-    private VulkanOverlayPipelines(Vk vk, Device device)
+    VulkanOverlayPipelines(Vk vk, Device device)
     {
         _vk = vk;
         _device = device;
@@ -128,7 +128,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         {
             // The CDG shader maps each pixel through cdgMap (ENG-049): it needs the clipped
             // destination's origin and its column and row counts, not texture coordinates.
-            PixelRect destination = quad.Destination;
+            var destination = quad.Destination;
             (push[0], push[1], push[2], push[3]) = (destination.Left, destination.Top, destination.Right - destination.Left, destination.Bottom - destination.Top);
             DrawQuad(commandBuffer, _cdgPipeline, _cdgDescriptorSet, destination, push);
         }
@@ -139,7 +139,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _vk.CmdEndRenderPass(commandBuffer);
     }
 
-    private void UpdateImageDescriptor(DescriptorSet set, ImageView view)
+    void UpdateImageDescriptor(DescriptorSet set, ImageView view)
     {
         var imageInfo = new DescriptorImageInfo(_sampler, view, ImageLayout.ShaderReadOnlyOptimal);
         var write = new WriteDescriptorSet
@@ -154,13 +154,13 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _vk.UpdateDescriptorSets(_device, 1, &write, 0, null);
     }
 
-    private void DrawTexturedQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, in VulkanOverlayQuad quad, float* push)
+    void DrawTexturedQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, in VulkanOverlayQuad quad, float* push)
     {
         (push[0], push[1], push[2], push[3]) = quad.TexCoords;
         DrawQuad(commandBuffer, pipeline, set, quad.Destination, push);
     }
 
-    private void DrawQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, PixelRect destination, float* push)
+    void DrawQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, PixelRect destination, float* push)
     {
         _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, pipeline);
         _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _layout, 0, 1, &set, 0, null);
@@ -169,7 +169,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _vk.CmdDraw(commandBuffer, 4, 1, 0, 0);
     }
 
-    private void UpdateMapDescriptor(DescriptorSet set, VkBuffer buffer)
+    void UpdateMapDescriptor(DescriptorSet set, VkBuffer buffer)
     {
         var bufferInfo = new DescriptorBufferInfo(buffer, 0, Vk.WholeSize);
         var write = new WriteDescriptorSet
@@ -214,7 +214,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _renderPass = default;
     }
 
-    private void Build(Format targetFormat)
+    void Build(Format targetFormat)
     {
         CreateRenderPass(targetFormat);
 
@@ -306,7 +306,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         }
     }
 
-    private void CreateRenderPass(Format targetFormat)
+    void CreateRenderPass(Format targetFormat)
     {
         // Load/store keeps the cleared and blitted target; explicit pipeline barriers outside the
         // pass move it between transfer and colour-attachment layouts.
@@ -448,7 +448,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     /// <summary>Creates a module from embedded SPIR-V (<c>Shaders/&lt;name&gt;.spv</c>); the caller destroys it.</summary>
     internal static ShaderModule CreateShaderModule(Vk vk, Device device, string name)
     {
-        uint[] code = LoadSpirv(name);
+        var code = LoadSpirv(name);
         fixed (uint* pCode = code)
         {
             var info = new ShaderModuleCreateInfo
@@ -464,7 +464,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     }
 
     /// <summary>Viewport and scissor both cover <paramref name="region"/> (integer pixel edges).</summary>
-    private void SetRegion(CommandBuffer commandBuffer, PixelRect region)
+    void SetRegion(CommandBuffer commandBuffer, PixelRect region)
     {
         var viewport = new Viewport(region.Left, region.Top, region.Width, region.Height, 0f, 1f);
         var scissor = new Rect2D(new Offset2D(region.Left, region.Top), new Extent2D((uint)region.Width, (uint)region.Height));
@@ -472,10 +472,10 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _vk.CmdSetScissor(commandBuffer, 0, 1, &scissor);
     }
 
-    private static uint[] LoadSpirv(string name)
+    static uint[] LoadSpirv(string name)
     {
         var resource = $"FatzMedia.Video.Vulkan.Shaders.{name}.spv";
-        using Stream stream = typeof(VulkanOverlayPipelines).Assembly.GetManifestResourceStream(resource)
+        using var stream = typeof(VulkanOverlayPipelines).Assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidOperationException($"Embedded SPIR-V '{resource}' is missing.");
         if (stream.Length == 0 || stream.Length % sizeof(uint) != 0)
             throw new InvalidOperationException($"Embedded SPIR-V '{resource}' is not a whole number of 32-bit words.");
