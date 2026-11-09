@@ -89,6 +89,7 @@ jobs:
         env:
           FA_TEST_REAL_SYSTEM: '1'
         with:
+          working-directory: Audio
           api-level: 34
           arch: x86_64
           target: google_apis
