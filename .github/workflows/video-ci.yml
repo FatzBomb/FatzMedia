@@ -12,6 +12,7 @@ on:
       - '!**/*.md'
       - '.github/workflows/video-ci.yml'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Video/**'
       - '!Video/docs/**'
@@ -42,6 +43,7 @@ jobs:
   build-and-validate:
     name: Build, test, and validate boundaries
     runs-on: windows-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 30
 
     steps:
@@ -84,6 +86,7 @@ jobs:
   linux-portable:
     name: Linux portable build and tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 20
 
     steps:

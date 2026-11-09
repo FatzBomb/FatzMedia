@@ -11,6 +11,7 @@ name: devices
 # every push to main, and a manual run, runs them.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Audio/src/*android*'
       - 'Audio/src/*apple*'
@@ -62,6 +63,7 @@ jobs:
   # run over adb by tools/android-test/run-adb.py.
   android-emulator:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +101,7 @@ jobs:
   # test certificate authority the simulator is told to trust.
   ios-simulator:
     runs-on: macos-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
