@@ -1,15 +1,12 @@
 # Agent rules
 
 The `Video\` folder of the FatzMedia repo (id `fatzmedia`; work output id `fatzvideo`): FatzMedia.Video, the
-video engine. Ecosystem rules are in the global CLAUDE.md; the map is `D:\development\FatzBomb\shared\ECOSYSTEM.md`.
+video engine.
 
 - Needs FatzMedia.Audio from `..\Audio` of this repo, by project reference; its native library comes
   from Audio's CMake build (`docs/NATIVE_DEPENDENCIES.md`). See the root AGENTS.md.
 - Output (test results, smoke-script results, logs, profiling, scratch) goes in `D:\development\FatzBomb\work\fatzvideo\`,
   never in the repo. Legacy and design material lives in `D:\development\FatzBomb\assets\fatzvideo` (read-only).
-- Don't add Claude or Copilot review workflows to .github/workflows/. Code review is done with /code-review before opening a PR.
-- The rules below were written for the repo's earlier setup. Where they conflict with this block or the global CLAUDE.md,
-  the global CLAUDE.md wins on workflow (commit each verified step on a feature branch, one PR per feature, squash merge).
 ## FatzMedia.Video
 .NET 10 media engine: UI-agnostic Core, renderer packages, platform packages, UI adapters, and
 test hosts. Read `docs/CURRENT_ARCHITECTURE.md`, `docs/VALIDATION.md`,
@@ -67,14 +64,6 @@ not up front.
 - Keep portable tests in `FatzMedia.Video.Tests`; `Portable.Tests` compiles them by link.
   A Windows-only test file needs a `D3D11*`/`Direct3D11*` name or an entry in the `Exclude` list
   of `Portable.Tests`. Tests that mutate `FileTypes` use `[Collection("File type registry")]`.
-- Linux native playback in the sandbox: `scripts/setup-linux-native.sh` installs FFmpeg 9.0 LGPL libraries and
-  test media under `/opt/fatzbomb-native` and prints `FATZBOMB_LINUX_FFMPEG_DIR` (BASS is not available).
-- Linux sandbox: build with `EnableWindowsTargeting=true`; run `Portable.Tests`, `Linux.Tests`,
-  `Rendering.Vulkan.Tests` (needs `mesa-vulkan-drivers`) and `Avalonia.Tests` (headless).
-  `dotnet format FatzMedia.Video.sln --verify-no-changes` works with
-  `EnableWindowsTargeting=true`. Run the boundary scripts with the PowerShell dotnet tool:
-  `dotnet tool install --global PowerShell`, then
-  `DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -File scripts/<script>.ps1`.
 - Windows CI is the source of truth for the full build and test run, the boundary scripts and
   format. WPF, D3D11 and native playback are verified manually (`docs/VALIDATION.md` and each
   stage's update note).
@@ -85,6 +74,4 @@ not up front.
   and manual smoke steps), and mark the manifest "implemented, pending manual smoke". Finished
   stages move to `complete/`. Bugs and deferred findings go in `docs/roadmap/ENGINEERING_ISSUES.md`.
 - One commit per stage or slice.
-- Standing approval: commit and push to the session's working branch, and open a PR when a
-  batch of related work is complete and validated (not for every small fix). Merging and
-  pushing to `main` stay with the owner.
+- Feature branch + PR per the root rules.

@@ -1,10 +1,7 @@
 # Agent rules
 
-FatzBomb ecosystem repo, id `fatzaudio`. Ecosystem rules are in the global CLAUDE.md; the map is
-`D:\development\FatzBomb\shared\ECOSYSTEM.md`.
+The `Audio\` folder of the FatzMedia repo (work output id `fatzaudio`): FatzMedia.Audio. See the root AGENTS.md.
 
-- Don't add Claude or Copilot review workflows to .github/workflows/. Code review is done with
-  /code-review before opening a PR.
 - Docs are part of every feature: header comments, .NET XML docs (CS1591 is an error in the
   binding), a `docs/features` page with C and C# examples, and its rows in `docs/migration/bass.md`.
   The goal is that an app can drop every BASS DLL. The API should be intuitive, not BASS-like.
