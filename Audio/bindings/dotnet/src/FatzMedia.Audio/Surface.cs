@@ -262,7 +262,7 @@ public interface IKaraokeSurface : IDisposable
     /// <param name="height">Must be <see cref="SurfaceLayout.Height"/>.</param>
     /// <param name="destinationRevision">The <see cref="SurfaceUpdate.Revision"/> the buffer holds; 0 = unknown.</param>
     /// <param name="time">Position on the stream's timeline; null = the audio heard now.</param>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.SizeMismatch"/> when the size is not the layout's.</exception>
+    /// <exception cref="AudioException"><see cref="ErrorCode.SizeMismatch"/> when the size is not the layout's.</exception>
     /// <exception cref="ObjectDisposedException">The surface or its stream was disposed.</exception>
     SurfaceUpdate UpdateInto(nint destination, int stride, int width, int height, ulong destinationRevision, TimeSpan? time = null);
 

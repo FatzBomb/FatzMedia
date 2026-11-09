@@ -16,7 +16,7 @@ internal sealed class LightweightSurfacesForm : Form
     private readonly TextBox _path = new() { Width = 380, Margin = new Padding(4, 6, 4, 4) };
     private int _colour;
 
-    public LightweightSurfacesForm(Func<IMediaControlPlatformFactory> createPlatformFactory, IReadOnlyList<string> nativeLibraryPaths, bool autoHide, bool preferNativeWindow)
+    public LightweightSurfacesForm(Func<IPlatformFactory> createPlatformFactory, IReadOnlyList<string> nativeLibraryPaths, bool autoHide, bool preferNativeWindow)
     {
         Text = "Background and karaoke surfaces (--lightweight-surfaces)";
         ClientSize = new Size(1100, 520);

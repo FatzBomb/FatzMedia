@@ -5,7 +5,7 @@ namespace FatzMedia.Video.WinForms;
 
 /// <summary>
 /// WinForms media surface: a control whose child window is attached to the bound
-/// <see cref="IMediaControlSession"/> as a presentation surface, the primary one by default (a
+/// <see cref="IPlayerSession"/> as a presentation surface, the primary one by default (a
 /// second screen sets <see cref="Role"/>). The host-selected renderer (for example Direct3D11)
 /// presents into that child window; the control owns only window lifecycle, size, DPI, the
 /// live-resize hint, and showing or hiding the child.
@@ -48,8 +48,8 @@ public class MediaSurface : Control
     private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
     private readonly PresentationHost _host = new();
     private readonly MediaSurfaceContentTracker _contentTracker = new();
-    private IMediaControlSession? _player;
-    private IMediaControlSession? _attachedSession;
+    private IPlayerSession? _player;
+    private IPlayerSession? _attachedSession;
     private string? _attachedSurfaceId;
     private (int Width, int Height) _attachedPixelSize;
     private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
@@ -61,7 +61,7 @@ public class MediaSurface : Control
     private bool _isContentVisible;
     private bool _isPresentationSuspended;
     private bool _presentationWindowShown;
-    private IMediaControlSession? _frameSession;
+    private IPlayerSession? _frameSession;
     private int _framePresentedSinceAttach;
     private bool _preferNativeWindow = true;
     private WinFormsFrameSink? _sink;
@@ -105,7 +105,7 @@ public class MediaSurface : Control
     /// <summary>Gets or sets the session this surface presents.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     [Browsable(false)]
-    public IMediaControlSession? Player
+    public IPlayerSession? Player
     {
         get => _player;
         set
@@ -423,7 +423,7 @@ public class MediaSurface : Control
 
     private void AttachOrResize()
     {
-        IMediaControlSession? session = _player;
+        IPlayerSession? session = _player;
         if (session is null || !IsHandleCreated || ClientSize.Width <= 0 || ClientSize.Height <= 0)
             return;
 
@@ -509,7 +509,7 @@ public class MediaSurface : Control
         (int Width, int Height) pixelSize,
         double scale) => new(surfaceId, _role, nativeSurface, pixelSize.Width, pixelSize.Height, scale, scale);
 
-    private void OnAttached(IMediaControlSession session, string surfaceId, (int Width, int Height) pixelSize)
+    private void OnAttached(IPlayerSession session, string surfaceId, (int Width, int Height) pixelSize)
     {
         _attachedSession = session;
         _attachedSurfaceId = surfaceId;
@@ -521,7 +521,7 @@ public class MediaSurface : Control
 
     private void Detach()
     {
-        IMediaControlSession? session = _attachedSession;
+        IPlayerSession? session = _attachedSession;
         var surfaceId = _attachedSurfaceId;
         _attachedSession = null;
         _attachedSurfaceId = null;
@@ -629,7 +629,7 @@ public class MediaSurface : Control
         Invalidate();
     }
 
-    private void WatchPresentedFrames(IMediaControlSession? session)
+    private void WatchPresentedFrames(IPlayerSession? session)
     {
         if (_frameSession is not null)
             _frameSession.PresentationFramePresented -= OnPresentationFramePresented;
@@ -699,7 +699,7 @@ public class MediaSurface : Control
         if (IsDisposed)
             return;
 
-        IMediaControlSession? session = _contentTracker.Session;
+        IPlayerSession? session = _contentTracker.Session;
         var suspended = session is not null && !_contentTracker.HasPresentation;
         if (suspended != _isPresentationSuspended)
         {

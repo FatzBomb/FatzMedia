@@ -1195,7 +1195,7 @@ public sealed class MediaControlPlayerTests
             throw new InvalidOperationException("analysis unavailable");
     }
 
-    private sealed class TestPlatformFactory : IMediaControlPlatformFactory
+    private sealed class TestPlatformFactory : IPlatformFactory
     {
         private readonly Queue<TestMediaEngine> _engines;
         private readonly TestPresentationCoordinator _coordinator = new();

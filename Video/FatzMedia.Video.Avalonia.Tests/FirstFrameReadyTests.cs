@@ -18,7 +18,7 @@ public sealed class FirstFrameReadyTests
     [InlineData(false)]
     public void TheFirstFrame_RaisesOnce_WithTheFrameInTheBitmap(bool autoHide)
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session, AutoHide = autoHide };
         var bitmapAtEvent = new List<bool>();
         surface.FirstFrameReady += (_, _) =>
@@ -40,7 +40,7 @@ public sealed class FirstFrameReadyTests
     [AvaloniaFact]
     public void EachLoad_RaisesAgain_AndAudioOnlyMediaNever()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
@@ -61,14 +61,14 @@ public sealed class FirstFrameReadyTests
     [AvaloniaFact]
     public void AnAnnouncedFrame_WaitsForTheBitmap()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
         Window window = Show(surface);
 
         // The present notice without a frame in the sink (a frame for another surface).
-        Task.Run(() => recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty)).Wait();
+        Task.Run(() => recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty)).Wait();
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, raised);
 
@@ -83,7 +83,7 @@ public sealed class FirstFrameReadyTests
     {
         // The startup media of a test player may load before its surface is in the tree (the
         // session is already open here): Core re-presents the current frame when the surface attaches.
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var raised = 0;
         surface.FirstFrameReady += (_, _) => raised++;
@@ -101,9 +101,9 @@ public sealed class FirstFrameReadyTests
 
     private static void Load(RecordingSession recorder, bool hasVisualContent)
     {
-        recorder.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(Source));
+        recorder.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(Source));
         recorder.HasVisualContent = hasVisualContent;
-        recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
+        recorder.Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
         Dispatcher.UIThread.RunJobs();
     }
 
@@ -114,7 +114,7 @@ public sealed class FirstFrameReadyTests
         Task.Run(() =>
         {
             sink.PresentFrame(new byte[Width * Height * 4], Width, Height, Width * 4);
-            recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+            recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         }).Wait();
         Dispatcher.UIThread.RunJobs();
     }

@@ -4,7 +4,7 @@ Preview Vulkan renderer backend for `FatzMedia.Video` (Stage 026A slices 1-2).
 
 ```csharp
 if (VulkanPresentationCoordinatorFactory.IsSupported(out var reason))
-    factory = new LinuxMediaControlPlatformFactory(new VulkanPresentationCoordinatorFactory());
+    factory = new LinuxPlatformFactory(new VulkanPresentationCoordinatorFactory());
 ```
 
 The backend renders into a managed BGRA frame-sink surface: GPU clear, background upload and

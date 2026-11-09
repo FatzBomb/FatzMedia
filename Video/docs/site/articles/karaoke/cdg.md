@@ -86,7 +86,7 @@ surface. Turn it off again and `BackgroundOpacity` applies again.
 
 > [!NOTE]
 > The setting is on <xref:FatzMedia.Video.MediaControlPlayer>, not on
-> <xref:FatzMedia.Video.IMediaControlSession>. The player inside a `KaraokeSurface` is a
+> <xref:FatzMedia.Video.IPlayerSession>. The player inside a `KaraokeSurface` is a
 > `MediaControlPlayer`, so `karaokeSurface.Session as MediaControlPlayer` reaches it.
 
 ## CD+G sync offset

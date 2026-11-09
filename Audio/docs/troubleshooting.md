@@ -1,6 +1,6 @@
 # Troubleshooting and error codes
 
-Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence for any code. In .NET a failure throws `FatzAudioException`; read its `ErrorCode`. There is no "last error" to poll. Coming from BASS? The full BASS code table is in [Appendix A of the migration guide](migration/bass.md#appendix-a-error-codes).
+Every C function returns an `fa_result`: `FA_OK` (0) or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence for any code. In .NET a failure throws `AudioException`; read its `ErrorCode`. There is no "last error" to poll. Coming from BASS? The full BASS code table is in [Appendix A of the migration guide](migration/bass.md#appendix-a-error-codes).
 
 ## Error codes
 

@@ -88,7 +88,7 @@ public class CrossfadeTests
         using var c = engine.OpenMemory(TestAudio.SineWav(2));
         a.PlayOn(output);
         b.PlayOn(output);
-        Assert.Equal(ErrorCode.Busy, Assert.Throws<FatzAudioException>(() => a.QueueNext(b)).ErrorCode);
+        Assert.Equal(ErrorCode.Busy, Assert.Throws<AudioException>(() => a.QueueNext(b)).ErrorCode);
         a.QueueNext(c, TimeSpan.FromSeconds(1), Curve.SCurve);
         a.ClearNext();
         Assert.Equal(StreamState.Stopped, c.State);
@@ -154,7 +154,7 @@ public class CrossfadeTests
         using var output = engine.OpenOutput();
         using var s = engine.OpenMemory(TestAudio.SineWav(2));   // mono
         s.PlayOn(output);
-        var ex = Assert.Throws<FatzAudioException>(() => s.SetMatrix(new float[,] { { 1f, 0f }, { 0f, 1f } }));
+        var ex = Assert.Throws<AudioException>(() => s.SetMatrix(new float[,] { { 1f, 0f }, { 0f, 1f } }));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
         s.SetMatrix(new float[,] { { 0f, 1f } });                 // right speaker only
         s.ResetMatrix();

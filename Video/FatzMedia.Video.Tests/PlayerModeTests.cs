@@ -180,7 +180,7 @@ public sealed class PlayerModeTests
     [Fact]
     public void BackgroundMode_ServiceProviderNeverInitializesAudioOutput()
     {
-        IServiceProvider services = MediaControlServiceProvider.Create(
+        IServiceProvider services = PlayerServiceProvider.Create(
             new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background },
             [],
             new EmptyPlatformServices());
@@ -288,7 +288,7 @@ public sealed class PlayerModeTests
         return [.. captured];
     }
 
-    private sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class ModeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         private readonly NullPresentationCoordinator _coordinator = new();
 
@@ -341,7 +341,7 @@ public sealed class PlayerModeTests
         }
     }
 
-    private sealed class EmptyPlatformServices : IMediaControlPlatformServices
+    private sealed class EmptyPlatformServices : IPlatformServices
     {
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {

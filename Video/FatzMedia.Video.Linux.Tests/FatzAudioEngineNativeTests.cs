@@ -312,7 +312,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         if (!OperatingSystem.IsLinux())
             return;
 
-        IServiceProvider services = MediaControlServiceProvider.Create(
+        IServiceProvider services = PlayerServiceProvider.Create(
             WithoutUserCache(new MediaPlayerConfiguration { AudioEngineFactory = new FatzAudioEngineFactory(nullOutput: true) }),
             [],
             new AudioPlatformServices());
@@ -382,7 +382,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 
     // Reports audio as available without loading BASS: the BASS engine is still created (and
     // fails to initialize here), then the factory's engine replaces it.
-    private sealed class AudioPlatformServices : IMediaControlPlatformServices
+    private sealed class AudioPlatformServices : IPlatformServices
     {
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {

@@ -32,7 +32,7 @@ static async Task<Player[]> CreatePlayers(string[] nativePaths, int count)
     for (int i = 0; i < count; i++)
     {
         int index = i;
-        var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+        var platform = new WindowsDirect3D11PlatformFactory();
         players[i] = await Player.CreateAsync(MediaPlayerConfiguration.Auto, nativePaths, platform);
         players[i].MediaDiagnostic += (_, e) =>
             Console.WriteLine($"player {index}: [{e.Level}] {e.Category}: {e.Message}");

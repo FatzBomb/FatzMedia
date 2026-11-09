@@ -127,7 +127,7 @@ public class SilenceTests
         Assert.Equal(SilenceMode.Peak, p.Mode);
         Assert.Equal(TimeSpan.Zero, p.Window);
 
-        var bad = Assert.Throws<FatzAudioException>(() => new SilenceDetector(AudioFormat.Float32(Rate, 1),
+        var bad = Assert.Throws<AudioException>(() => new SilenceDetector(AudioFormat.Float32(Rate, 1),
             new SilenceOptions { Window = TimeSpan.FromMilliseconds(5) }));
         Assert.Equal(ErrorCode.InvalidArgument, bad.ErrorCode);
     }
@@ -192,9 +192,9 @@ public class SilenceTests
         Assert.Throws<InvalidOperationException>(() => d16.Feed(new float[2]));
 
         using var push = engine.CreatePushStream(AudioFormat.Float32(Rate, 1), DecodeOnly);
-        var e = Assert.Throws<FatzAudioException>(() => push.DetectSilence());
+        var e = Assert.Throws<AudioException>(() => push.DetectSilence());
         Assert.Equal(ErrorCode.NotSeekable, e.ErrorCode);
-        var bad = Assert.Throws<FatzAudioException>(() => new SilenceDetector(AudioFormat.Float32(Rate, 1), new SilenceOptions { ThresholdDb = 3 }));
+        var bad = Assert.Throws<AudioException>(() => new SilenceDetector(AudioFormat.Float32(Rate, 1), new SilenceOptions { ThresholdDb = 3 }));
         Assert.Equal(ErrorCode.InvalidArgument, bad.ErrorCode);
     }
 }

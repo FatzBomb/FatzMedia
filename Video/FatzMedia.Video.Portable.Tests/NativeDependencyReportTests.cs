@@ -90,11 +90,11 @@ public sealed class NativeDependencyReportTests
         Assert.True(NativeDependencyReport.Empty.IsAudioAvailable);
         Assert.True(NativeDependencyReport.Empty.RequiredLoaded);
         Assert.Empty(NativeDependencyReport.Empty.Describe());
-        IMediaControlPlatformFactory factory = new MinimalFactory();
+        IPlatformFactory factory = new MinimalFactory();
         Assert.Same(NativeDependencyReport.Empty, factory.NativeDependencies);
     }
 
-    private sealed class MinimalFactory : IMediaControlPlatformFactory
+    private sealed class MinimalFactory : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

@@ -6,7 +6,7 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Supplies operating-system-specific services required by Core media composition.
 /// </summary>
-public interface IMediaControlPlatformServices
+public interface IPlatformServices
 {
     /// <summary>
     /// Loads platform-native media libraries before Core creates its media services.

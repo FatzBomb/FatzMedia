@@ -131,7 +131,7 @@ public class LyricTests
             var again = lyrics.UpdateInto(buffer, stride, layout.Width, layout.Height, update.Revision, TimeSpan.FromSeconds(1.3));
             Assert.Equal(update.Revision, again.Revision);
             Assert.Equal(0, again.Dirty.Length);
-            var ex = Assert.Throws<FatzAudioException>(() =>
+            var ex = Assert.Throws<AudioException>(() =>
                 lyrics.UpdateInto(new byte[16], 4, 1, 1, 0, TimeSpan.FromSeconds(1)));
             Assert.Equal(ErrorCode.SizeMismatch, ex.ErrorCode);
         }
@@ -201,10 +201,10 @@ public class LyricTests
         using (engine) using (font) using (s)
         {
             Assert.Throws<ArgumentException>(() => s.CreateLyricSurface(TestFont(LyricPreset.Classic) with { FontSize = 1 }));
-            var missing = Assert.Throws<FatzAudioException>(() =>
+            var missing = Assert.Throws<AudioException>(() =>
                 s.CreateLyricSurface(LyricStyle.FromPreset(LyricPreset.Classic) with { FontPath = "/no/such/font.ttf" }));
             Assert.Equal(ErrorCode.NotFound, missing.ErrorCode);
-            var junk = Assert.Throws<FatzAudioException>(() =>
+            var junk = Assert.Throws<AudioException>(() =>
                 s.CreateLyricSurface(LyricStyle.FromPreset(LyricPreset.Classic) with { FontData = new byte[] { 1, 2, 3 } }));
             Assert.Equal(ErrorCode.UnsupportedFormat, junk.ErrorCode);
         }

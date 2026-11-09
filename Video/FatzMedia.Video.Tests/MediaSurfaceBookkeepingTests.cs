@@ -53,7 +53,7 @@ public sealed class MediaSurfaceBookkeepingTests
     public void AttachRefusal_WarnsOnceUntilReset()
     {
         var bookkeeping = new MediaSurfaceBookkeeping(Category);
-        (IMediaControlSession session, _) = MediaSurfaceContentTrackerTests.TrackedSession.Create();
+        (IPlayerSession session, _) = MediaSurfaceContentTrackerTests.TrackedSession.Create();
 
         var diagnostics = Capture(() =>
         {

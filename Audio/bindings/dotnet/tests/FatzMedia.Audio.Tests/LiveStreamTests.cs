@@ -60,7 +60,7 @@ public class LiveStreamTests
         Assert.Equal(0, s.Read(new float[256]));
         Assert.Throws<ArgumentNullException>(() => engine.OpenCallback(48000, 1, null!));
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.OpenCallback(48000, 1, _ => 0, new StreamOptions { Loop = true })).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.OpenCallback(48000, 1, _ => 0, new StreamOptions { Loop = true })).ErrorCode);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class LiveStreamTests
         var input = engine.InputDevices.FirstOrDefault() ?? throw new InvalidOperationException();
         Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true, Device = input }));
         // The headless engine runs on the null backend, which has no loopback (WASAPI only).
-        var e = Assert.Throws<FatzAudioException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true }));
+        var e = Assert.Throws<AudioException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true }));
         Assert.Equal(ErrorCode.NotImplemented, e.ErrorCode);
     }
 }

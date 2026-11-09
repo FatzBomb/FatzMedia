@@ -1,16 +1,16 @@
 # Player and session
 
-Everything you do with the engine goes through one object: a player. This page explains the types involved (`MediaControlPlayer`, the adapters' `Player` classes and the `IMediaControlSession` interface), how to create a player, what its configuration controls, how long it lives and how to dispose of it, and what state it exposes.
+Everything you do with the engine goes through one object: a player. This page explains the types involved (`MediaControlPlayer`, the adapters' `Player` classes and the `IPlayerSession` interface), how to create a player, what its configuration controls, how long it lives and how to dispose of it, and what state it exposes.
 
 ## The types
 
 | Type | What it is |
 | --- | --- |
-| <xref:FatzMedia.Video.IMediaControlSession> | The framework-neutral control surface: load, transport, seek, state, effects, backgrounds, prepared-next, events and presentation-surface calls. Adapter controls and your own code can depend on this interface instead of a concrete class, which also makes it easy to substitute a test double. |
+| <xref:FatzMedia.Video.IPlayerSession> | The framework-neutral control surface: load, transport, seek, state, effects, backgrounds, prepared-next, events and presentation-surface calls. Adapter controls and your own code can depend on this interface instead of a concrete class, which also makes it easy to substitute a test double. |
 | <xref:FatzMedia.Video.MediaControlPlayer> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
 | <xref:FatzMedia.Video.Wpf.Player>, <xref:FatzMedia.Video.WinForms.Player>, <xref:FatzMedia.Video.Avalonia.Player> | Adapter classes that derive from `MediaControlPlayer`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
 
-`MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IMediaControlSession`.
+`MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IPlayerSession`.
 
 ## Creating a player
 
@@ -20,7 +20,7 @@ A player needs three things: a platform factory (which also holds the renderer),
 var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
     MediaPlayerConfiguration.Auto,
     WindowsNativeLibraryPaths.GetDefaultSearchPaths(),
-    new WindowsDirect3D11MediaControlPlatformFactory());
+    new WindowsDirect3D11PlatformFactory());
 ```
 
 The three forms:
@@ -76,7 +76,7 @@ To change a configuration value later, call `Reset(configuration, paths)`. It re
 ## Controlling playback
 
 ```csharp
-IMediaControlSession session = player;
+IPlayerSession session = player;
 
 player.PlayOnLoad = true;                       // start when a load succeeds
 bool loaded = await session.LoadAsync(path);    // false: could not be opened

@@ -36,7 +36,7 @@ public class EqualizerTests
         Assert.Equal(10, bands.Length);
         Assert.Equal(24f, bands[0].GainDb);
         Assert.Equal(1000f, bands[5].Frequency);
-        var ex = Assert.Throws<FatzAudioException>(() => s.SetEqualizerGain(10, 1f));
+        var ex = Assert.Throws<AudioException>(() => s.SetEqualizerGain(10, 1f));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
         Assert.True(s.EqualizerEnabled);
         s.EqualizerEnabled = false;

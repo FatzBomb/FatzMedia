@@ -13,7 +13,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS | FatzMedia.Audio | Why it matters when porting |
 |---|---|---|
 | `BASS_Init` sets a per-thread "current device"; later calls act on it implicitly | You hold an `fa_device*` and pass it explicitly | Calls on another thread no longer silently target the wrong device. Remove all `BASS_SetDevice` juggling |
-| Functions return `FALSE`/`0`, then you call `BASS_ErrorGetCode()` | Every function returns an `fa_result` error code directly; .NET throws `FatzAudioException` | Replace every `if (!x) err = BASS_ErrorGetCode()` with a direct check |
+| Functions return `FALSE`/`0`, then you call `BASS_ErrorGetCode()` | Every function returns an `fa_result` error code directly; .NET throws `AudioException` | Replace every `if (!x) err = BASS_ErrorGetCode()` with a direct check |
 | `HSTREAM`/`HCHANNEL`/`HMUSIC`/`HRECORD` are all `DWORD` and interchangeable by accident | Typed handles (`fa_stream*`, `fa_device*`, `fa_bus*`) | The compiler catches wrong-handle bugs |
 | Each add-on has its own `BASS_XXX_StreamCreateFile` + `BASS_PluginLoad` | One `fa_stream_open_*` detects the format; no plugins | Delete all plugin loading and per-format create calls |
 | Flags are one big `DWORD` bitfield shared across unrelated functions | Small option structs per call (`fa_open_options`) | No more guessing which `BASS_SAMPLE_*`/`BASS_STREAM_*` flags apply |
@@ -33,7 +33,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
 | BASS_GetVersion | `fa_version` | `AudioEngine.NativeVersion` (and `AudioEngine.BindingVersion`; `AudioEngine.Create` throws if their major.minor differ, see [CHANGELOG](../../CHANGELOG.md)) | ✅ |
-| BASS_ErrorGetCode | Return value of every call; `fa_result_string` | `FatzAudioException.ErrorCode` | ✅ |
+| BASS_ErrorGetCode | Return value of every call; `fa_result_string` | `AudioException.ErrorCode` | ✅ |
 | BASS_ERROR_WMA_LICENSE (protected WMA) | `FA_ERROR_PROTECTED_CONTENT`, also for encrypted MP4/MKV and SAMPLE-AES HLS | `ErrorCode.ProtectedContent` | ✅ |
 | BASS_Init | `fa_engine_create` + `fa_device_open` | `AudioEngine.Create()` + `engine.OpenOutput()` | ✅ |
 | BASS_Init with device 0 ("no sound") | `FA_ENGINE_NULL_OUTPUT` in `fa_engine_config.flags`: a silent output that still runs in real time ([devices](../features/devices.md#silent-output-for-tests-and-servers)) | `new AudioEngineOptions { NullOutput = true }` | ✅ |
@@ -1139,7 +1139,7 @@ These tables map BASS's constants, which a ported app uses everywhere, to FatzMe
 
 ### Appendix A: error codes
 
-FatzMedia.Audio returns the error directly from the call that failed, so there is no `BASS_ErrorGetCode()` to port: replace `if (!BASS_X(...)) code = BASS_ErrorGetCode();` with `r = fa_x(...); if (r != FA_OK) ...`. In .NET catch `FatzAudioException` and read `ErrorCode`. `fa_result_string(r)` gives a sentence for any code.
+FatzMedia.Audio returns the error directly from the call that failed, so there is no `BASS_ErrorGetCode()` to port: replace `if (!BASS_X(...)) code = BASS_ErrorGetCode();` with `r = fa_x(...); if (r != FA_OK) ...`. In .NET catch `AudioException` and read `ErrorCode`. `fa_result_string(r)` gives a sentence for any code.
 
 | BASS_ERROR_* | FatzMedia.Audio (C) | FatzMedia.Audio (.NET `ErrorCode`) | Notes |
 |---|---|---|---|

@@ -34,7 +34,7 @@ internal interface IMediaSourceCapabilityProvider
 /// an open in progress, buffering changes (network video, Audio-mode network soundtracks, https
 /// and HLS audio) and the in-stream titles of network audio.
 /// </summary>
-internal interface INetworkMediaControl
+internal interface INetworkPlayer
 {
     /// <summary>
     /// Cancels the FFmpeg network open in progress, if any: the connect attempt and any retry delay

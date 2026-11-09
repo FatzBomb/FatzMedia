@@ -139,7 +139,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
     {
         var appBase = Directory.CreateTempSubdirectory("fbm-first-frame-").FullName;
         var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
-        var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
+        var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
         var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = MediaPlayerMode.Background };
         return new MediaControlPlayer(factory, configuration, [ffmpeg]);
     }

@@ -16,7 +16,7 @@ namespace FatzMedia.Video.Sample.Player.Hosting;
 internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
 {
     private PlayerRendererSelection? _selection;
-    private IMediaControlPlatformFactory? _platformFactory;
+    private IPlatformFactory? _platformFactory;
 
     // --native= directories first, then the Windows defaults (or the app's native/ drop folder).
     public IReadOnlyList<string> NativeLibraryPaths { get; } =
@@ -36,7 +36,7 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
     {
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
-        _platformFactory = new WindowsMediaControlPlatformFactory(selection.CreateFactory());
+        _platformFactory = new WindowsPlatformFactory(selection.CreateFactory());
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
         if (App.StartupOptions.AudioEngine == PlayerAudioEngine.FatzAudio)
             configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };

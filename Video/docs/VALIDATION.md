@@ -88,7 +88,7 @@ is pending; the checklist is in the Stage 030A section below.
 On 2026-08-10, Stage 030A added the Player advanced validation controls: a
 collapsed `ADVANCED VALIDATION` expander with a live Auto Hide checkbox, runtime
 Reset Pitch on Load / Reset Tempo on Load checkboxes (additive
-`IMediaControlSession` properties via `MediaControlPlayer.LoadBehavior.cs` and
+`IPlayerSession` properties via `MediaControlPlayer.LoadBehavior.cs` and
 mutable `MediaFile` options), RED GAIN / GREEN GAIN / BLUE GAIN (0–2), HUE,
 BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), and SATURATION (0–2) sliders (no
 Lightness), an IDENTITY/ACTIVE indicator, and a Reset Visual command. The
@@ -912,7 +912,7 @@ Expected:
 
 Use after changes to:
 
-- `MediaControlOperationQueue`
+- `PlayerOperationQueue`
 - `MediaState`
 - `PlaybackCoordinator`
 - `MediaSession`

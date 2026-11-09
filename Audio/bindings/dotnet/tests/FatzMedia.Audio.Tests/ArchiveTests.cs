@@ -90,7 +90,7 @@ public class ArchiveTests
         Assert.Equal("SC8125-01.cdg", gfx?.Name);
 
         using var d = Archive.Open(Zip(("readme.txt", "hello"u8.ToArray(), CompressionLevel.NoCompression)));
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => d.Pick()).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => d.Pick()).ErrorCode);
     }
 
     [Theory]
@@ -126,7 +126,7 @@ public class ArchiveTests
             // Read through the temp folder when the limit is too small: a limit of 0 MB means the default, so use a big entry.
             byte[] big = TestAudio.SineWav(100);   // 8.8 MB, still under 1 MB? no: over the 1 MB limit
             using var b = Archive.Open(Zip(("big.wav", big, CompressionLevel.Optimal)), new ArchiveOptions { MemoryLimitMb = 1 });
-            Assert.Equal(ErrorCode.TooLarge, Assert.Throws<FatzAudioException>(() => b.ReadAllBytes(b.Entries[0])).ErrorCode);
+            Assert.Equal(ErrorCode.TooLarge, Assert.Throws<AudioException>(() => b.ReadAllBytes(b.Entries[0])).ErrorCode);
             using var c = Archive.Open(Zip(("big.wav", big, CompressionLevel.Optimal)), new ArchiveOptions { MemoryLimitMb = 1, TempDirectory = temp });
             using var s = c.OpenRead(c.Entries[0]);
             s.Seek(4_000_000, SeekOrigin.Begin);
@@ -147,7 +147,7 @@ public class ArchiveTests
         using var cts = new CancellationTokenSource();
         using var a = Archive.Open(Zip(("song.wav", wav, CompressionLevel.Optimal)), new ArchiveOptions { CancellationToken = cts.Token });
         cts.Cancel();
-        Assert.Equal(ErrorCode.Cancelled, Assert.Throws<FatzAudioException>(() => a.ReadAllBytes(a.Entries[0])).ErrorCode);
+        Assert.Equal(ErrorCode.Cancelled, Assert.Throws<AudioException>(() => a.ReadAllBytes(a.Entries[0])).ErrorCode);
     }
 
     // A solid 7z (LZMA2, packed header) made by the test fixture writer: three songs-folder entries, a text file and an empty file.
@@ -174,8 +174,8 @@ public class ArchiveTests
     [Fact]
     public void Errors_AreReported()
     {
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => Archive.Open("/no/such/archive.zip")).ErrorCode);
-        Assert.Equal(ErrorCode.UnsupportedFormat, Assert.Throws<FatzAudioException>(() => Archive.Open(TestAudio.SineWav(0.1))).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => Archive.Open("/no/such/archive.zip")).ErrorCode);
+        Assert.Equal(ErrorCode.UnsupportedFormat, Assert.Throws<AudioException>(() => Archive.Open(TestAudio.SineWav(0.1))).ErrorCode);
         Assert.Throws<ArgumentException>(() => Archive.Open(ReadOnlyMemory<byte>.Empty));
         Assert.Equal(ArchiveFormat.Rar, Archive.Detect("Rar!\x1A\x07\x00__"u8));
         Assert.Equal(ArchiveFormat.SevenZip, Archive.Detect([0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0, 4]));
@@ -221,7 +221,7 @@ public class ArchiveTests
         {
             using var f = engine.OpenFile(path, named);
             Assert.Equal(2000, TestAudio.ReadAll(f));
-            var ex = Assert.Throws<FatzAudioException>(() => engine.OpenFile(path, new StreamOptions { DecodeOnly = true, ArchiveEntry = "nope.wav" }));
+            var ex = Assert.Throws<AudioException>(() => engine.OpenFile(path, new StreamOptions { DecodeOnly = true, ArchiveEntry = "nope.wav" }));
             Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
         }
         finally { File.Delete(path); }
@@ -243,7 +243,7 @@ public class ArchiveTests
             var picked = Tags.Read(path, null);
             Assert.Equal(TimeSpan.FromSeconds(0.5), picked.Duration);
             Assert.True(picked.HasCdg);
-            Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => Tags.Read(path, "x.wav")).ErrorCode);
+            Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => Tags.Read(path, "x.wav")).ErrorCode);
             using var a = Archive.Open(path);
             Assert.Equal(TimeSpan.FromSeconds(0.25), Tags.Read(a, a.Find("one.wav")).Duration);
             Assert.True(Tags.Read(a).HasCdg);

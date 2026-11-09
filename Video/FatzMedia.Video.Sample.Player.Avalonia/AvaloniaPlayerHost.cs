@@ -99,7 +99,7 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
 /// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
 internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label, IReadOnlyList<string> startupWarnings) : IPlayerEngineFactory
 {
-    private IMediaControlPlatformFactory? _platformFactory;
+    private IPlatformFactory? _platformFactory;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = nativePaths;
 
@@ -121,7 +121,7 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {
-        IMediaControlPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
+        IPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
         if (StartupOptions.Current.AudioEngine == PlayerAudioEngine.FatzAudio)

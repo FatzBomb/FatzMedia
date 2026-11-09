@@ -1,7 +1,7 @@
 # FatzMedia.Video.Wpf
 
 Renderer-neutral WPF surfaces, player facade, and lightweight self-contained controls.
-The host supplies an `IMediaControlPlatformFactory`, matching the existing `Player`
+The host supplies an `IPlatformFactory`, matching the existing `Player`
 construction pattern; the WPF package does not select or reference a renderer.
 
 ## Package
@@ -148,7 +148,7 @@ sets the folders their player loads BASS and FFmpeg from. For the current Window
 stack:
 
 ```csharp
-MediaPlatformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
+MediaPlatformFactory = new WindowsDirect3D11PlatformFactory();
 ```
 
 Configure `DLLPath.Bass` and `DLLPath.FFmpeg`, or use the host's default native

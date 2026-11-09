@@ -92,7 +92,7 @@ Vulkan on a machine without a GPU needs Mesa lavapipe (`apt-get install mesa-vul
 `FatzMedia.Video.Windows` targets `net10.0-windows7.0`; `FatzMedia.Video.Linux` targets `net10.0`.
 A `net10.0` project cannot reference a Windows-TFM project, so the player targets both and each TFM
 references exactly one platform package. `PlatformComposition.cs` picks the factory with `#if WINDOWS`
-(`WindowsMediaControlPlatformFactory` or `LinuxMediaControlPlatformFactory`, each given the chosen renderer
+(`WindowsPlatformFactory` or `LinuxPlatformFactory`, each given the chosen renderer
 factory). Everything else is shared source. The `net10.0` build refuses to run on a non-Linux OS with a
 message pointing to the Windows build. The Windows build also references `FatzMedia.Video.Windows.Direct3D11`
 for the Direct3D11 renderer, which feeds the surface's shared GPU image path (DXGI keyed-mutex textures).

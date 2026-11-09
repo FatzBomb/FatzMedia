@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Threading;
 /// raised through here). A handler that throws does not stop the others, never escapes onto the
 /// raising (engine or queue) thread, and is reported as a <c>HostEvent</c> Warning diagnostic.
 /// Inside a control operation each handler runs in its own handler scope (see
-/// <see cref="MediaControlOperationQueue.EnterHandlerScope"/>).
+/// <see cref="PlayerOperationQueue.EnterHandlerScope"/>).
 /// </summary>
 internal static class HostEventDispatcher
 {
@@ -16,7 +16,7 @@ internal static class HostEventDispatcher
         if (handlers == null)
             return;
 
-        using MediaControlOperationQueue.HandlerScope scope = MediaControlOperationQueue.EnterHandlerScope();
+        using PlayerOperationQueue.HandlerScope scope = PlayerOperationQueue.EnterHandlerScope();
         if (handlers.HasSingleTarget)
         {
             Invoke(handlers, sender, EventArgs.Empty, eventName, reportFailures);
@@ -39,7 +39,7 @@ internal static class HostEventDispatcher
         if (handlers == null)
             return;
 
-        using MediaControlOperationQueue.HandlerScope scope = MediaControlOperationQueue.EnterHandlerScope();
+        using PlayerOperationQueue.HandlerScope scope = PlayerOperationQueue.EnterHandlerScope();
         if (handlers.HasSingleTarget)
         {
             Invoke(handlers, sender, args, eventName, reportFailures);

@@ -6,7 +6,7 @@ Avalonia adapter for `FatzMedia.Video` (Stage 027A slices 1, 2 and 5).
 <fbm:MediaSurface Player="{Binding Player}" VideoDisplayMode="Zoom" />
 ```
 
-- `MediaSurface` attaches one surface to any `IMediaControlSession`, resizes it with
+- `MediaSurface` attaches one surface to any `IPlayerSession`, resizes it with
   layout bounds and render scaling, detaches when removed from the visual tree or when
   `Player`, `Role` or `SurfaceId` changes, and shows the final frames.
 - **Second screen** (slice 5): put another `MediaSurface` with

@@ -37,7 +37,7 @@ public class BackgroundSurface : Control
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
-    public BackgroundSurface(IMediaControlPlatformFactory platformFactory)
+    public BackgroundSurface(IPlatformFactory platformFactory)
         : this()
     {
         PlatformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
@@ -48,7 +48,7 @@ public class BackgroundSurface : Control
 
     /// <summary>Gets the control's player once created (diagnostics, events), else <see langword="null"/>.</summary>
     [Browsable(false)]
-    public IMediaControlSession? Session => _host.Controller.Session;
+    public IPlayerSession? Session => _host.Controller.Session;
 
     /// <summary>
     /// Gets or sets the native library folders (BASS, FFmpeg) the control's player is created with;
@@ -66,7 +66,7 @@ public class BackgroundSurface : Control
     /// <summary>Gets or sets the platform the player is created with; it cannot change once the player exists.</summary>
     [DefaultValue(null)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public IMediaControlPlatformFactory? PlatformFactory
+    public IPlatformFactory? PlatformFactory
     {
         get => _host.PlatformFactory;
         set => _host.PlatformFactory = value;

@@ -44,7 +44,7 @@ public sealed class WpfMediaSurfaceParityTests
     [Fact]
     public void ProjectorSurface_DoesNotForwardItsDisplayMode() => RunSta(() =>
     {
-        (IMediaControlSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var surface = new MediaSurface { Role = MediaPresentationSurfaceRole.Projector, VideoDisplayMode = VideoDisplayMode.Stretch };
 
         surface.Player = session;
@@ -65,7 +65,7 @@ public sealed class WpfMediaSurfaceParityTests
     [Fact]
     public void SecondaryWindow_HostsAProjectorSurfaceInTheRequestedMode() => RunSta(() =>
     {
-        (IMediaControlSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var window = new SecondaryPresentationWindow(session, " singer ", presentationMode: WpfPresentationMode.WpfComposited);
 
         Assert.Equal(MediaPresentationSurfaceRole.Projector, window.Surface.Role);

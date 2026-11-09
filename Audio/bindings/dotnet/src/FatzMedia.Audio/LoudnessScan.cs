@@ -62,7 +62,7 @@ public sealed unsafe class LoudnessScan : IDisposable
     /// <returns>True when the packet was taken (or ignored because <see cref="WantsMore"/> is false); false when it could not be
     /// decoded and was skipped, which is not fatal: keep feeding.</returns>
     /// <exception cref="InvalidOperationException">This is a frame scan.</exception>
-    /// <exception cref="FatzAudioException">The scan was finished (<see cref="ErrorCode.InvalidArgument"/>), the codec's output changed
+    /// <exception cref="AudioException">The scan was finished (<see cref="ErrorCode.InvalidArgument"/>), the codec's output changed
     /// rate or channels (<see cref="ErrorCode.UnsupportedFormat"/>), or memory ran out.</exception>
     public bool PushPacket(ReadOnlySpan<byte> data)
     {
@@ -75,7 +75,7 @@ public sealed unsafe class LoudnessScan : IDisposable
     /// <returns>As <see cref="PushPacket(ReadOnlySpan{byte})"/>.</returns>
     /// <exception cref="ArgumentException"><paramref name="size"/> is negative, or <paramref name="data"/> is zero with a non-zero size.</exception>
     /// <exception cref="InvalidOperationException">This is a frame scan.</exception>
-    /// <exception cref="FatzAudioException">As <see cref="PushPacket(ReadOnlySpan{byte})"/>.</exception>
+    /// <exception cref="AudioException">As <see cref="PushPacket(ReadOnlySpan{byte})"/>.</exception>
     public bool PushPacket(nint data, int size)
     {
         if (size < 0 || (data == 0 && size != 0)) throw new ArgumentException("Invalid packet buffer.", nameof(size));
@@ -89,7 +89,7 @@ public sealed unsafe class LoudnessScan : IDisposable
         int rc = NativeMethods.fa_scan_push_packet(_handle, &p);
         if (rc == 0) return true;
         if (rc is (int)ErrorCode.InvalidArgument or (int)ErrorCode.UnsupportedFormat or (int)ErrorCode.OutOfMemory)
-            throw new FatzAudioException((ErrorCode)rc);
+            throw new AudioException((ErrorCode)rc);
         return false;
     }
 
@@ -101,7 +101,7 @@ public sealed unsafe class LoudnessScan : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="frameFormat"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="data"/> is zero or <paramref name="frames"/> is negative.</exception>
     /// <exception cref="InvalidOperationException">This is a packet scan.</exception>
-    /// <exception cref="FatzAudioException">The scan was finished or the format is invalid (<see cref="ErrorCode.InvalidArgument"/>), or the rate or channel count differs (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">The scan was finished or the format is invalid (<see cref="ErrorCode.InvalidArgument"/>), or the rate or channel count differs (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public void PushFrame(AudioFormat frameFormat, nint data, int frames)
     {
         ArgumentNullException.ThrowIfNull(frameFormat);
@@ -115,7 +115,7 @@ public sealed unsafe class LoudnessScan : IDisposable
             Frames = frames,
             Pts = long.MinValue,
         };
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_scan_push_frame(_handle, &f));
+        AudioException.ThrowIfFailed(NativeMethods.fa_scan_push_frame(_handle, &f));
     }
 
     /// <summary>
@@ -124,11 +124,11 @@ public sealed unsafe class LoudnessScan : IDisposable
     /// Calling it again returns the same result.
     /// </summary>
     /// <returns>The loudness (<see cref="LoudnessSource.Scan"/>, <see cref="LoudnessSource.Cache"/> or <see cref="LoudnessSource.Dialnorm"/>).</returns>
-    /// <exception cref="FatzAudioException">Nothing was fed (<see cref="ErrorCode.EndOfStream"/>).</exception>
+    /// <exception cref="AudioException">Nothing was fed (<see cref="ErrorCode.EndOfStream"/>).</exception>
     public Loudness Finish()
     {
         var l = NativeSized.New<FaLoudness>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_scan_finish(_handle, ref l));
+        AudioException.ThrowIfFailed(NativeMethods.fa_scan_finish(_handle, ref l));
         return Loudness.From(l);
     }
 
@@ -157,7 +157,7 @@ public sealed partial class AudioEngine
     /// <param name="options">Track and duration; null uses the defaults.</param>
     /// <returns>The scan; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
-    /// <exception cref="FatzAudioException">FatzMedia.Audio does not decode the codec (<see cref="ErrorCode.UnsupportedFormat"/>; decode it
+    /// <exception cref="AudioException">FatzMedia.Audio does not decode the codec (<see cref="ErrorCode.UnsupportedFormat"/>; decode it
     /// yourself and use the frame overload), or a parameter is invalid.</exception>
     public unsafe LoudnessScan OpenLoudnessScan(CodecParameters parameters, AudioFingerprint identity, LoudnessScanOptions? options = null)
     {
@@ -195,7 +195,7 @@ public sealed partial class AudioEngine
     /// <param name="options">Track and duration; null uses the defaults.</param>
     /// <returns>The scan; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="format"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The rate or channel count is invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The rate or channel count is invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public unsafe LoudnessScan OpenLoudnessScan(AudioFormat format, AudioFingerprint identity, LoudnessScanOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(format);
@@ -217,7 +217,7 @@ public sealed partial class AudioEngine
         so.DurationSeconds = options?.Duration is { } d ? Math.Max(0, d.TotalSeconds) : 0;
         int rc = packets ? NativeMethods.fa_scan_open_packets(h, cp, &so, out nint feed)
                          : NativeMethods.fa_scan_open_push(h, af, &so, out feed);
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         var sh = new ScanHandle();
         sh.Initialize(feed, h);
         return new LoudnessScan(sh, packets);

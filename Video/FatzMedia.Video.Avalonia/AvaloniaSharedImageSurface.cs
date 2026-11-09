@@ -25,7 +25,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
 {
     private readonly Lock _gate = new();
     private readonly Visual _owner;
-    private readonly IMediaControlSession _session;
+    private readonly IPlayerSession _session;
     private readonly GpuInteropCapabilities _interop;
     private readonly Action<AvaloniaSharedImageSurface, string, bool> _unavailable;
     private readonly MediaSharedGpuImageConsumerHandle _handle;
@@ -43,7 +43,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
 
     public AvaloniaSharedImageSurface(
         Visual owner,
-        IMediaControlSession session,
+        IPlayerSession session,
         Compositor compositor,
         GpuInteropCapabilities interop,
         MediaSharedGpuImageRequest request,

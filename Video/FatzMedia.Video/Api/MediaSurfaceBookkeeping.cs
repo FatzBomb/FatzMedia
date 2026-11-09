@@ -57,7 +57,7 @@ public sealed class MediaSurfaceBookkeeping
     /// by <paramref name="session"/>.
     /// </summary>
     /// <returns><see langword="true"/> when the path or reason changed: the adapter raises its change event.</returns>
-    public bool SetPath(MediaSurfacePresentationPath path, string? reason, IMediaControlSession? session, string effectiveSurfaceId)
+    public bool SetPath(MediaSurfacePresentationPath path, string? reason, IPlayerSession? session, string effectiveSurfaceId)
     {
         reason = string.IsNullOrEmpty(reason) ? null : reason;
         if (path == Path && reason == Reason)
@@ -81,7 +81,7 @@ public sealed class MediaSurfaceBookkeeping
     /// Raises the Warning that <paramref name="session"/> did not accept the surface, once until
     /// <see cref="ResetAttachRefusal"/> (layout retries the attach on every resize).
     /// </summary>
-    public void ReportAttachRefused(IMediaControlSession session, string effectiveSurfaceId)
+    public void ReportAttachRefused(IPlayerSession session, string effectiveSurfaceId)
     {
         if (_attachRefusalReported)
             return;

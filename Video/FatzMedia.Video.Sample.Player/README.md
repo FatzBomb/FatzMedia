@@ -99,7 +99,7 @@ FatzMedia.Video.Sample.Player/bin/x64/Debug/net10.0-windows7.0/native/
 The host passes the resolved directory list when it creates the player:
 
 ```csharp
-var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var platform = new WindowsDirect3D11PlatformFactory();
 var player = await Player.CreateAsync(configuration, [nativePath], platform);
 ```
 

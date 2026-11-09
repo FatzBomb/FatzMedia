@@ -122,7 +122,7 @@ public sealed class AudioUnavailableTests : IDisposable
     }
 
     private static IServiceProvider Create(MediaPlayerMode mode) =>
-        MediaControlServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode }, [], new NoAudioPlatformServices());
+        PlayerServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode }, [], new NoAudioPlatformServices());
 
     private string CreateMediaFile(string fileName)
     {
@@ -155,7 +155,7 @@ public sealed class AudioUnavailableTests : IDisposable
     }
 
     /// <summary>A platform whose BASS libraries did not load: no audio, no device monitor.</summary>
-    private sealed class NoAudioPlatformServices : IMediaControlPlatformServices
+    private sealed class NoAudioPlatformServices : IPlatformServices
     {
         public bool IsAudioAvailable => false;
 
@@ -176,7 +176,7 @@ public sealed class AudioUnavailableTests : IDisposable
         public double GetPresentationRefreshIntervalSeconds() => 1.0 / 60;
     }
 
-    private sealed class NoAudioPlatformFactory : IMediaControlPlatformFactory
+    private sealed class NoAudioPlatformFactory : IPlatformFactory
     {
         private readonly NullPresentationCoordinator _coordinator = new();
 
@@ -187,6 +187,6 @@ public sealed class AudioUnavailableTests : IDisposable
         public IMediaPresentationCoordinator CreatePresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) => _coordinator;
 
         public IServiceProvider CreateServiceProvider(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths) =>
-            MediaControlServiceProvider.Create(configuration, nativeLibraryPaths, new NoAudioPlatformServices());
+            PlayerServiceProvider.Create(configuration, nativeLibraryPaths, new NoAudioPlatformServices());
     }
 }

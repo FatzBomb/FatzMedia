@@ -67,7 +67,7 @@ internal static class BassOutputWatchdog
 
     /// <summary>
     /// Raised (process-wide) when a device's output becomes unavailable or available again.
-    /// Players forward it as <see cref="IMediaControlSession.AudioDeviceChanged"/>.
+    /// Players forward it as <see cref="IPlayerSession.AudioDeviceChanged"/>.
     /// </summary>
     internal static event Action<AudioDeviceChangeInfo>? OutputAvailabilityChanged;
 

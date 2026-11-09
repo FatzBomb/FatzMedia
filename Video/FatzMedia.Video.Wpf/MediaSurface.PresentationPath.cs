@@ -29,7 +29,7 @@ public sealed partial class MediaSurface
 
     private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
-    private void ReportAttachResult(IMediaControlSession session, bool attached)
+    private void ReportAttachResult(IPlayerSession session, bool attached)
     {
         if (!attached)
         {
@@ -44,7 +44,7 @@ public sealed partial class MediaSurface
         SetPresentationPath(path, $"PresentationMode is {PresentationMode}", session);
     }
 
-    private void SetPresentationPath(MediaSurfacePresentationPath path, string? reason, IMediaControlSession? session)
+    private void SetPresentationPath(MediaSurfacePresentationPath path, string? reason, IPlayerSession? session)
     {
         if (_bookkeeping.SetPath(path, reason, session, EffectiveSurfaceId))
             PresentationPathChanged?.Invoke(this, EventArgs.Empty);

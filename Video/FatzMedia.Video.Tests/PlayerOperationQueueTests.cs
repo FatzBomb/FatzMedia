@@ -2,12 +2,12 @@ using FatzMedia.Video.Core.Threading;
 
 namespace FatzMedia.Video.Tests;
 
-public class MediaControlOperationQueueTests
+public class PlayerOperationQueueTests
 {
     [Fact]
     public async Task Enqueue_RunsOperationsInFifoOrder()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var order = new List<string>();
 
         Task<bool> first = queue.Enqueue(() => { order.Add("first"); return true; });
@@ -22,7 +22,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_BlocksUntilQueuedOperationCompletes_AndReturnsResult()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -52,7 +52,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_WhenCalledFromWorkerContext_RunsDirectlyOnTheWorkerThread()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         int outerThreadId = -1;
         int innerThreadId = -2;
 
@@ -73,7 +73,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_ReentrantCallFromAQueuedOperation_ReturnsTheNestedResult()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
 
         Task<int> outer = queue.Enqueue(() => queue.Execute(() => queue.Execute(() => 5)));
 
@@ -83,7 +83,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_NestedFromCallerTurn_RunsInlineWithoutDeadlock()
     {
-        using var queue = new MediaControlOperationQueue("Test");
+        using var queue = new PlayerOperationQueue("Test");
 
         Task<int> operation = Task.Run(() => queue.Execute(() => queue.Execute(() => 42)));
 
@@ -93,7 +93,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_PropagatesTheOriginalException_NotAnAggregate()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var expected = new InvalidOperationException("boom");
 
         Task<int> executeTask = Task.Run(() => queue.Execute<int>(() => throw expected));
@@ -105,7 +105,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Execute_RunsAfterPreviouslyQueuedAsyncOperations()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var order = new List<string>();
 
         Task<bool> asyncOp = queue.Enqueue(async () =>
@@ -131,7 +131,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public void Execute_RunsOperationOnCallingThread()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         int callingThreadId = Environment.CurrentManagedThreadId;
 
         int operationThreadId = queue.Execute(() => Environment.CurrentManagedThreadId);
@@ -142,7 +142,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public void Execute_AfterDispose_ThrowsObjectDisposedException()
     {
-        var queue = new MediaControlOperationQueue("test");
+        var queue = new PlayerOperationQueue("test");
         queue.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => queue.Execute(() => 42));
@@ -154,7 +154,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task IsExecutingOperation_IsFalseInATaskStartedByAnOperation_OnceTheOperationEnded()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool>? child = null;
 
@@ -175,7 +175,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task IsExecutingOperation_IsFalseOnAnotherThread_WhileASynchronousOperationRuns()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
 
         (bool onWorker, bool onOtherThread) result = await queue.Enqueue(() =>
         {
@@ -194,7 +194,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task HandlerScope_CountsAsInsideOnlyOnItsThreadAndUntilItReturns()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var handlerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var operationMayEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var insideHandler = false;
@@ -229,7 +229,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task ExclusiveTurn_AbandonedBeforeItIsGranted_IsSkipped()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         var release = new ManualResetEventSlim();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool> blocking = queue.Enqueue(() =>
@@ -240,7 +240,7 @@ public class MediaControlOperationQueueTests
         });
         await entered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
-        MediaControlOperationQueue.ExclusiveTurn turn = queue.BeginExclusiveTurn();
+        PlayerOperationQueue.ExclusiveTurn turn = queue.BeginExclusiveTurn();
         Assert.False(turn.TryWait(TimeSpan.FromMilliseconds(50)));
         release.Set();
 
@@ -253,7 +253,7 @@ public class MediaControlOperationQueueTests
     [Fact]
     public async Task Enqueue_OperationCanceledException_CancelsTheTask()
     {
-        using var queue = new MediaControlOperationQueue("test");
+        using var queue = new PlayerOperationQueue("test");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 

@@ -2,7 +2,7 @@
 namespace FatzMedia.Video;
 
 /// <summary>
-/// Provides typed error information for the <see cref="IMediaControlSession.MediaError"/> event.
+/// Provides typed error information for the <see cref="IPlayerSession.MediaError"/> event.
 /// </summary>
 public sealed class MediaErrorEventArgs(MediaErrorCode code, string message, string? sourcePath = null, Exception? innerException = null) : EventArgs
 {

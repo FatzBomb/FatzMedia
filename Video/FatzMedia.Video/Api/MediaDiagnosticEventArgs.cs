@@ -2,7 +2,7 @@
 namespace FatzMedia.Video;
 
 /// <summary>
-/// Provides typed diagnostic information for the <see cref="IMediaControlSession.MediaDiagnostic"/> event.
+/// Provides typed diagnostic information for the <see cref="IPlayerSession.MediaDiagnostic"/> event.
 /// </summary>
 public sealed class MediaDiagnosticEventArgs(
     MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null)

@@ -134,7 +134,7 @@ public class TagsTests
     [Fact]
     public void Read_MissingFileThrows()
     {
-        var ex = Assert.Throws<FatzAudioException>(() => Tags.Read(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));
+        var ex = Assert.Throws<AudioException>(() => Tags.Read(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
     }
 

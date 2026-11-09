@@ -11,18 +11,18 @@ namespace FatzMedia.Video.Linux;
 /// <see cref="IMediaPresentationCoordinatorFactory"/> (for example the portable software
 /// renderer), exactly like the Windows factory.
 /// </summary>
-public sealed class LinuxMediaControlPlatformFactory : IMediaControlPlatformFactory
+public sealed class LinuxPlatformFactory : IPlatformFactory
 {
     private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
     private readonly LinuxPlatformOptions _options;
     private readonly LinuxNativeLibraryBootstrapper _bootstrapper;
 
-    public LinuxMediaControlPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory, LinuxPlatformOptions? options = null)
+    public LinuxPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory, LinuxPlatformOptions? options = null)
         : this(presentationFactory, options, LinuxNativeLibraryBootstrapper.Default)
     {
     }
 
-    internal LinuxMediaControlPlatformFactory(
+    internal LinuxPlatformFactory(
         IMediaPresentationCoordinatorFactory presentationFactory,
         LinuxPlatformOptions? options,
         LinuxNativeLibraryBootstrapper bootstrapper)
@@ -47,5 +47,5 @@ public sealed class LinuxMediaControlPlatformFactory : IMediaControlPlatformFact
 
     /// <inheritdoc />
     public IServiceProvider CreateServiceProvider(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths) =>
-        MediaControlServiceProvider.Create(configuration, nativeLibraryPaths, new LinuxMediaControlPlatformServices(_bootstrapper, _options));
+        PlayerServiceProvider.Create(configuration, nativeLibraryPaths, new LinuxPlatformServices(_bootstrapper, _options));
 }

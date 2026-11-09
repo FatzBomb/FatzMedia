@@ -23,7 +23,7 @@ public sealed class SecondaryPresentationWindow : Window
     /// <summary>The default size (DIPs) when the window is not full screen.</summary>
     public static readonly Size DefaultSize = new(960, 540);
 
-    private readonly IMediaControlSession _session;
+    private readonly IPlayerSession _session;
     private bool _isFullScreen;
     private WindowStyle _restoreWindowStyle;
     private ResizeMode _restoreResizeMode;
@@ -37,7 +37,7 @@ public sealed class SecondaryPresentationWindow : Window
     /// frame sink for software mode, which cannot draw into an HWND (ENG-016).
     /// </param>
     public SecondaryPresentationWindow(
-        IMediaControlSession session,
+        IPlayerSession session,
         string surfaceId,
         MediaPresentationSurfaceRole role = MediaPresentationSurfaceRole.Projector,
         WpfPresentationMode presentationMode = WpfPresentationMode.NativeHwndOverlay)

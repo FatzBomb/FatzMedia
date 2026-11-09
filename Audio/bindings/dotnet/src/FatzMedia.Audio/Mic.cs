@@ -120,7 +120,7 @@ public sealed class Mic : IDisposable
     {
         _mixer = mixer;
         _handle = handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_get_index(handle, out uint index));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_index(handle, out uint index));
         Index = (int)index;
     }
 
@@ -168,7 +168,7 @@ public sealed class Mic : IDisposable
         if (bands.Count > 16) throw new ArgumentException("At most 16 bands.", nameof(bands));
         var native = stackalloc FaEqBand[16];
         for (int i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_set_eq(_handle, native, (uint)bands.Count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_eq(_handle, native, (uint)bands.Count));
     }
 
     /// <summary>Sets the EQ to a built-in preset; <see cref="EqualizerPreset.LiveVocal"/> is made for mics.</summary>
@@ -178,7 +178,7 @@ public sealed class Mic : IDisposable
     public unsafe EqualizerBand[] GetEqualizer()
     {
         var native = stackalloc FaEqBand[16];
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_get_eq(_handle, native, 16, out uint n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_eq(_handle, native, 16, out uint n));
         var result = new EqualizerBand[n];
         for (int i = 0; i < n; i++) result[i] = native[i].ToBand();
         return result;
@@ -191,7 +191,7 @@ public sealed class Mic : IDisposable
     /// <param name="window">Length of the measurement window; defaults to 50 ms, at most about 1 s.</param>
     public MicLevels GetLevels(TimeSpan? window = null)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_get_levels(
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_levels(
             _handle, TimeConvert.ToNanoseconds(window ?? StreamLevels.DefaultWindow), out float peak, out float rms));
         return new MicLevels(peak, rms);
     }
@@ -224,11 +224,11 @@ public sealed class Mic : IDisposable
 
     private float Get(int p)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_get_param(_handle, p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_param(_handle, p, out float v));
         return v;
     }
 
-    private void Set(int p, float v) => FatzAudioException.ThrowIfFailed(NativeMethods.fa_mic_set_param(_handle, p, v));
+    private void Set(int p, float v) => AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_param(_handle, p, v));
 
     /// <summary>
     /// Removes the mic, and closes its input device when no other mic uses it. Safe from an

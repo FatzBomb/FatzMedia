@@ -330,7 +330,7 @@ public sealed class PlayerModeSwitchTests
         new(id, MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x1234), width, height);
 
     /// <summary>A new engine and coordinator for every graph, so each rebuild can be observed.</summary>
-    internal sealed class SwitchTestPlatformFactory : IMediaControlPlatformFactory
+    internal sealed class SwitchTestPlatformFactory : IPlatformFactory
     {
         private int _createServiceProviderCount;
 

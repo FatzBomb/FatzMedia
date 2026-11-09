@@ -124,7 +124,7 @@ public class EncoderTests
             using var output = engine.OpenOutput();
             using var enc = AudioEncoder.Create(path);
             enc.Record(output);
-            Assert.Equal(ErrorCode.Busy, Assert.Throws<FatzAudioException>(() => enc.Record(output)).ErrorCode);
+            Assert.Equal(ErrorCode.Busy, Assert.Throws<AudioException>(() => enc.Record(output)).ErrorCode);
             output.Start();
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (enc.Status.Frames < 4800 && DateTime.UtcNow < deadline) Thread.Sleep(10);
@@ -145,14 +145,14 @@ public class EncoderTests
         var path = TempFile("flac");
         try
         {
-            var ex = Assert.Throws<FatzAudioException>(() => AudioEncoder.Create(path, new EncoderOptions { Format = EncodeFormat.Flac, BitsPerSample = 32 }));
+            var ex = Assert.Throws<AudioException>(() => AudioEncoder.Create(path, new EncoderOptions { Format = EncodeFormat.Flac, BitsPerSample = 32 }));
             Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
             Assert.Throws<ArgumentOutOfRangeException>(() => AudioEncoder.Create(path, new EncoderOptions { SampleRate = -1 }));
             using var enc = AudioEncoder.Create(path);
             enc.Write(new float[200], 44100, 2);
             Assert.Throws<ArgumentException>(() => enc.Write(new float[3], 44100, 2));
             Assert.Equal(ErrorCode.InvalidArgument,
-                         Assert.Throws<FatzAudioException>(() => enc.Write(new float[2], 48000, 2)).ErrorCode);
+                         Assert.Throws<AudioException>(() => enc.Write(new float[2], 48000, 2)).ErrorCode);
         }
         finally
         {

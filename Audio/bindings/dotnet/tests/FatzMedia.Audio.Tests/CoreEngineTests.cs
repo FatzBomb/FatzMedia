@@ -36,7 +36,7 @@ public class CoreEngineTests
         using var engine = CreateHeadless();
         var junk = new byte[3000];
         for (int i = 0; i < junk.Length; i++) junk[i] = (byte)(i * 7 + 3);
-        var ex = Assert.Throws<FatzAudioException>(() => engine.OpenMemory(junk));
+        var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(junk));
         Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
     }
 
@@ -45,7 +45,7 @@ public class CoreEngineTests
     {
         using var engine = CreateHeadless();
         var source = new MemoryStream(new byte[512]);
-        Assert.Throws<FatzAudioException>(() => engine.OpenStream(source));
+        Assert.Throws<AudioException>(() => engine.OpenStream(source));
         Assert.True(source.CanRead); // ownership only passes on success
     }
 
@@ -122,7 +122,7 @@ public class CoreEngineTests
         while (s.Position < TimeSpan.FromSeconds(4.1) && DateTime.UtcNow < deadline) await Task.Delay(10);
         Assert.InRange(s.Position.TotalSeconds, 4.1, 6.0);   // playing on from the target
         Assert.Throws<ArgumentOutOfRangeException>(() => s.RequestSeek(TimeSpan.FromSeconds(-1)));
-        var ex = Assert.Throws<FatzAudioException>(() => s.RequestSeek(TimeSpan.FromSeconds(60)));
+        var ex = Assert.Throws<AudioException>(() => s.RequestSeek(TimeSpan.FromSeconds(60)));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
     }
 

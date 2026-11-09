@@ -14,7 +14,7 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Creates the Core media-service graph using services supplied by the selected platform.
 /// </summary>
-public static class MediaControlServiceProvider
+public static class PlayerServiceProvider
 {
     /// <summary>
     /// Creates a media-service provider for a platform implementation.
@@ -22,7 +22,7 @@ public static class MediaControlServiceProvider
     public static IServiceProvider Create(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> nativeLibraryPaths,
-        IMediaControlPlatformServices platformServices)
+        IPlatformServices platformServices)
     {
         ArgumentNullException.ThrowIfNull(platformServices);
         platformServices.EnsureNativeLibrariesLoaded(nativeLibraryPaths);

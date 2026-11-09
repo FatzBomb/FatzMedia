@@ -14,7 +14,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void Load_ArmsTheSurface_AndTheFirstFrameShowsIt()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         Assert.False(tracker.ShowsContent);
 
@@ -31,7 +31,7 @@ public sealed class MediaSurfaceContentTrackerTests
     public void FrameBeforeTheLoadNotice_IsReplayedWhenTheLoadArrives()
     {
         // A static image presents once, possibly before MediaLoaded is raised.
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
 
         fake.PresentFrame();
@@ -44,7 +44,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void AudioOnlyMedia_NeverShows_EvenWhenAStaleFrameArrives()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
 
         fake.Load(hasVisualContent: false);
@@ -57,30 +57,30 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void StopEndCloseAndError_Hide_PauseAndLoopingEndKeep()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         ShowContent(fake);
 
-        fake.Raise(nameof(IMediaControlSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
+        fake.Raise(nameof(IPlayerSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
         Assert.True(tracker.IsContentVisible);
         fake.LoopMedia = true;
-        fake.Raise(nameof(IMediaControlSession.MediaEnded), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaEnded), EventArgs.Empty);
         Assert.True(tracker.IsContentVisible);
 
         fake.LoopMedia = false;
-        fake.Raise(nameof(IMediaControlSession.MediaEnded), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaEnded), EventArgs.Empty);
         Assert.False(tracker.ShowsContent);
 
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
         Assert.False(tracker.ShowsContent);
 
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(Source));
+        fake.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(Source));
         Assert.False(tracker.ShowsContent);
 
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaError), new MediaErrorEventArgs(MediaErrorCode.Unknown, "failed"));
+        fake.Raise(nameof(IPlayerSession.MediaError), new MediaErrorEventArgs(MediaErrorCode.Unknown, "failed"));
         Assert.False(tracker.ShowsContent);
     }
 
@@ -88,12 +88,12 @@ public sealed class MediaSurfaceContentTrackerTests
     public void StopRaisedWhileTheSessionPlaysAgain_IsIgnored()
     {
         // A replacement stops the previous item internally; the new item already plays.
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         ShowContent(fake);
 
         fake.State = MediaPlayerState.Playing;
-        fake.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
 
         Assert.True(tracker.IsContentVisible);
     }
@@ -101,12 +101,12 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void PlayAfterStop_RearmsUntilTheNextFrame()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
 
-        fake.Raise(nameof(IMediaControlSession.MediaStarted), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStarted), EventArgs.Empty);
         Assert.True(tracker.ShowsContent);
         Assert.False(tracker.IsContentVisible);
 
@@ -118,14 +118,14 @@ public sealed class MediaSurfaceContentTrackerTests
     public void FramePresentedWhileStopped_ShowsAtOnceWhenPlayResumes()
     {
         // Core presents the stopped position; Play then needs no second present to show it.
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
         fake.PresentFrame();
         Assert.False(tracker.IsContentVisible);
 
-        fake.Raise(nameof(IMediaControlSession.MediaStarted), EventArgs.Empty);
+        fake.Raise(nameof(IPlayerSession.MediaStarted), EventArgs.Empty);
 
         Assert.True(tracker.IsContentVisible);
     }
@@ -133,7 +133,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void AutoHideOff_ShowsWhileTheSessionPresents_AndAudioModeClearsAnyway()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker(autoHide: false) { Session = session };
 
         Assert.True(tracker.ShowsContent);
@@ -150,7 +150,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void AudioMode_HidesVisibleContent_AndReadsTheModeLive()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         var changes = 0;
         tracker.Changed += (_, _) => Interlocked.Increment(ref changes);
@@ -172,7 +172,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void TurningAutoHideOn_ArmsAnOpenSessionAndReplaysAPresentedFrame()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker(autoHide: false) { Session = session };
         fake.Load(hasVisualContent: true);
         fake.PresentFrame();
@@ -185,7 +185,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void AnOpenSession_IsArmedWhenFollowed()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         fake.IsOpen = true;
         fake.HasVisualContent = true;
 
@@ -200,10 +200,10 @@ public sealed class MediaSurfaceContentTrackerTests
     {
         // The WPF surface follows its Player across Unloaded/Loaded (029C): a paused video shows
         // no new frame, so its state must survive.
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         ShowContent(fake);
-        fake.Raise(nameof(IMediaControlSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
+        fake.Raise(nameof(IPlayerSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
         var changes = 0;
         tracker.Changed += (_, _) => changes++;
 
@@ -216,8 +216,8 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void ReplacedSession_IsUnsubscribedAndItsEventsAreIgnored()
     {
-        (IMediaControlSession first, TrackedSession firstFake) = TrackedSession.Create();
-        (IMediaControlSession second, TrackedSession secondFake) = TrackedSession.Create();
+        (IPlayerSession first, TrackedSession firstFake) = TrackedSession.Create();
+        (IPlayerSession second, TrackedSession secondFake) = TrackedSession.Create();
         var tracker = new MediaSurfaceContentTracker { Session = first };
         Assert.True(firstFake.SubscriberCount > 0);
 
@@ -237,7 +237,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [InlineData(false)]
     public void FirstFrameLoad_IsSetByTheLoadsFirstFrame_AndANewLoadGetsANewNumber(bool autoHide)
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker(autoHide) { Session = session };
         var changes = 0;
         tracker.Changed += (_, _) => changes++;
@@ -253,11 +253,11 @@ public sealed class MediaSurfaceContentTrackerTests
 
         // Later frames, pause, loop and stop-and-play keep the number and raise nothing new for it.
         fake.PresentFrame();
-        fake.Raise(nameof(IMediaControlSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
-        fake.Raise(nameof(IMediaControlSession.MediaLooped), new MediaLoopedEventArgs(TimeSpan.Zero));
+        fake.Raise(nameof(IPlayerSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
+        fake.Raise(nameof(IPlayerSession.MediaLooped), new MediaLoopedEventArgs(TimeSpan.Zero));
         Assert.Equal(first, tracker.FirstFrameLoad);
 
-        fake.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(Source));
+        fake.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(Source));
         Assert.Equal(0, tracker.FirstFrameLoad);
         fake.Load(hasVisualContent: true);
         fake.PresentFrame();
@@ -267,7 +267,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void FirstFrameLoad_CountsAFrameLatchedBeforeTheLoadNotice()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker(autoHide: false) { Session = session };
         var changes = 0;
         tracker.Changed += (_, _) => changes++;
@@ -283,7 +283,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void FirstFrameLoad_StaysZeroForAudioOnlyMediaAndAfterAnError()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
 
         fake.Load(hasVisualContent: false);
@@ -291,7 +291,7 @@ public sealed class MediaSurfaceContentTrackerTests
         Assert.Equal(0, tracker.FirstFrameLoad);
 
         fake.Load(hasVisualContent: true);
-        fake.Raise(nameof(IMediaControlSession.MediaError), new MediaErrorEventArgs(MediaErrorCode.OpenFailed, "failed"));
+        fake.Raise(nameof(IPlayerSession.MediaError), new MediaErrorEventArgs(MediaErrorCode.OpenFailed, "failed"));
         fake.PresentFrame();
         Assert.Equal(0, tracker.FirstFrameLoad);
     }
@@ -299,7 +299,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public void FirstFrameLoad_ArmsASessionAlreadyOpen_AndASessionChangeClearsIt()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         fake.IsOpen = true;
         fake.HasVisualContent = true;
         using var tracker = new MediaSurfaceContentTracker { Session = session };
@@ -308,7 +308,7 @@ public sealed class MediaSurfaceContentTrackerTests
         fake.PresentFrame();
         Assert.NotEqual(0, tracker.FirstFrameLoad);
 
-        (IMediaControlSession other, _) = TrackedSession.Create();
+        (IPlayerSession other, _) = TrackedSession.Create();
         tracker.Session = other;
         Assert.Equal(0, tracker.FirstFrameLoad);
     }
@@ -316,7 +316,7 @@ public sealed class MediaSurfaceContentTrackerTests
     [Fact]
     public async Task FramesFromTheRenderThread_RaiseChangedOnlyOnTheTransition()
     {
-        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        (IPlayerSession session, TrackedSession fake) = TrackedSession.Create();
         using var tracker = new MediaSurfaceContentTracker { Session = session };
         fake.Load(hasVisualContent: true);
         var threads = new ConcurrentQueue<int>();
@@ -347,7 +347,7 @@ public sealed class MediaSurfaceContentTrackerTests
         Assert.True(await player.SetModeAsync(MediaPlayerMode.Audio));
         await player.FlushControlOperationsAsync();
         Assert.False(player.HasPresentation);
-        Assert.False(((IMediaControlSession)player).HasPresentation);
+        Assert.False(((IPlayerSession)player).HasPresentation);
         Assert.False(tracker.ShowsContent);
 
         Assert.True(await player.SetModeAsync(MediaPlayerMode.Full));
@@ -396,9 +396,9 @@ public sealed class MediaSurfaceContentTrackerTests
 
         public int SubscriberCount => _handlers.Values.Sum(static handler => handler?.GetInvocationList().Length ?? 0);
 
-        public static (IMediaControlSession Session, TrackedSession Fake) Create()
+        public static (IPlayerSession Session, TrackedSession Fake) Create()
         {
-            IMediaControlSession session = Create<IMediaControlSession, TrackedSession>();
+            IPlayerSession session = Create<IPlayerSession, TrackedSession>();
             return (session, (TrackedSession)(object)session);
         }
 
@@ -406,18 +406,18 @@ public sealed class MediaSurfaceContentTrackerTests
         {
             IsOpen = true;
             HasVisualContent = hasVisualContent;
-            Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
+            Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
         }
 
-        public void PresentFrame() => Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        public void PresentFrame() => Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
 
         public void SwitchMode(MediaPlayerMode mode)
         {
             MediaPlayerMode previous = Mode;
             Mode = mode;
-            Raise(nameof(IMediaControlSession.ModeChanged), new MediaValueChangedEventArgs<MediaPlayerMode>(previous, mode));
+            Raise(nameof(IPlayerSession.ModeChanged), new MediaValueChangedEventArgs<MediaPlayerMode>(previous, mode));
             if ((previous == MediaPlayerMode.Audio) != (mode == MediaPlayerMode.Audio))
-                Raise(nameof(IMediaControlSession.HasPresentationChanged), new MediaValueChangedEventArgs<bool>(previous != MediaPlayerMode.Audio, mode != MediaPlayerMode.Audio));
+                Raise(nameof(IPlayerSession.HasPresentationChanged), new MediaValueChangedEventArgs<bool>(previous != MediaPlayerMode.Audio, mode != MediaPlayerMode.Audio));
         }
 
         public void Raise(string eventName, object args)

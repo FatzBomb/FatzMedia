@@ -4,7 +4,7 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Static sink through which engine and platform components can raise host-routable
 /// diagnostics. <see cref="MediaControlPlayer"/> subscribes and re-marshals to the
-/// public <see cref="IMediaControlSession.MediaDiagnostic"/> event.
+/// public <see cref="IPlayerSession.MediaDiagnostic"/> event.
 /// </summary>
 /// <remarks>
 /// May fire from background threads (BASS callbacks, decode loops, presentation
@@ -42,11 +42,11 @@ public static class DiagnosticRouter
 
     /// <summary>
     /// Raises a diagnostic that belongs to <paramref name="owner"/>: only that session's
-    /// <see cref="IMediaControlSession.MediaDiagnostic"/> reports it. For adapter and host code
+    /// <see cref="IPlayerSession.MediaDiagnostic"/> reports it. For adapter and host code
     /// that raises outside the engine (a surface on the UI thread knows the player it is attached
     /// to). A null <paramref name="owner"/> raises a process-wide diagnostic, which every player reports.
     /// </summary>
-    public static void Raise(IMediaControlSession? owner, MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null) =>
+    public static void Raise(IPlayerSession? owner, MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null) =>
         DiagnosticOccurred?.Invoke(new MediaDiagnosticInfo(level, category, message, sourcePath, innerException) { Owner = owner });
 
     internal readonly struct OwnerScope(object? previous) : IDisposable

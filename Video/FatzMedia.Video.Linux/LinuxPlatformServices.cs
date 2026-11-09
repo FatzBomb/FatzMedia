@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Linux;
 /// <summary>
 /// Registers Linux platform services into the Core composition graph.
 /// </summary>
-internal sealed class LinuxMediaControlPlatformServices(LinuxNativeLibraryBootstrapper bootstrapper, LinuxPlatformOptions options) : IMediaControlPlatformServices
+internal sealed class LinuxPlatformServices(LinuxNativeLibraryBootstrapper bootstrapper, LinuxPlatformOptions options) : IPlatformServices
 {
     public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
     {

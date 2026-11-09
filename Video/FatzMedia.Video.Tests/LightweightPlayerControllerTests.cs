@@ -327,7 +327,7 @@ public sealed class LightweightPlayerControllerTests
         }
     }
 
-    private sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IMediaControlPlatformFactory
+    private sealed class LightweightTestPlatformFactory(params TestMediaEngine[] engines) : IPlatformFactory
     {
         private readonly ConcurrentQueue<TestMediaEngine> _engines = new(engines);
         private readonly NullPresentationCoordinator _coordinator = new();

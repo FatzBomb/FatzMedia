@@ -49,10 +49,10 @@ Every package is optional apart from Core, which every other one builds on. A ho
 | Package | Targets | What it is |
 | --- | --- | --- |
 | `FatzMedia.Video` | net10.0 | The Core engine: playback, timing, composition policy, state, CD+G, subtitles, backgrounds, player modes, archives, and the contracts renderers and platforms implement. Contains <xref:FatzMedia.Video.MediaControlPlayer>. |
-| `FatzMedia.Video.Windows` | net10.0-windows7.0 | Windows platform services: BASS and FFmpeg loading, audio device handling, precision timing, hardware decode policy. Contains <xref:FatzMedia.Video.WindowsMediaControlPlatformFactory>. |
-| `FatzMedia.Video.Linux` | net10.0 | Linux platform services: shared library loading, timing, BASS device monitoring, software decode. Contains <xref:FatzMedia.Video.Linux.LinuxMediaControlPlatformFactory>. |
+| `FatzMedia.Video.Windows` | net10.0-windows7.0 | Windows platform services: BASS and FFmpeg loading, audio device handling, precision timing, hardware decode policy. Contains <xref:FatzMedia.Video.WindowsPlatformFactory>. |
+| `FatzMedia.Video.Linux` | net10.0 | Linux platform services: shared library loading, timing, BASS device monitoring, software decode. Contains <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>. |
 | `FatzMedia.Video.Direct3D11` | net10.0-windows7.0 | The Direct3D 11 renderer: GPU composition, swap chains, subtitle and lyric text, HDR output. |
-| `FatzMedia.Video.Windows.Direct3D11` | net10.0-windows7.0 | A convenience bundle: the Windows package plus the Direct3D11 renderer, with <xref:FatzMedia.Video.WindowsDirect3D11MediaControlPlatformFactory> to create both. |
+| `FatzMedia.Video.Windows.Direct3D11` | net10.0-windows7.0 | A convenience bundle: the Windows package plus the Direct3D11 renderer, with <xref:FatzMedia.Video.WindowsDirect3D11PlatformFactory> to create both. |
 | `FatzMedia.Video.Software` | net10.0 | A portable CPU renderer that needs no GPU. Deterministic output; every platform. Draws text through `FatzMedia.Video.Text`. |
 | `FatzMedia.Video.Vulkan` | net10.0 | A Vulkan renderer for Windows and Linux, with GPU video decoding through Vulkan Video where the driver supports it. Preview. |
 | `FatzMedia.Video.Text` | net10.0 | The SkiaSharp subtitle and lyric text rasterizer the Software and Vulkan renderers use. They reference it, so you do not list it yourself. Brings SkiaSharp 3.119.4 and its native library. |

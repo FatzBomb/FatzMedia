@@ -21,7 +21,7 @@ public class SecondaryPresentationWindow : Form
     /// <summary>The default client size, in pixels, when the window is not full screen.</summary>
     public static readonly Size DefaultClientSize = new(960, 540);
 
-    private readonly IMediaControlSession _session;
+    private readonly IPlayerSession _session;
     private bool _isFullScreen;
     private bool _closed;
     private FormBorderStyle _restoreBorderStyle;
@@ -32,7 +32,7 @@ public class SecondaryPresentationWindow : Form
     /// The surface id; distinct per secondary window of one session. Defaults to
     /// <see cref="MediaSurface.DefaultSecondarySurfaceId"/>.
     /// </param>
-    public SecondaryPresentationWindow(IMediaControlSession session, string? surfaceId = null)
+    public SecondaryPresentationWindow(IPlayerSession session, string? surfaceId = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         Surface = new MediaSurface

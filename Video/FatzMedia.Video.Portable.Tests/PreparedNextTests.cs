@@ -572,7 +572,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         }
     }
 
-    private sealed class PreparedTestPlatformFactory(FakeAnalyzer analyzer, params TestMediaEngine[] engines) : IMediaControlPlatformFactory
+    private sealed class PreparedTestPlatformFactory(FakeAnalyzer analyzer, params TestMediaEngine[] engines) : IPlatformFactory
     {
         private readonly Queue<TestMediaEngine> _engines = new(engines);
 

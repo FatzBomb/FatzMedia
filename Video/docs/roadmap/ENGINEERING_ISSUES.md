@@ -329,7 +329,7 @@ the current behaviour.
 
 **Missing public API:** no stream/byte-array `MediaInputSource` (planned: 053A, owner 2026-11-05); no mute; no equalizer presets;
 no `DisposeAsync`; CD+G background override colour (`ICdgEngine.BackgroundOverrideArgb`) and
-`CdgVisuals` not on `IMediaControlSession`; no display refresh-rate override on the player
+`CdgVisuals` not on `IPlayerSession`; no display refresh-rate override on the player
 (`IMediaEngine.SetDisplayRefreshRate` only; Linux has `LinuxPlatformOptions`); `DeviceRecovered`
 not on the player (hosts see recovery only in diagnostics); `AcceptedMediaTypes` unused publicly.
 
@@ -346,7 +346,7 @@ Linux READMEs are stale (subtitle frames "rejected", hardware decode "a later sl
 
 **Found in the review:** `default(MediaPlayerConfiguration)` zeroes every field
 (`AudioOutputDeviceIndex = 0` is BASS's no-sound device, presentation lead 0);
-`VideoDecodingMethod.Hardware` behaves like `Auto`; `IMediaControlSession` has the volume, pitch,
+`VideoDecodingMethod.Hardware` behaves like `Auto`; `IPlayerSession` has the volume, pitch,
 tempo and normalization change events but not the members, so interface-only hosts (e.g. via
 `KaraokeSurface.Session`) cannot set them; value-changed events fire on the setter's thread while
 the rest come from engine threads.
@@ -874,7 +874,7 @@ P2's `Surface #3 'second-screen-2'` lines). The Avalonia `MediaSurface` raised i
 so the diagnostic was unowned and every player's `MediaDiagnostic` reported it (ENG-025).
 
 Fix:
-- New public overload `DiagnosticRouter.Raise(IMediaControlSession? owner, level, category,
+- New public overload `DiagnosticRouter.Raise(IPlayerSession? owner, level, category,
   message, sourcePath, innerException)`: the diagnostic belongs to `owner` (only that player's
   `MediaDiagnostic` reports it; an explicit owner wins over an ambient one); a null owner raises a
   process-wide diagnostic. Additive; the engine's ambient ownership is unchanged. An adapter knows
@@ -1130,9 +1130,9 @@ Fix:
   (new, `init`, default true) is false and `Describe()` adds "Audio is unavailable: the BASS
   libraries did not load. Video plays without sound; audio media will not open." Hosts that log
   required problems as Errors and the rest as Warnings now show BASS as Warnings.
-- **Core contract:** `IMediaControlPlatformServices.IsAudioAvailable` (new, default `true`, so
+- **Core contract:** `IPlatformServices.IsAudioAvailable` (new, default `true`, so
   existing implementations compile). Core reads it after `EnsureNativeLibrariesLoaded`; Core
-  still has no native loading. Without audio, `MediaControlServiceProvider` uses
+  still has no native loading. Without audio, `PlayerServiceProvider` uses
   `SilentAudioEngine` in every mode (so no `AudioEngine.Init`, MIDI soundfont or DLS cache, and
   `BassOutputWatchdog` never gets a client) and raises one Warning per graph in Full and Audio
   mode.
@@ -1193,7 +1193,7 @@ unusable; two players created together get an empty `Bootstrap` message (Windows
 Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
 - **Admission (fixed).** `_operationAdmissionGate` is held only to check the lifecycle and take a
   place in the queue. A sync call takes its exclusive turn under the gate
-  (`MediaControlOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
+  (`PlayerOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
   `Async` methods never wait for a long sync call. `Reset` and `Dispose` are serialized by a
   separate `_lifecycleGate` and also hold the admission gate only to take their turn; calls made
   meanwhile fail at once (`InvalidOperationException`, as before) instead of blocking.
@@ -1210,7 +1210,7 @@ Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
   `LoadAsync(string, CancellationToken)`, `LoadAsync(string, bool, CancellationToken)`,
   `LoadAsync(string, string?, bool, CancellationToken)`, `LoadAsync(MediaInputSource,
   CancellationToken)`, `LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)`;
-  the first and last are also on `IMediaControlSession` with default implementations. Cancelled
+  the first and last are also on `IPlayerSession` with default implementations. Cancelled
   while queued: skipped, nothing changes. Cancelled during the open: the player ends closed.
   Either way the task is cancelled. Cancelled after `MediaLoaded`: the load stands and only the
   PlayOnLoad start is skipped.
@@ -1251,7 +1251,7 @@ Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
 - **Concurrent player creation (already fixed by ENG-020).** `Bootstrap` loads under a lock with
   a double-checked flag, so the loser waits and reuses the result.
 
-Documented as the contract (XML docs on `IMediaControlSession`, `Reset`, `Dispose`, `LoadAsync`):
+Documented as the contract (XML docs on `IPlayerSession`, `Reset`, `Dispose`, `LoadAsync`):
 - The sync methods block the caller until their turn and the operation finish, without a bound;
   UI threads should use the `Async` methods (as AGENTS.md says).
 - `Reset` and `Dispose` still throw `InvalidOperationException` from inside a control operation
@@ -1270,7 +1270,7 @@ bound, refuses calls, releases the surfaces and tears down when the open ends; `
 cancelled while queued, during the open, and with an already-cancelled token; Reset giving up
 after its bound; a failed Reset is clearly faulted, then rebuildable or disposable; Reset change
 events; surface calls racing mode switches and Resets; Dispose from a task a handler started;
-handler exceptions. `MediaControlOperationQueueTests` (+5): scope ends with the operation, other
+handler exceptions. `PlayerOperationQueueTests` (+5): scope ends with the operation, other
 threads are outside, handler scopes, abandoned turns, cancellation. Two `MediaControlPlayerTests`
 now expect the load that Reset/Dispose waited for to report `false` (cancelled). The new
 concurrency tests passed 20 runs in a row.

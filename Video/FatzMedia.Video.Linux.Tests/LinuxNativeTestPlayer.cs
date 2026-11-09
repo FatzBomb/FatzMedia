@@ -57,7 +57,7 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
     {
         var appBase = Directory.CreateTempSubdirectory("fbm-native-").FullName;
         var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
-        var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
+        var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
         MediaPlayerConfiguration config = configuration ?? new MediaPlayerConfiguration(VideoDecodingMethod.Software);
         if (config.Normalization.CacheDirectory is null)
             config = config with { Normalization = config.Normalization with { CacheDirectory = string.Empty } };

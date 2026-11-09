@@ -197,13 +197,13 @@ public sealed class BeatGrid
         g.StructSize = (uint)sizeof(FaBeatGrid);
         int rc = NativeMethods.fa_analysis_get_beat_grid(analysis, &g);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         uint count = 0;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_tempo_map(analysis, null, 0, &count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_tempo_map(analysis, null, 0, &count));
         var native = new FaTempoSegment[count];
         if (count > 0)
             fixed (FaTempoSegment* p = native)
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_tempo_map(analysis, p, count, &count));
+                AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_tempo_map(analysis, p, count, &count));
         return FromNative(g, native, (int)Math.Min(count, (uint)native.Length));
     }
 
@@ -214,7 +214,7 @@ public sealed class BeatGrid
         uint count = 0;
         int rc = NativeMethods.fa_stream_get_beat_grid(stream, &g, null, 0, &count);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         var native = new FaTempoSegment[count];
         if (count > 0)
         {
@@ -223,7 +223,7 @@ public sealed class BeatGrid
             {
                 rc = NativeMethods.fa_stream_get_beat_grid(stream, &g, p, count, &count);
                 if (rc == (int)ErrorCode.NotFound) return null;
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
             }
         }
         return FromNative(g, native, (int)Math.Min(count, (uint)native.Length));
@@ -254,7 +254,7 @@ public sealed class BeatGrid
         for (int i = 0; i < native.Length; i++)
             native[i] = new FaTempoSegment { Start = _segments[i].Start, Bpm = _segments[i].Bpm, Beat = _segments[i].Beat };
         fixed (FaTempoSegment* p = native)
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_beat_grid(stream, &g, p, (uint)native.Length));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_beat_grid(stream, &g, p, (uint)native.Length));
     }
 }
 
@@ -310,7 +310,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
         FaKeyInfo from = ToNative();
         FaKeyInfo to = default;
         to.StructSize = (uint)sizeof(FaKeyInfo);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_key_transpose(&from, semitones, &to));
+        AudioException.ThrowIfFailed(NativeMethods.fa_key_transpose(&from, semitones, &to));
         return FromNative(to);
     }
 
@@ -326,7 +326,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
         NativeLoader.EnsureInitialized();
         FaKeyInfo k = default;
         k.StructSize = (uint)sizeof(FaKeyInfo);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_key_make(tonic, minor ? 1 : 0, &k));
+        AudioException.ThrowIfFailed(NativeMethods.fa_key_make(tonic, minor ? 1 : 0, &k));
         return FromNative(k);
     }
 
@@ -364,7 +364,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
         k.StructSize = (uint)sizeof(FaKeyInfo);
         int rc = NativeMethods.fa_analysis_get_key(analysis, &k);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return FromNative(k);
     }
 }
@@ -461,7 +461,7 @@ public sealed class TrackAnalysis
         {
             FaAnalysisInfo info = default;
             info.StructSize = (uint)sizeof(FaAnalysisInfo);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_info(analysis, &info));
+            AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_info(analysis, &info));
             var kinds = (AnalysisKinds)info.Kinds;
             BeatGrid? beats = (kinds & AnalysisKinds.Beats) != 0 ? BeatGrid.FromAnalysis(analysis) : null;
             MusicalKey? key = (kinds & AnalysisKinds.Key) != 0 ? MusicalKey.FromAnalysis(analysis) : null;
@@ -470,7 +470,7 @@ public sealed class TrackAnalysis
             if ((kinds & AnalysisKinds.Loudness) != 0)
             {
                 var l = NativeSized.New<FaLoudness>();
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_loudness(analysis, ref l));
+                AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_loudness(analysis, ref l));
                 loudness = FatzMedia.Audio.Loudness.From(l);
             }
             SilenceInfo? silence = (kinds & AnalysisKinds.Silence) != 0
@@ -488,12 +488,12 @@ public sealed class TrackAnalysis
     private static unsafe WaveformPoint[] ReadWaveform(nint analysis)
     {
         uint count = 0;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_waveform(analysis, null, 0, &count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_waveform(analysis, null, 0, &count));
         var points = new WaveformPoint[count];
         // Read in place: WaveformPoint is FaWaveformPoint's four floats, in the same order.
         if (count > 0)
             fixed (WaveformPoint* p = points)
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_waveform(analysis, (FaWaveformPoint*)p, count, &count));
+                AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_waveform(analysis, (FaWaveformPoint*)p, count, &count));
         if (count < points.Length) Array.Resize(ref points, (int)count);
         return points;
     }
@@ -501,14 +501,14 @@ public sealed class TrackAnalysis
     internal static unsafe TrackAnalysis Run(EngineHandle engine, string path, AnalysisKinds kinds, AnalysisOptions? options)
     {
         var o = NativeOptions(kinds, options);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_analyze_path(engine, path, &o, out nint analysis));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_path(engine, path, &o, out nint analysis));
         return Take(analysis);
     }
 
     internal static unsafe TrackAnalysis Run(StreamHandle stream, AnalysisKinds kinds, AnalysisOptions? options)
     {
         var o = NativeOptions(kinds, options);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_analyze_stream(stream, &o, out nint analysis));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_stream(stream, &o, out nint analysis));
         return Take(analysis);
     }
 

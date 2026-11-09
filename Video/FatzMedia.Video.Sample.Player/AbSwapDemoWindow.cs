@@ -22,7 +22,7 @@ internal sealed class AbSwapDemoWindow : Window
     private static readonly TimeSpan FirstFrameTimeout = TimeSpan.FromSeconds(10);
     private static readonly Brush[] PanelColours = [Brushes.Crimson, Brushes.RoyalBlue];
 
-    private readonly Func<IMediaControlPlatformFactory> _createPlatformFactory;
+    private readonly Func<IPlatformFactory> _createPlatformFactory;
     private readonly IReadOnlyList<string> _nativeLibraryPaths;
     private readonly AbSwapDemoOptions _options;
     private readonly IReadOnlyList<string> _clips;
@@ -34,7 +34,7 @@ internal sealed class AbSwapDemoWindow : Window
     private bool _closed;
 
     public AbSwapDemoWindow(
-        Func<IMediaControlPlatformFactory> createPlatformFactory,
+        Func<IPlatformFactory> createPlatformFactory,
         IReadOnlyList<string> nativeLibraryPaths,
         AbSwapDemoOptions options,
         IReadOnlyList<string> clips,

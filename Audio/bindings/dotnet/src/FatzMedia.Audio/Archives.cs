@@ -179,7 +179,7 @@ public sealed unsafe class Archive : IDisposable
     /// <param name="path">The file.</param>
     /// <param name="options">Memory limit, temp folder and cancellation; null = defaults.</param>
     /// <returns>The archive; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a ZIP this build reads
+    /// <exception cref="AudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a ZIP this build reads
     /// (<see cref="ErrorCode.UnsupportedFormat"/>; <see cref="Detect"/> tells a RAR from a damaged ZIP).</exception>
     public static Archive Open(string path, ArchiveOptions? options = null)
     {
@@ -199,7 +199,7 @@ public sealed unsafe class Archive : IDisposable
     /// <param name="options">Memory limit, temp folder and cancellation; null = defaults.</param>
     /// <returns>The archive; dispose it when done.</returns>
     /// <exception cref="ArgumentException"><paramref name="data"/> is empty.</exception>
-    /// <exception cref="FatzAudioException">Not a ZIP this build reads (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">Not a ZIP this build reads (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public static Archive Open(ReadOnlyMemory<byte> data, ArchiveOptions? options = null)
     {
         if (data.IsEmpty) throw new ArgumentException("No data.", nameof(data));
@@ -220,7 +220,7 @@ public sealed unsafe class Archive : IDisposable
     /// <param name="leaveOpen">If false (default), <paramref name="source"/> is disposed with the archive.</param>
     /// <returns>The archive; dispose it when done.</returns>
     /// <exception cref="ArgumentException"><paramref name="source"/> cannot read or seek.</exception>
-    /// <exception cref="FatzAudioException">Not a ZIP this build reads (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">Not a ZIP this build reads (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public static Archive Open(Stream source, ArchiveOptions? options = null, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -240,7 +240,7 @@ public sealed unsafe class Archive : IDisposable
 
     private static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o)
     {
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         var handle = new ArchiveHandle();
         handle.Initialize(native, io);
         ArchiveEntry[] entries;
@@ -262,7 +262,7 @@ public sealed unsafe class Archive : IDisposable
         {
             FaArchiveEntry n = default;
             n.StructSize = (uint)sizeof(FaArchiveEntry);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_get_entry(handle, i, &n));
+            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_entry(handle, i, &n));
             entries[i] = new ArchiveEntry((int)n.Index, NativeText.Read((nint)n.Name), n.Size, n.CompressedSize, (ArchiveMethod)n.Method,
                 (n.Flags & 1) != 0 ? n.Crc32 : null, Time(n.ModifiedNs), Time(n.CreatedNs), Time(n.AccessedNs),
                 (n.Flags & 2) != 0, (n.Flags & 4) != 0, n.SolidOffset, (n.Flags & 8) != 0, (ArchiveEntryKind)n.Kind);
@@ -278,7 +278,7 @@ public sealed unsafe class Archive : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_get_format(Handle, out int f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_format(Handle, out int f));
             return (ArchiveFormat)f;
         }
     }
@@ -289,7 +289,7 @@ public sealed unsafe class Archive : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_get_filter(Handle, out int f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_filter(Handle, out int f));
             return (ArchiveFilter)f;
         }
     }
@@ -307,37 +307,37 @@ public sealed unsafe class Archive : IDisposable
     /// <summary>The entry with this name: the exact name first, then ignoring case and the kind of slash.</summary>
     /// <param name="name">The entry's name, '/' or '\'-separated.</param>
     /// <returns>The entry, or null when there is none.</returns>
-    /// <exception cref="FatzAudioException">Two entries match only by case (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">Two entries match only by case (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public ArchiveEntry? Find(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
         int rc = NativeMethods.fa_archive_find(Handle, name, out uint index);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return _entries[index];
     }
 
     /// <summary>The song an open plays and its graphics, by the rules in the remarks.</summary>
     /// <returns><c>Audio</c> is the song; <c>Cdg</c> its graphics, or null for none. With only graphics, <c>Audio</c> is the
     /// <c>.cdg</c> entry and <c>Cdg</c> is null.</returns>
-    /// <exception cref="FatzAudioException">Nothing to play (<see cref="ErrorCode.NotFound"/>), or only encrypted songs
+    /// <exception cref="AudioException">Nothing to play (<see cref="ErrorCode.NotFound"/>), or only encrypted songs
     /// (<see cref="ErrorCode.ProtectedContent"/>).</exception>
     public (ArchiveEntry Audio, ArchiveEntry? Cdg) Pick()
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_pick(Handle, out uint audio, out int cdg));
+        AudioException.ThrowIfFailed(NativeMethods.fa_archive_pick(Handle, out uint audio, out int cdg));
         return (_entries[audio], cdg >= 0 ? _entries[cdg] : null);
     }
 
     /// <summary>Reads a whole entry into memory, its CRC checked.</summary>
     /// <param name="entry">An entry of this archive.</param>
     /// <returns>The entry's bytes.</returns>
-    /// <exception cref="FatzAudioException">Too big for memory without a temp folder (<see cref="ErrorCode.TooLarge"/>), encrypted
+    /// <exception cref="AudioException">Too big for memory without a temp folder (<see cref="ErrorCode.TooLarge"/>), encrypted
     /// (<see cref="ErrorCode.ProtectedContent"/>), damaged (<see cref="ErrorCode.UnsupportedFormat"/>) or cancelled.</exception>
     public byte[] ReadAllBytes(ArchiveEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
         int rc = NativeMethods.fa_archive_read(Handle, (uint)entry.Index, out void* data, out nuint size);
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         try { return new ReadOnlySpan<byte>(data, checked((int)size)).ToArray(); }
         finally { NativeMethods.fa_free(data); }
     }
@@ -348,12 +348,12 @@ public sealed unsafe class Archive : IDisposable
     /// </summary>
     /// <param name="entry">An entry of this archive.</param>
     /// <returns>A read-only, seekable stream; dispose it before the archive.</returns>
-    /// <exception cref="FatzAudioException">Encrypted or unreadable (<see cref="ErrorCode.ProtectedContent"/>, <see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">Encrypted or unreadable (<see cref="ErrorCode.ProtectedContent"/>, <see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public Stream OpenRead(ArchiveEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
         var archive = Handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_open_reader(archive, (uint)entry.Index, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_archive_open_reader(archive, (uint)entry.Index, out nint native));
         var reader = new ArchiveReaderHandle();
         reader.Initialize(native, archive);
         return new ArchiveEntryStream(reader);
@@ -402,7 +402,7 @@ internal sealed unsafe class ArchiveEntryStream : Stream
             fixed (byte* p = buffer) got = NativeMethods.fa_archive_reader_read(_reader.DangerousGetHandle(), p, (nuint)buffer.Length);
         }
         finally { _reader.DangerousRelease(); }
-        if (got < 0) throw new FatzAudioException((ErrorCode)got);
+        if (got < 0) throw new AudioException((ErrorCode)got);
         _position += got;
         return (int)got;
     }

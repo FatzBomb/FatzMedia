@@ -352,7 +352,7 @@ public sealed class PlayerNetworkEventTests
         Assert.Null(player.CurrentSourceCapabilities);
     }
 
-    private sealed class NetworkTestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class NetworkTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

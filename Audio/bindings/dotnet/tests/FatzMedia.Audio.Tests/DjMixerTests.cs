@@ -49,7 +49,7 @@ public class DjMixerTests
         Assert.True(mixer.Latency.CueAlignment >= TimeSpan.Zero);
         mixer.SetCueDevice(null);   // the default output again
         Assert.Throws<ArgumentException>(() => mixer.SetCueDevice(output));
-        var ex = Assert.Throws<FatzAudioException>(() => mixer.SetCueDevice(new AudioDeviceInfo("zz", "zz", DeviceKind.Playback, false, 48000, 2)));
+        var ex = Assert.Throws<AudioException>(() => mixer.SetCueDevice(new AudioDeviceInfo("zz", "zz", DeviceKind.Playback, false, 48000, 2)));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
     }
 
@@ -62,7 +62,7 @@ public class DjMixerTests
         Assert.Equal(TimeSpan.Zero, mixer.Latency.CueAlignment);
         using var plain = engine.CreateDjMixer();
         Assert.Equal(CueAlign.None, plain.Latency.CueAligned);
-        var ex = Assert.Throws<FatzAudioException>(() => plain.SetCueDevice(null));
+        var ex = Assert.Throws<AudioException>(() => plain.SetCueDevice(null));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
     }
 
@@ -70,9 +70,9 @@ public class DjMixerTests
     public void Planned_ModesReportNotImplemented()
     {
         using var engine = CreateHeadless();
-        var ex = Assert.Throws<FatzAudioException>(() => engine.CreateDjMixer(new DjMixerOptions { Decks = 4 }));
+        var ex = Assert.Throws<AudioException>(() => engine.CreateDjMixer(new DjMixerOptions { Decks = 4 }));
         Assert.Equal(ErrorCode.NotImplemented, ex.ErrorCode);
-        ex = Assert.Throws<FatzAudioException>(() => engine.CreateDjMixer(new DjMixerOptions { Latency = LatencyMode.Exclusive }));
+        ex = Assert.Throws<AudioException>(() => engine.CreateDjMixer(new DjMixerOptions { Latency = LatencyMode.Exclusive }));
         Assert.Equal(ErrorCode.NotImplemented, ex.ErrorCode);
     }
 
@@ -128,7 +128,7 @@ public class DjMixerTests
         Assert.Equal(new DeckLoop(2000, 9000), b.Loop);
         s.Play();
         mixer.Crossfader.Position = 1f;  // B heard
-        var ex = Assert.Throws<FatzAudioException>(() => b.Unload());
+        var ex = Assert.Throws<AudioException>(() => b.Unload());
         Assert.Equal(ErrorCode.Busy, ex.ErrorCode);
         b.ReturnToCuePoint();
         Assert.Equal(StreamState.Paused, s.State);
@@ -139,7 +139,7 @@ public class DjMixerTests
         Assert.Null(s.Device);
         Assert.Equal(1000, s.PositionFrames);
         using var empty = engine.CreateDjMixer();
-        var ex2 = Assert.Throws<FatzAudioException>(() => empty.Decks[0].ReturnToCuePoint());
+        var ex2 = Assert.Throws<AudioException>(() => empty.Decks[0].ReturnToCuePoint());
         Assert.Equal(ErrorCode.NotFound, ex2.ErrorCode);
     }
 
@@ -154,8 +154,8 @@ public class DjMixerTests
         a.Load(sa);
         b.Load(sb);
         Assert.Null(b.BeatInfo);                                   // no grid yet
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => b.SyncTo(a)).ErrorCode);
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => b.LoopBeats(4)).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => b.SyncTo(a)).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => b.LoopBeats(4)).ErrorCode);
         const int rate = 44100;   // TestAudio.SineWav
         sa.BeatGrid = new BeatGrid(120, 0, rate);
         sb.BeatGrid = new BeatGrid(125, 0, rate);
@@ -173,14 +173,14 @@ public class DjMixerTests
         Assert.Equal(1f, b.SyncRange);
         b.SyncRange = 0.05f;
         sb.BeatGrid = new BeatGrid(150, 0, rate);
-        Assert.Equal(ErrorCode.OutOfRange, Assert.Throws<FatzAudioException>(() => b.SyncTo(a)).ErrorCode);
+        Assert.Equal(ErrorCode.OutOfRange, Assert.Throws<AudioException>(() => b.SyncTo(a)).ErrorCode);
         a.LoopBeats(2);
         Assert.NotNull(a.Loop);
         a.LoopBeats(0);
         Assert.Null(a.Loop);
-        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<FatzAudioException>(() => a.BeatJump(0)).ErrorCode);
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<AudioException>(() => a.BeatJump(0)).ErrorCode);
         sb.BeatGrid = null;
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => b.BeatJump(4)).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => b.BeatJump(4)).ErrorCode);
         long before = sb.PositionFrames;
         sb.BeatGrid = new BeatGrid(120, 0, rate);
         b.BeatJump(4);                                              // paused: the position moves 2 s
@@ -222,17 +222,17 @@ public class DjMixerTests
         using var mixer = engine.CreateDjMixer(new DjMixerOptions { Latency = LatencyMode.Normal });
         using var sa = engine.OpenMemory(TestAudio.SineWav(seconds: 4));
         using var sb = engine.OpenMemory(TestAudio.SineWav(seconds: 4));
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => mixer.AutoMix.Skip()).ErrorCode);   // off
-        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<FatzAudioException>(
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => mixer.AutoMix.Skip()).ErrorCode);   // off
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<AudioException>(
             () => mixer.AutoMix.Start(new AutoMixOptions { Length = TimeSpan.FromMilliseconds(100) })).ErrorCode);
-        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<FatzAudioException>(
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<AudioException>(
             () => mixer.AutoMix.Start(new AutoMixOptions { RestoreTempo = true, RestoreTime = TimeSpan.FromMinutes(6) })).ErrorCode);
         var started = new TaskCompletionSource<DjDeck>(TaskCreationOptions.RunContinuationsAsynchronously);
         mixer.AutoMix.Started += (s, e) => started.TrySetResult(e.Deck);
         mixer.AutoMix.Start(new AutoMixOptions { Length = TimeSpan.FromSeconds(1), BassSwap = true, RestoreTempo = true });
         Assert.True(mixer.AutoMix.IsOn);
         mixer.Decks[0].Load(sa);
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => mixer.AutoMix.Skip()).ErrorCode);   // nothing plays
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => mixer.AutoMix.Skip()).ErrorCode);   // nothing plays
         sa.Play();
         mixer.Decks[1].Load(sb);
         mixer.AutoMix.Skip();
@@ -265,7 +265,7 @@ public class DjMixerTests
         Assert.Equal(new[] { mic, second }, mixer.Mics);
         Assert.Equal(0, mic.Index);
         Assert.Equal(1, second.Index);
-        var ex = Assert.Throws<FatzAudioException>(() => mixer.AddMic());
+        var ex = Assert.Throws<AudioException>(() => mixer.AddMic());
         Assert.Equal(ErrorCode.Busy, ex.ErrorCode);
 
         Assert.Equal(-50f, mic.GateDb);
@@ -309,7 +309,7 @@ public class DjMixerTests
     {
         using var engine = CreateHeadless();
         using var mixer = engine.CreateDjMixer();
-        var ex = Assert.Throws<FatzAudioException>(() => mixer.AddMic(new MicOptions { Channel = 31 }));
+        var ex = Assert.Throws<AudioException>(() => mixer.AddMic(new MicOptions { Channel = 31 }));
         Assert.Equal(ErrorCode.NotEnoughChannels, ex.ErrorCode);
         Assert.Throws<ArgumentOutOfRangeException>(() => mixer.AddMic(new MicOptions { Channel = -1 }));
         var output = new AudioDeviceInfo("x", "x", DeviceKind.Playback, false, 48000, 2);
@@ -328,7 +328,7 @@ public class DjMixerTests
         Assert.Equal(LatencyMode.Low, mixer.LatencyMode);
         Assert.True(mixer.Output.IsStarted);
         Assert.Equal(new[] { mic }, mixer.Mics);
-        var ex = Assert.Throws<FatzAudioException>(() => mixer.LatencyMode = LatencyMode.Exclusive);
+        var ex = Assert.Throws<AudioException>(() => mixer.LatencyMode = LatencyMode.Exclusive);
         Assert.Equal(ErrorCode.NotImplemented, ex.ErrorCode);   // the null output isn't WASAPI
         Assert.Equal(LatencyMode.Low, mixer.LatencyMode);
     }
@@ -406,7 +406,7 @@ public class DjMixerTests
         Thread.Sleep(100);
         Assert.Equal(0, master.Status.Frames);   // waits for StartRecording
         mixer.StartRecording([master, vocals]);
-        var ex = Assert.Throws<FatzAudioException>(() => mixer.StartRecording([master]));
+        var ex = Assert.Throws<AudioException>(() => mixer.StartRecording([master]));
         Assert.Equal(ErrorCode.Busy, ex.ErrorCode);
         Thread.Sleep(400);
         master.Close();
@@ -414,7 +414,7 @@ public class DjMixerTests
         Assert.True(masterFile.Length > 44);
         Assert.True(vocalsFile.Length > 44);
         using var other = AudioEncoder.Create(new MemoryStream());
-        ex = Assert.Throws<FatzAudioException>(() => mixer.StartRecording([other]));
+        ex = Assert.Throws<AudioException>(() => mixer.StartRecording([other]));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
     }
 }

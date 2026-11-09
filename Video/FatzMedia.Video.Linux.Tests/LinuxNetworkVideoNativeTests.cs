@@ -588,7 +588,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             // An empty application folder: the only search path is the FFmpeg folder, so BASS is missing.
             var appBase = Directory.CreateTempSubdirectory("fbm-net-video-").FullName;
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
-            var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
+            var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
             var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls, NetworkReadAhead = readAhead };
             var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
             var sink = new CountingFrameSink();

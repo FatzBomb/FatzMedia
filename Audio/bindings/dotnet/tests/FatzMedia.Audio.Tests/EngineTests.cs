@@ -199,7 +199,7 @@ public class EngineTests
     public void OpenFile_MissingFile_Throws()
     {
         using var engine = AudioEngine.Create();
-        var ex = Assert.Throws<FatzAudioException>(() => engine.OpenFile(Path.Combine(Path.GetTempPath(), "does-not-exist-" + Guid.NewGuid() + ".wav")));
+        var ex = Assert.Throws<AudioException>(() => engine.OpenFile(Path.Combine(Path.GetTempPath(), "does-not-exist-" + Guid.NewGuid() + ".wav")));
         Assert.True(ex.ErrorCode < 0);
         Assert.False(string.IsNullOrWhiteSpace(ex.Message));
     }
@@ -273,13 +273,13 @@ public class EngineTests
         Assert.Throws<ArgumentException>(() => output.GetLevels(new float[1], new float[2]));
         Assert.Throws<ArgumentException>(() => s.GetLevels(Span<float>.Empty, Span<float>.Empty));
         Assert.False(s.HasCdg);
-        Assert.Throws<FatzAudioException>(() => s.GetSpectrum(1000));
-        Assert.Throws<FatzAudioException>(() => s.GetSpectrum(4097));
+        Assert.Throws<AudioException>(() => s.GetSpectrum(1000));
+        Assert.Throws<AudioException>(() => s.GetSpectrum(4097));
         // The span overload of a stream matches the array version and does not allocate.
         Span<float> sbins = stackalloc float[2048];
         float hz = s.GetSpectrum(sbins);
         Assert.Equal(spectrum.BinHz, hz);
-        Assert.Throws<FatzAudioException>(() => s.GetSpectrum(new float[1000]));
+        Assert.Throws<AudioException>(() => s.GetSpectrum(new float[1000]));
         // Warm up (JIT, tiering) so only steady-state allocations are counted; take the best of a few runs.
         for (int i = 0; i < 50; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
         long fewest = long.MaxValue;
@@ -314,7 +314,7 @@ public class EngineTests
     {
         using var engine = AudioEngine.Create();
         using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
-        var ex = Assert.Throws<FatzAudioException>(() => s.AddPositionEvent(TimeSpan.FromSeconds(5)));   // past the end
+        var ex = Assert.Throws<AudioException>(() => s.AddPositionEvent(TimeSpan.FromSeconds(5)));   // past the end
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
         Assert.Contains("invalid", ex.Message, StringComparison.OrdinalIgnoreCase);
     }

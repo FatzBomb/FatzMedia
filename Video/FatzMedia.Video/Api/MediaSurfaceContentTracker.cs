@@ -7,19 +7,19 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Decides whether an adapter's media surface shows its content (Stage 046A): the surface
 /// auto-hide rules of Stage 029C, moved out of the WPF adapter so every adapter hides and shows
-/// the same way, plus the session's <see cref="IMediaControlSession.HasPresentation"/> signal
+/// the same way, plus the session's <see cref="IPlayerSession.HasPresentation"/> signal
 /// (Audio mode presents nothing, so a surface shows its background, not the last frame).
 /// </summary>
 /// <remarks>
 /// <para>
 /// Auto-hide follows the session's lifecycle events and uses
-/// <see cref="IMediaControlSession.PresentationFramePresented"/> as the proof of visual output,
+/// <see cref="IPlayerSession.PresentationFramePresented"/> as the proof of visual output,
 /// never file extensions: a load only arms the surface, the first presented frame shows it;
 /// stop, close, error and a natural end without looping hide it; pause and looping keep it.
 /// A frame presented before the load notice arrives (a static image presents once) is latched
 /// and replayed when the load arms the surface; the latch is cleared on hide, close and session
 /// change, and a present while the current item has no visual content
-/// (<see cref="IMediaControlSession.HasVisualContent"/>) never shows the surface. A stop or end
+/// (<see cref="IPlayerSession.HasVisualContent"/>) never shows the surface. A stop or end
 /// that arrives while the session already plays again (the internal stop of a replacement) is
 /// ignored.
 /// </para>
@@ -42,7 +42,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 {
     private readonly Lock _lock = new();
     private readonly SurfaceAutoHidePolicy _policy = new();
-    private IMediaControlSession? _session;
+    private IPlayerSession? _session;
     private bool _autoHide;
     private bool _framePresented;
     private bool _hasVisualContent;
@@ -66,7 +66,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     /// Gets or sets the session to follow (UI thread). A change resets the auto-hide state: an
     /// open session arms the surface until its next presented frame.
     /// </summary>
-    public IMediaControlSession? Session
+    public IPlayerSession? Session
     {
         get => Volatile.Read(ref _session);
         set => SetSession(value);
@@ -88,7 +88,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     }
 
     /// <summary>
-    /// Gets whether the session presents to its surfaces (<see cref="IMediaControlSession.HasPresentation"/>,
+    /// Gets whether the session presents to its surfaces (<see cref="IPlayerSession.HasPresentation"/>,
     /// read now); <see langword="true"/> without a session.
     /// </summary>
     public bool HasPresentation => Volatile.Read(ref _session)?.HasPresentation ?? true;
@@ -162,10 +162,10 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
     private int CurrentFirstFrameLoad() => _firstFrameArmed && _firstFramePresented ? _loadNumber : 0;
 
-    private void SetSession(IMediaControlSession? session)
+    private void SetSession(IPlayerSession? session)
     {
         ObjectDisposedException.ThrowIf(_disposed && session is not null, this);
-        IMediaControlSession? previous;
+        IPlayerSession? previous;
         lock (_lock)
         {
             if (ReferenceEquals(session, _session))
@@ -210,7 +210,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
     private void SetAutoHide(bool autoHide)
     {
-        IMediaControlSession? session = Volatile.Read(ref _session);
+        IPlayerSession? session = Volatile.Read(ref _session);
         var isOpen = session?.IsOpen == true;
         lock (_lock)
         {
@@ -243,7 +243,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
             _ = _policy.FramePresented();
     }
 
-    private void Subscribe(IMediaControlSession session)
+    private void Subscribe(IPlayerSession session)
     {
         session.MediaLoaded += OnMediaLoaded;
         session.MediaClosed += OnMediaClosed;
@@ -256,7 +256,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         session.ModeChanged += OnModeChanged;
     }
 
-    private void Unsubscribe(IMediaControlSession session)
+    private void Unsubscribe(IPlayerSession session)
     {
         session.MediaLoaded -= OnMediaLoaded;
         session.MediaClosed -= OnMediaClosed;
@@ -272,7 +272,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     // Under the lock. An event of a replaced session (raised before it was unsubscribed) is dropped.
     private bool IsCurrent(object? sender) => sender is null || ReferenceEquals(sender, _session);
 
-    private IMediaControlSession? SessionOf(object? sender) => sender as IMediaControlSession ?? Volatile.Read(ref _session);
+    private IPlayerSession? SessionOf(object? sender) => sender as IPlayerSession ?? Volatile.Read(ref _session);
 
     private void OnMediaLoaded(object? sender, MediaLoadedEventArgs e)
     {
@@ -316,7 +316,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
 
     private void OnMediaEnded(object? sender, EventArgs e)
     {
-        IMediaControlSession? session = SessionOf(sender);
+        IPlayerSession? session = SessionOf(sender);
         var stale = IsStaleTerminalEvent(session);
         var isLooping = session is { IsOpen: true, LoopMedia: true };
         Apply(sender, () =>
@@ -334,7 +334,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     // A replacement stops the previous item internally; by the time that stop or end arrives the
     // session may already play the new one, which must not be hidden, nor lose its latched frame
     // (with auto-hide off too, so turning it on later replays that frame).
-    private static bool IsStaleTerminalEvent(IMediaControlSession? session) =>
+    private static bool IsStaleTerminalEvent(IPlayerSession? session) =>
         session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused or MediaPlayerState.Buffering };
 
     private void OnMediaStarted(object? sender, EventArgs e) => ApplyTransport(sender, static policy => policy.MediaStarted());

@@ -38,7 +38,7 @@ A rate from the platform that falls outside 23 to 600 Hz is replaced by the 60 H
 
 ```csharp
 // Linux: tell the engine the real refresh rate (default 60, clamped to 24..360)
-var platform = new LinuxMediaControlPlatformFactory(
+var platform = new LinuxPlatformFactory(
     new SoftwarePresentationCoordinatorFactory(),
     new LinuxPlatformOptions { DisplayRefreshRateHz = 144 });
 ```

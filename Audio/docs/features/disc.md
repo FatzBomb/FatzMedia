@@ -63,7 +63,7 @@ using var output = engine.OpenOutput();
 foreach (var drive in Disc.Drives) Console.WriteLine($"{drive.Id}: {drive.Name}");
 
 using var disc = Disc.Open();                          // or Disc.Open("E:"), Disc.Open("album.cue")
-var toc = disc.Toc;                                    // FatzAudioException(NoDisc) without a disc
+var toc = disc.Toc;                                    // AudioException(NoDisc) without a disc
 Console.WriteLine($"{disc.GetText(0, DiscTextField.Title) ?? "Unknown album"} ({toc.MusicBrainzId})");
 
 foreach (var t in toc.Tracks.Where(t => t.IsAudio))

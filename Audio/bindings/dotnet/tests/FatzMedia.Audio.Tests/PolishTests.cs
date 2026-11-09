@@ -140,7 +140,7 @@ public class PolishTests
         // A callback stream cannot seek; the async request raises SeekFailed with the reason.
         var got = new TaskCompletionSource<StreamEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         s.SeekFailed += (_, e) => got.TrySetResult(e);
-        try { s.RequestSeek(TimeSpan.FromSeconds(1)); } catch (FatzAudioException) { return; }   // refused at once is fine too
+        try { s.RequestSeek(TimeSpan.FromSeconds(1)); } catch (AudioException) { return; }   // refused at once is fine too
         var e = await got.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(e.Error);
         Assert.Equal((long)e.Error!.Value, e.Value);

@@ -7,13 +7,13 @@ namespace FatzMedia.Video;
 
 /// <summary>
 /// Windows platform composition selected explicitly by Windows adapters and hosts
-/// through the <see cref="IMediaControlPlatformFactory"/> seam.
+/// through the <see cref="IPlatformFactory"/> seam.
 /// </summary>
-public class WindowsMediaControlPlatformFactory : IMediaControlPlatformFactory
+public class WindowsPlatformFactory : IPlatformFactory
 {
     private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
 
-    public WindowsMediaControlPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory)
+    public WindowsPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory)
     {
         _presentationFactory = presentationFactory ?? throw new ArgumentNullException(nameof(presentationFactory));
     }

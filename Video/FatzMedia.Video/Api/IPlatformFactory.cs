@@ -11,7 +11,7 @@ namespace FatzMedia.Video;
 /// operating-system package owns its native libraries, decoders, renderers, and
 /// dependency registrations.
 /// </summary>
-public interface IMediaControlPlatformFactory
+public interface IPlatformFactory
 {
     /// <summary>
     /// Gets the most recent native-library initialization result for this platform.

@@ -32,7 +32,7 @@
 
 	<ItemGroup>
 		<Compile Include="..\FatzMedia.Video.Tests\*.cs"
-		         Exclude="..\FatzMedia.Video.Tests\D3D11*.cs;..\FatzMedia.Video.Tests\Direct3D11*.cs;..\FatzMedia.Video.Tests\DwmCompositionTimingTests.cs;..\FatzMedia.Video.Tests\MediaSurfacePresentationModeTests.cs;..\FatzMedia.Video.Tests\NativeVideoResourceTests.cs;..\FatzMedia.Video.Tests\PollingAudioDeviceMonitorTests.cs;..\FatzMedia.Video.Tests\WindowsMediaControlPlatformFactoryTests.cs;..\FatzMedia.Video.Tests\WinFormsMediaSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsLightweightSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsSecondaryPresentationWindowTests.cs;..\FatzMedia.Video.Tests\WpfMediaSurfaceParityTests.cs;..\FatzMedia.Video.Tests\WpfCompositedSurfaceHostTests.cs;..\FatzMedia.Video.Tests\WpfFirstFrameReadyTests.cs"
+		         Exclude="..\FatzMedia.Video.Tests\D3D11*.cs;..\FatzMedia.Video.Tests\Direct3D11*.cs;..\FatzMedia.Video.Tests\DwmCompositionTimingTests.cs;..\FatzMedia.Video.Tests\MediaSurfacePresentationModeTests.cs;..\FatzMedia.Video.Tests\NativeVideoResourceTests.cs;..\FatzMedia.Video.Tests\PollingAudioDeviceMonitorTests.cs;..\FatzMedia.Video.Tests\WindowsPlatformFactoryTests.cs;..\FatzMedia.Video.Tests\WinFormsMediaSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsLightweightSurfaceTests.cs;..\FatzMedia.Video.Tests\WinFormsSecondaryPresentationWindowTests.cs;..\FatzMedia.Video.Tests\WpfMediaSurfaceParityTests.cs;..\FatzMedia.Video.Tests\WpfCompositedSurfaceHostTests.cs;..\FatzMedia.Video.Tests\WpfFirstFrameReadyTests.cs"
 		         LinkBase="Shared" />
 	</ItemGroup>
 

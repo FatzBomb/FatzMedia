@@ -71,7 +71,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
         try
         {
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
-            var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
+            var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
             var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
             {
                 Mode = MediaPlayerMode.Background,

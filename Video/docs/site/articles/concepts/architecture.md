@@ -14,7 +14,7 @@ flowchart TB
     end
 
     subgraph Core["FatzMedia.Video (Core)"]
-        Player["MediaControlPlayer<br/>IMediaControlSession"]
+        Player["MediaControlPlayer<br/>IPlayerSession"]
         Engine["Playback, timing, CD+G,<br/>subtitles, backgrounds, modes"]
         Compose["Composition and<br/>target fan-out"]
     end
@@ -28,7 +28,7 @@ flowchart TB
     AdapterPlayer --> Player
     Surface -- "attaches surface" --> Player
     Player --> Engine --> Compose
-    Platform -. "IMediaControlPlatformFactory" .-> Player
+    Platform -. "IPlatformFactory" .-> Player
     Renderer -. "IMediaPresentationCoordinatorFactory" .-> Platform
     Platform --> Native
     Compose --> Renderer
@@ -49,7 +49,7 @@ flowchart TB
 - fan-out of the composed picture to every attached surface (a main window and a second screen),
 - the contracts that renderers and platforms implement.
 
-Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzMedia.Video.MediaControlPlayer>, which implements <xref:FatzMedia.Video.IMediaControlSession>.
+Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzMedia.Video.MediaControlPlayer>, which implements <xref:FatzMedia.Video.IPlayerSession>.
 
 ### Renderers: the final picture
 
@@ -65,13 +65,13 @@ You select a renderer by passing its factory (an <xref:FatzMedia.Video.Controlle
 
 ### Platform packages: the operating system
 
-`FatzMedia.Video.Windows` and `FatzMedia.Video.Linux` own what depends on the OS: finding and loading the BASS and FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzMedia.Video.IMediaControlPlatformFactory> implementation (<xref:FatzMedia.Video.WindowsMediaControlPlatformFactory>, <xref:FatzMedia.Video.Linux.LinuxMediaControlPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
+`FatzMedia.Video.Windows` and `FatzMedia.Video.Linux` own what depends on the OS: finding and loading the BASS and FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzMedia.Video.IPlatformFactory> implementation (<xref:FatzMedia.Video.WindowsPlatformFactory>, <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
 
 ```csharp
-var platform = new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory());
+var platform = new WindowsPlatformFactory(new SoftwarePresentationCoordinatorFactory());
 ```
 
-`FatzMedia.Video.Windows.Direct3D11` is a convenience: <xref:FatzMedia.Video.WindowsDirect3D11MediaControlPlatformFactory> is a Windows platform factory that already contains the Direct3D11 renderer.
+`FatzMedia.Video.Windows.Direct3D11` is a convenience: <xref:FatzMedia.Video.WindowsDirect3D11PlatformFactory> is a Windows platform factory that already contains the Direct3D11 renderer.
 
 ### Adapters: your UI framework
 

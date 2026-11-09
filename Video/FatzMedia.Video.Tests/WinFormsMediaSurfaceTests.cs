@@ -11,7 +11,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void HandleCreation_AttachesItsChildWindowAsThePrimaryWin32Surface() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var form = new System.Windows.Forms.Form { ClientSize = new System.Drawing.Size(320, 180) };
         using var surface = new WinFormsMediaSurface { Dock = System.Windows.Forms.DockStyle.Fill, Player = session };
         form.Controls.Add(surface);
@@ -34,7 +34,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void FormResizeLoop_SendsTheLiveResizeHint() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var form = new ResizeLoopForm { ClientSize = new System.Drawing.Size(320, 180) };
         using var surface = new WinFormsMediaSurface { Dock = System.Windows.Forms.DockStyle.Fill, Player = session };
         form.Controls.Add(surface);
@@ -50,10 +50,10 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void AudioMode_HidesThePresentationWindowUntilTheSessionLeavesIt() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Player = session };
         _ = surface.Handle;
-        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
 
         recorder.SwitchMode(MediaPlayerMode.Audio);
@@ -65,7 +65,7 @@ public sealed class WinFormsMediaSurfaceTests
         recorder.SwitchMode(MediaPlayerMode.Full);
         Assert.False(surface.IsPresentationSuspended);
         Assert.False(surface.IsPresentationWindowVisible);
-        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
     });
 
@@ -73,24 +73,24 @@ public sealed class WinFormsMediaSurfaceTests
     public void AutoHideOff_KeepsTheChildWindowHiddenUntilTheFirstFrame() => RunSta(() =>
     {
         // The child window has no pixels until the renderer presents: BackColor shows meanwhile.
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), AutoHide = false, Player = session };
         _ = surface.Handle;
         Assert.True(surface.IsPrimarySurfaceAttached);
         Assert.False(surface.IsPresentationWindowVisible);
 
-        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
 
         // Stop keeps the last frame with auto-hide off.
-        recorder.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
     });
 
     [Fact]
     public void AutoHide_ShowsFromTheFirstFrameUntilStop_AndOffShowsAlways() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         recorder.IsOpen = false;
         recorder.HasVisualContent = false;
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Player = session };
@@ -101,12 +101,12 @@ public sealed class WinFormsMediaSurfaceTests
 
         recorder.IsOpen = true;
         recorder.HasVisualContent = true;
-        recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(new MediaSourceInfo(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video), TimeSpan.Zero));
-        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(new MediaSourceInfo(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video), TimeSpan.Zero));
+        recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         Assert.True(surface.IsContentVisible);
         Assert.True(surface.IsPresentationWindowVisible);
 
-        recorder.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
+        recorder.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty);
         Assert.False(surface.IsContentVisible);
         Assert.False(surface.IsPresentationWindowVisible);
         Assert.Equal(2, changes);
@@ -118,7 +118,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void RefusedAttach_RaisesOneWarningOwnedByTheSession() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         recorder.AttachResult = false;
         var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
@@ -147,7 +147,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void Resize_ThenDispose_ResizesAndDetaches() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(200, 100), Player = session };
         _ = surface.Handle;
 
@@ -160,8 +160,8 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void PlayerChange_DetachesOldSession() => RunSta(() =>
     {
-        (IMediaControlSession first, SurfaceRecorder firstRecorder) = SurfaceRecorder.Create();
-        (IMediaControlSession second, SurfaceRecorder secondRecorder) = SurfaceRecorder.Create();
+        (IPlayerSession first, SurfaceRecorder firstRecorder) = SurfaceRecorder.Create();
+        (IPlayerSession second, SurfaceRecorder secondRecorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Player = first };
         _ = surface.Handle;
 
@@ -174,7 +174,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void ProjectorRole_AttachesAsTheSecondarySurfaceWithoutTouchingTheDisplayMode() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface
         {
             Size = new System.Drawing.Size(96, 54),
@@ -195,7 +195,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void RoleChangeToPrimary_ReattachesAsPrimaryAndSendsTheDisplayMode() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface
         {
             Size = new System.Drawing.Size(64, 64),
@@ -215,7 +215,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void SurfaceIdChange_ReattachesAndDetachesTheIdItAttachedWith() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Role = MediaPresentationSurfaceRole.Projector, Player = session };
         _ = surface.Handle;
 
@@ -230,7 +230,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void RendererWithoutWindowSupport_GetsAFrameSink_AndItsFramesArePainted() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         recorder.AttachFilter = static surface => surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink;
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(4, 2), AutoHide = false, Player = session };
         _ = surface.Handle;
@@ -261,7 +261,7 @@ public sealed class WinFormsMediaSurfaceTests
     public void FrameSink_FirstFrameReady_RaisesOncePerLoadWithTheFramePublished() => RunSta(() =>
     {
         // Stage 051A: on the UI thread, once per load, after the frame is in the sink's bitmap.
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(4, 2), PreferNativeWindow = false, Player = session };
         _ = surface.Handle;
         var published = new List<long>();
@@ -276,7 +276,7 @@ public sealed class WinFormsMediaSurfaceTests
             System.Threading.Tasks.Task.Run(() =>
             {
                 surface.FrameSink!.PresentFrame(pixels, 4, 2, 16);
-                recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+                recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
             }).Wait();
             var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(300);
             while (DateTime.UtcNow < deadline)
@@ -292,8 +292,8 @@ public sealed class WinFormsMediaSurfaceTests
         Assert.True(published[0] >= 1);
 
         var source = new MediaSourceInfo(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
-        recorder.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(source));
-        recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(source, TimeSpan.Zero));
+        recorder.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(source));
+        recorder.Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(source, TimeSpan.Zero));
         Present();
         Assert.Equal(2, published.Count);
         surface.Player = null;
@@ -302,7 +302,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void PreferNativeWindowOff_AttachesOnlyAFrameSink() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), PreferNativeWindow = false, Player = session };
         _ = surface.Handle;
 
@@ -320,7 +320,7 @@ public sealed class WinFormsMediaSurfaceTests
     [Fact]
     public void OverlayContent_ShowsInALayeredWindowOwnedByTheForm_AndIsNeverDisposed() => RunSta(() =>
     {
-        (IMediaControlSession session, SurfaceRecorder _) = SurfaceRecorder.Create();
+        (IPlayerSession session, SurfaceRecorder _) = SurfaceRecorder.Create();
         using var form = new System.Windows.Forms.Form { ClientSize = new System.Drawing.Size(320, 180), ShowInTaskbar = false };
         using var surface = new WinFormsMediaSurface { Dock = System.Windows.Forms.DockStyle.Fill, Player = session };
         var overlay = new System.Windows.Forms.Label { Text = "overlay", BackColor = System.Drawing.Color.Transparent };
@@ -425,7 +425,7 @@ public sealed class WinFormsMediaSurfaceTests
         {
             MediaPlayerMode previous = Mode;
             Mode = mode;
-            Raise(nameof(IMediaControlSession.ModeChanged), new MediaValueChangedEventArgs<MediaPlayerMode>(previous, mode));
+            Raise(nameof(IPlayerSession.ModeChanged), new MediaValueChangedEventArgs<MediaPlayerMode>(previous, mode));
         }
 
         public void Raise(string eventName, object args)
@@ -440,9 +440,9 @@ public sealed class WinFormsMediaSurfaceTests
 
         public int VideoDisplayModeSets;
 
-        public static (IMediaControlSession Session, SurfaceRecorder Recorder) Create()
+        public static (IPlayerSession Session, SurfaceRecorder Recorder) Create()
         {
-            IMediaControlSession session = Create<IMediaControlSession, SurfaceRecorder>();
+            IPlayerSession session = Create<IPlayerSession, SurfaceRecorder>();
             return (session, (SurfaceRecorder)(object)session);
         }
 
@@ -451,11 +451,11 @@ public sealed class WinFormsMediaSurfaceTests
             ArgumentNullException.ThrowIfNull(targetMethod);
             switch (targetMethod.Name)
             {
-                case nameof(IMediaControlSession.AttachPresentationSurface):
+                case nameof(IPlayerSession.AttachPresentationSurface):
                     LastAttached = (MediaPresentationSurfaceDescriptor)args![0]!;
                     Calls.Enqueue($"attach {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
                     return AttachFilter?.Invoke(LastAttached) ?? AttachResult;
-                case nameof(IMediaControlSession.SetPresentationSurfaceLiveResize):
+                case nameof(IPlayerSession.SetPresentationSurfaceLiveResize):
                     LiveResizeCalls.Enqueue($"{args![0]} {((bool)args[1]! ? "on" : "off")}");
                     break;
                 case "get_IsOpen":
@@ -472,14 +472,14 @@ public sealed class WinFormsMediaSurfaceTests
                 case var remove when remove.StartsWith("remove_", StringComparison.Ordinal):
                     _ = _handlers.AddOrUpdate(remove[7..], _ => null, (_, existing) => Delegate.Remove(existing, (Delegate)args![0]!));
                     return null;
-                case nameof(IMediaControlSession.ResizePresentationSurface):
+                case nameof(IPlayerSession.ResizePresentationSurface):
                     Calls.Enqueue($"resize {args![1]}x{args[2]}");
                     break;
-                case nameof(IMediaControlSession.DetachPresentationSurface):
+                case nameof(IPlayerSession.DetachPresentationSurface):
                     Calls.Enqueue("detach");
                     DetachedIds.Enqueue((string)args![0]!);
                     break;
-                case "set_" + nameof(IMediaControlSession.VideoDisplayMode):
+                case "set_" + nameof(IPlayerSession.VideoDisplayMode):
                     _ = Interlocked.Increment(ref VideoDisplayModeSets);
                     break;
             }

@@ -14,7 +14,7 @@ namespace FatzMedia.Video;
 /// <para>
 /// Threading: call the members from the control's UI thread. Creating the player (which loads
 /// native libraries and blocks) runs on the thread pool; the awaits of
-/// <see cref="EnsurePlayerAsync"/> and <see cref="LoadAsync(MediaInputSource, IMediaControlPlatformFactory?, Action{MediaControlPlayer}?)"/>
+/// <see cref="EnsurePlayerAsync"/> and <see cref="LoadAsync(MediaInputSource, IPlatformFactory?, Action{MediaControlPlayer}?)"/>
 /// resume on the caller's synchronization context on purpose (unlike engine code), so
 /// <see cref="PlayerChanged"/> and the load steps run on the UI thread. <see cref="MediaClosed"/>
 /// is raised on the player's event thread: marshal it.
@@ -28,7 +28,7 @@ namespace FatzMedia.Video;
 public sealed class LightweightPlayerController : IDisposable
 {
     private readonly Lock _gate = new();
-    private readonly Func<MediaPlayerConfiguration, IMediaControlPlatformFactory, MediaControlPlayer> _createPlayer;
+    private readonly Func<MediaPlayerConfiguration, IPlatformFactory, MediaControlPlayer> _createPlayer;
     private MediaControlPlayer? _player;
     private MediaControlPlayer? _announcedPlayer;
     private Task<MediaControlPlayer?>? _creation;
@@ -48,7 +48,7 @@ public sealed class LightweightPlayerController : IDisposable
     public LightweightPlayerController(
         LightweightPlayerKind kind,
         string diagnosticCategory,
-        Func<MediaPlayerConfiguration, IMediaControlPlatformFactory, MediaControlPlayer>? createPlayer = null)
+        Func<MediaPlayerConfiguration, IPlatformFactory, MediaControlPlayer>? createPlayer = null)
     {
         if (!Enum.IsDefined(kind))
             throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown lightweight player kind.");
@@ -93,7 +93,7 @@ public sealed class LightweightPlayerController : IDisposable
     }
 
     /// <summary>Gets the adopted player as a session (diagnostic owner, surface binding).</summary>
-    public IMediaControlSession? Session => Player;
+    public IPlayerSession? Session => Player;
 
     /// <summary>Gets whether a player exists or is being created (its platform factory is fixed then).</summary>
     public bool HasPlayerOrPendingCreation
@@ -165,7 +165,7 @@ public sealed class LightweightPlayerController : IDisposable
 
     /// <summary>
     /// Starts a new reload and returns its number; every earlier one is abandoned at its next step.
-    /// <see cref="LoadAsync(MediaInputSource, IMediaControlPlatformFactory?, Action{MediaControlPlayer}?)"/>
+    /// <see cref="LoadAsync(MediaInputSource, IPlatformFactory?, Action{MediaControlPlayer}?)"/>
     /// calls it; a control calls it for a change that loads nothing (a solid colour).
     /// </summary>
     public int BeginReload() => Interlocked.Increment(ref _reloadVersion);
@@ -179,7 +179,7 @@ public sealed class LightweightPlayerController : IDisposable
     /// <see langword="null"/>. A failed creation raises an Error and returns <see langword="null"/>;
     /// a request abandoned by <see cref="ReleasePlayer"/> meanwhile also returns <see langword="null"/>.
     /// </summary>
-    public async Task<MediaControlPlayer?> EnsurePlayerAsync(IMediaControlPlatformFactory? platformFactory)
+    public async Task<MediaControlPlayer?> EnsurePlayerAsync(IPlatformFactory? platformFactory)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Task<MediaControlPlayer?> creation;
@@ -241,7 +241,7 @@ public sealed class LightweightPlayerController : IDisposable
     /// <returns><see langword="true"/> when the media was loaded and accepted by this, still current, load.</returns>
     public async Task<bool> LoadAsync(
         MediaInputSource source,
-        IMediaControlPlatformFactory? platformFactory,
+        IPlatformFactory? platformFactory,
         Action<MediaControlPlayer>? beforeLoad = null)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -284,10 +284,10 @@ public sealed class LightweightPlayerController : IDisposable
         return accepted;
     }
 
-    /// <inheritdoc cref="LoadAsync(MediaInputSource, IMediaControlPlatformFactory?, Action{MediaControlPlayer}?)"/>
+    /// <inheritdoc cref="LoadAsync(MediaInputSource, IPlatformFactory?, Action{MediaControlPlayer}?)"/>
     public Task<bool> LoadAsync(
         string path,
-        IMediaControlPlatformFactory? platformFactory,
+        IPlatformFactory? platformFactory,
         Action<MediaControlPlayer>? beforeLoad = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -345,7 +345,7 @@ public sealed class LightweightPlayerController : IDisposable
         ReleasePlayer();
     }
 
-    private async Task<MediaControlPlayer?> CreateAndAdoptAsync(IMediaControlPlatformFactory platformFactory, int lifetime)
+    private async Task<MediaControlPlayer?> CreateAndAdoptAsync(IPlatformFactory platformFactory, int lifetime)
     {
         MediaControlPlayer? player = null;
         try

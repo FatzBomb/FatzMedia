@@ -44,7 +44,7 @@ while (!ended.Wait(250))
     Console.Write($"\r{song.Position:mm\\:ss\\.f} / {info.Duration:mm\\:ss\\.f}   ");
 ```
 
-Wrap the whole thing in `try { ... } catch (FatzAudioException ex) { ... }` and print `ex.ErrorCode`. A missing file is `NotFound`; a file FatzMedia.Audio cannot play is `UnsupportedFormat` ([troubleshooting](../troubleshooting.md)).
+Wrap the whole thing in `try { ... } catch (AudioException ex) { ... }` and print `ex.ErrorCode`. A missing file is `NotFound`; a file FatzMedia.Audio cannot play is `UnsupportedFormat` ([troubleshooting](../troubleshooting.md)).
 
 ## 5. Try it without sound hardware
 

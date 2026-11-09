@@ -241,7 +241,7 @@ revisions[b] = update.Revision;
 foreach (var r in update.Dirty) Upload(buffers[b], r);   // PixelRect
 ```
 
-`UpdateInto` also takes a pointer (`nint`) for mapped memory; a buffer of the wrong size throws `FatzAudioException` with `ErrorCode.SizeMismatch`.
+`UpdateInto` also takes a pointer (`nint`) for mapped memory; a buffer of the wrong size throws `AudioException` with `ErrorCode.SizeMismatch`.
 
 ### Presentation options (`fa_cdg_surface_set_presentation`)
 
@@ -418,7 +418,7 @@ fa_result r = fa_stream_open_path(engine, "Big Song.zip", &o, &stream);   /* FA_
 ```csharp
 using var cts = new CancellationTokenSource();
 var stream = engine.OpenFile("Big Song.zip", new StreamOptions { CancellationToken = cts.Token });   // on a worker thread
-cts.Cancel();   // from the UI: the open throws FatzAudioException (ErrorCode.Cancelled)
+cts.Cancel();   // from the UI: the open throws AudioException (ErrorCode.Cancelled)
 ```
 
 A stored entry played in place is not CRC checked at open, since that would read the whole song first. Instead the engine's decode worker checks it in the background, 256 KB at a time, while the stream is attached to a device (decode-only streams, and archives opened with `fa_stream_open_io`, whose callbacks cannot be read twice, are not checked). A mismatch is reported once as `FA_EVENT_DECODE_ERROR` (value `FA_ERROR_UNSUPPORTED_FORMAT`; .NET `AudioStream.DecodeError`) and playback goes on: a damaged byte plays like a damaged byte in an unzipped MP3, a short glitch, never a crash. The check ends within a second or two on a normal song, so set the event callback right after the open. Compressed entries are always checked while they are unpacked, and a bad one fails the open.

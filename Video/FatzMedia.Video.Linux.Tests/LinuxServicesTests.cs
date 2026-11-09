@@ -146,7 +146,7 @@ public sealed class LinuxPlatformCompositionTests
         var dir = CreateFakeLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
         try
         {
-            var platform = new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
+            var platform = new LinuxPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
             platform.EnsureNativeLibrariesLoaded([dir]);
             var services = new ServiceCollection();
             platform.AddPlatformServices(services, MediaPlayerConfiguration.Auto);
@@ -170,9 +170,9 @@ public sealed class LinuxPlatformCompositionTests
         var dir = CreateFakeLibraries([.. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
         try
         {
-            var platform = new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
+            var platform = new LinuxPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
 
-            IServiceProvider provider = MediaControlServiceProvider.Create(MediaPlayerConfiguration.Auto, [dir], platform);
+            IServiceProvider provider = PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [dir], platform);
 
             Assert.False(platform.IsAudioAvailable);
             Assert.Null(provider.GetService<IAudioDeviceMonitor>());
@@ -199,7 +199,7 @@ public sealed class LinuxPlatformCompositionTests
         var empty = Directory.CreateTempSubdirectory("fbm-linux-empty-").FullName;
         try
         {
-            var services = new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new NoOperations(), empty, "linux-x64"), LinuxPlatformOptions.Default);
+            var services = new LinuxPlatformServices(new LinuxNativeLibraryBootstrapper(new NoOperations(), empty, "linux-x64"), LinuxPlatformOptions.Default);
 
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => services.EnsureNativeLibrariesLoaded([empty]));
 
@@ -216,7 +216,7 @@ public sealed class LinuxPlatformCompositionTests
     public void Factory_DelegatesPresentationAndReportsEmptyCapabilitiesWithoutFfmpeg()
     {
         var presentation = new RecordingPresentationFactory();
-        var factory = new LinuxMediaControlPlatformFactory(presentation, null, new LinuxNativeLibraryBootstrapper(new NoOperations(), Path.GetTempPath(), "linux-x64"));
+        var factory = new LinuxPlatformFactory(presentation, null, new LinuxNativeLibraryBootstrapper(new NoOperations(), Path.GetTempPath(), "linux-x64"));
 
         _ = factory.CreatePresentationCoordinator(null!, MediaPlayerConfiguration.Auto);
 
@@ -227,7 +227,7 @@ public sealed class LinuxPlatformCompositionTests
 
     [Fact]
     public void Factory_RejectsNullPresentationFactory() =>
-        Assert.Throws<ArgumentNullException>(() => new LinuxMediaControlPlatformFactory(null!));
+        Assert.Throws<ArgumentNullException>(() => new LinuxPlatformFactory(null!));
 
     private sealed class NoOperations : ILinuxNativeOperations
     {

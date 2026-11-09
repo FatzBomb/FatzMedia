@@ -158,7 +158,7 @@ public sealed class LightweightSurfacesTests
         return window;
     }
 
-    private sealed class FailingPlatformFactory : IMediaControlPlatformFactory
+    private sealed class FailingPlatformFactory : IPlatformFactory
     {
         private int _attempts;
 

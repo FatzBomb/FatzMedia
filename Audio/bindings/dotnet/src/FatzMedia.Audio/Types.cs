@@ -367,7 +367,7 @@ public sealed record StreamOptions
     /// <summary>
     /// Stops a long open: <see cref="AudioEngine.OpenUrl(string, StreamOptions?)"/> while it looks up the name,
     /// connects or waits for the first bytes (within about 100 ms), or an open that is unpacking a compressed song from
-    /// a ZIP archive (within about a megabyte of work). The call then throws a <see cref="FatzAudioException"/> with
+    /// a ZIP archive (within about a megabyte of work). The call then throws a <see cref="AudioException"/> with
     /// <see cref="ErrorCode.Cancelled"/> and no stream is created. A token that is already cancelled stops it at once.
     /// Other opens ignore it. <see cref="AudioEngine.OpenUrlAsync"/> and <see cref="AudioEngine.OpenFileAsync"/> take
     /// a token of their own and throw <see cref="OperationCanceledException"/> instead.

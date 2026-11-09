@@ -12,8 +12,8 @@ namespace FatzMedia.Video.WinForms;
 /// </summary>
 /// <remarks>
 /// There is no default platform factory: the host chooses the platform package (and with it the
-/// renderer), usually <c>WindowsMediaControlPlatformFactory</c> or
-/// <c>WindowsDirect3D11MediaControlPlatformFactory</c>, which this adapter does not reference (it
+/// renderer), usually <c>WindowsPlatformFactory</c> or
+/// <c>WindowsDirect3D11PlatformFactory</c>, which this adapter does not reference (it
 /// depends on Core only). The WPF adapter has one only because it can present only on Windows.
 /// </remarks>
 public sealed class Player : MediaControlPlayer
@@ -22,7 +22,7 @@ public sealed class Player : MediaControlPlayer
     public Player(
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths,
-        IMediaControlPlatformFactory platformFactory)
+        IPlatformFactory platformFactory)
         : base(platformFactory, configuration, nativeLibraryPaths)
     {
     }
@@ -31,7 +31,7 @@ public sealed class Player : MediaControlPlayer
     public static Task<Player> CreateAsync(
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths,
-        IMediaControlPlatformFactory platformFactory) =>
+        IPlatformFactory platformFactory) =>
         Task.Run(() => new Player(configuration, nativeLibraryPaths, platformFactory));
 
     public bool Load(Bitmap source, bool ignoreSidecar = false) =>

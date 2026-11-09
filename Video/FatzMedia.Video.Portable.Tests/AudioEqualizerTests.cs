@@ -171,7 +171,7 @@ public sealed class PlayerEqualizerTests
         Assert.Same(AudioEqualizerSettings.Disabled, player.Equalizer);
     }
 
-    private sealed class EqualizerTestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class EqualizerTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

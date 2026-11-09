@@ -197,13 +197,13 @@ public sealed class SilenceInfo
         uint count = 0;
         var native = new FaSilenceRegion[16];
         fixed (FaSilenceRegion* p = native)
-            FatzAudioException.ThrowIfFailed(get(&s, p, (uint)native.Length, &count));
+            AudioException.ThrowIfFailed(get(&s, p, (uint)native.Length, &count));
         if (count > native.Length)
         {
             native = new FaSilenceRegion[count];
             s = NativeSized.New<FaSilence>();
             fixed (FaSilenceRegion* p = native)
-                FatzAudioException.ThrowIfFailed(get(&s, p, count, &count));
+                AudioException.ThrowIfFailed(get(&s, p, count, &count));
         }
         var regions = new SilenceRegion[Math.Min(count, (uint)native.Length)];
         for (int i = 0; i < regions.Length; i++) regions[i] = new SilenceRegion(native[i].Start, native[i].End);
@@ -233,14 +233,14 @@ public sealed unsafe class SilenceDetector : IDisposable
     /// <param name="format">The format of the frames you will feed: any sample format, 1..32 channels.</param>
     /// <param name="options">Mode, threshold and lengths; null uses the defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="format"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The format or the options are invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The format or the options are invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public SilenceDetector(AudioFormat format, SilenceOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(format);
         Format = format;
         var f = format.ToNative();
         var o = SilenceOptions.ToNative(options);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_create(&f, &o, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_create(&f, &o, out nint native));
         _handle = new SilenceDetectorHandle();
         _handle.Initialize(native);
     }
@@ -284,7 +284,7 @@ public sealed unsafe class SilenceDetector : IDisposable
     {
         if (data == 0) throw new ArgumentException("The plane pointer array is null.", nameof(data));
         if (frames < 0) throw new ArgumentException("Frame count must not be negative.", nameof(frames));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, (void**)data, frames));
+        AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, (void**)data, frames));
     }
 
     private void FeedCore(void* data, int sampleCount)
@@ -292,7 +292,7 @@ public sealed unsafe class SilenceDetector : IDisposable
         if (sampleCount % Format.Channels != 0)
             throw new ArgumentException("Sample count must be a multiple of the channel count.");
         void* plane = data;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, &plane, sampleCount / Format.Channels));
+        AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, &plane, sampleCount / Format.Channels));
     }
 
     /// <summary>

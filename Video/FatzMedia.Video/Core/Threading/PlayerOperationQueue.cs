@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace FatzMedia.Video.Core.Threading;
 
-internal sealed class MediaControlOperationQueue : IDisposable
+internal sealed class PlayerOperationQueue : IDisposable
 {
     // ENG-024: which operation (and which event handler inside it) the current code runs in. A
     // scope ends when its operation or handler returns, so work it started that outlives it (a
@@ -30,7 +30,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
     internal bool IsExecutingOperation =>
         Volatile.Read(ref _exclusiveTurnThreadId) == Environment.CurrentManagedThreadId || IsInScope(this);
 
-    public MediaControlOperationQueue(string name)
+    public PlayerOperationQueue(string name)
     {
         _name = string.IsNullOrWhiteSpace(name) ? "MediaControl" : name;
         _workerTask = Task.Run(RunAsync);
@@ -41,7 +41,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         ArgumentNullException.ThrowIfNull(operation);
 
         if (Volatile.Read(ref _disposed) != 0)
-            return Task.FromException<T>(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+            return Task.FromException<T>(new ObjectDisposedException(nameof(PlayerOperationQueue)));
 
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -72,7 +72,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
             return Task.CompletedTask;
         }))
         {
-            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+            _ = completion.TrySetException(new ObjectDisposedException(nameof(PlayerOperationQueue)));
         }
 
         return completion.Task;
@@ -83,7 +83,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         ArgumentNullException.ThrowIfNull(operation);
 
         if (Volatile.Read(ref _disposed) != 0)
-            return Task.FromException<T>(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+            return Task.FromException<T>(new ObjectDisposedException(nameof(PlayerOperationQueue)));
 
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -112,7 +112,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
             }
         }))
         {
-            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+            _ = completion.TrySetException(new ObjectDisposedException(nameof(PlayerOperationQueue)));
         }
 
         return completion.Task;
@@ -153,14 +153,14 @@ internal sealed class MediaControlOperationQueue : IDisposable
     public ExclusiveTurn BeginExclusiveTurn()
     {
         if (Volatile.Read(ref _disposed) != 0)
-            throw new ObjectDisposedException(nameof(MediaControlOperationQueue));
+            throw new ObjectDisposedException(nameof(PlayerOperationQueue));
 
         if (IsExecutingOperation)
             return new ExclusiveTurn(this, inline: true);
 
         var turn = new ExclusiveTurn(this, inline: false);
         if (!_queue.Writer.TryWrite(turn.RunOnWorkerAsync))
-            throw new ObjectDisposedException(nameof(MediaControlOperationQueue));
+            throw new ObjectDisposedException(nameof(PlayerOperationQueue));
 
         return turn;
     }
@@ -182,7 +182,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         return new HandlerScope(scope, parent);
     }
 
-    private static bool IsInScope(MediaControlOperationQueue queue)
+    private static bool IsInScope(PlayerOperationQueue queue)
     {
         var threadId = Environment.CurrentManagedThreadId;
         for (OperationScope? scope = CurrentScope.Value; scope is not null; scope = scope.Parent)
@@ -211,13 +211,13 @@ internal sealed class MediaControlOperationQueue : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Operation failed after completion handling: {ex.Message}");
+                    Debug.WriteLine($"[PlayerOperationQueue:{_name}] Operation failed after completion handling: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaControlOperationQueue", $"[{_name}] Worker exited with error: {ex.Message}", innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "PlayerOperationQueue", $"[{_name}] Worker exited with error: {ex.Message}", innerException: ex);
         }
     }
 
@@ -238,7 +238,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         {
             if (!_workerTask.Wait(TimeSpan.FromSeconds(2)))
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker did not stop within 2000ms.");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlayerOperationQueue", $"[{_name}] Worker did not stop within 2000ms.");
                 _ = ObserveWorkerCompletionAsync();
                 return;
             }
@@ -247,11 +247,11 @@ internal sealed class MediaControlOperationQueue : IDisposable
         }
         catch (AggregateException ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker stopped with error: {ex.GetBaseException().Message}", innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlayerOperationQueue", $"[{_name}] Worker stopped with error: {ex.GetBaseException().Message}", innerException: ex);
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker wait failed: {ex.Message}", innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlayerOperationQueue", $"[{_name}] Worker wait failed: {ex.Message}", innerException: ex);
         }
     }
 
@@ -263,19 +263,19 @@ internal sealed class MediaControlOperationQueue : IDisposable
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker stopped with error: {ex.Message}", innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlayerOperationQueue", $"[{_name}] Worker stopped with error: {ex.Message}", innerException: ex);
         }
     }
 
     /// <param name="threadId">The only thread the scope applies on, or 0 for any thread.</param>
-    internal sealed class OperationScope(OperationScope? parent, MediaControlOperationQueue? queue, int threadId)
+    internal sealed class OperationScope(OperationScope? parent, PlayerOperationQueue? queue, int threadId)
     {
         private volatile bool _active = true;
 
         public OperationScope? Parent { get; } = parent;
 
         /// <summary>The queue whose operation this is, or <see langword="null"/> for an event handler.</summary>
-        public MediaControlOperationQueue? Queue { get; } = queue;
+        public PlayerOperationQueue? Queue { get; } = queue;
 
         public int ThreadId { get; } = threadId;
 
@@ -317,13 +317,13 @@ internal sealed class MediaControlOperationQueue : IDisposable
         private const int Granted = 1;
         private const int Abandoned = 2;
 
-        private readonly MediaControlOperationQueue _queue;
+        private readonly PlayerOperationQueue _queue;
         private readonly bool _inline;
         private readonly TaskCompletionSource _granted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _state;
 
-        internal ExclusiveTurn(MediaControlOperationQueue queue, bool inline)
+        internal ExclusiveTurn(PlayerOperationQueue queue, bool inline)
         {
             _queue = queue;
             _inline = inline;

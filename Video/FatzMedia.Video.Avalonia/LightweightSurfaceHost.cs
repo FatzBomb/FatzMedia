@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Avalonia;
 internal sealed class LightweightSurfaceHost : IDisposable
 {
     private readonly Func<Task> _reload;
-    private IMediaControlPlatformFactory? _platformFactory;
+    private IPlatformFactory? _platformFactory;
     private bool _isAttached;
     private bool _isContentVisible;
     private bool _disposed;
@@ -37,7 +37,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
 
     public bool IsContentVisible => _isContentVisible;
 
-    public IMediaControlPlatformFactory? PlatformFactory
+    public IPlatformFactory? PlatformFactory
     {
         get => _platformFactory;
         set

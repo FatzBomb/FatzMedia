@@ -39,7 +39,7 @@ public class TempoTests
         Assert.Equal(36f, s.Pitch, 3);
         s.Rate = 50f;
         Assert.Equal(10f, s.Rate, 3);
-        var ex = Assert.Throws<FatzAudioException>(() => s.Tempo = 0f);
+        var ex = Assert.Throws<AudioException>(() => s.Tempo = 0f);
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
     }
 

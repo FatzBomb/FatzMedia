@@ -7,14 +7,14 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Convenience composition root combining Windows platform services with the Direct3D11 renderer.
 /// </summary>
-public sealed class WindowsDirect3D11MediaControlPlatformFactory : WindowsMediaControlPlatformFactory
+public sealed class WindowsDirect3D11PlatformFactory : WindowsPlatformFactory
 {
-    public WindowsDirect3D11MediaControlPlatformFactory()
+    public WindowsDirect3D11PlatformFactory()
         : this(new Direct3D11PresentationOptions())
     {
     }
 
-    public WindowsDirect3D11MediaControlPlatformFactory(Direct3D11PresentationOptions options)
+    public WindowsDirect3D11PlatformFactory(Direct3D11PresentationOptions options)
         : base(CreatePresentationFactory(options))
     {
     }

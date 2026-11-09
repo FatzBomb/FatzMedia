@@ -452,7 +452,7 @@ if (r == FA_ERROR_UNSUPPORTED_FORMAT) {
 
 ```csharp
 try { using var s = engine.OpenFile("movie.mkv"); }
-catch (FatzAudioException e) when (e.ErrorCode == ErrorCode.UnsupportedFormat)
+catch (AudioException e) when (e.ErrorCode == ErrorCode.UnsupportedFormat)
 {
     // No system DTS decoder here: decode with your own FFmpeg and push frames.
 }

@@ -77,7 +77,7 @@ internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard
 /// </summary>
 internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayerEngineFactory
 {
-    private IMediaControlPlatformFactory? _platformFactory;
+    private IPlatformFactory? _platformFactory;
     private PlayerRendererSelection? _selection;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = ResolveNativePaths(options);
@@ -98,14 +98,14 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
     /// The platform for the renderer chosen at startup (also used by the lightweight-surfaces
     /// test window); a new one per call, as nothing is shared between players.
     /// </summary>
-    public static IMediaControlPlatformFactory CreatePlatformFactory(PlayerRendererSelection selection) =>
-        new WindowsMediaControlPlatformFactory(selection.CreateFactory());
+    public static IPlatformFactory CreatePlatformFactory(PlayerRendererSelection selection) =>
+        new WindowsPlatformFactory(selection.CreateFactory());
 
     public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
-        IMediaControlPlatformFactory platform = CreatePlatformFactory(selection);
+        IPlatformFactory platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
         if (options.AudioEngine == PlayerAudioEngine.FatzAudio)

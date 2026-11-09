@@ -15,14 +15,14 @@ internal static class PlatformComposition
 #if WINDOWS
     public static string Name => "Windows";
 
-    public static IMediaControlPlatformFactory Create(IMediaPresentationCoordinatorFactory renderer) =>
-        new WindowsMediaControlPlatformFactory(renderer);
+    public static IPlatformFactory Create(IMediaPresentationCoordinatorFactory renderer) =>
+        new WindowsPlatformFactory(renderer);
 #else
     public static string Name => "Linux";
 
-    public static IMediaControlPlatformFactory Create(IMediaPresentationCoordinatorFactory renderer) =>
+    public static IPlatformFactory Create(IMediaPresentationCoordinatorFactory renderer) =>
         OperatingSystem.IsLinux()
-            ? new LinuxMediaControlPlatformFactory(renderer, new LinuxPlatformOptions { DisplayRefreshRateHz = 60 })
+            ? new LinuxPlatformFactory(renderer, new LinuxPlatformOptions { DisplayRefreshRateHz = 60 })
             : throw new PlatformNotSupportedException(
                 "The net10.0 build of this player supports Linux only; on Windows run the net10.0-windows7.0 build (dotnet run -f net10.0-windows7.0).");
 #endif

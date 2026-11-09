@@ -49,13 +49,13 @@ public sealed class ProcessSampler : IDisposable
 }
 
 /// <summary>
-/// Counts the frames one player presents (Core's <see cref="IMediaControlSession.PresentationFramePresented"/>,
+/// Counts the frames one player presents (Core's <see cref="IPlayerSession.PresentationFramePresented"/>,
 /// raised on the render thread) and turns them into frames per second.
 /// </summary>
 public sealed class PresentedFrameCounter
 {
     private readonly Func<long> _timestamp;
-    private IMediaControlSession? _session;
+    private IPlayerSession? _session;
     private long _frames;
     private long _lastTimestamp;
 
@@ -72,7 +72,7 @@ public sealed class PresentedFrameCounter
     }
 
     /// <summary>Counts <paramref name="session"/>'s frames from now on (null stops counting). UI thread.</summary>
-    public void Track(IMediaControlSession? session)
+    public void Track(IPlayerSession? session)
     {
         if (ReferenceEquals(_session, session))
             return;

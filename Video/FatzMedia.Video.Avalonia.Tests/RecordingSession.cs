@@ -6,7 +6,7 @@ using FatzMedia.Video.Core.Configuration;
 namespace FatzMedia.Video.Avalonia.Tests;
 
 /// <summary>
-/// Records adapter calls on <see cref="IMediaControlSession"/> without a media engine. Methods
+/// Records adapter calls on <see cref="IPlayerSession"/> without a media engine. Methods
 /// returning <see cref="bool"/> succeed; everything else returns its default.
 /// </summary>
 public class RecordingSession : DispatchProxy
@@ -28,19 +28,19 @@ public class RecordingSession : DispatchProxy
     /// <summary>Gets every attach, resize and detach with its surface id ("attach secondary 640x360").</summary>
     public ConcurrentQueue<string> SurfaceCalls { get; } = new();
 
-    /// <summary>Gets or sets what <see cref="IMediaControlSession.Mode"/> returns.</summary>
+    /// <summary>Gets or sets what <see cref="IPlayerSession.Mode"/> returns.</summary>
     public MediaPlayerMode Mode { get; set; }
 
     /// <summary>
-    /// Gets or sets what <see cref="IMediaControlSession.IsOpen"/> returns (default true: media with
+    /// Gets or sets what <see cref="IPlayerSession.IsOpen"/> returns (default true: media with
     /// visual content is loaded, so an auto-hiding surface shows the frames).
     /// </summary>
     public bool IsOpen { get; set; } = true;
 
-    /// <summary>Gets or sets what <see cref="IMediaControlSession.HasVisualContent"/> returns (default true).</summary>
+    /// <summary>Gets or sets what <see cref="IPlayerSession.HasVisualContent"/> returns (default true).</summary>
     public bool HasVisualContent { get; set; } = true;
 
-    /// <summary>Gets or sets what <see cref="IMediaControlSession.State"/> returns.</summary>
+    /// <summary>Gets or sets what <see cref="IPlayerSession.State"/> returns.</summary>
     public MediaPlayerState State { get; set; } = MediaPlayerState.Stopped;
 
     private readonly ConcurrentDictionary<string, Delegate?> _handlers = new();
@@ -54,7 +54,7 @@ public class RecordingSession : DispatchProxy
 
     private EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? _modeChanged;
 
-    /// <summary>Gets how many <see cref="IMediaControlSession.ModeChanged"/> handlers are subscribed.</summary>
+    /// <summary>Gets how many <see cref="IPlayerSession.ModeChanged"/> handlers are subscribed.</summary>
     public int ModeChangedSubscribers => _modeChanged?.GetInvocationList().Length ?? 0;
 
     /// <summary>Sets <see cref="Mode"/> and raises ModeChanged, as a session's control queue would.</summary>
@@ -65,9 +65,9 @@ public class RecordingSession : DispatchProxy
         _modeChanged?.Invoke(this, new MediaValueChangedEventArgs<MediaPlayerMode>(old, mode));
     }
 
-    public static (IMediaControlSession Session, RecordingSession Recorder) Create()
+    public static (IPlayerSession Session, RecordingSession Recorder) Create()
     {
-        IMediaControlSession session = Create<IMediaControlSession, RecordingSession>();
+        IPlayerSession session = Create<IPlayerSession, RecordingSession>();
         return (session, (RecordingSession)(object)session);
     }
 
@@ -76,7 +76,7 @@ public class RecordingSession : DispatchProxy
         ArgumentNullException.ThrowIfNull(targetMethod);
         switch (targetMethod.Name)
         {
-            case nameof(IMediaControlSession.AttachPresentationSurface):
+            case nameof(IPlayerSession.AttachPresentationSurface):
                 LastAttached = (MediaPresentationSurfaceDescriptor)args![0]!;
                 Attached.Enqueue(LastAttached);
                 Calls.Enqueue($"attach {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
@@ -84,12 +84,12 @@ public class RecordingSession : DispatchProxy
                 if (AttachResult is { } attachResult)
                     return attachResult(LastAttached);
                 break;
-            case nameof(IMediaControlSession.ResizePresentationSurface):
+            case nameof(IPlayerSession.ResizePresentationSurface):
                 LastResize = ((int)args![1]!, (int)args[2]!);
                 Calls.Enqueue($"resize {LastResize.Value.Width}x{LastResize.Value.Height}");
                 SurfaceCalls.Enqueue($"resize {args[0]} {LastResize.Value.Width}x{LastResize.Value.Height}");
                 break;
-            case nameof(IMediaControlSession.DetachPresentationSurface):
+            case nameof(IPlayerSession.DetachPresentationSurface):
                 Calls.Enqueue("detach");
                 SurfaceCalls.Enqueue($"detach {args![0]}");
                 break;

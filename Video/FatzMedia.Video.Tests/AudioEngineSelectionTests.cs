@@ -95,7 +95,7 @@ public sealed class AudioEngineSelectionTests
     private static IServiceProvider Create(MediaPlayerConfiguration configuration, out TestDeviceMonitor platformMonitor)
     {
         var platform = new TestPlatformServices();
-        IServiceProvider services = MediaControlServiceProvider.Create(configuration, [], platform);
+        IServiceProvider services = PlayerServiceProvider.Create(configuration, [], platform);
         platformMonitor = platform.Monitor;
         return services;
     }
@@ -179,7 +179,7 @@ public sealed class AudioEngineSelectionTests
 
     // Audio is reported available; BASS itself is not loaded, so the BASS engine is created and
     // fails to initialize, as on a machine without the BASS libraries.
-    private sealed class TestPlatformServices : IMediaControlPlatformServices
+    private sealed class TestPlatformServices : IPlatformServices
     {
         public TestDeviceMonitor Monitor { get; } = new();
 

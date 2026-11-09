@@ -65,7 +65,7 @@ public class LoudnessTagsTests
             Assert.Equal(ErrorCode.UnsupportedFormat, r.Error);
             Assert.Null(r.TagFormat);
             Assert.Equal(before, File.ReadAllBytes(aiff));
-            var ex = Assert.Throws<FatzAudioException>(() => engine.WriteLoudnessTags(aiff));
+            var ex = Assert.Throws<AudioException>(() => engine.WriteLoudnessTags(aiff));
             Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
             Assert.Throws<ArgumentException>(() => engine.WriteLoudnessTags(Array.Empty<string>()));
         }

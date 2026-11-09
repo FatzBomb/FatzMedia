@@ -144,6 +144,6 @@ internal static class Renderers
 
 #if WINDOWS
     private static Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection device) =>
-        WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions { DeviceSelection = device });
+        WindowsDirect3D11PlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions { DeviceSelection = device });
 #endif
 }

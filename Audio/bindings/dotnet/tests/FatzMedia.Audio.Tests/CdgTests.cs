@@ -210,7 +210,7 @@ public class CdgTests
             }
 
             using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, NoTempFiles = true }))
-                Assert.Equal(ErrorCode.TooLarge, Assert.Throws<FatzAudioException>(() => inMemory.OpenFile(zip, DecodeOnly)).ErrorCode);
+                Assert.Equal(ErrorCode.TooLarge, Assert.Throws<AudioException>(() => inMemory.OpenFile(zip, DecodeOnly)).ErrorCode);
 
             string temp = Path.Combine(dir, "temp");
             using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, TempDirectory = temp });
@@ -246,7 +246,7 @@ public class CdgTests
             using (var cancelled = new CancellationTokenSource())
             {
                 cancelled.Cancel();
-                var ex = Assert.Throws<FatzAudioException>(() => engine.OpenFile(zip, DecodeOnly with { CancellationToken = cancelled.Token }));
+                var ex = Assert.Throws<AudioException>(() => engine.OpenFile(zip, DecodeOnly with { CancellationToken = cancelled.Token }));
                 Assert.Equal(ErrorCode.Cancelled, ex.ErrorCode);
             }
 
@@ -315,7 +315,7 @@ public class CdgTests
                 Assert.Equal(TimeSpan.FromSeconds(2), file.Info.Duration);
             }
             Assert.Equal(ErrorCode.UnsupportedFormat,
-                Assert.Throws<FatzAudioException>(() => engine.OpenFile(path, DecodeOnly with { NoCdg = true })).ErrorCode);
+                Assert.Throws<AudioException>(() => engine.OpenFile(path, DecodeOnly with { NoCdg = true })).ErrorCode);
 
             using var output = engine.OpenOutput();
             using var song = engine.OpenMemory(cdg);
@@ -385,8 +385,8 @@ public class CdgTests
     {
         using var engine = CreateHeadless();
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => song.LoadCdg("missing.cdg")).ErrorCode);
-        Assert.Equal(ErrorCode.UnsupportedFormat, Assert.Throws<FatzAudioException>(() => song.LoadCdg(new byte[10])).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => song.LoadCdg("missing.cdg")).ErrorCode);
+        Assert.Equal(ErrorCode.UnsupportedFormat, Assert.Throws<AudioException>(() => song.LoadCdg(new byte[10])).ErrorCode);
         song.LoadCdg(SimpleCdg());
         song.RemoveCdg();
         Assert.False(song.HasCdg);
@@ -434,7 +434,7 @@ public class CdgTests
         for (int y = 0; y < 216; y++)
             Assert.True(frame.Pixels.Slice(y * frame.Stride, 1200).SequenceEqual(buffer.AsSpan(y * stride, 1200)));
 
-        var error = Assert.Throws<FatzAudioException>(() => surface.UpdateInto(buffer, stride, 299, 216, 0));
+        var error = Assert.Throws<AudioException>(() => surface.UpdateInto(buffer, stride, 299, 216, 0));
         Assert.Equal(ErrorCode.SizeMismatch, error.ErrorCode);
         Assert.Throws<ArgumentException>(() => surface.UpdateInto(new byte[100], stride, 300, 216, 0));
 

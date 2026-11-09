@@ -66,7 +66,7 @@ public sealed class DiscTests : IDisposable
         using var disc = Disc.Open(_cue);
         Assert.Equal(0, disc.GetPregap(1));
         Assert.Equal(5, disc.GetPregap(2));
-        var e = Assert.Throws<FatzAudioException>(() => disc.GetPregap(3));
+        var e = Assert.Throws<AudioException>(() => disc.GetPregap(3));
         Assert.Equal(ErrorCode.NotFound, e.ErrorCode);
     }
 
@@ -130,11 +130,11 @@ public sealed class DiscTests : IDisposable
     {
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var disc = Disc.Open(_cue);
-        var ex = Assert.Throws<FatzAudioException>(() => engine.OpenDisc(disc, 3));
+        var ex = Assert.Throws<AudioException>(() => engine.OpenDisc(disc, 3));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
-        ex = Assert.Throws<FatzAudioException>(() => disc.Eject());
+        ex = Assert.Throws<AudioException>(() => disc.Eject());
         Assert.Equal(ErrorCode.NotImplemented, ex.ErrorCode);
-        ex = Assert.Throws<FatzAudioException>(() => Disc.Open(Path.Combine(_dir, "missing.cue")));
+        ex = Assert.Throws<AudioException>(() => Disc.Open(Path.Combine(_dir, "missing.cue")));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
         Assert.NotNull(Disc.Drives);   // empty on machines without a drive
     }

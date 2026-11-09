@@ -3,14 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzMedia.Video.Tests;
 
-public sealed class MediaControlServiceProviderTests
+public sealed class PlayerServiceProviderTests
 {
     [Fact]
     public void Create_InitializesAndRegistersPlatformServices()
     {
         var platformServices = new TestPlatformServices();
 
-        var serviceProvider = MediaControlServiceProvider.Create(
+        var serviceProvider = PlayerServiceProvider.Create(
             new MediaPlayerConfiguration(),
             ["native-a", "native-b"],
             platformServices);
@@ -20,7 +20,7 @@ public sealed class MediaControlServiceProviderTests
         Assert.NotNull(serviceProvider);
     }
 
-    private sealed class TestPlatformServices : IMediaControlPlatformServices
+    private sealed class TestPlatformServices : IPlatformServices
     {
         public IReadOnlyList<string> NativeLibraryPaths { get; private set; } = [];
         public bool PlatformServicesRegistered { get; private set; }

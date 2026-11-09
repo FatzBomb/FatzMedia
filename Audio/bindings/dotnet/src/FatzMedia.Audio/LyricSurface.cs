@@ -442,7 +442,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             int rc = NativeMethods.fa_lyric_surface_create(handle, (FaLyricStyle*)s, out nint native);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Not a MIDI stream, or a style value out of its range.", nameof(style));
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return native;
         });
         _style = style;
@@ -457,7 +457,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     /// <see cref="SurfaceLayout.LayoutRevision"/> when sizes or the font change).
     /// </summary>
     /// <exception cref="ArgumentException">A value out of its range (the old style stays).</exception>
-    /// <exception cref="FatzAudioException">The font could not be opened (the old style stays).</exception>
+    /// <exception cref="AudioException">The font could not be opened (the old style stays).</exception>
     public LyricStyle Style
     {
         get => _style;
@@ -470,7 +470,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
                 int rc = value.WithNative(s => NativeMethods.fa_lyric_surface_set_style(native, (FaLyricStyle*)s));
                 if (rc == (int)ErrorCode.InvalidArgument)
                     throw new ArgumentException("A style value is out of its range.", nameof(value));
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
                 _style = value;
             }
         }
@@ -487,7 +487,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             if ((value.Width == 0) != (value.Height == 0))
                 throw new ArgumentException("Width and height must both be 0 (unset) or both positive.", nameof(value));
             using (var held = Hold())
-                FatzAudioException.ThrowIfFailed(
+                AudioException.ThrowIfFailed(
                     NativeMethods.fa_surface_set_presentation_size(held.Native, (uint)value.Width, (uint)value.Height));
             _presentationSize = SurfaceInterop.ClampPresentation(value);
         }
@@ -500,7 +500,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         set
         {
             using (var held = Hold())
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_set_render_ahead(held.Native, value ? 1 : 0));
+                AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_render_ahead(held.Native, value ? 1 : 0));
             _renderAhead = value;
         }
     }
@@ -515,7 +515,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             FaSurfaceEffects e;
             SurfaceInterop.ToNative(value, &e);
             using var held = Hold();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_set_effects(held.Native, &e));
+            AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_effects(held.Native, &e));
             _style = _style with { Effects = value };
         }
     }
@@ -526,7 +526,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         FaSurfaceLayout l = default;
         l.StructSize = (uint)sizeof(FaSurfaceLayout);
         using (var held = Hold())
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_get_layout(held.Native, &l));
+            AudioException.ThrowIfFailed(NativeMethods.fa_surface_get_layout(held.Native, &l));
         return SurfaceInterop.FromNative(&l);
     }
 
@@ -547,7 +547,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             ObjectDisposedException.ThrowIf(native == 0, this);
             try
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination,
+                AudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination,
                     stride, (uint)width, (uint)height, destinationRevision, &f));
             }
             finally

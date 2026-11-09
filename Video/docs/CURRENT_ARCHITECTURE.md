@@ -33,16 +33,16 @@ See
 
 ## Platform Composition
 
-`MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which selects the
+`MediaControlPlayer` receives an `IPlatformFactory`, which selects the
 native media-engine services for the current operating system. Core owns session
-lifecycle and Core-service composition through `MediaControlServiceProvider`; an OS
+lifecycle and Core-service composition through `PlayerServiceProvider`; an OS
 package owns native-library loading, platform-specific registrations through
-`IMediaControlPlatformServices`, and the concrete factory.
-`WindowsMediaControlPlatformFactory` now lives in `FatzMedia.Video.Windows`.
+`IPlatformServices`, and the concrete factory.
+`WindowsPlatformFactory` now lives in `FatzMedia.Video.Windows`.
 Windows accesses Core only through public platform contracts.
 
 Renderer selection is independent of operating-system selection. The Player host
-currently injects `WindowsDirect3D11MediaControlPlatformFactory` from the thin
+currently injects `WindowsDirect3D11PlatformFactory` from the thin
 Windows+Direct3D11 integration bundle. `FatzMedia.Video.Windows` references
 Core only, and the WPF adapter contains no renderer types. Hosts can inject another
 `IMediaPresentationCoordinatorFactory` — including the portable software renderer's
@@ -55,7 +55,7 @@ Windows native-service layer.
 a concrete rendering backend and contains no DXGI swap-chain mode. The host selects a
 renderer by injecting its factory. Direct3D11-specific creation policy lives in
 `Direct3D11PresentationOptions`, supplied to `Direct3D11PresentationCoordinatorFactory`
-or the `WindowsDirect3D11MediaControlPlatformFactory` convenience bundle. Its native
+or the `WindowsDirect3D11PlatformFactory` convenience bundle. Its native
 swap-chain present mode defaults to VSync; Immediate remains an explicit diagnostic mode.
 
 ### Software Renderer (Stage 024A)
@@ -145,7 +145,7 @@ platform factory; no native media or window handle is required.
 
 `BackgroundSurface` and `KaraokeSurface` live in every UI adapter (WPF, Avalonia and WinForms
 since Stage 046A slice 2) and own their sessions after the host supplies an
-`IMediaControlPlatformFactory`, matching the existing WPF `Player` construction contract. The
+`IPlatformFactory`, matching the existing WPF `Player` construction contract. The
 former is restricted to color/image/silent looping video backgrounds (a `MediaPlayerMode.Background`
 player, no audio engine); the latter is restricted to CDG and MIDI/KAR on an opaque 4:3 canvas.
 Their rules are Core's `LightweightPlayerPolicy` and `LightweightPlayerController` (see
@@ -276,7 +276,7 @@ named `window` handle.
 - When the tracks arrive they join `SubtitleTracks`. The first embedded track is selected, taking
   precedence over an auto-selected sidecar as before, unless the host already chose a track (or
   none) with `SelectSubtitleTrack`. The engine raises `ISubtitleTrackSource.SubtitleTracksChanged`;
-  the player forwards it as the public `IMediaControlSession.SubtitleTracksChanged` (with the
+  the player forwards it as the public `IPlayerSession.SubtitleTracksChanged` (with the
   current tracks and selection) through the control queue, after `MediaLoaded` and on a
   background thread, and not after a close. `PlayerViewModel` refreshes its subtitle picker on it.
 - Network video and archive video have no embedded-subtitle scan.
@@ -289,7 +289,7 @@ named `window` handle.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
-- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession` and `MediaControlPlayer`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
+- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IPlayerSession` and `MediaControlPlayer`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
 - MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style
@@ -389,7 +389,7 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 ## Audio Device Hotplug Monitoring (Stage 006B)
 
 - `IAudioDeviceMonitor` / `PollingAudioDeviceMonitor`: 1-second poll of BASS state and Windows default endpoint via `CoreAudioDefaultEndpointReader`.
-- `AudioDeviceChanged` event on `IMediaControlSession` with `AudioDeviceChangedEventArgs`.
+- `AudioDeviceChanged` event on `IPlayerSession` with `AudioDeviceChangedEventArgs`.
 - `BASS_CONFIG_DEV_NONSTOP` enabled at BASS init to keep the device buffer alive during transient loss.
 - Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by device-change notifications. BASS/Windows handle active-stream migration; Core only raises diagnostics and the public event.
 - Lost BASS output (ENG-032): `BassOutputWatchdog` (Core, BASS only, platform neutral) is one process-wide 1-second timer that runs while any `AudioEngine`/`VideoAudioEngine` is playing. When BASS stops the output or parks a playing channel as `BASS_ACTIVE_PAUSED_DEVICE` (another application holding the device exclusively, a USB device unplugged), it raises one unowned `AudioOutput` warning and `AudioDeviceChanged` (`DeviceRemoved`) on every player, retries `BASS_Start` / `BASS_Init(BASS_DEVICE_REINIT)` once a second per device, resumes only the channels whose engine is still `Playing`, then raises an Info and `AudioDeviceChanged` (`DeviceAdded`). The decisions live in the pure `AudioOutputRecoveryTracker`. A `Play` whose `BASS_ChannelPlay` fails restarts the output once (same rate limit) and reports an Error naming the unavailable output if it still fails.
@@ -419,7 +419,7 @@ binary compatibility hold for existing construction sites. The
 (source-compatible; binary/ABI-relevant pre-1.0 because the struct layout grows).
 
 Stage 030A (2026-08-10) additionally exposed both options as runtime
-`IMediaControlSession` properties — `MediaControlPlayer.LoadBehavior.cs` (new
+`IPlayerSession` properties — `MediaControlPlayer.LoadBehavior.cs` (new
 partial) forwards them to mutable `MediaFile.ResetPitchOnMediaLoad` /
 `ResetTempoOnMediaLoad` options applied by `MediaFile.LoadCore` at each load —
 so hosts can toggle the resets live; the config flags seed the initial values.
@@ -432,7 +432,7 @@ Core pitch/tempo reset to 0/100 and both WPF sliders visibly synchronized). See
 ## Control And Completion Serialization
 
 Public load, play, pause, stop, seek, close, and reset operations are admitted through
-one `MediaControlOperationQueue`. Natural-end handling uses that same queue rather
+one `PlayerOperationQueue`. Natural-end handling uses that same queue rather
 than restarting the engine directly from a BASS/pipeline callback: end detection is
 queued first, host `MediaEnded` delivery is ordered next, and loop completion is
 queued afterward. `MediaControls` carries a transport-generation token so a Play,
@@ -477,7 +477,7 @@ is process-wide (no owner). Engine code is owned implicitly: a player enters
 the owner flows to the threads and tasks it starts; work that drops the execution context
 re-enters the owner it captured. Adapter and host code raises outside the engine (on a UI
 thread, with no owner), so it names the session instead with
-`DiagnosticRouter.Raise(IMediaControlSession? owner, ...)`; the Avalonia `MediaSurface` and its
+`DiagnosticRouter.Raise(IPlayerSession? owner, ...)`; the Avalonia `MediaSurface` and its
 shared-image path do this for the session they are attached to. Native loading and other
 process-wide work raise without an owner and reach every player. Diagnostics are delivered on
 each player's serial host-event dispatcher.
@@ -495,7 +495,7 @@ Stage 029C gives the Stage 028A WPF surfaces an event-driven visibility policy
 decided by the Stage 029A session lifecycle plus `PresentationFramePresented` as
 the positive proof of visual output — never file extensions or content flags:
 
-- Additive Core capability: `IMediaControlSession.HasVisualContent` — true when
+- Additive Core capability: `IPlayerSession.HasVisualContent` — true when
   the loaded media's content role includes a visual main (`Video`, `Cdg`,
   `Image`, or `Subtitle`) or when a resolved composition background is present
   (`MediaControlPlayer`: content flags OR `_mediaEngine.Background != null`).
@@ -546,7 +546,7 @@ the positive proof of visual output — never file extensions or content flags:
 Owner direction (2026-10-26): no feature solo for one player or adapter. Logic two adapters
 would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters bind to it:
 
-- `IMediaControlSession.HasPresentation` / `HasPresentationChanged` (default members; false in
+- `IPlayerSession.HasPresentation` / `HasPresentationChanged` (default members; false in
   Audio mode, raised by `MediaControlPlayer` on the control queue after the `ModeChanged` of a
   switch into or out of Audio mode). A surface shows its background instead of the last frame
   while it is false (`IsPresentationSuspended` on every `MediaSurface`).
@@ -651,7 +651,7 @@ and both-renderer smoke. The completed specification lives at
 `roadmap/complete/030A_COMPLETED_VisualTransforms.md`; the fixed operation order and
 pinned coefficients below are the exact reference implemented by every path.
 
-`IMediaControlSession` (and `MediaControlPlayer`) exposes
+`IPlayerSession` (and `MediaControlPlayer`) exposes
 `BaseVisualTransform { get; set; }` plus a change-only `BaseVisualTransformChanged`
 event carrying previous/current `MediaValueChangedEventArgs<BaseVisualTransform>`
 (raised through `HostEventDispatcher`). `BaseVisualTransform` is a public
@@ -768,7 +768,7 @@ straight into the session property (change-only, render-without-upload), and a
 Reset Visual command restores identity (gains `1/1/1`, hue/brightness `0`,
 contrast/saturation `1`, Include Overlays unchecked). The **Audio flyout** has
 pitch/tempo/normalize and runtime Reset Pitch on Load / Reset Tempo on Load
-checkboxes backed by additive `IMediaControlSession.ResetPitchOnMediaLoad` /
+checkboxes backed by additive `IPlayerSession.ResetPitchOnMediaLoad` /
 `ResetTempoOnMediaLoad` properties (`MediaControlPlayer.LoadBehavior.cs` partial
 → mutable `MediaFile` options applied per load), so the Stage 029B config flags
 are now also live session toggles. The **A/V flyout** carries Auto Play, Auto
@@ -815,7 +815,7 @@ single-analyzer-version, 256-entry bounded LRU `MediaAnalysisCache`
 (`System.Threading.Lock`, usage-ordered eviction) that treats version mismatches
 and invalid records as misses. The shared process-lifetime instance
 (`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
-container (`MediaControlServiceProvider`) and therefore survives player `Reset`.
+container (`PlayerServiceProvider`) and therefore survives player `Reset`.
 The pinned contract lives at
 `roadmap/complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md`.
 
@@ -860,7 +860,7 @@ Stage 031A's prepared-next analysis supplies first-play cache.
 ## Prepared-Next Slot (Stage 031A, implemented — pending manual smoke)
 
 Core owns a depth-one prepared-next slot; hosts own playlists and queues.
-`IMediaControlSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
+`IPlayerSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
 `AnalyzeAsync`, `PrepareNextAsync`, `ClearPreparedNext`,
 `TransitionToPreparedNextAsync`, `AutoTransitionToPreparedNext` (default off), and the
 `PreparedNextChanged` / `PreparedNextTransitioned` events. The internal
@@ -913,7 +913,7 @@ decoded sound), with `NetworkTlsPolicy`, the read-ahead's buffering and the row 
 `NetworkAudioPolicy.Resolve` (014A's metadata rule). ICY titles (FFmpeg's `icy_metadata_packet`)
 and Ogg comment updates are read on the reading thread after each packet, recorded with that
 packet's time, and raised when the played position reaches them
-(`INetworkMediaControl.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
+(`INetworkPlayer.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
 https audio is refused like http audio. An `.m3u8` with no playable video plays as audio in Full
 mode. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
@@ -942,7 +942,7 @@ and the paused render (`NoWait`); a seek's waits give up when a newer seek, Paus
 queued; the soundtrack pump's waits end with its cancellation. A lone network seek settles on its
 exact preview instead of seeking again. `PipelineMediaEngine` runs the
 attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
-`INetworkMediaControl`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
+`INetworkPlayer`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
 before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
 from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
 whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
@@ -975,7 +975,7 @@ See `roadmap/complete/039A_COMPLETED_NetworkVideoPlayback.md`.
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 
 `FatzMedia.Video.Linux` (net10.0, references Core only) supplies
-`LinuxMediaControlPlatformFactory` and the `IMediaControlPlatformServices`
+`LinuxPlatformFactory` and the `IPlatformServices`
 registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
 ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
 dependency order), a kernel-wait-plus-spin precision waiter, host-configured refresh
@@ -1003,7 +1003,7 @@ See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 
 `FatzMedia.Video.Avalonia` (net10.0, Core only) provides a composited
 `MediaSurface` that attaches one managed frame-sink surface to any
-`IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
+`IPlayerSession`, resizes it with layout bounds x render scaling, and draws the
 final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
 Since slice 5 its `Role` and `SurfaceId` let a second `MediaSurface` (or the
 `SecondaryPresentationWindow` helper, placed full screen on a chosen screen) show the same
@@ -1046,7 +1046,7 @@ The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalizati
 `AudioFilterStage`, bypass = no native stage, lifecycle per stream) are hosted by the
 `AudioEngine` through `IAudioFilterHost`. The only filter is a BASS_FX PEAKEQ
 equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
-`IMediaControlSession.Equalizer`, `EqualizerChanged`). See
+`IPlayerSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
 ## Audio Engine Seams (Stage 037A, slice 1, pending manual smoke)
@@ -1070,7 +1070,7 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
 ## FatzAudio Engine (Stage 037A, slice 2, pending manual smoke)
 
 - **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory` in
-  Core). `null`, the default, is the BASS `AudioEngine`. `MediaControlServiceProvider` always creates
+  Core). `null`, the default, is the BASS `AudioEngine`. `PlayerServiceProvider` always creates
   the BASS engine first (it initializes BASS on the configured device, which video audio and the
   soundtrack engine still need), then asks the factory; it disposes the BASS file engine (BASS stays
   initialized) and uses the factory's engine, or warns (`Bootstrap`) and keeps BASS when the factory
@@ -1122,7 +1122,7 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 ## Session Reset
 
-- `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
+- `IPlayerSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
 - Hosts call this instead of creating a new control instance when changing devices or fallback policy.
 
 ## Sidecar and Archive Background Policy
@@ -1140,4 +1140,4 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 
-`MediaSurface` accepts an `IMediaControlSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.
+`MediaSurface` accepts an `IPlayerSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.

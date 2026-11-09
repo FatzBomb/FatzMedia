@@ -22,7 +22,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ShowingTheSurface_AttachesOnePrimaryFrameSinkSurface()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session, VideoDisplayMode = VideoDisplayMode.Stretch };
         Window window = Show(surface, 320, 180);
 
@@ -39,7 +39,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ResizingTheWindow_ResizesThePresentationSurface()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 320, 180);
 
@@ -55,8 +55,8 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void ChangingPlayer_DetachesOldAndAttachesNew()
     {
-        (IMediaControlSession first, RecordingSession firstRecorder) = RecordingSession.Create();
-        (IMediaControlSession second, RecordingSession secondRecorder) = RecordingSession.Create();
+        (IPlayerSession first, RecordingSession firstRecorder) = RecordingSession.Create();
+        (IPlayerSession second, RecordingSession secondRecorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = first };
         Window window = Show(surface, 200, 100);
 
@@ -70,7 +70,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void RemovingFromTree_DetachesAndClearingPlayerDetaches()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         var host = new ContentControl { Content = surface };
         var window = new Window { Width = 200, Height = 100, Content = host };
@@ -98,7 +98,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void PresentedFrame_IsDrawnByTheSurface()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 40, 20);
         Assert.True(recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle));
@@ -123,7 +123,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void FrameBursts_PublishOnlyTheLatestFrame()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 4, 4);
         _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle);
@@ -141,7 +141,7 @@ public sealed class MediaSurfaceTests
     [AvaloniaFact]
     public void SteadyFrames_ReuseBuffersInsteadOfAllocating()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 4, 4);
         _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle);

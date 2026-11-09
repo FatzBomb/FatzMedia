@@ -50,7 +50,7 @@ public sealed class MixBus : IDisposable
     }
 
     /// <summary>Linear gain of the bus (1 = unity).</summary>
-    /// <exception cref="FatzAudioException">The value is negative (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The value is negative (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public float Volume { get => Get(AudioParameter.Volume); set => Set(AudioParameter.Volume, value); }
 
     /// <summary>Stereo pan of the bus from -1 (left) to 1 (right).</summary>
@@ -58,12 +58,12 @@ public sealed class MixBus : IDisposable
 
     private float Get(AudioParameter p)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_bus_get_param(Handle, (int)p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_get_param(Handle, (int)p, out float v));
         return v;
     }
 
     private void Set(AudioParameter p, float v) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_bus_set_param(Handle, (int)p, v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_set_param(Handle, (int)p, v));
 
     /// <summary>Ramps the bus volume or pan to a target over time and returns immediately.</summary>
     /// <param name="parameter"><see cref="AudioParameter.Volume"/> or <see cref="AudioParameter.Pan"/>.</param>
@@ -74,12 +74,12 @@ public sealed class MixBus : IDisposable
     /// When to start, on the <see cref="OutputDevice.Time"/> clock; null starts now. The value holds until then.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> or <paramref name="startAt"/> is negative.</exception>
-    /// <exception cref="FatzAudioException">The parameter cannot be ramped on a bus (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch).</exception>
+    /// <exception cref="AudioException">The parameter cannot be ramped on a bus (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch).</exception>
     public unsafe void Ramp(AudioParameter parameter, float target, TimeSpan duration, Curve? curve = null, TimeSpan? startAt = null)
     {
         var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_bus_ramp_param(Handle, (int)parameter, target,
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_ramp_param(Handle, (int)parameter, target,
             durationNs, startNs, &ramp));
         GC.KeepAlive(c);
     }

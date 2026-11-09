@@ -84,7 +84,7 @@ public abstract class FeedAudioStream : AudioStream
     /// Pushing after this fails with <see cref="ErrorCode.EndOfStream"/> until <see cref="Flush"/>.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
-    public void End() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_push_end(Handle));
+    public void End() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_end(Handle));
 
     /// <summary>
     /// Drops everything queued and decoded ahead, at once; call it after seeking your demuxer. The clock holds
@@ -98,7 +98,7 @@ public abstract class FeedAudioStream : AudioStream
     /// // keep pushing packets from the new position
     /// </code>
     /// </example>
-    public void Flush() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_push_flush(Handle));
+    public void Flush() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_flush(Handle));
 
     /// <summary>
     /// How much pushed audio has not been heard yet: queued, decoded ahead and in the device buffer. It is
@@ -110,7 +110,7 @@ public abstract class FeedAudioStream : AudioStream
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_buffered(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_buffered(Handle, out long ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -145,7 +145,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
     /// <param name="presentationTime">Presentation time of the first frame; null continues right after the previous push.</param>
     /// <exception cref="InvalidOperationException">The stream format is not <see cref="SampleFormat.Float32"/>.</exception>
     /// <exception cref="ArgumentException">The sample count is not a multiple of the channel count.</exception>
-    /// <exception cref="FatzAudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void Push(ReadOnlySpan<float> samples, TimeSpan? presentationTime = null)
     {
         if (_format.SampleFormat != SampleFormat.Float32)
@@ -158,7 +158,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
     /// <param name="presentationTime">Presentation time of the first frame; null continues right after the previous push.</param>
     /// <exception cref="InvalidOperationException">The stream format is not <see cref="SampleFormat.Int16"/>.</exception>
     /// <exception cref="ArgumentException">The sample count is not a multiple of the channel count.</exception>
-    /// <exception cref="FatzAudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void Push(ReadOnlySpan<short> samples, TimeSpan? presentationTime = null)
     {
         if (_format.SampleFormat != SampleFormat.Int16)
@@ -172,7 +172,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
             throw new ArgumentException("Sample count must be a multiple of the channel count.");
         void* plane = data;
         long frames = sampleCount / _format.Channels;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_push_pcm(Handle, &plane, frames, ToNativePts(pts)));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_pcm(Handle, &plane, frames, ToNativePts(pts)));
     }
 
     /// <summary>
@@ -188,7 +188,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
     /// <param name="timeBase">Unit of <paramref name="pts"/> (<c>AVStream.time_base</c>); the default means nanoseconds.</param>
     /// <exception cref="ArgumentNullException"><paramref name="frameFormat"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="data"/> is zero or <paramref name="frames"/> is negative.</exception>
-    /// <exception cref="FatzAudioException">The format is invalid (<see cref="ErrorCode.InvalidArgument"/>), the stream was ended or the queue is full.</exception>
+    /// <exception cref="AudioException">The format is invalid (<see cref="ErrorCode.InvalidArgument"/>), the stream was ended or the queue is full.</exception>
     /// <example>
     /// <code>
     /// // FFmpeg.AutoGen, inside the avcodec_receive_frame loop
@@ -210,7 +210,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
             Pts = pts,
             TimeBase = timeBase.ToNative(),
         };
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_push_frame(Handle, &f));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_frame(Handle, &f));
     }
 }
 
@@ -247,7 +247,7 @@ public sealed unsafe class PacketAudioStream : FeedAudioStream
     /// <param name="data">The packet's bytes.</param>
     /// <param name="pts">Timestamp in <see cref="CodecParameters.TimeBase"/> units, or <see cref="FeedAudioStream.NoTimestamp"/>.</param>
     /// <param name="duration">Duration in the same units; 0 when unknown.</param>
-    /// <exception cref="FatzAudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void PushPacket(ReadOnlySpan<byte> data, long pts = NoTimestamp, long duration = 0)
     {
         fixed (byte* p = data) PushCore(p, data.Length, pts, duration);
@@ -259,7 +259,7 @@ public sealed unsafe class PacketAudioStream : FeedAudioStream
     /// <param name="pts">Timestamp in <see cref="CodecParameters.TimeBase"/> units (<c>AVPacket.pts</c>), or <see cref="FeedAudioStream.NoTimestamp"/>.</param>
     /// <param name="duration">Duration in the same units (<c>AVPacket.duration</c>); 0 when unknown.</param>
     /// <exception cref="ArgumentException"><paramref name="size"/> is negative, or <paramref name="data"/> is zero with a non-zero size.</exception>
-    /// <exception cref="FatzAudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void PushPacket(nint data, int size, long pts = NoTimestamp, long duration = 0)
     {
         if (size < 0 || (data == 0 && size != 0)) throw new ArgumentException("Invalid packet buffer.", nameof(size));
@@ -269,7 +269,7 @@ public sealed unsafe class PacketAudioStream : FeedAudioStream
     private void PushCore(void* data, int size, long pts, long duration)
     {
         var p = new FaPacket { Data = data, Size = (nuint)size, Pts = pts, Duration = Math.Max(0, duration) };
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_push_packet(Handle, &p));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_packet(Handle, &p));
     }
 }
 

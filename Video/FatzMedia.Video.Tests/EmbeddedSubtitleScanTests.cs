@@ -247,7 +247,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string sourcePath, TimeSpan transitionDuration) => null;
     }
 
-    private sealed class ScanTestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class ScanTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

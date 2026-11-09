@@ -50,7 +50,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_is_started(Handle, out int started));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_is_started(Handle, out int started));
             return started != 0;
         }
     }
@@ -58,18 +58,18 @@ public sealed class OutputDevice : IDisposable
     /// <summary>Master volume of the device as linear gain (1 = unity, values above 1 amplify).</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
     /// <exception cref="ObjectDisposedException">The device was disposed.</exception>
-    /// <exception cref="FatzAudioException">The backend rejected the change.</exception>
+    /// <exception cref="AudioException">The backend rejected the change.</exception>
     public float Volume
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_volume(Handle, out float v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_volume(Handle, out float v));
             return v;
         }
         set
         {
             if (value < 0 || float.IsNaN(value)) throw new ArgumentOutOfRangeException(nameof(value), "Volume must be >= 0.");
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_set_volume(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_set_volume(Handle, value));
         }
     }
 
@@ -82,10 +82,10 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_mute(Handle, out int m));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_mute(Handle, out int m));
             return m != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_set_mute(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_device_set_mute(Handle, value ? 1 : 0));
     }
 
     /// <summary>
@@ -116,7 +116,7 @@ public sealed class OutputDevice : IDisposable
         fixed (float* pp = peak)
         fixed (float* pr = rms)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_levels(
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_levels(
                 handle, TimeConvert.ToNanoseconds(window ?? StreamLevels.DefaultWindow), pp, pr, 2));
         }
     }
@@ -132,7 +132,7 @@ public sealed class OutputDevice : IDisposable
     public unsafe LoudnessMeter GetLoudnessMeter()
     {
         double m, st;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_loudness_meter(Handle, &m, &st));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_get_loudness_meter(Handle, &m, &st));
         return new LoudnessMeter(m, st);
     }
 
@@ -140,7 +140,7 @@ public sealed class OutputDevice : IDisposable
     /// <param name="size">Transform size: a power of two from 64 to 16384.</param>
     /// <param name="options">Channel and window.</param>
     /// <returns><paramref name="size"/> / 2 magnitudes and the bin width.</returns>
-    /// <exception cref="FatzAudioException">An invalid size (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">An invalid size (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public unsafe Spectrum GetSpectrum(int size = 2048, SpectrumOptions options = SpectrumOptions.None)
     {
         var bins = new float[Math.Max(1, size / 2)];
@@ -151,7 +151,7 @@ public sealed class OutputDevice : IDisposable
     /// <param name="magnitudes">Half the transform size: 32 to 8192 values, a power of two.</param>
     /// <param name="options">Channel and window.</param>
     /// <returns>The bin width in Hz; 0 while the device is stopped.</returns>
-    /// <exception cref="FatzAudioException">An invalid length (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">An invalid length (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public unsafe float GetSpectrum(Span<float> magnitudes, SpectrumOptions options = SpectrumOptions.None)
     {
         return GetSpectrumCore((uint)magnitudes.Length * 2, magnitudes, options);
@@ -162,19 +162,19 @@ public sealed class OutputDevice : IDisposable
         float hz;
         fixed (float* p = bins)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_spectrum(Handle, size, (uint)options, p, &hz));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_spectrum(Handle, size, (uint)options, p, &hz));
         }
         return hz;
     }
 
     /// <summary>Output latency of the device.</summary>
     /// <exception cref="ObjectDisposedException">The device was disposed.</exception>
-    /// <exception cref="FatzAudioException">The latency could not be determined.</exception>
+    /// <exception cref="AudioException">The latency could not be determined.</exception>
     public TimeSpan Latency
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_latency(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_latency(Handle, out long ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -197,7 +197,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_time(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_time(Handle, out long ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -220,7 +220,7 @@ public sealed class OutputDevice : IDisposable
     public MixBus CreateBus()
     {
         var h = Handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_bus_create(h, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_create(h, out nint native));
         var bh = new BusHandle();
         try
         {
@@ -236,13 +236,13 @@ public sealed class OutputDevice : IDisposable
 
     /// <summary>Starts the device so that attached, playing streams become audible. Does nothing if already started.</summary>
     /// <exception cref="ObjectDisposedException">The device was disposed.</exception>
-    /// <exception cref="FatzAudioException">The backend failed to start the device (<see cref="ErrorCode.Device"/>).</exception>
-    public void Start() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_start(Handle));
+    /// <exception cref="AudioException">The backend failed to start the device (<see cref="ErrorCode.Device"/>).</exception>
+    public void Start() => AudioException.ThrowIfFailed(NativeMethods.fa_device_start(Handle));
 
     /// <summary>Stops the device; attached streams are silenced but keep their state. Does nothing if not started.</summary>
     /// <exception cref="ObjectDisposedException">The device was disposed.</exception>
-    /// <exception cref="FatzAudioException">The backend failed to stop the device.</exception>
-    public void Stop() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_stop(Handle));
+    /// <exception cref="AudioException">The backend failed to stop the device.</exception>
+    public void Stop() => AudioException.ThrowIfFailed(NativeMethods.fa_device_stop(Handle));
 
     /// <summary>Stops the device and releases this reference to it.</summary>
     public void Dispose()

@@ -27,7 +27,7 @@ try
     Console.WriteLine("\nDone.");
     return 0;
 }
-catch (FatzAudioException ex)
+catch (AudioException ex)
 {
     Console.Error.WriteLine($"FatzMedia.Audio error {ex.ErrorCode}: {ex.Message}");
     return 2;

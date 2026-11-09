@@ -41,13 +41,13 @@ public sealed class KaraokeSurface : Grid, IDisposable
         Unloaded += OnUnloaded;
     }
 
-    public KaraokeSurface(IMediaControlPlatformFactory platformFactory)
+    public KaraokeSurface(IPlatformFactory platformFactory)
         : this()
     {
         PlatformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
     }
 
-    public IMediaControlSession? Session => _playerController.Session;
+    public IPlayerSession? Session => _playerController.Session;
 
     /// <summary>
     /// Gets or sets the native library folders (BASS, FFmpeg) the control's player is created with;
@@ -88,13 +88,13 @@ public sealed class KaraokeSurface : Grid, IDisposable
 
     public static readonly DependencyProperty PlatformFactoryProperty = DependencyProperty.Register(
         nameof(PlatformFactory),
-        typeof(IMediaControlPlatformFactory),
+        typeof(IPlatformFactory),
         typeof(KaraokeSurface),
         new PropertyMetadata(null, OnPlatformFactoryChanged));
 
-    public IMediaControlPlatformFactory? PlatformFactory
+    public IPlatformFactory? PlatformFactory
     {
-        get => (IMediaControlPlatformFactory?)GetValue(PlatformFactoryProperty);
+        get => (IPlatformFactory?)GetValue(PlatformFactoryProperty);
         set => SetValue(PlatformFactoryProperty, value);
     }
 
@@ -284,7 +284,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
     private void OnPlayerChanged(object? sender, EventArgs e)
     {
-        IMediaControlSession? session = _playerController.Session;
+        IPlayerSession? session = _playerController.Session;
         if (session is not null)
             _surface.PresentationMode = PresentationMode;
 

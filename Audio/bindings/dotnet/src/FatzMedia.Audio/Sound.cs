@@ -10,7 +10,7 @@ public enum SoundSteal
     Oldest = 0,
     /// <summary>The voice with the lowest volume right now; the older one on a tie (BASS_SAMPLE_OVER_VOL).</summary>
     Quietest = 1,
-    /// <summary>None: <see cref="Sound.Play(OutputDevice, float, float)"/> throws <see cref="FatzAudioException"/>
+    /// <summary>None: <see cref="Sound.Play(OutputDevice, float, float)"/> throws <see cref="AudioException"/>
     /// with <see cref="ErrorCode.Busy"/>.</summary>
     None = 2,
 }
@@ -80,7 +80,7 @@ public sealed unsafe class Sound : IDisposable
 
     internal static Sound Wrap(AudioEngine engine, int result, nint native)
     {
-        FatzAudioException.ThrowIfFailed(result);
+        AudioException.ThrowIfFailed(result);
         var h = new SoundHandle();
         h.Initialize(native, engine.Handle);
         return new Sound(engine, h);
@@ -119,7 +119,7 @@ public sealed unsafe class Sound : IDisposable
     private FaSoundInfo ReadInfo()
     {
         var n = NativeSized.New<FaSoundInfo>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_info(Handle, &n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_info(Handle, &n));
         return n;
     }
 
@@ -152,7 +152,7 @@ public sealed unsafe class Sound : IDisposable
             NativeMethods.fa_sound_options_init(&o);
             o.MaxVoices = maxVoices ?? n.MaxVoices;
             o.Steal = steal is { } s ? (int)s : n.Steal;
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_set_options(Handle, &o));
+            AudioException.ThrowIfFailed(NativeMethods.fa_sound_set_options(Handle, &o));
         }
     }
 
@@ -168,7 +168,7 @@ public sealed unsafe class Sound : IDisposable
     /// <param name="volume">Linear gain, 0 or more (1 = as recorded).</param>
     /// <param name="pan">-1 (left) to 1 (right).</param>
     /// <returns>The voice playing the copy. The sound owns it: there is no need to dispose it.</returns>
-    /// <exception cref="FatzAudioException">Every voice is busy and <see cref="Steal"/> is <see cref="SoundSteal.None"/>
+    /// <exception cref="AudioException">Every voice is busy and <see cref="Steal"/> is <see cref="SoundSteal.None"/>
     /// (<see cref="ErrorCode.Busy"/>), or the device belongs to another engine (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public AudioStream Play(OutputDevice output, float volume = 1.0f, float pan = 0.0f)
     {
@@ -181,7 +181,7 @@ public sealed unsafe class Sound : IDisposable
     /// <param name="volume">Linear gain, 0 or more.</param>
     /// <param name="pan">-1 (left) to 1 (right).</param>
     /// <returns>The voice playing the copy (owned by the sound).</returns>
-    /// <exception cref="FatzAudioException">See <see cref="Play(OutputDevice, float, float)"/>.</exception>
+    /// <exception cref="AudioException">See <see cref="Play(OutputDevice, float, float)"/>.</exception>
     public AudioStream Play(MixBus bus, float volume = 1.0f, float pan = 0.0f)
     {
         ArgumentNullException.ThrowIfNull(bus);
@@ -214,7 +214,7 @@ public sealed unsafe class Sound : IDisposable
                 {
                     if (added) bh!.DangerousRelease();
                 }
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
                 if (!_closing.Contains(native))
                 {
                     var voice = VoiceFor(native);
@@ -225,7 +225,7 @@ public sealed unsafe class Sound : IDisposable
             // A voice being disposed on another thread, whose native close had not reached the pool yet: it is
             // closed in a moment (which cuts this copy off), so play again. The lock is let go meanwhile, so that
             // close can finish.
-            if (Environment.TickCount64 > giveUp) throw new FatzAudioException(ErrorCode.Busy);
+            if (Environment.TickCount64 > giveUp) throw new AudioException(ErrorCode.Busy);
             spin.SpinOnce();
         }
     }
@@ -244,7 +244,7 @@ public sealed unsafe class Sound : IDisposable
     }
 
     /// <summary>Stops every copy (BASS_SampleStop).</summary>
-    public void Stop() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_stop(Handle));
+    public void Stop() => AudioException.ThrowIfFailed(NativeMethods.fa_sound_stop(Handle));
 
     /// <summary>The voices busy now, oldest first (BASS_SampleGetChannels).</summary>
     /// <returns>A snapshot; voices may end at any time after.</returns>
@@ -255,11 +255,11 @@ public sealed unsafe class Sound : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             var h = Handle;
             uint count;
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, null, 0, out count));
+            AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, null, 0, out count));
             if (count == 0) return Array.Empty<AudioStream>();
             var buf = new nint[count];
             fixed (nint* p = buf)
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, p, count, out count));
+                AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, p, count, out count));
             int n = (int)Math.Min(count, (uint)buf.Length);   // fewer if some ended between the calls
             var list = new List<AudioStream>(n);
             for (int i = 0; i < n; i++)

@@ -127,7 +127,7 @@ public class LoudnessScanTests
             nint planeArray = (nint)(&planes);
             for (int i = 0; i < 20; i++) scan.PushFrame(AudioFormat.Float32(Rate, 1), planeArray, frame.Length);
             Assert.Throws<InvalidOperationException>(() => scan.PushPacket(new byte[16]));
-            var ex = Assert.Throws<FatzAudioException>(() => scan.PushFrame(AudioFormat.Float32(48000, 1), planeArray, frame.Length));
+            var ex = Assert.Throws<AudioException>(() => scan.PushFrame(AudioFormat.Float32(48000, 1), planeArray, frame.Length));
             Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
         }
         var l = scan.Finish();
@@ -140,9 +140,9 @@ public class LoudnessScanTests
     {
         using var engine = Create(null);
         var id = new AudioFingerprint(3, 4);
-        var ex = Assert.Throws<FatzAudioException>(() => engine.OpenLoudnessScan(new CodecParameters("not_a_codec", Rate, 1), id));
+        var ex = Assert.Throws<AudioException>(() => engine.OpenLoudnessScan(new CodecParameters("not_a_codec", Rate, 1), id));
         Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
         using var scan = engine.OpenLoudnessScan(Pcm16, id);
-        Assert.Equal(ErrorCode.EndOfStream, Assert.Throws<FatzAudioException>(() => scan.Finish()).ErrorCode);
+        Assert.Equal(ErrorCode.EndOfStream, Assert.Throws<AudioException>(() => scan.Finish()).ErrorCode);
     }
 }

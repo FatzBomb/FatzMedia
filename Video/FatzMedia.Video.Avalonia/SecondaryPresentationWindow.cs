@@ -29,7 +29,7 @@ public class SecondaryPresentationWindow : Window
     /// The surface id; distinct per secondary window of one session. Defaults to
     /// <see cref="MediaSurface.DefaultSecondarySurfaceId"/>.
     /// </param>
-    public SecondaryPresentationWindow(IMediaControlSession session, string? surfaceId = null)
+    public SecondaryPresentationWindow(IPlayerSession session, string? surfaceId = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         Surface = new MediaSurface

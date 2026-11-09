@@ -24,6 +24,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   is `FatzMedia.Audio.dll` (was `FatzAudio.Net.dll`). Replace `using FatzAudio;` with `using FatzMedia.Audio;`.
   The native library (`fatzaudio.dll`, `libfatzaudio`), the C API (`fa_*`), the cache folder and the User-Agent
   keep their names.
+- .NET: `FatzAudioException` is now `AudioException`.
 
 ### Fixed
 

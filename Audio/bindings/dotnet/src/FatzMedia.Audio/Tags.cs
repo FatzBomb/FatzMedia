@@ -153,12 +153,12 @@ public sealed class Tags
     /// <param name="path">Path of the file.</param>
     /// <param name="options">What to skip.</param>
     /// <returns>The tags; empty (all fields null) for a file without any.</returns>
-    /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or cannot be read.</exception>
+    /// <exception cref="AudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or cannot be read.</exception>
     public static Tags Read(string path, TagReadOptions options = TagReadOptions.None)
     {
         ArgumentNullException.ThrowIfNull(path);
         NativeLoader.EnsureInitialized();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_path(path, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_path(path, (uint)options, out nint native));
         return Take(native);
     }
 
@@ -174,7 +174,7 @@ public sealed class Tags
         nint native;
         int rc;
         fixed (byte* p = data) rc = NativeMethods.fa_tags_read_memory(p, (nuint)data.Length, (uint)options, out native);
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return Take(native);
     }
 
@@ -202,7 +202,7 @@ public sealed class Tags
         try
         {
             var io = IoState.Callbacks(close: false);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out nint native));
+            AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out nint native));
             return Take(native);
         }
         finally { gc.Free(); }
@@ -214,12 +214,12 @@ public sealed class Tags
     /// pairing rules pick, as <see cref="Read(string, TagReadOptions)"/> of the archive does.</param>
     /// <param name="options">What to skip.</param>
     /// <returns>The tags. <see cref="HasCdg"/> says whether the entry has graphics; <see cref="FileSize"/> is the archive's size.</returns>
-    /// <exception cref="FatzAudioException">The archive or the entry is missing (<see cref="ErrorCode.NotFound"/>).</exception>
+    /// <exception cref="AudioException">The archive or the entry is missing (<see cref="ErrorCode.NotFound"/>).</exception>
     public static Tags Read(string archivePath, string? entryName, TagReadOptions options = TagReadOptions.None)
     {
         ArgumentNullException.ThrowIfNull(archivePath);
         NativeLoader.EnsureInitialized();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive_entry(archivePath, entryName, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive_entry(archivePath, entryName, (uint)options, out nint native));
         return Take(native);
     }
 
@@ -228,17 +228,17 @@ public sealed class Tags
     /// <param name="entry">The entry; null reads the song the pairing rules pick.</param>
     /// <param name="options">What to skip.</param>
     /// <returns>The tags.</returns>
-    /// <exception cref="FatzAudioException">The entry cannot be read (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">The entry cannot be read (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public static Tags Read(Archives.Archive archive, Archives.ArchiveEntry? entry = null, TagReadOptions options = TagReadOptions.None)
     {
         ArgumentNullException.ThrowIfNull(archive);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive(archive.Handle, entry?.Index ?? -1, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive(archive.Handle, entry?.Index ?? -1, (uint)options, out nint native));
         return Take(native);
     }
 
     internal static Tags FromStream(StreamHandle stream, TagReadOptions options)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tags(stream, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tags(stream, (uint)options, out nint native));
         return Take(native);
     }
 
@@ -256,13 +256,13 @@ public sealed class Tags
             var items = new TagItem[NativeMethods.fa_tags_get_item_count(native)];
             for (uint i = 0; i < items.Length; i++)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_get_item(native, i, out FaTagItem it));
+                AudioException.ThrowIfFailed(NativeMethods.fa_tags_get_item(native, i, out FaTagItem it));
                 items[i] = new TagItem(NativeText.Read(it.Key), NativeText.Read(it.Value), (TagFormat)it.Format);
             }
             var pictures = new TagPicture[NativeMethods.fa_tags_get_picture_count(native)];
             for (uint i = 0; i < pictures.Length; i++)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_get_picture(native, i, out FaTagPicture p));
+                AudioException.ThrowIfFailed(NativeMethods.fa_tags_get_picture(native, i, out FaTagPicture p));
                 var data = new byte[checked((int)p.Size)];
                 Marshal.Copy(p.Data, data, 0, data.Length);
                 pictures[i] = new TagPicture((PictureType)p.Type, NativeText.Read(p.Mime),

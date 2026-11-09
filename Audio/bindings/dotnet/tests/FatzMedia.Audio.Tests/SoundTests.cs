@@ -65,7 +65,7 @@ public class SoundTests
         sound.Steal = SoundSteal.Quietest;
         Assert.Same(b, sound.Play(output, 0.5f));      // the quietest (0.1)
         sound.Steal = SoundSteal.None;
-        var e = Assert.Throws<FatzAudioException>(() => sound.Play(output));
+        var e = Assert.Throws<AudioException>(() => sound.Play(output));
         Assert.Equal(ErrorCode.Busy, e.ErrorCode);
         a.Stop();
         Assert.Same(a, sound.Play(output));            // a stopped voice is free again
@@ -139,7 +139,7 @@ public class SoundTests
                     v.Ended += Again;
                 }
                 catch (ObjectDisposedException) { }
-                catch (FatzAudioException) { }
+                catch (AudioException) { }
             }
             for (int i = 0; i < 4; i++) sound.Play(output).Ended += Again;
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -183,7 +183,7 @@ public class SoundTests
         Assert.Throws<ArgumentException>(() => engine.CreateSound(new float[3], 48000, 2));
         Assert.Throws<ArgumentException>(() => engine.CreateSound(ReadOnlySpan<float>.Empty, 48000, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => engine.CreateSound(new float[4], 48000, 1, new SoundOptions { MaxVoices = 0 }));
-        var e = Assert.Throws<FatzAudioException>(() => engine.CreateSound(new float[4], 10, 1));
+        var e = Assert.Throws<AudioException>(() => engine.CreateSound(new float[4], 10, 1));
         Assert.Equal(ErrorCode.InvalidArgument, e.ErrorCode);
     }
 }

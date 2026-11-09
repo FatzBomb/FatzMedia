@@ -87,7 +87,7 @@ On a monitor that Windows has switched to HDR mode, you can show HDR video as HD
 
 ```csharp
 var options = new Direct3D11PresentationOptions { HdrOutput = true };
-var platform = new WindowsDirect3D11MediaControlPlatformFactory(options);
+var platform = new WindowsDirect3D11PlatformFactory(options);
 ```
 
 With it on, the primary window's swap chain switches to FP16 scRGB while hardware-decoded HDR10 or HLG video plays on a monitor with HDR on, and back to SDR otherwise. SDR layers (CD+G, subtitles, backgrounds) are shown at the system's SDR white level.

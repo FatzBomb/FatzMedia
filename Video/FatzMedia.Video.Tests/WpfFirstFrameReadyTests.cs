@@ -17,7 +17,7 @@ public sealed class WpfFirstFrameReadyTests
     [Fact]
     public void Composited_RaisesOncePerLoad_AfterTheBitmapWrite_AndCountsTheUiThreadTime() => RunSta(() =>
     {
-        (IMediaControlSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var surface = new MediaSurface { PresentationMode = WpfPresentationMode.WpfComposited, Player = session };
         var window = new Window { Width = 160, Height = 90, Content = surface, ShowActivated = false, ShowInTaskbar = false };
         var published = new List<long>();
@@ -39,7 +39,7 @@ public sealed class WpfFirstFrameReadyTests
             Task.Run(() =>
             {
                 sink!.PresentFrame(pixels, width, height, width * 4);
-                recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+                recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
             }).Wait();
             Drain();
         }
@@ -49,8 +49,8 @@ public sealed class WpfFirstFrameReadyTests
         Assert.Single(published);
         Assert.True(published[0] >= 1, "the bitmap holds the frame when the event is raised");
 
-        recorder.Raise(nameof(IMediaControlSession.MediaClosed), new MediaClosedEventArgs(Source));
-        recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
+        recorder.Raise(nameof(IPlayerSession.MediaClosed), new MediaClosedEventArgs(Source));
+        recorder.Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
         Present();
         Assert.Equal(2, published.Count);
         Assert.True(surface.CompositedFramesPublished >= 3);

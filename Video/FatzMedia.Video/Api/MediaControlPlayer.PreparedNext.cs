@@ -185,7 +185,7 @@ public partial class MediaControlPlayer
         var slotGeneration = _preparedNext.Generation;
         var transportGeneration = Controls.TransportGeneration;
         var loadGeneration = File.LoadGeneration;
-        MediaControlOperationQueue queue = _controlOperations;
+        PlayerOperationQueue queue = _controlOperations;
 
         bool StillValid() =>
             !_disposed
@@ -284,7 +284,7 @@ public partial class MediaControlPlayer
         if (_disposed)
             return;
 
-        MediaControlOperationQueue queue = _controlOperations;
+        PlayerOperationQueue queue = _controlOperations;
         if (queue.IsExecutingOperation)
         {
             raise();

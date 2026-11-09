@@ -17,14 +17,14 @@ public sealed class Player : MediaControlPlayer
         : this(
             configuration,
             nativeLibraryPaths,
-            new WindowsMediaControlPlatformFactory(presentationFactory))
+            new WindowsPlatformFactory(presentationFactory))
     {
     }
 
     public Player(
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths,
-        IMediaControlPlatformFactory platformFactory)
+        IPlatformFactory platformFactory)
         : base(platformFactory, configuration, nativeLibraryPaths)
     {
     }
@@ -38,7 +38,7 @@ public sealed class Player : MediaControlPlayer
     public static Task<Player> CreateAsync(
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths,
-        IMediaControlPlatformFactory platformFactory) =>
+        IPlatformFactory platformFactory) =>
         Task.Run(() => new Player(configuration, nativeLibraryPaths, platformFactory));
 
     public bool Load(ImageSource source, bool ignoreSidecar = false) =>

@@ -17,7 +17,7 @@ Each adapter has a window that holds a projector `MediaSurface`: <xref:FatzMedia
 
 | Member | Meaning |
 | --- | --- |
-| Constructor | `(IMediaControlSession session, string? surfaceId = null)`. The WPF constructor takes `string surfaceId` plus optional `MediaPresentationSurfaceRole role` and `WpfPresentationMode presentationMode`. |
+| Constructor | `(IPlayerSession session, string? surfaceId = null)`. The WPF constructor takes `string surfaceId` plus optional `MediaPresentationSurfaceRole role` and `WpfPresentationMode presentationMode`. |
 | `Surface` | The window's projector `MediaSurface`. It takes the session when the window is shown, so a window that is never shown does not follow the player. |
 | `ShowOnScreen(screen, fullScreen, owner)` | Places the window on `screen` and shows it. Call it instead of `Show`. With `fullScreen` the window covers the screen; otherwise it is centered in the screen's working area. A `null` screen keeps the default start position. |
 | `IsFullScreen` | Gets or sets full screen (borderless, covering the screen). |

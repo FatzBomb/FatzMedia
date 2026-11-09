@@ -16,7 +16,7 @@ namespace FatzMedia.Video;
 /// Core-owned media-control session. Framework adapters supply surfaces; this object owns playback,
 /// layer composition, native target fan-out, and presentation coordination.
 /// </summary>
-public partial class MediaControlPlayer : IMediaControlSession
+public partial class MediaControlPlayer : IPlayerSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
@@ -26,11 +26,11 @@ public partial class MediaControlPlayer : IMediaControlSession
     // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
     // distance (2 s) from the target, plus the normal settle tolerance.
     private const double ScrubSettleToleranceSeconds = 2.0 + SeekSettleToleranceSeconds;
-    private readonly IMediaControlPlatformFactory _platformFactory;
+    private readonly IPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
     private IMediaPresentationCoordinator _presentationCoordinator;
-    private MediaControlOperationQueue _controlOperations;
+    private PlayerOperationQueue _controlOperations;
     // MediaDiagnostic delivery, in order but not behind the control queue; lives as long as the
     // player (Reset and mode switches keep it). Closed by Dispose.
     private readonly SerialEventDispatcher _diagnosticEvents = new("MediaDiagnostic", DiagnosticDrainTimeout);
@@ -64,7 +64,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private volatile bool _disposed;
 
     public MediaControlPlayer(
-        IMediaControlPlatformFactory platformFactory,
+        IPlatformFactory platformFactory,
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths)
     {
@@ -595,7 +595,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     /// </summary>
     private T ExecuteControlOperation<T>(Func<T> operation)
     {
-        MediaControlOperationQueue.ExclusiveTurn turn;
+        PlayerOperationQueue.ExclusiveTurn turn;
         lock (_operationAdmissionGate)
         {
             ThrowIfResetting();
@@ -873,8 +873,8 @@ public partial class MediaControlPlayer : IMediaControlSession
         lock (_lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            MediaControlOperationQueue oldOperations;
-            MediaControlOperationQueue.ExclusiveTurn turn;
+            PlayerOperationQueue oldOperations;
+            PlayerOperationQueue.ExclusiveTurn turn;
             lock (_operationAdmissionGate)
             {
                 oldOperations = _controlOperations;
@@ -964,7 +964,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         TearDownSessionGraph();
 
-        MediaControlOperationQueue oldOperations = _controlOperations;
+        PlayerOperationQueue oldOperations = _controlOperations;
         (object Services, IMediaEngine Engine, IMediaPresentationCoordinator Coordinator, MediaControls Controls) freed =
             (_serviceProvider, _mediaEngine, _presentationCoordinator, Controls);
         try
@@ -977,7 +977,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             // Reset reattaches them) and Reset gets a fresh operation queue (the old one is disposed
             // when Reset returns). Until then control calls fail with ObjectDisposedException.
             if (!keepOperationQueue && ReferenceEquals(_controlOperations, oldOperations))
-                _controlOperations = new MediaControlOperationQueue("MediaControl");
+                _controlOperations = new PlayerOperationQueue("MediaControl");
 
             // Free what the failed build created; the rest was freed above, so neither a retried
             // rebuild nor Dispose frees it again (ENG-024).
@@ -1092,7 +1092,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private void CreateSessionGraph(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> resolvedNativeLibraryPaths,
-        MediaControlOperationQueue? operations = null,
+        PlayerOperationQueue? operations = null,
         Action? restoreSettings = null)
     {
         _configuration = configuration;
@@ -1116,7 +1116,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             archiveService,
             configuration.ResetPitchOnMediaLoad,
             configuration.ResetTempoOnMediaLoad);
-        _controlOperations = operations ?? new MediaControlOperationQueue("MediaControl");
+        _controlOperations = operations ?? new PlayerOperationQueue("MediaControl");
         _positionNotifier = CreatePositionNotifier();
 
         // The carried settings, then the mode and the host's options, before the events below are
@@ -1180,8 +1180,8 @@ public partial class MediaControlPlayer : IMediaControlSession
             if (_disposed)
                 return;
 
-            MediaControlOperationQueue operations;
-            MediaControlOperationQueue.ExclusiveTurn turn;
+            PlayerOperationQueue operations;
+            PlayerOperationQueue.ExclusiveTurn turn;
             lock (_operationAdmissionGate)
             {
                 operations = _controlOperations;
@@ -1231,7 +1231,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     /// Dispose gave up waiting (ENG-024): reject calls now, free the host's surfaces now (the host may
     /// destroy their windows), and tear down on the queue once the operation in progress ends.
     /// </summary>
-    private void DisposeLater(MediaControlOperationQueue operations)
+    private void DisposeLater(PlayerOperationQueue operations)
     {
         _disposed = true;
         GC.SuppressFinalize(this);

@@ -250,7 +250,7 @@ public sealed class PlayerFadeTests : IDisposable
     private static MediaControlPlayer CreatePlayer(TestMediaEngine engine) =>
         new(new FadeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
-    private sealed class FadeTestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class FadeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

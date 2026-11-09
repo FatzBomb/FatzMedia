@@ -77,7 +77,7 @@ public static class LightweightPlayerPolicy
     /// Background: an image or video, without CD+G or lyrics.
     /// </summary>
     /// <param name="kind">The control.</param>
-    /// <param name="content">What the load found (<see cref="IMediaControlSession.Content"/>).</param>
+    /// <param name="content">What the load found (<see cref="IPlayerSession.Content"/>).</param>
     /// <param name="path">The file loaded, if any (decides MIDI karaoke by its extension).</param>
     public static bool AcceptsLoadedMedia(LightweightPlayerKind kind, MediaContent content, string? path) => kind switch
     {

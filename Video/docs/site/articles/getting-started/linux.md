@@ -35,7 +35,7 @@ IMediaPresentationCoordinatorFactory renderer =
         ? new VulkanPresentationCoordinatorFactory()
         : new SoftwarePresentationCoordinatorFactory();
 
-var platform = new LinuxMediaControlPlatformFactory(
+var platform = new LinuxPlatformFactory(
     renderer,
     new LinuxPlatformOptions { DisplayRefreshRateHz = 144 });
 

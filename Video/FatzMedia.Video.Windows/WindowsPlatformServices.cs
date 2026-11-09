@@ -10,7 +10,7 @@ namespace FatzMedia.Video;
 /// <summary>
 /// Registers Windows-native media services into the Core composition graph.
 /// </summary>
-internal sealed class WindowsMediaControlPlatformServices : IMediaControlPlatformServices
+internal sealed class WindowsPlatformServices : IPlatformServices
 {
     /// <summary>FFmpeg is required; without BASS the player starts with no audio (ENG-033).</summary>
     public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)

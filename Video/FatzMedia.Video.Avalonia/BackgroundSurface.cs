@@ -51,8 +51,8 @@ public class BackgroundSurface : Panel, IDisposable
     public static readonly StyledProperty<bool> OverlayHitTestVisibleProperty =
         AvaloniaProperty.Register<BackgroundSurface, bool>(nameof(OverlayHitTestVisible));
 
-    public static readonly DirectProperty<BackgroundSurface, IMediaControlPlatformFactory?> PlatformFactoryProperty =
-        AvaloniaProperty.RegisterDirect<BackgroundSurface, IMediaControlPlatformFactory?>(
+    public static readonly DirectProperty<BackgroundSurface, IPlatformFactory?> PlatformFactoryProperty =
+        AvaloniaProperty.RegisterDirect<BackgroundSurface, IPlatformFactory?>(
             nameof(PlatformFactory),
             static surface => surface.PlatformFactory,
             static (surface, value) => surface.PlatformFactory = value);
@@ -74,7 +74,7 @@ public class BackgroundSurface : Panel, IDisposable
     }
 
     /// <param name="platformFactory">The platform the control's player is created with.</param>
-    public BackgroundSurface(IMediaControlPlatformFactory platformFactory)
+    public BackgroundSurface(IPlatformFactory platformFactory)
         : this()
     {
         PlatformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
@@ -84,7 +84,7 @@ public class BackgroundSurface : Panel, IDisposable
     public event EventHandler? ContentVisibilityChanged;
 
     /// <summary>Gets the control's player once created (diagnostics, events), else <see langword="null"/>.</summary>
-    public IMediaControlSession? Session => _host.Controller.Session;
+    public IPlayerSession? Session => _host.Controller.Session;
 
     /// <summary>
     /// Gets or sets the native library folders (BASS, FFmpeg) the control's player is created with;
@@ -98,12 +98,12 @@ public class BackgroundSurface : Panel, IDisposable
     }
 
     /// <summary>Gets or sets the platform the player is created with; it cannot change once the player exists.</summary>
-    public IMediaControlPlatformFactory? PlatformFactory
+    public IPlatformFactory? PlatformFactory
     {
         get => _host.PlatformFactory;
         set
         {
-            IMediaControlPlatformFactory? old = _host.PlatformFactory;
+            IPlatformFactory? old = _host.PlatformFactory;
             _host.PlatformFactory = value;
             RaisePropertyChanged(PlatformFactoryProperty, old, value);
         }

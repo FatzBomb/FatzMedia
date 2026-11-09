@@ -46,20 +46,20 @@ public sealed partial class DjDeck
     /// is done once; with it the deck's tempo moves by itself to stay on the leader's beat. Loading a stream on either
     /// deck ends the sync. Both decks need a beat grid (<see cref="AudioStream.BeatGrid"/>).
     /// </summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> when a deck is empty or has no grid;
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> when a deck is empty or has no grid;
     /// <see cref="ErrorCode.OutOfRange"/> when the tempo is out of reach (nothing changes).</exception>
     public void SyncTo(DjDeck leader, SyncMode mode = SyncMode.Tempo | SyncMode.Beat)
     {
         ArgumentNullException.ThrowIfNull(leader);
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_sync(_deck, leader._deck, (uint)mode));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_sync(_deck, leader._deck, (uint)mode));
     }
 
     /// <summary>Ends a sync; the tempo stays where it is.</summary>
     public void Unsync()
     {
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_sync(_deck, 0, 0));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_sync(_deck, 0, 0));
     }
 
     /// <summary>
@@ -68,13 +68,13 @@ public sealed partial class DjDeck
     /// where it is. <see cref="SyncMode.Tempo"/> matches the tempo first; <see cref="SyncMode.Lock"/> keeps it locked.
     /// A deck that plays already is synced as <see cref="SyncTo"/> does.
     /// </summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.InvalidArgument"/> when the leader is not playing;
+    /// <exception cref="AudioException"><see cref="ErrorCode.InvalidArgument"/> when the leader is not playing;
     /// <see cref="ErrorCode.NotFound"/> and <see cref="ErrorCode.OutOfRange"/> as for <see cref="SyncTo"/>.</exception>
     public void PlaySynced(DjDeck leader, SyncMode mode = SyncMode.Tempo | SyncMode.Beat)
     {
         ArgumentNullException.ThrowIfNull(leader);
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_play_synced(_deck, leader._deck, (uint)mode));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_play_synced(_deck, leader._deck, (uint)mode));
     }
 
     /// <summary>
@@ -84,11 +84,11 @@ public sealed partial class DjDeck
     /// and doubling keep its end. 0 turns the loop off.
     /// The <see cref="Loop"/> property reads it back in frames.
     /// </summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> when the deck is empty or has no grid.</exception>
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> when the deck is empty or has no grid.</exception>
     public void LoopBeats(double beats)
     {
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_set_loop_beats(_deck, beats));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_set_loop_beats(_deck, beats));
     }
 
     /// <summary>
@@ -97,12 +97,12 @@ public sealed partial class DjDeck
     /// the leader's beat. While a loop is on, the loop moves with it. On a paused or stopped deck it moves the
     /// position. A locked deck pulls a jump back unless it is whole beats (whole bars with <see cref="SyncMode.Bar"/>).
     /// </summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> when the deck is empty or has no grid;
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> when the deck is empty or has no grid;
     /// <see cref="ErrorCode.Busy"/> while the previous jump waits to be decoded (try again a moment later).</exception>
     public void BeatJump(double beats)
     {
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_deck_beat_jump(_deck, beats));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_beat_jump(_deck, beats));
     }
 
     /// <summary>The beat position heard now; null when the deck is empty or its stream has no beat grid.</summary>
@@ -114,7 +114,7 @@ public sealed partial class DjDeck
             using var _ = _mixer.Lease();
             int r = NativeMethods.fa_deck_get_beat_info(_deck, &info);
             if (r == (int)ErrorCode.NotFound) return null;
-            FatzAudioException.ThrowIfFailed(r);
+            AudioException.ThrowIfFailed(r);
             return new DeckBeatInfo(info.Bpm, info.Beat, info.Bar, info.PhaseErrorMs, info.Locked != 0, info.Synced != 0);
         }
     }
@@ -193,7 +193,7 @@ public sealed class DjAutoMix
     public bool IsOn { get; private set; }
 
     /// <summary>Turns auto-mix on (or changes its options for the next transition).</summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.InvalidArgument"/> for options out of range.</exception>
+    /// <exception cref="AudioException"><see cref="ErrorCode.InvalidArgument"/> for options out of range.</exception>
     public unsafe void Start(AutoMixOptions? options = null)
     {
         var o = options ?? new AutoMixOptions();
@@ -205,24 +205,24 @@ public sealed class DjAutoMix
         n.RestoreTime = TimeConvert.ToNanoseconds(o.RestoreTime);
         n.MaxTempoChange = o.MaxTempoChange;
         n.MinConfidence = o.MinConfidence;
-        using (_mixer.Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_automix(_mixer.Native, &n));
+        using (_mixer.Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_automix(_mixer.Native, &n));
         IsOn = true;
     }
 
     /// <summary>Turns auto-mix off; a transition already scheduled finishes, without events.</summary>
     public unsafe void Stop()
     {
-        using (_mixer.Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_automix(_mixer.Native, null));
+        using (_mixer.Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_automix(_mixer.Native, null));
         IsOn = false;
     }
 
     /// <summary>Starts the next transition now (on the next bar when beat-aligned).</summary>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> when auto-mix is off, no deck plays or the
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> when auto-mix is off, no deck plays or the
     /// other deck has nothing new; <see cref="ErrorCode.Busy"/> while a transition runs.</exception>
     public void Skip()
     {
         using var _ = _mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_automix_now(_mixer.Native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mixer_automix_now(_mixer.Native));
     }
 
     /// <summary>The incoming deck is heard.</summary>

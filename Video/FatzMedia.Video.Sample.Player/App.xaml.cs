@@ -77,7 +77,7 @@ public partial class App : Application
             ? Wpf.WpfPresentationMode.NativeHwndOverlay
             : Wpf.WpfPresentationMode.WpfComposited;
         var window = new AbSwapDemoWindow(
-            () => new WindowsMediaControlPlatformFactory(selection.CreateFactory()),
+            () => new WindowsPlatformFactory(selection.CreateFactory()),
             PlayerNativePaths.Combine(StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths()),
             options,
             clips,
@@ -107,7 +107,7 @@ public partial class App : Application
         await WhenMainWindowLoadedAsync();
 
         var window = new LightweightSurfacesWindow(
-            () => new WindowsMediaControlPlatformFactory(selection.CreateFactory()),
+            () => new WindowsPlatformFactory(selection.CreateFactory()),
             PlayerNativePaths.Combine(StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths()),
             selection.UsesSoftwareRenderer || StartupOptions.PreferFrameSinkSurface ? Wpf.WpfPresentationMode.WpfComposited : Wpf.WpfPresentationMode.NativeHwndOverlay,
             AutoHideSurfaces)

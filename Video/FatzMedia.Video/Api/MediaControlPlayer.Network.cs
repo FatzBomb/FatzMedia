@@ -16,7 +16,7 @@ namespace FatzMedia.Video;
 public partial class MediaControlPlayer
 {
     private INetworkAudioSource? _networkAudioSource;
-    private INetworkMediaControl? _networkMediaControl;
+    private INetworkPlayer? _networkMediaControl;
 
     public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
 
@@ -27,7 +27,7 @@ public partial class MediaControlPlayer
 
     private void SubscribeNetworkEvents()
     {
-        _networkMediaControl = _mediaEngine as INetworkMediaControl;
+        _networkMediaControl = _mediaEngine as INetworkPlayer;
         if (_networkMediaControl is not null)
         {
             _networkMediaControl.NetworkBufferingChanged += OnNetworkBufferingChanged;
@@ -67,7 +67,7 @@ public partial class MediaControlPlayer
     {
         try
         {
-            (_mediaEngine as INetworkMediaControl)?.CancelPendingNetworkOpen();
+            (_mediaEngine as INetworkPlayer)?.CancelPendingNetworkOpen();
         }
         catch (Exception ex)
         {

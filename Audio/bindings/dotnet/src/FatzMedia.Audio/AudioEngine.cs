@@ -54,7 +54,7 @@ public sealed partial class AudioEngine : IDisposable
     {
         FaEngineStats st = default;
         st.StructSize = (uint)sizeof(FaEngineStats);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_get_stats(Handle, &st));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_get_stats(Handle, &st));
         return new EngineStats(st.AudioLoad, st.AudioLoadPeak, st.WorkerLoad, (int)st.Workers, (int)st.Devices,
             (int)st.AttachedStreams) { Underruns = st.Underruns };
     }
@@ -62,7 +62,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <summary>Creates an engine.</summary>
     /// <param name="options">Optional configuration; null uses the defaults.</param>
     /// <returns>A new engine that must be disposed.</returns>
-    /// <exception cref="FatzAudioException">The native engine could not be created.</exception>
+    /// <exception cref="AudioException">The native engine could not be created.</exception>
     /// <exception cref="DllNotFoundException">The native <c>fatzaudio</c> library could not be located.</exception>
     /// <exception cref="InvalidOperationException">The native library is another major.minor version than this binding (see <see cref="BindingVersion"/>).</exception>
     public static unsafe AudioEngine Create(AudioEngineOptions? options = null)
@@ -99,7 +99,7 @@ public sealed partial class AudioEngine : IDisposable
                 config.ArchiveCacheSeconds = (uint)Math.Max(0, options.ArchiveCacheSeconds);
             }
 
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_create(&config, out var native));
+            AudioException.ThrowIfFailed(NativeMethods.fa_engine_create(&config, out var native));
             var handle = new EngineHandle();
             Marshal.InitHandle(handle, native);
             var engine = new AudioEngine(handle);
@@ -192,7 +192,7 @@ public sealed partial class AudioEngine : IDisposable
             var list = new List<AudioFormatInfo>((int)count);
             for (uint i = 0; i < count; i++)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_format_get_info(i, out FaFormatInfo f));
+                AudioException.ThrowIfFailed(NativeMethods.fa_format_get_info(i, out FaFormatInfo f));
                 list.Add(new AudioFormatInfo(
                     NativeText.Read(f.Name),
                     NativeText.Read(f.Description),
@@ -207,23 +207,23 @@ public sealed partial class AudioEngine : IDisposable
 
     /// <summary>Playback devices currently reported by the backend. A fresh list is built on every access.</summary>
     /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
-    /// <exception cref="FatzAudioException">The backend failed to enumerate devices.</exception>
+    /// <exception cref="AudioException">The backend failed to enumerate devices.</exception>
     public IReadOnlyList<AudioDeviceInfo> OutputDevices => EnumerateDevices(DeviceKind.Playback);
 
     /// <summary>Capture devices currently reported by the backend. A fresh list is built on every access.</summary>
     /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
-    /// <exception cref="FatzAudioException">The backend failed to enumerate devices.</exception>
+    /// <exception cref="AudioException">The backend failed to enumerate devices.</exception>
     public IReadOnlyList<AudioDeviceInfo> InputDevices => EnumerateDevices(DeviceKind.Capture);
 
     private unsafe IReadOnlyList<AudioDeviceInfo> EnumerateDevices(DeviceKind kind)
     {
         var h = Handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_count(h, (int)kind, out uint count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_count(h, (int)kind, out uint count));
         var list = new List<AudioDeviceInfo>((int)count);
         for (uint i = 0; i < count; i++)
         {
             var info = NativeSized.New<FaDeviceInfo>();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_info(h, (int)kind, i, ref info));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_info(h, (int)kind, i, ref info));
             list.Add(new AudioDeviceInfo(
                 NativeText.Read(info.Id),
                 NativeText.Read(info.Name),
@@ -240,13 +240,13 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>The opened device; dispose it when done.</returns>
     /// <exception cref="ArgumentException"><paramref name="device"/> is not a playback device.</exception>
     /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
-    /// <exception cref="FatzAudioException">The device could not be opened.</exception>
+    /// <exception cref="AudioException">The device could not be opened.</exception>
     public OutputDevice OpenOutput(AudioDeviceInfo? device = null)
     {
         if (device is { Kind: not DeviceKind.Playback })
             throw new ArgumentException("Not a playback device.", nameof(device));
         var h = Handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_open(h, device?.Id, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_open(h, device?.Id, out nint native));
         var dh = new DeviceHandle();
         dh.Initialize(native, h);
         return new OutputDevice(this, dh, device);
@@ -260,7 +260,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">The decks, the output and the cue; null uses the defaults (2 decks, the default device, no cue).</param>
     /// <returns>The mixer; dispose it when done.</returns>
     /// <exception cref="ArgumentException"><see cref="DjMixerOptions.Output"/> is not a playback device.</exception>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotEnoughChannels"/> when the cue asks for channels the device
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotEnoughChannels"/> when the cue asks for channels the device
     /// does not have; <see cref="ErrorCode.NotImplemented"/> for more than 2 decks, or <see cref="LatencyMode.Exclusive"/> off Windows;
     /// <see cref="ErrorCode.Device"/> when the device cannot be opened.</exception>
     /// <example>
@@ -290,7 +290,7 @@ public sealed partial class AudioEngine : IDisposable
         {
             c.DeviceId = id;
             c.CueDeviceId = cueId;
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_create(h, &c, out native));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_create(h, &c, out native));
         }
         finally
         {
@@ -318,7 +318,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Optional open options.</param>
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The file could not be opened or decoded (for example <see cref="ErrorCode.NotFound"/> or <see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">The file could not be opened or decoded (for example <see cref="ErrorCode.NotFound"/> or <see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     /// <example>
     /// <code>
     /// using var s = engine.OpenFile("song.flac");
@@ -343,7 +343,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-    /// <exception cref="FatzAudioException">See <see cref="OpenFile"/>.</exception>
+    /// <exception cref="AudioException">See <see cref="OpenFile"/>.</exception>
     public Task<AudioStream> OpenFileAsync(string path, StreamOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -358,7 +358,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Optional open options.</param>
     /// <param name="cancellationToken">Stops the open; no stream is created.</param>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-    /// <exception cref="FatzAudioException">See <see cref="OpenMemory"/>.</exception>
+    /// <exception cref="AudioException">See <see cref="OpenMemory"/>.</exception>
     public Task<AudioStream> OpenMemoryAsync(ReadOnlyMemory<byte> data, StreamOptions? options = null,
         CancellationToken cancellationToken = default) =>
         OpenAsync(o => OpenMemory(data, o), options, cancellationToken);
@@ -371,7 +371,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="track">The track number, as in <see cref="DiscToc.Tracks"/>.</param>
     /// <param name="options">Optional open options.</param>
     /// <returns>The stream; dispose it when done. If the disc is taken out while it plays, the stream ends.</returns>
-    /// <exception cref="FatzAudioException">The disc has no such track (<see cref="ErrorCode.NotFound"/>), it is a data track
+    /// <exception cref="AudioException">The disc has no such track (<see cref="ErrorCode.NotFound"/>), it is a data track
     /// (<see cref="ErrorCode.UnsupportedFormat"/>), or there is no disc (<see cref="ErrorCode.NoDisc"/>).</exception>
     /// <example>
     /// <code>
@@ -398,7 +398,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="entry">The entry to play; null plays <see cref="Archives.Archive.Pick"/>'s song.</param>
     /// <param name="options">Optional open options (<see cref="StreamOptions.ArchiveEntry"/> is ignored).</param>
     /// <returns>The stream; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The entry cannot be played (<see cref="ErrorCode.UnsupportedFormat"/>,
+    /// <exception cref="AudioException">The entry cannot be played (<see cref="ErrorCode.UnsupportedFormat"/>,
     /// <see cref="ErrorCode.ProtectedContent"/>, <see cref="ErrorCode.TooLarge"/>).</exception>
     /// <example>
     /// <code>
@@ -426,7 +426,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="data">Encoded audio file contents.</param>
     /// <param name="options">Optional open options.</param>
     /// <returns>The stream; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The data could not be decoded.</exception>
+    /// <exception cref="AudioException">The data could not be decoded.</exception>
     /// <example>
     /// <code>
     /// using var s = engine.OpenMemory(File.ReadAllBytes("jingle.wav"));
@@ -448,7 +448,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="path">Path of the file.</param>
     /// <param name="options">Voice limit, steal rule and open options; null = 8 voices, oldest stolen.</param>
     /// <returns>The sound; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The file could not be opened or decoded, or is over 1 GB as PCM
+    /// <exception cref="AudioException">The file could not be opened or decoded, or is over 1 GB as PCM
     /// (<see cref="ErrorCode.TooLarge"/>).</exception>
     /// <example>
     /// <code>
@@ -470,7 +470,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="data">Encoded audio file contents.</param>
     /// <param name="options">Voice limit, steal rule and open options.</param>
     /// <returns>The sound; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The data could not be decoded.</exception>
+    /// <exception cref="AudioException">The data could not be decoded.</exception>
     public unsafe Sound LoadSound(ReadOnlyMemory<byte> data, SoundOptions? options = null)
     {
         var h = Handle;
@@ -540,7 +540,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="leaveOpen">If false (default), <paramref name="source"/> is disposed when the audio stream is disposed.</param>
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentException"><paramref name="source"/> is not readable.</exception>
-    /// <exception cref="FatzAudioException">The source could not be opened or decoded.</exception>
+    /// <exception cref="AudioException">The source could not be opened or decoded.</exception>
     /// <remarks>The native engine reads from <paramref name="source"/> on its own threads; reads are serialized.</remarks>
     /// <example>
     /// <code>
@@ -561,7 +561,7 @@ public sealed partial class AudioEngine : IDisposable
         if (rc < 0)
         {
             gc.Free();
-            throw new FatzAudioException((ErrorCode)rc);
+            throw new AudioException((ErrorCode)rc);
         }
         return AudioStream.Wrap(this, rc, s, gc);
     }
@@ -577,7 +577,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Optional open options; <see cref="StreamOptions.Network"/> holds the connection settings.</param>
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentException">Not an absolute http or https URL (<see cref="ErrorCode.InvalidArgument"/>).</exception>
-    /// <exception cref="FatzAudioException">The server could not be reached (<see cref="ErrorCode.Network"/>), answered with an
+    /// <exception cref="AudioException">The server could not be reached (<see cref="ErrorCode.Network"/>), answered with an
     /// error (<see cref="ErrorCode.NotFound"/>), sent something that is not audio (<see cref="ErrorCode.UnsupportedFormat"/>),
     /// or HTTPS has no TLS stack on this system (<see cref="ErrorCode.ProviderMissing"/>).</exception>
     /// <example>
@@ -624,14 +624,14 @@ public sealed partial class AudioEngine : IDisposable
         if (javaVM == 0) throw new ArgumentException("A JavaVM* is required.", nameof(javaVM));
         if (!OperatingSystem.IsAndroid()) throw new PlatformNotSupportedException("SetAndroidJavaVM is for Android.");
         NativeLoader.EnsureInitialized();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_android_set_java_vm(javaVM));
+        AudioException.ThrowIfFailed(NativeMethods.fa_android_set_java_vm(javaVM));
     }
 
     /// <summary>Opens a network URL.</summary>
     /// <param name="url">The URL.</param>
     /// <param name="options">Optional open options.</param>
     /// <returns>The stream; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">See <see cref="OpenUrl(string, StreamOptions?)"/>.</exception>
+    /// <exception cref="AudioException">See <see cref="OpenUrl(string, StreamOptions?)"/>.</exception>
     public AudioStream OpenUrl(Uri url, StreamOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(url);
@@ -650,7 +650,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="url"/> is null.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-    /// <exception cref="FatzAudioException">See <see cref="OpenUrl(string, StreamOptions?)"/>.</exception>
+    /// <exception cref="AudioException">See <see cref="OpenUrl(string, StreamOptions?)"/>.</exception>
     /// <example>
     /// <code>
     /// _tuning?.Cancel();
@@ -687,7 +687,7 @@ public sealed partial class AudioEngine : IDisposable
             {
                 stream = open((options ?? new StreamOptions()) with { CancellationToken = token });
             }
-            catch (FatzAudioException e) when (e.ErrorCode == ErrorCode.Cancelled)
+            catch (AudioException e) when (e.ErrorCode == ErrorCode.Cancelled)
             {
                 throw new OperationCanceledException(e.Message, e, Fired());
             }
@@ -705,7 +705,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="format">Format of the PCM data that will be pushed.</param>
     /// <param name="options">Optional open options.</param>
     /// <returns>A push stream; dispose it when done.</returns>
-    /// <exception cref="FatzAudioException">The native library could not create the stream.</exception>
+    /// <exception cref="AudioException">The native library could not create the stream.</exception>
     /// <example>
     /// <code>
     /// using var push = engine.CreatePushStream(AudioFormat.Float32(48000, 2));
@@ -720,7 +720,7 @@ public sealed partial class AudioEngine : IDisposable
         using var opts = NativeOptions.Create(options);
         var nf = format.ToNative();
         int rc = NativeMethods.fa_stream_open_push(h, &nf, opts.Pointer, out nint s);
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         var sh = new StreamHandle();
         sh.Initialize(s, h);
         return new PushAudioStream(this, sh, format);
@@ -742,7 +742,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Optional open options (<see cref="StreamOptions.Loop"/> is not allowed).</param>
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="fill"/> is null.</exception>
-    /// <exception cref="FatzAudioException">An invalid rate or channel count, or <see cref="StreamOptions.Loop"/>
+    /// <exception cref="AudioException">An invalid rate or channel count, or <see cref="StreamOptions.Loop"/>
     /// (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
@@ -761,7 +761,7 @@ public sealed partial class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(fill);
         var h = Handle;
         using var opts = NativeOptions.Create(options);
-        if (sampleRate <= 0 || channels <= 0) throw new FatzAudioException(ErrorCode.InvalidArgument);
+        if (sampleRate <= 0 || channels <= 0) throw new AudioException(ErrorCode.InvalidArgument);
         var nf = AudioFormat.Float32(sampleRate, channels).ToNative();
         // Lives as long as the native stream (adopted by it below), freed here if the open fails.
         var gc = GCHandle.Alloc(new CallbackState(fill, channels));
@@ -780,7 +780,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>The stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="format"/> or <paramref name="fill"/> is null.</exception>
     /// <exception cref="ArgumentException">A planar format.</exception>
-    /// <exception cref="FatzAudioException">An invalid rate or channel count (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">An invalid rate or channel count (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public unsafe AudioStream OpenCallback(AudioFormat format, RawAudioCallback fill, StreamOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(format);
@@ -788,7 +788,7 @@ public sealed partial class AudioEngine : IDisposable
         int frameBytes = format.FrameBytes();
         var h = Handle;
         using var opts = NativeOptions.Create(options);
-        if (format.SampleRate <= 0 || format.Channels <= 0) throw new FatzAudioException(ErrorCode.InvalidArgument);
+        if (format.SampleRate <= 0 || format.Channels <= 0) throw new AudioException(ErrorCode.InvalidArgument);
         var nf = format.ToNative();
         var gc = GCHandle.Alloc(new CallbackState(fill, frameBytes));
         int rc = NativeMethods.fa_stream_open_callback(h, &nf, &CallbackState.Fill, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out nint s);
@@ -808,7 +808,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <returns>The stream; dispose it when done. If the input goes away (unplugged), the stream ends.</returns>
     /// <exception cref="ArgumentException"><see cref="CaptureOptions.Device"/> is not an input (with
     /// <see cref="CaptureOptions.Loopback"/>: not an output).</exception>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotImplemented"/> for <see cref="CaptureOptions.Loopback"/>
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotImplemented"/> for <see cref="CaptureOptions.Loopback"/>
     /// off Windows; <see cref="ErrorCode.PermissionDenied"/> without the microphone permission;
     /// <see cref="ErrorCode.Device"/> when the input cannot be opened.</exception>
     /// <example>
@@ -853,7 +853,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Optional open options (<see cref="StreamOptions.Loop"/> is not allowed).</param>
     /// <returns>A packet stream; dispose it when done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
-    /// <exception cref="FatzAudioException">FatzMedia.Audio does not decode the codec (<see cref="ErrorCode.UnsupportedFormat"/>:
+    /// <exception cref="AudioException">FatzMedia.Audio does not decode the codec (<see cref="ErrorCode.UnsupportedFormat"/>:
     /// DTS and TrueHD with no system decoder, and the like; decode those with your FFmpeg and use <see cref="CreatePushStream"/>), or a parameter is invalid.</exception>
     /// <example>
     /// <code>
@@ -885,7 +885,7 @@ public sealed partial class AudioEngine : IDisposable
                 p.BitsPerCodedSample = (uint)Math.Max(0, parameters.BitsPerCodedSample);
                 p.TimeBase = parameters.TimeBase.ToNative();
                 int rc = NativeMethods.fa_stream_open_packets(h, &p, opts.Pointer, out nint s);
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
                 var sh = new StreamHandle();
                 sh.Initialize(s, h);
                 return new PacketAudioStream(this, sh, parameters);
@@ -908,7 +908,7 @@ public sealed partial class AudioEngine : IDisposable
     /// </summary>
     /// <param name="mode">Normalization mode.</param>
     /// <param name="targetLufs">Target loudness: -16 suits music players, -14 matches streaming services, -23 is EBU broadcast. Allowed -60..0.</param>
-    /// <exception cref="FatzAudioException">The target is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The target is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// engine.SetNormalization(NormalizeMode.Track, -16);
@@ -917,7 +917,7 @@ public sealed partial class AudioEngine : IDisposable
     /// </code>
     /// </example>
     public void SetNormalization(NormalizeMode mode, double targetLufs = -16.0) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization(Handle, (int)mode, targetLufs));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization(Handle, (int)mode, targetLufs));
 
     /// <summary>
     /// Tells where the loudness and analysis cache is and whether it works. The cache is only an optimisation, so a
@@ -937,7 +937,7 @@ public sealed partial class AudioEngine : IDisposable
     {
         FaCacheInfo info = default;
         info.StructSize = (uint)sizeof(FaCacheInfo);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_get_cache_info(Handle, &info));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_get_cache_info(Handle, &info));
         return new CacheInfo(info.Directory == null ? null : Marshal.PtrToStringUTF8((nint)info.Directory),
             (ErrorCode)info.Status, info.IsDefault != 0);
     }
@@ -951,11 +951,11 @@ public sealed partial class AudioEngine : IDisposable
     /// </summary>
     /// <param name="maxBytes">The limit in bytes, at least 16 KB; 0 restores the default, 5 MB (about 109,000 songs).</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxBytes"/> is negative.</exception>
-    /// <exception cref="FatzAudioException"><paramref name="maxBytes"/> is under 16 KB (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException"><paramref name="maxBytes"/> is under 16 KB (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public void SetCacheSize(long maxBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_cache_size(Handle, (ulong)maxBytes));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_cache_size(Handle, (ulong)maxBytes));
     }
 
     /// <summary>
@@ -963,7 +963,7 @@ public sealed partial class AudioEngine : IDisposable
     /// files only), for every engine in this process that uses the same folder. Songs are measured again as they are
     /// played. Does nothing without a cache directory.
     /// </summary>
-    public void ClearCache() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_clear_cache(Handle));
+    public void ClearCache() => AudioException.ThrowIfFailed(NativeMethods.fa_engine_clear_cache(Handle));
 
     /// <summary>
     /// Holds the first audio of a normalized stream until its loudness is final, for at most <paramref name="wait"/>
@@ -986,7 +986,7 @@ public sealed partial class AudioEngine : IDisposable
     /// final, 6 keeps a guess from boosting a quiet intro by the full 12 dB. Allowed 0..12; 12 (the default) adds no cap.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="wait"/> is negative or over 10 seconds.</exception>
-    /// <exception cref="FatzAudioException"><paramref name="maxProvisionalBoostDb"/> is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException"><paramref name="maxProvisionalBoostDb"/> is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// engine.SetNormalization(NormalizeMode.Track, -14);
@@ -997,7 +997,7 @@ public sealed partial class AudioEngine : IDisposable
     {
         if (wait < TimeSpan.Zero || wait > TimeSpan.FromSeconds(10))
             throw new ArgumentOutOfRangeException(nameof(wait), wait, "The wait must be between zero and 10 seconds.");
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization_start_wait(
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization_start_wait(
             Handle, (uint)Math.Round(wait.TotalMilliseconds), maxProvisionalBoostDb));
     }
 
@@ -1010,7 +1010,7 @@ public sealed partial class AudioEngine : IDisposable
     /// </summary>
     /// <param name="enabled">True to use dialnorm, false to measure every file.</param>
     public void SetDialnorm(bool enabled) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_dialnorm(Handle, enabled ? 1 : 0));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_dialnorm(Handle, enabled ? 1 : 0));
 
     /// <summary>
     /// Configures the true-peak limiter on every output device. It catches peaks a normalization boost
@@ -1019,9 +1019,9 @@ public sealed partial class AudioEngine : IDisposable
     /// </summary>
     /// <param name="mode">When the limiter runs; <see cref="LimiterMode.Auto"/> follows normalization.</param>
     /// <param name="ceilingDbtp">Highest true peak allowed, in dBTP (-1 recommended, allowed -20..0).</param>
-    /// <exception cref="FatzAudioException">The ceiling is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The ceiling is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public void SetLimiter(LimiterMode mode, double ceilingDbtp = -1.0) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_limiter(Handle, (int)mode, ceilingDbtp));
+        AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_limiter(Handle, (int)mode, ceilingDbtp));
 
     /// <summary>
     /// Measures the loudness of a file without playing it: only the audio is decoded, in chunks on all
@@ -1030,12 +1030,12 @@ public sealed partial class AudioEngine : IDisposable
     /// </summary>
     /// <param name="path">Path of the audio file.</param>
     /// <returns>The measured loudness (<see cref="LoudnessSource.Scan"/> or <see cref="LoudnessSource.Cache"/>).</returns>
-    /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a supported format.</exception>
+    /// <exception cref="AudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a supported format.</exception>
     public Loudness ScanLoudness(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
         var l = NativeSized.New<FaLoudness>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_scan_loudness_path(Handle, path, ref l));
+        AudioException.ThrowIfFailed(NativeMethods.fa_scan_loudness_path(Handle, path, ref l));
         return Loudness.From(l);
     }
 
@@ -1079,7 +1079,7 @@ public sealed partial class AudioEngine : IDisposable
             fixed (FaLoudnessTagResult* r = results)
             {
                 var rc = NativeMethods.fa_tags_write_loudness(Handle, p, (uint)paths.Count, album ? 1u : 0u, r);
-                if (rc == (int)ErrorCode.InvalidArgument) FatzAudioException.ThrowIfFailed(rc);
+                if (rc == (int)ErrorCode.InvalidArgument) AudioException.ThrowIfFailed(rc);
             }
         }
         finally
@@ -1095,12 +1095,12 @@ public sealed partial class AudioEngine : IDisposable
     /// for a single file, throwing when it could not be written.</summary>
     /// <param name="path">The file.</param>
     /// <returns>What was measured and written.</returns>
-    /// <exception cref="FatzAudioException">The file could not be written; <see cref="FatzAudioException.ErrorCode"/> says why.</exception>
+    /// <exception cref="AudioException">The file could not be written; <see cref="AudioException.ErrorCode"/> says why.</exception>
     public LoudnessTagResult WriteLoudnessTags(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
         var r = WriteLoudnessTags([path])[0];
-        FatzAudioException.ThrowIfFailed((int)r.Error);
+        AudioException.ThrowIfFailed((int)r.Error);
         return r;
     }
 
@@ -1116,7 +1116,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="kinds">What to find out; defaults to the beat grid and the key.</param>
     /// <param name="options">Tempo range and cache use; null uses the defaults.</param>
     /// <returns>The result, a plain object with nothing to dispose.</returns>
-    /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>), no decoder reads it (<see cref="ErrorCode.UnsupportedFormat"/>), or the options are invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The file is missing (<see cref="ErrorCode.NotFound"/>), no decoder reads it (<see cref="ErrorCode.UnsupportedFormat"/>), or the options are invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
     /// <example>
     /// <code>
@@ -1139,7 +1139,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="options">Tempo range and cache use; null uses the defaults.</param>
     /// <param name="cancellationToken">Stops the wait (the native analysis, which cannot be interrupted, runs to its end).</param>
     /// <returns>A task with the result.</returns>
-    /// <exception cref="FatzAudioException">As for <see cref="Analyze"/>, thrown through the task.</exception>
+    /// <exception cref="AudioException">As for <see cref="Analyze"/>, thrown through the task.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
     public Task<TrackAnalysis> AnalyzeAsync(string path, AnalysisKinds kinds = AnalysisKinds.Beats | AnalysisKinds.Key,
@@ -1172,12 +1172,12 @@ public sealed partial class AudioEngine : IDisposable
             var engine = Handle;
             if (value is null)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_soundfont(engine, 0));
+                AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_soundfont(engine, 0));
             }
             else
             {
                 var font = Native.HandleRef.AddRef(value.Handle);
-                try { FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_soundfont(engine, font.DangerousGetHandle())); }
+                try { AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_soundfont(engine, font.DangerousGetHandle())); }
                 finally { font.DangerousRelease(); }
             }
             _defaultSoundFont = value;

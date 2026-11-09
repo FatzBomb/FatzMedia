@@ -87,7 +87,7 @@ public sealed class MainForm : Form
             _player = await Player.CreateAsync(
                 MediaPlayerConfiguration.Auto,
                 WindowsNativeLibraryPaths.GetDefaultSearchPaths(),
-                new WindowsDirect3D11MediaControlPlatformFactory());
+                new WindowsDirect3D11PlatformFactory());
         }
         catch (Exception ex)
         {

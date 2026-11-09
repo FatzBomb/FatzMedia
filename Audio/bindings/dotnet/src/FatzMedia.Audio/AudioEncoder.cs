@@ -135,7 +135,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <param name="path">The output file.</param>
     /// <param name="options">The format and its settings; null = 16-bit WAV at the input's format.</param>
     /// <returns>The encoder; close or dispose it to complete the file.</returns>
-    /// <exception cref="FatzAudioException">The file cannot be created (<see cref="ErrorCode.Io"/>), an option is invalid
+    /// <exception cref="AudioException">The file cannot be created (<see cref="ErrorCode.Io"/>), an option is invalid
     /// (<see cref="ErrorCode.InvalidArgument"/>), or MP3 was asked for and LAME was not found
     /// (<see cref="ErrorCode.ProviderMissing"/>).</exception>
     public static AudioEncoder Create(string path, EncoderOptions? options = null)
@@ -146,7 +146,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         try
         {
             FaEncoderOptions o = native.Value;
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_create_path(path, &o, out nint e));
+            AudioException.ThrowIfFailed(NativeMethods.fa_encoder_create_path(path, &o, out nint e));
             var h = new EncoderHandle();
             h.Initialize(e, default);
             return new AudioEncoder(h);
@@ -167,7 +167,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <param name="leaveOpen">True to keep <paramref name="output"/> open after the encoder is closed.</param>
     /// <returns>The encoder.</returns>
     /// <exception cref="ArgumentException">The stream is not writable.</exception>
-    /// <exception cref="FatzAudioException">An option is invalid, or LAME is missing for MP3.</exception>
+    /// <exception cref="AudioException">An option is invalid, or LAME is missing for MP3.</exception>
     public static AudioEncoder Create(Stream output, EncoderOptions? options = null, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -183,7 +183,7 @@ public sealed unsafe class AudioEncoder : IDisposable
             cb.Close = &OutputState.Close;
             if (output.CanSeek) cb.Seek = &OutputState.Seek;
             int rc = NativeMethods.fa_encoder_create_output(&cb, (void*)GCHandle.ToIntPtr(gc), &o, out nint e);
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             var h = new EncoderHandle();
             h.Initialize(e, gc);
             return new AudioEncoder(h);
@@ -207,7 +207,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <param name="inputPath">Any file FatzMedia.Audio can open.</param>
     /// <param name="outputPath">The file to write.</param>
     /// <param name="options">The output format and its settings.</param>
-    /// <exception cref="FatzAudioException">The input cannot be opened or decoded, or the output cannot be written.</exception>
+    /// <exception cref="AudioException">The input cannot be opened or decoded, or the output cannot be written.</exception>
     public static void ConvertFile(AudioEngine engine, string inputPath, string outputPath, EncoderOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -221,11 +221,11 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <summary>Records everything <paramref name="device"/> plays (its master mix, after the limiter), in stereo at
     /// the device's rate.</summary>
     /// <param name="device">The output device.</param>
-    /// <exception cref="FatzAudioException">The encoder already has a source (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The encoder already has a source (<see cref="ErrorCode.Busy"/>).</exception>
     public void Record(OutputDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_device(Handle, device.Handle));
+        AudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_device(Handle, device.Handle));
     }
 
     /// <summary>
@@ -233,12 +233,12 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// its device's rate. Only what the stream plays is recorded (no silence before it starts or after it ends).
     /// </summary>
     /// <param name="stream">A stream attached to a device (<see cref="AudioStream.PlayOn(OutputDevice)"/>).</param>
-    /// <exception cref="FatzAudioException">The stream is not attached (<see cref="ErrorCode.InvalidArgument"/>), or the
+    /// <exception cref="AudioException">The stream is not attached (<see cref="ErrorCode.InvalidArgument"/>), or the
     /// encoder already has a source (<see cref="ErrorCode.Busy"/>).</exception>
     public void Record(AudioStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_stream(Handle, stream.Handle));
+        AudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_stream(Handle, stream.Handle));
     }
 
     /// <summary>
@@ -247,12 +247,12 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// </summary>
     /// <param name="mixer">The mixer.</param>
     /// <param name="tap">The master, or the vocals (both mics with their effects).</param>
-    /// <exception cref="FatzAudioException">The encoder already has a source (<see cref="ErrorCode.Busy"/>).</exception>
+    /// <exception cref="AudioException">The encoder already has a source (<see cref="ErrorCode.Busy"/>).</exception>
     public void Record(DjMixer mixer, MixerTap tap)
     {
         ArgumentNullException.ThrowIfNull(mixer);
         using var lease = mixer.Lease();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_mixer(Handle, mixer.Native, (int)tap));
+        AudioException.ThrowIfFailed(NativeMethods.fa_encoder_attach_mixer(Handle, mixer.Native, (int)tap));
     }
 
     /// <summary>
@@ -260,12 +260,12 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// channels. Leave the stream alone until <see cref="Wait"/> returns true or the encoder is closed.
     /// </summary>
     /// <param name="stream">A decode-only stream (<see cref="StreamOptions.DecodeOnly"/>) or any stream not attached.</param>
-    /// <exception cref="FatzAudioException">The stream is attached or already being encoded, or the encoder already has a
+    /// <exception cref="AudioException">The stream is attached or already being encoded, or the encoder already has a
     /// source (<see cref="ErrorCode.Busy"/>).</exception>
     public void Encode(AudioStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_encode_stream(Handle, stream.Handle));
+        AudioException.ThrowIfFailed(NativeMethods.fa_encoder_encode_stream(Handle, stream.Handle));
     }
 
     /// <summary>
@@ -276,7 +276,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <param name="sampleRate">Their sample rate.</param>
     /// <param name="channels">Their channel count.</param>
     /// <exception cref="ArgumentException">The span does not hold whole frames.</exception>
-    /// <exception cref="FatzAudioException">Another format than the first call's (<see cref="ErrorCode.InvalidArgument"/>),
+    /// <exception cref="AudioException">Another format than the first call's (<see cref="ErrorCode.InvalidArgument"/>),
     /// another source (<see cref="ErrorCode.Busy"/>), or the error that stopped the encoder.</exception>
     public void Write(ReadOnlySpan<float> interleaved, int sampleRate, int channels)
     {
@@ -285,7 +285,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         if (interleaved.Length % channels != 0) throw new ArgumentException("The span must hold whole frames.", nameof(interleaved));
         fixed (float* p = interleaved)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_write(Handle, p, interleaved.Length / channels,
+            AudioException.ThrowIfFailed(NativeMethods.fa_encoder_write(Handle, p, interleaved.Length / channels,
                                                                              (uint)sampleRate, (uint)channels));
         }
     }
@@ -295,7 +295,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     public bool IsPaused
     {
         get => Status.IsPaused;
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_set_paused(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_encoder_set_paused(Handle, value ? 1 : 0));
     }
 
     /// <summary>The encoder's state, progress and formats.</summary>
@@ -304,7 +304,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         get
         {
             var s = NativeSized.New<FaEncoderStatus>();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_get_status(Handle, ref s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_encoder_get_status(Handle, ref s));
             var state = (EncoderState)s.State;
             return new EncoderStatus(state, (ErrorCode)s.Error, s.Paused != 0, s.Frames, TimeConvert.FromNanoseconds(s.Duration),
                                      s.Bytes, s.DroppedFrames,
@@ -334,7 +334,7 @@ public sealed unsafe class AudioEncoder : IDisposable
             int rc = NativeMethods.fa_encoder_wait(Handle, ms * 1_000_000);
             if (rc != (int)ErrorCode.Busy)
             {
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
                 return true;
             }
             if (left <= WaitSliceMs) return false;
@@ -347,7 +347,7 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// Stops the source, encodes what is still queued, completes the file and closes it. Calling it again does
     /// nothing.
     /// </summary>
-    /// <exception cref="FatzAudioException">The first error the encoder hit (for example <see cref="ErrorCode.Io"/> when
+    /// <exception cref="AudioException">The first error the encoder hit (for example <see cref="ErrorCode.Io"/> when
     /// the disk is full); the file may be incomplete.</exception>
     public void Close()
     {
@@ -355,7 +355,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         _handle.Dispose();
         // A call in progress on another thread (Write, Wait) delays the native close until it returns.
         SpinWait.SpinUntil(() => _handle.IsReleased);
-        FatzAudioException.ThrowIfFailed(_handle.CloseResult);
+        AudioException.ThrowIfFailed(_handle.CloseResult);
     }
 
     /// <summary>Completes and closes the file, like <see cref="Close"/>, without throwing.</summary>
@@ -495,7 +495,7 @@ public static unsafe class Lame
         NativeLoader.EnsureInitialized();
         int rc = NativeMethods.fa_lame_load(directory);
         if (rc == (int)ErrorCode.ProviderMissing) return false;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return true;
     }
 
@@ -505,7 +505,7 @@ public static unsafe class Lame
         get
         {
             NativeLoader.EnsureInitialized();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_lame_get_info(out FaLameInfo n));
+            AudioException.ThrowIfFailed(NativeMethods.fa_lame_get_info(out FaLameInfo n));
             if (n.Loaded == 0) return new LameInfo(false, null, null);
             return new LameInfo(true, Marshal.PtrToStringUTF8((nint)n.Version), Marshal.PtrToStringUTF8((nint)n.Path));
         }

@@ -163,7 +163,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                         ? loudness.GainDb
                         : FatzAudioMappings.TrackGainDecibels(loudness.IntegratedLufs, loudness.IsFinal, _normalization.TargetLufs));
                 }
-                catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException)
+                catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
                 {
                     return 1;
                 }
@@ -332,7 +332,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             {
                 stream = source.Open(_engine, PlaybackOptions);
             }
-            catch (Fa.FatzAudioException ex) when (ex.ErrorCode == Fa.ErrorCode.UnsupportedFormat
+            catch (Fa.AudioException ex) when (ex.ErrorCode == Fa.ErrorCode.UnsupportedFormat
                 && (source.Path ?? archiveEntry?.Key) is { } path
                 && FfmpegAudioFallback.CanRetryWithFfmpeg(path))
             {
@@ -379,7 +379,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                             opened.Markers.CueOut = TimeSpan.FromSeconds(trimWindow.PlayableEnd);
                         opened.Position = TimeSpan.FromSeconds(trimWindow.PlayableStart);
                     }
-                    catch (Exception ex) when (ex is Fa.FatzAudioException or ArgumentException or InvalidOperationException)
+                    catch (Exception ex) when (ex is Fa.AudioException or ArgumentException or InvalidOperationException)
                     {
                         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Silence trim could not be applied, playing untrimmed: {ex.Message}", sourcePath: label, innerException: ex);
                         _activeTrimWindow = null;
@@ -389,7 +389,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                             opened.Markers.CueOut = null;
                             opened.Position = TimeSpan.Zero;
                         }
-                        catch (Exception resetEx) when (resetEx is Fa.FatzAudioException or ArgumentException or InvalidOperationException)
+                        catch (Exception resetEx) when (resetEx is Fa.AudioException or ArgumentException or InvalidOperationException)
                         {
                             // Best effort: the open still succeeds.
                         }
@@ -686,7 +686,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             var peakDbtp = stream.GetLoudness().TruePeakDbtp;
             return double.IsFinite(peakDbtp) ? Math.Pow(10, peakDbtp / 20) : 0;
         }
-        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException)
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
         {
             return 0;
         }
@@ -728,7 +728,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         {
             _engine.SetNormalization(Normalize ? Fa.NormalizeMode.Track : Fa.NormalizeMode.Off, _normalization.TargetLufs);
         }
-        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException or ArgumentException)
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or ArgumentException)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Normalization could not be set: {ex.Message}", innerException: ex);
         }
@@ -748,7 +748,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             else
                 _bus.Volume = target;
         }
-        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException)
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Volume could not be set: {ex.Message}", innerException: ex);
         }
@@ -822,7 +822,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             action(stream);
             return true;
         }
-        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or InvalidOperationException or ArgumentException)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"{operation} failed: {ex.Message}", innerException: ex);
             return false;
@@ -891,7 +891,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         {
             deviceName = _engine.OutputDevices.FirstOrDefault(static device => device.IsDefault)?.Name;
         }
-        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException)
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
         {
             // The name is only for the report.
         }

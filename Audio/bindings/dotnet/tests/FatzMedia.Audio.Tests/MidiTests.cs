@@ -189,8 +189,8 @@ public class MidiTests
             stack = SoundFont.Stack(
                 new SoundFontStackEntry(a) { Bank = 0, Program = 0, ToProgram = 5, Volume = 0.5f },
                 new SoundFontStackEntry(b));
-            Assert.Throws<FatzAudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Bank = 9 }));
-            var bad = Assert.Throws<FatzAudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Program = 200 }));
+            Assert.Throws<AudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Bank = 9 }));
+            var bad = Assert.Throws<AudioException>(() => SoundFont.Stack(new SoundFontStackEntry(a) { Program = 200 }));
             Assert.Equal(ErrorCode.InvalidArgument, bad.ErrorCode);
         }
         // The members were disposed: the stack keeps them.
@@ -358,7 +358,7 @@ public class MidiTests
     public void NoSoundFont_Throws()
     {
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
-        var ex = Assert.Throws<FatzAudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
+        var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
         Assert.Equal(ErrorCode.NoSoundFont, ex.ErrorCode);
     }
 
@@ -392,7 +392,7 @@ public class MidiTests
         using var engine = CreateHeadless();
         if (system is null)
         {
-            var ex = Assert.Throws<FatzAudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
+            var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
             Assert.Equal(ErrorCode.NoSoundFont, ex.ErrorCode);
             return;
         }
@@ -458,17 +458,17 @@ public class MidiTests
         Assert.Null(s.MidiInfo);
         Assert.Null(s.MidiCredits);
         Assert.Empty(s.MidiTexts);
-        var ex = Assert.Throws<FatzAudioException>(() => s.MidiTranspose = 2);
+        var ex = Assert.Throws<AudioException>(() => s.MidiTranspose = 2);
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
-        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<FatzAudioException>(() => s.GetSoundFont()).ErrorCode);
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<AudioException>(() => s.GetSoundFont()).ErrorCode);
     }
 
     [Fact]
     public void BadSoundFont_Throws()
     {
-        var ex = Assert.Throws<FatzAudioException>(() => SoundFont.FromMemory(Encoding.ASCII.GetBytes("RIFF....sfbkLIST")));
+        var ex = Assert.Throws<AudioException>(() => SoundFont.FromMemory(Encoding.ASCII.GetBytes("RIFF....sfbkLIST")));
         Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
-        var missing = Assert.Throws<FatzAudioException>(() => SoundFont.FromFile("/nonexistent/none.sf2"));
+        var missing = Assert.Throws<AudioException>(() => SoundFont.FromFile("/nonexistent/none.sf2"));
         Assert.Equal(ErrorCode.NotFound, missing.ErrorCode);
     }
 }

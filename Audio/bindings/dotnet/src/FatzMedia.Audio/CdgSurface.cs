@@ -304,7 +304,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         int rc = NativeMethods.fa_cdg_surface_create(handle, &c, out _native);
         if (rc == (int)ErrorCode.InvalidArgument)
             throw new ArgumentException("Unsupported CD+G surface options (pixel format or size above 8192).", nameof(options));
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         handle.TrackSurface(this);
     }
 
@@ -360,7 +360,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 lock (_lock)
                 {
                     ObjectDisposedException.ThrowIf(_native == 0, this);
-                    FatzAudioException.ThrowIfFailed(
+                    AudioException.ThrowIfFailed(
                         NativeMethods.fa_cdg_surface_set_presentation(_native, value is null ? null : &p));
                     _presentation = value;
                 }
@@ -412,7 +412,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 int rc = time is { } t
                     ? NativeMethods.fa_cdg_surface_update_at(_native, t, &f)
                     : NativeMethods.fa_cdg_surface_update(_native, &f);
-                FatzAudioException.ThrowIfFailed(rc);
+                AudioException.ThrowIfFailed(rc);
             }
             for (int i = 0; i < 16; i++)
             {
@@ -443,7 +443,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 lock (_lock)
                 {
                     ObjectDisposedException.ThrowIf(_native == 0, this);
-                    FatzAudioException.ThrowIfFailed(
+                    AudioException.ThrowIfFailed(
                         NativeMethods.fa_surface_set_presentation_size(_native, (uint)value.Width, (uint)value.Height));
                 }
             }
@@ -467,7 +467,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 lock (_lock)
                 {
                     ObjectDisposedException.ThrowIf(_native == 0, this);
-                    FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_set_render_ahead(_native, value ? 1 : 0));
+                    AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_render_ahead(_native, value ? 1 : 0));
                 }
             }
             finally
@@ -492,7 +492,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 lock (_lock)
                 {
                     ObjectDisposedException.ThrowIf(_native == 0, this);
-                    FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_set_effects(_native, value is null ? null : &e));
+                    AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_effects(_native, value is null ? null : &e));
                     _effects = value;
                 }
             }
@@ -514,7 +514,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_native == 0, this);
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_get_layout(_native, &l));
+                AudioException.ThrowIfFailed(NativeMethods.fa_surface_get_layout(_native, &l));
             }
         }
         finally
@@ -541,7 +541,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             ObjectDisposedException.ThrowIf(native == 0, this);
             try
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination, stride,
+                AudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination, stride,
                     (uint)width, (uint)height, destinationRevision, &f));
             }
             finally

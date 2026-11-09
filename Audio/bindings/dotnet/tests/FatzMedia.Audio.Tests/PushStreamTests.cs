@@ -32,7 +32,7 @@ public class PushStreamTests
         Assert.Equal(3000, got.Length);
         Assert.Equal(0.25f, got[0]);
         Assert.Equal(-0.5f, got[^1]);
-        Assert.Equal(ErrorCode.EndOfStream, Assert.Throws<FatzAudioException>(() => s.Push(a)).ErrorCode);
+        Assert.Equal(ErrorCode.EndOfStream, Assert.Throws<AudioException>(() => s.Push(a)).ErrorCode);
         s.Flush();
         s.Push(a); // pushable again after a flush
     }
@@ -103,10 +103,10 @@ public class PushStreamTests
         using var engine = AudioEngine.Create();
         Assert.Throws<ArgumentNullException>(() => engine.OpenPackets(null!));
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.OpenPackets(new CodecParameters("pcm_s16le", 0, 2))).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.OpenPackets(new CodecParameters("pcm_s16le", 0, 2))).ErrorCode);
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.OpenPackets(new CodecParameters("pcm_s16le", 48000, 2), new StreamOptions { Loop = true })).ErrorCode);
-        var e = Assert.Throws<FatzAudioException>(() => engine.OpenPackets(new CodecParameters("no-such-codec", 48000, 2)));
+            Assert.Throws<AudioException>(() => engine.OpenPackets(new CodecParameters("pcm_s16le", 48000, 2), new StreamOptions { Loop = true })).ErrorCode);
+        var e = Assert.Throws<AudioException>(() => engine.OpenPackets(new CodecParameters("no-such-codec", 48000, 2)));
         Assert.True(e.ErrorCode is ErrorCode.UnsupportedFormat or ErrorCode.ProviderMissing);
     }
 

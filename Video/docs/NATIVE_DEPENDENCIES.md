@@ -28,7 +28,7 @@ must exist; a missing directory produces `DirectoryNotFoundException` before nat
 initialization.
 
 ```csharp
-var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var platform = new WindowsDirect3D11PlatformFactory();
 IReadOnlyList<string> nativePaths =
 [
     @"C:\Program Files\MyHost\media-native\bass",
@@ -289,7 +289,7 @@ FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
 
 ## Startup Dependency Report
 
-`MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
+`MediaControlPlayer.NativeDependencies` (and `IPlatformFactory.NativeDependencies`)
 returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
 with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
 (found, but its set is incomplete), or `FailedToLoad`, plus the search paths and

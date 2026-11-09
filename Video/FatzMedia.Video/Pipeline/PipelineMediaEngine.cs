@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
     private const string NetworkDiagnosticCategory = "Network";
 

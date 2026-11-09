@@ -155,13 +155,13 @@ public sealed class Disc : IDisposable
     }
 
     /// <summary>The optical drives of this computer, built fresh on every access. On macOS only drives with an audio CD in them are listed.</summary>
-    /// <exception cref="FatzAudioException">The drives could not be listed.</exception>
+    /// <exception cref="AudioException">The drives could not be listed.</exception>
     public static unsafe IReadOnlyList<DiscDriveInfo> Drives
     {
         get
         {
             NativeLoader.EnsureInitialized();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_drive_count(out uint count));
+            AudioException.ThrowIfFailed(NativeMethods.fa_disc_drive_count(out uint count));
             var list = new List<DiscDriveInfo>((int)count);
             for (uint i = 0; i < count; i++)
             {
@@ -176,7 +176,7 @@ public sealed class Disc : IDisposable
     /// <param name="driveId">A <see cref="DiscDriveInfo.Id"/>, the path of a .cue disc image, or null for the first drive.</param>
     /// <param name="options">Read options, or null for the defaults.</param>
     /// <returns>The drive; dispose it when done (streams opened from it keep working).</returns>
-    /// <exception cref="FatzAudioException">No such drive (<see cref="ErrorCode.NotFound"/>), or no permission to open it (<see cref="ErrorCode.Device"/>).</exception>
+    /// <exception cref="AudioException">No such drive (<see cref="ErrorCode.NotFound"/>), or no permission to open it (<see cref="ErrorCode.Device"/>).</exception>
     public static unsafe Disc Open(string? driveId = null, DiscOptions? options = null)
     {
         NativeLoader.EnsureInitialized();
@@ -188,25 +188,25 @@ public sealed class Disc : IDisposable
             o.Retries = (uint)Math.Clamp(options.Retries, 0, 100);
             o.Flags = (options.DeEmphasis ? 0u : 1u) | (options.UseC2 ? 0u : 2u) | (options.ReadCdg ? 0u : 4u);
         }
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_open(driveId, &o, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_disc_open(driveId, &o, out nint native));
         var h = new DiscHandle();
         h.Initialize(native);
         return new Disc(h);
     }
 
     /// <summary>Asks the drive what is in it now (a few milliseconds).</summary>
-    /// <exception cref="FatzAudioException">The drive did not answer.</exception>
+    /// <exception cref="AudioException">The drive did not answer.</exception>
     public DiscStatus Status
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_get_status(Handle, out FaDiscStatus s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_status(Handle, out FaDiscStatus s));
             return new DiscStatus((DiscState)s.State, s.Locked != 0, s.ChangeCount);
         }
     }
 
     /// <summary>The disc's table of contents. Read once per disc, so later reads are free.</summary>
-    /// <exception cref="FatzAudioException">No readable disc is in the drive (<see cref="ErrorCode.NoDisc"/>).</exception>
+    /// <exception cref="AudioException">No readable disc is in the drive (<see cref="ErrorCode.NoDisc"/>).</exception>
     public unsafe DiscToc Toc
     {
         get
@@ -215,7 +215,7 @@ public sealed class Disc : IDisposable
             try
             {
                 t->StructSize = (uint)sizeof(FaDiscToc);
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_get_toc(Handle, t));
+                AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_toc(Handle, t));
                 var tracks = new List<DiscTrack>(t->TrackCount);
                 FaDiscTrack* raw = (FaDiscTrack*)t->Tracks;
                 for (int i = 0; i < t->TrackCount && i < FaDiscToc.MaxTracks; i++)
@@ -239,13 +239,13 @@ public sealed class Disc : IDisposable
     /// <param name="track">0 for the album, else the track number.</param>
     /// <param name="field">Which text.</param>
     /// <returns>The text, or null when the disc has none for it.</returns>
-    /// <exception cref="FatzAudioException">No readable disc is in the drive (<see cref="ErrorCode.NoDisc"/>).</exception>
+    /// <exception cref="AudioException">No readable disc is in the drive (<see cref="ErrorCode.NoDisc"/>).</exception>
     public unsafe string? GetText(int track, DiscTextField field)
     {
         byte* buf = stackalloc byte[1024];
         int rc = NativeMethods.fa_disc_get_text(Handle, track, (int)field, buf, 1024);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return Marshal.PtrToStringUTF8((nint)buf);
     }
 
@@ -258,12 +258,12 @@ public sealed class Disc : IDisposable
     /// </summary>
     /// <param name="track">The track number, as in <see cref="Toc"/>.</param>
     /// <returns>The pregap in sectors.</returns>
-    /// <exception cref="FatzAudioException">No such track (<see cref="ErrorCode.NotFound"/>), a data track
+    /// <exception cref="AudioException">No such track (<see cref="ErrorCode.NotFound"/>), a data track
     /// (<see cref="ErrorCode.UnsupportedFormat"/>), a drive that returns no subcode (<see cref="ErrorCode.NotImplemented"/>),
     /// or subcode that cannot be read there (<see cref="ErrorCode.Io"/>).</exception>
     public long GetPregap(int track)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_get_pregap(Handle, track, out long sectors));
+        AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_pregap(Handle, track, out long sectors));
         return sectors;
     }
 
@@ -274,34 +274,34 @@ public sealed class Disc : IDisposable
     public TimeSpan GetPregapTime(int track) => TimeSpan.FromTicks(GetPregap(track) * TimeSpan.TicksPerSecond / 75);
 
     /// <summary>Opens the tray (unlocking it first).</summary>
-    /// <exception cref="FatzAudioException">The drive refused (<see cref="ErrorCode.Device"/>, or <see cref="ErrorCode.Busy"/> on macOS while Finder has the disc mounted).</exception>
-    public void Eject() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_eject(Handle));
+    /// <exception cref="AudioException">The drive refused (<see cref="ErrorCode.Device"/>, or <see cref="ErrorCode.Busy"/> on macOS while Finder has the disc mounted).</exception>
+    public void Eject() => AudioException.ThrowIfFailed(NativeMethods.fa_disc_eject(Handle));
 
     /// <summary>Closes the tray. Slot-loading and laptop drives cannot (<see cref="ErrorCode.NotImplemented"/> or <see cref="ErrorCode.Device"/>).</summary>
-    /// <exception cref="FatzAudioException">The drive cannot close its tray.</exception>
-    public void Load() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_load(Handle));
+    /// <exception cref="AudioException">The drive cannot close its tray.</exception>
+    public void Load() => AudioException.ThrowIfFailed(NativeMethods.fa_disc_load(Handle));
 
     /// <summary>Disables the drive's eject button while true; reset when the disc is disposed.</summary>
-    /// <exception cref="FatzAudioException">The drive refused.</exception>
+    /// <exception cref="AudioException">The drive refused.</exception>
     public bool Locked
     {
         get => Status.Locked;
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_set_locked(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_disc_set_locked(Handle, value ? 1 : 0));
     }
 
     /// <summary>
     /// Read speed as a multiple of normal playback speed (1 = 176.4 kB/s); set 0 for the fastest. Slower is
     /// quieter and often reads damaged discs better. The drive picks the nearest speed it supports.
     /// </summary>
-    /// <exception cref="FatzAudioException">The drive does not report or accept a speed.</exception>
+    /// <exception cref="AudioException">The drive does not report or accept a speed.</exception>
     public float Speed
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_get_speed(Handle, out float s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_speed(Handle, out float s));
             return s;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_set_speed(Handle, value));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_disc_set_speed(Handle, value));
     }
 
     /// <summary>Releases the drive. Streams opened from it keep working until they are disposed.</summary>

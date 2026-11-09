@@ -141,7 +141,7 @@ public sealed class NetworkVideoPlaybackTests
         Task<bool> open = Task.Run(() => engine.Open(ClipSource));
         Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
         var cancel = Stopwatch.StartNew();
-        ((INetworkMediaControl)engine).CancelPendingNetworkOpen();
+        ((INetworkPlayer)engine).CancelPendingNetworkOpen();
 
         Assert.Same(open, await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))));
         Assert.False(await open);
@@ -191,7 +191,7 @@ public sealed class NetworkVideoPlaybackTests
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
         using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video);
 
-        ((INetworkMediaControl)engine).CancelPendingNetworkOpen();
+        ((INetworkPlayer)engine).CancelPendingNetworkOpen();
 
         Assert.True(engine.Open(ClipSource));
     }
@@ -235,7 +235,7 @@ public sealed class NetworkVideoPlaybackTests
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
         using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video);
         List<bool> changes = [];
-        ((INetworkMediaControl)engine).NetworkBufferingChanged += (_, args) => changes.Add(args.IsBuffering);
+        ((INetworkPlayer)engine).NetworkBufferingChanged += (_, args) => changes.Add(args.IsBuffering);
         Assert.True(engine.Open(ClipSource));
 
         video.RaiseNetworkBuffering(true, 0);

@@ -12,7 +12,7 @@ foreach (var path in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDir
         var tags = Tags.Read(path, TagReadOptions.NoPictures);   // no engine needed; NoPictures skips cover art
         Console.WriteLine($"{tags.Artist} - {tags.Title} ({tags.Album}), {tags.Duration}");
     }
-    catch (FatzAudioException ex) { Console.Error.WriteLine($"{path}: {ex.ErrorCode}"); }
+    catch (AudioException ex) { Console.Error.WriteLine($"{path}: {ex.ErrorCode}"); }
 }
 ```
 

@@ -4,7 +4,7 @@ using FatzMedia.Video.Core.Abstractions;
 namespace FatzMedia.Video;
 
 /// <summary>
-/// Provides typed details for the <see cref="IMediaControlSession.AudioDeviceChanged"/> event.
+/// Provides typed details for the <see cref="IPlayerSession.AudioDeviceChanged"/> event.
 /// Fires from a background thread; hosts must marshal to the UI thread before touching view state.
 /// </summary>
 public sealed class AudioDeviceChangedEventArgs(AudioDeviceChangeInfo info) : EventArgs

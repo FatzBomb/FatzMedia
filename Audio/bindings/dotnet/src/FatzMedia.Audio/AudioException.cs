@@ -70,15 +70,15 @@ public enum ErrorCode
 /// <example>
 /// <code>
 /// try { stream.Ramp(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(2)); }
-/// catch (FatzAudioException ex) when (ex.ErrorCode == ErrorCode.NotImplemented) { /* not available yet */ }
+/// catch (AudioException ex) when (ex.ErrorCode == ErrorCode.NotImplemented) { /* not available yet */ }
 /// </code>
 /// </example>
-public class FatzAudioException : Exception
+public class AudioException : Exception
 {
     /// <summary>Creates an exception for a native error code.</summary>
     /// <param name="errorCode">The native error code.</param>
     /// <param name="message">Optional message; defaults to the text from <c>fa_result_string</c>.</param>
-    public FatzAudioException(ErrorCode errorCode, string? message = null)
+    public AudioException(ErrorCode errorCode, string? message = null)
         : base(message ?? DescribeNative(errorCode))
     {
         ErrorCode = errorCode;
@@ -104,9 +104,9 @@ public class FatzAudioException : Exception
         return code.ToString();
     }
 
-    /// <summary>Throws <see cref="FatzAudioException"/> if <paramref name="result"/> is negative.</summary>
+    /// <summary>Throws <see cref="AudioException"/> if <paramref name="result"/> is negative.</summary>
     internal static void ThrowIfFailed(int result)
     {
-        if (result < 0) throw new FatzAudioException((ErrorCode)result);
+        if (result < 0) throw new AudioException((ErrorCode)result);
     }
 }

@@ -96,7 +96,7 @@ using var rec = AudioEncoder.Create("friday.mp3", new EncoderOptions
 });
 rec.Record(output);
 // ...
-rec.Close();     // completes the file; throws FatzAudioException on errors (Dispose doesn't throw)
+rec.Close();     // completes the file; throws AudioException on errors (Dispose doesn't throw)
 
 // Record one deck
 using var deck = AudioEncoder.Create("deck-a.wav", new EncoderOptions { BitsPerSample = 24 });

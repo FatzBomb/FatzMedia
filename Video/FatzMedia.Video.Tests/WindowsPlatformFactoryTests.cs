@@ -4,14 +4,14 @@ using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Tests;
 
-public sealed class WindowsMediaControlPlatformFactoryTests
+public sealed class WindowsPlatformFactoryTests
 {
     [Fact]
     public void CreatePresentationCoordinator_UsesInjectedFactory()
     {
         var expectedCoordinator = new NullPresentationCoordinator();
         var rendererFactory = new TestPresentationCoordinatorFactory(expectedCoordinator);
-        var platformFactory = new WindowsMediaControlPlatformFactory(rendererFactory);
+        var platformFactory = new WindowsPlatformFactory(rendererFactory);
         var configuration = new MediaPlayerConfiguration();
 
         var coordinator = platformFactory.CreatePresentationCoordinator(null!, configuration);

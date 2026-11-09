@@ -116,7 +116,7 @@ public class TrackerTests
         Assert.Equal(TrackerRowEvents.Off, s.TrackerRowEvents);
         s.TrackerRowEvents = TrackerRowEvents.Orders;
         Assert.Equal(TrackerRowEvents.Orders, s.TrackerRowEvents);
-        Assert.Throws<FatzAudioException>(() => s.TrackerRowEvents = (TrackerRowEvents)7);
+        Assert.Throws<AudioException>(() => s.TrackerRowEvents = (TrackerRowEvents)7);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class TrackerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => s.TrackerSpeed = 0);
         s.SetTrackerChannelVolume(0, 0.5);
         Assert.Equal(0.5, s.GetTrackerChannelVolume(0), 2);
-        Assert.Throws<FatzAudioException>(() => s.SetTrackerChannelVolume(4, 0.5));
+        Assert.Throws<AudioException>(() => s.SetTrackerChannelVolume(4, 0.5));
         Assert.Throws<ArgumentOutOfRangeException>(() => s.SetTrackerChannelVolume(0, 1.5));
         s.TrackerGlobalVolume = 0.5;
         Assert.Equal(0.5, s.TrackerGlobalVolume, 2);
@@ -143,11 +143,11 @@ public class TrackerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => s.TrackerAmplificationDb = 61.0);
         s.SetTrackerInstrumentMuted(0, true);
         Assert.True(s.IsTrackerInstrumentMuted(0));
-        Assert.Throws<FatzAudioException>(() => s.SetTrackerInstrumentMuted(31, true));
+        Assert.Throws<AudioException>(() => s.SetTrackerInstrumentMuted(31, true));
         Assert.Equal(TrackerCellEvents.None, s.TrackerCellEvents);
         s.TrackerCellEvents = TrackerCellEvents.Instruments | TrackerCellEvents.Sync;
         Assert.Equal(TrackerCellEvents.Instruments | TrackerCellEvents.Sync, s.TrackerCellEvents);
-        Assert.Throws<FatzAudioException>(() => s.TrackerCellEvents = (TrackerCellEvents)4);
+        Assert.Throws<AudioException>(() => s.TrackerCellEvents = (TrackerCellEvents)4);
     }
 
     [Fact]
@@ -180,6 +180,6 @@ public class TrackerTests
         using var engine = CreateHeadless();
         using var s = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         Assert.Null(s.TrackerInfo);
-        Assert.Throws<FatzAudioException>(() => s.TrackerStereoSeparation);
+        Assert.Throws<AudioException>(() => s.TrackerStereoSeparation);
     }
 }

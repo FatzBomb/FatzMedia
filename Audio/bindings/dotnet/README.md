@@ -43,7 +43,7 @@ song.Ramp(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(3), Curve.EqualPower);
 | `AudioEncoder` | Writes WAV, FLAC or MP3 to a file or any `Stream` on its own thread: `Record(output)`, `Record(stream)`, `Encode(stream)`, `Write(...)`, `ConvertFile(...)`, `IsPaused`, `Status`, `Wait`, `Close`. |
 | `Lame` | `Load(folder)`, `Info`: the libmp3lame your app ships, loaded at runtime for MP3 (never bundled). |
 | `Curve` | `Linear`, `EqualPower`, `Logarithmic`, `Exponential`, `SCurve`, `Bezier(x1, y1, x2, y2)`, `Points(...)`. |
-| `FatzAudioException` | Thrown for every failed native call; `ErrorCode` mirrors the C `FA_ERROR_*` values. No "last error" polling. |
+| `AudioException` | Thrown for every failed native call; `ErrorCode` mirrors the C `FA_ERROR_*` values. No "last error" polling. |
 
 Decode-only use (no device):
 
@@ -75,7 +75,7 @@ version may change the ABI ([CHANGELOG.md](../../CHANGELOG.md)).
 
 ## Status
 
-The public API is complete. A call a platform cannot do throws `FatzAudioException` with `ErrorCode.NotImplemented` (for example microphone capture on an engine with `NullOutput`, or Windows-only features elsewhere); the feature guides say where. See the [feature guides](../../docs/features/README.md) for what is available, and [Getting started](../../docs/getting-started.md) to install the package.
+The public API is complete. A call a platform cannot do throws `AudioException` with `ErrorCode.NotImplemented` (for example microphone capture on an engine with `NullOutput`, or Windows-only features elsewhere); the feature guides say where. See the [feature guides](../../docs/features/README.md) for what is available, and [Getting started](../../docs/getting-started.md) to install the package.
 
 ## Tests
 

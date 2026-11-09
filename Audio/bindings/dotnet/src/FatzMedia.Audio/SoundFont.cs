@@ -9,7 +9,7 @@ namespace FatzMedia.Audio;
 /// <see cref="StreamOptions.SoundFont"/> for one stream. No soundfont is built in. A MIDI file opened without one
 /// plays with the instruments the OS ships (<see cref="FromSystem"/>: gm.dls on Windows, gs_instruments.dls on
 /// macOS, a General MIDI .sf2 package on Linux); where there is none, or with
-/// <see cref="AudioEngineOptions.NoSystemSoundFont"/>, the open throws <see cref="FatzAudioException"/> with
+/// <see cref="AudioEngineOptions.NoSystemSoundFont"/>, the open throws <see cref="AudioException"/> with
 /// <see cref="ErrorCode.NoSoundFont"/>.
 /// </summary>
 /// <remarks>
@@ -49,7 +49,7 @@ public sealed class SoundFont : IDisposable
     /// <summary>Loads a SoundFont 2 (.sf2, also SF3 with compressed samples) or DLS (.dls) bank.</summary>
     /// <param name="path">Path of the .sf2, .sf3 or .dls file.</param>
     /// <returns>A soundfont that must be disposed.</returns>
-    /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a usable bank
+    /// <exception cref="AudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a usable bank
     /// (<see cref="ErrorCode.UnsupportedFormat"/>; SFZ is not supported).</exception>
     public static SoundFont FromFile(string path)
     {
@@ -61,7 +61,7 @@ public sealed class SoundFont : IDisposable
     /// <summary>Loads a SoundFont 2 or DLS bank from memory (the bytes are copied).</summary>
     /// <param name="data">The .sf2 or .dls file's bytes.</param>
     /// <returns>A soundfont that must be disposed.</returns>
-    /// <exception cref="FatzAudioException">The data is not a usable bank (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    /// <exception cref="AudioException">The data is not a usable bank (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
     public static unsafe SoundFont FromMemory(ReadOnlySpan<byte> data)
     {
         NativeLoader.EnsureInitialized();
@@ -76,7 +76,7 @@ public sealed class SoundFont : IDisposable
     /// gs_instruments.dls on macOS, the first General MIDI .sf2 package found on Linux.
     /// </summary>
     /// <returns>The OS's bank (dispose it), or null where there is none (Android, iOS, Linux without one).</returns>
-    /// <exception cref="FatzAudioException">The bank is there but not usable.</exception>
+    /// <exception cref="AudioException">The bank is there but not usable.</exception>
     public static SoundFont? FromSystem()
     {
         NativeLoader.EnsureInitialized();
@@ -92,7 +92,7 @@ public sealed class SoundFont : IDisposable
     /// </summary>
     /// <param name="entries">What to take from which soundfont, the first winning.</param>
     /// <returns>The stack, a soundfont that must be disposed.</returns>
-    /// <exception cref="FatzAudioException">A number is out of range (<see cref="ErrorCode.InvalidArgument"/>), or the
+    /// <exception cref="AudioException">A number is out of range (<see cref="ErrorCode.InvalidArgument"/>), or the
     /// entries select no preset at all (<see cref="ErrorCode.NotFound"/>).</exception>
     /// <exception cref="ObjectDisposedException">A soundfont of the entries was disposed.</exception>
     /// <example>
@@ -152,7 +152,7 @@ public sealed class SoundFont : IDisposable
         for (int i = 0; i < list.Length; i++)
         {
             var p = NativeSized.New<FaSoundFontPreset>();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_preset(Handle, (uint)i, &p));
+            AudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_preset(Handle, (uint)i, &p));
             list[i] = new SoundFontPreset(p.Bank, p.Program, NativeText.Read(p.Name));
         }
         return list;
@@ -162,7 +162,7 @@ public sealed class SoundFont : IDisposable
     /// <c>fa_stream_get_soundfont</c>).</summary>
     internal static SoundFont FromNative(int rc, nint native)
     {
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         var h = new SoundFontHandle();
         Marshal.InitHandle(h, native);
         return new SoundFont(h);
@@ -171,7 +171,7 @@ public sealed class SoundFont : IDisposable
     private unsafe SoundFontInfo ReadInfo()
     {
         var n = NativeSized.New<FaSoundFontInfo>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_info(Handle, &n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_info(Handle, &n));
         return new SoundFontInfo(NativeText.Read(n.Name), (int)n.PresetCount, (long)n.SampleMemory);
     }
 

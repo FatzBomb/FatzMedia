@@ -20,7 +20,7 @@ internal sealed class LightweightSurfacesWindow : Window
     private int _colour;
 
     public LightweightSurfacesWindow(
-        Func<IMediaControlPlatformFactory> createPlatformFactory,
+        Func<IPlatformFactory> createPlatformFactory,
         IReadOnlyList<string> nativeLibraryPaths,
         WpfPresentationMode presentationMode,
         bool autoHide)

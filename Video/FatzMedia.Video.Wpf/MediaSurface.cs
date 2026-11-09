@@ -18,8 +18,8 @@ public sealed partial class MediaSurface : Grid
     private readonly ContentPresenter _overlayPresenter;
     private readonly bool _isDesignMode;
     private WpfCompositedSurfaceHost? _compositedHost;
-    private IMediaControlSession? _attachedPrimarySession;
-    private IMediaControlSession? _eventSession;
+    private IPlayerSession? _attachedPrimarySession;
+    private IPlayerSession? _eventSession;
     private Window? _ownerWindow;
     private HwndSource? _ownerHwndSource;
     private bool _primaryAttached;
@@ -76,13 +76,13 @@ public sealed partial class MediaSurface : Grid
 
     public static readonly DependencyProperty PlayerProperty = DependencyProperty.Register(
         nameof(Player),
-        typeof(IMediaControlSession),
+        typeof(IPlayerSession),
         typeof(MediaSurface),
         new PropertyMetadata(null, OnPlayerChanged));
 
-    public IMediaControlSession? Player
+    public IPlayerSession? Player
     {
-        get => (IMediaControlSession?)GetValue(PlayerProperty);
+        get => (IPlayerSession?)GetValue(PlayerProperty);
         set => SetValue(PlayerProperty, value);
     }
 
@@ -207,7 +207,7 @@ public sealed partial class MediaSurface : Grid
         return true;
     }
 
-    private void OpenSecondaryWindow(IMediaControlSession session, Rect bounds, WindowState state)
+    private void OpenSecondaryWindow(IPlayerSession session, Rect bounds, WindowState state)
     {
         // The secondary window presents the same way as this surface, so software mode, which
         // draws only into frame sinks, reaches it too (ENG-016).
@@ -279,15 +279,15 @@ public sealed partial class MediaSurface : Grid
         if (surface._isDesignMode)
             return;
 
-        surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
-        surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
+        surface.DetachSessionEvents(e.OldValue as IPlayerSession);
+        surface.DetachPrimarySurface(e.OldValue as IPlayerSession);
         surface._bookkeeping.ResetAttachRefusal();
 
         // The content tracker follows the Player property, not the load state, so a surface that
         // is unloaded and loaded again (a tab switch, a new parent) keeps its auto-hide state, as
         // in Stage 029C: a paused video stays visible without a new frame.
-        surface._contentTracker.Session = e.NewValue as IMediaControlSession;
-        if (e.NewValue is IMediaControlSession session)
+        surface._contentTracker.Session = e.NewValue as IPlayerSession;
+        if (e.NewValue is IPlayerSession session)
         {
             surface.AttachSessionEvents(session);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
@@ -301,7 +301,7 @@ public sealed partial class MediaSurface : Grid
     private static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
-        if (surface.Player is IMediaControlSession session
+        if (surface.Player is IPlayerSession session
             && surface.Role == MediaPresentationSurfaceRole.Primary
             && e.NewValue is VideoDisplayMode mode)
         {
@@ -318,7 +318,7 @@ public sealed partial class MediaSurface : Grid
         surface.DetachPrimarySurface(surface._attachedPrimarySession);
         if (e.Property == RoleProperty
             && e.NewValue is MediaPresentationSurfaceRole.Primary
-            && surface.Player is IMediaControlSession session)
+            && surface.Player is IPlayerSession session)
         {
             session.VideoDisplayMode = surface.VideoDisplayMode;
         }
@@ -446,7 +446,7 @@ public sealed partial class MediaSurface : Grid
 
     private void AttachOrResizePrimarySurface()
     {
-        IMediaControlSession? session = Player;
+        IPlayerSession? session = Player;
         if (!IsLoaded || session == null)
             return;
 
@@ -502,7 +502,7 @@ public sealed partial class MediaSurface : Grid
         UpdateNativeSurfaceVisibility();
     }
 
-    private void DetachPrimarySurface(IMediaControlSession? session)
+    private void DetachPrimarySurface(IPlayerSession? session)
     {
         if (!_primaryAttached || session == null)
             return;
@@ -517,7 +517,7 @@ public sealed partial class MediaSurface : Grid
         UpdateNativeSurfaceVisibility();
     }
 
-    private void AttachSessionEvents(IMediaControlSession? session)
+    private void AttachSessionEvents(IPlayerSession? session)
     {
         if (session == null || ReferenceEquals(session, _eventSession))
             return;
@@ -531,7 +531,7 @@ public sealed partial class MediaSurface : Grid
         session.PresentationFramePresented += OnSessionPresentationFramePresented;
     }
 
-    private void DetachSessionEvents(IMediaControlSession? session)
+    private void DetachSessionEvents(IPlayerSession? session)
     {
         if (session == null || !ReferenceEquals(session, _eventSession))
             return;
@@ -548,7 +548,7 @@ public sealed partial class MediaSurface : Grid
     private void OnSessionMediaStarted(object? sender, EventArgs e)
     {
         _showPrimarySurfaceAfterPresentation = !_contentTracker.AutoHide
-            && !IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession);
+            && !IsLoopingVisualPlayback(sender as IPlayerSession ?? _eventSession);
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
@@ -560,7 +560,7 @@ public sealed partial class MediaSurface : Grid
 
     private void OnSessionMediaEnded(object? sender, EventArgs e)
     {
-        if (IsLoopingPlayback(sender as IMediaControlSession ?? _eventSession))
+        if (IsLoopingPlayback(sender as IPlayerSession ?? _eventSession))
             return;
 
         _showPrimarySurfaceAfterPresentation = false;
@@ -585,7 +585,7 @@ public sealed partial class MediaSurface : Grid
 
     private void UpdateNativeSurfaceVisibility()
     {
-        IMediaControlSession? session = Player;
+        IPlayerSession? session = Player;
         var shouldShow = _primaryAttached
             && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
             && !_showPrimarySurfaceAfterPresentation
@@ -624,23 +624,23 @@ public sealed partial class MediaSurface : Grid
     // A standalone visual without an audio stream (image, or video/CDG with no audio) is presented to
     // the swap chain by Core on load but never enters Playing/Paused, so show the native surface for it.
     // The Stopped gate keeps this from re-dispatching on every presented frame during no-audio playback.
-    private static bool HasStandaloneVisual(IMediaControlSession? session) =>
+    private static bool HasStandaloneVisual(IPlayerSession? session) =>
         session is { IsOpen: true }
         && !session.Content.HasFlag(MediaContent.Audio)
         && (session.Content.HasFlag(MediaContent.Image)
             || session.Content.HasFlag(MediaContent.Video)
             || session.Content.HasFlag(MediaContent.Cdg));
 
-    private static bool HasStoppedStandaloneVisual(IMediaControlSession? session) =>
+    private static bool HasStoppedStandaloneVisual(IPlayerSession? session) =>
         session is { State: MediaPlayerState.Stopped } && HasStandaloneVisual(session);
 
-    private static bool IsLoopingVisualPlayback(IMediaControlSession? session) =>
+    private static bool IsLoopingVisualPlayback(IPlayerSession? session) =>
         session is { IsOpen: true, LoopMedia: true }
         && (session.Content.HasFlag(MediaContent.Video)
             || session.Content.HasFlag(MediaContent.Cdg)
             || session.Content.HasFlag(MediaContent.Image));
 
-    private static bool IsLoopingPlayback(IMediaControlSession? session) =>
+    private static bool IsLoopingPlayback(IPlayerSession? session) =>
         session is { IsOpen: true, LoopMedia: true };
 
     private void AttachOwnerWindowHook()
@@ -733,7 +733,7 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private void ApplyPrimarySurfaceLiveResize(IMediaControlSession session)
+    private void ApplyPrimarySurfaceLiveResize(IPlayerSession session)
     {
         if (_primarySurfaceLiveResize)
         {

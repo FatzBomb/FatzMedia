@@ -63,8 +63,8 @@ public class MidiEventTests
         Assert.True(s.SendMidi(MidiEvent.NoteOn(0, 69, 127)));
         var y = ReadAll(s, 1000);
         Assert.InRange(FirstSound(y), 0, 66);
-        Assert.Throws<FatzAudioException>(() => s.SendMidi(MidiEvent.NoteOn(16, 60, 100)));
-        Assert.Throws<FatzAudioException>(() => s.PositionFrames = 1000);
+        Assert.Throws<AudioException>(() => s.SendMidi(MidiEvent.NoteOn(16, 60, 100)));
+        Assert.Throws<AudioException>(() => s.PositionFrames = 1000);
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class MidiEventTests
         // 8193 program changes (2 bytes each): more than FA_MIDI_QUEUE messages is InvalidArgument, not a full queue.
         var bytes = new byte[8193 * 2];
         for (int i = 0; i < bytes.Length; i += 2) bytes[i] = 0xC0;
-        var ex = Assert.Throws<FatzAudioException>(() => s.SendMidiBytes(bytes));
+        var ex = Assert.Throws<AudioException>(() => s.SendMidiBytes(bytes));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
         Assert.True(s.SendMidiBytes(bytes.AsSpan(0, 8192 * 2)));
     }
@@ -176,7 +176,7 @@ public class MidiEventTests
         b.SetMidiTrackVolume(0, 0.5f);
         Assert.Equal(0.5f, b.GetMidiTrackVolume(0));
         Assert.Throws<ArgumentOutOfRangeException>(() => b.SetMidiTrackVolume(0, 5f));
-        Assert.Throws<FatzAudioException>(() => b.SetMidiTrackVolume(1, 0.5f));
+        Assert.Throws<AudioException>(() => b.SetMidiTrackVolume(1, 0.5f));
         var x = ReadAll(a, Rate / 2);
         var y = ReadAll(b, Rate / 2);
         Assert.Equal(-6.02, 20 * Math.Log10(Rms(y, 1000, 20000) / Rms(x, 1000, 20000)), 2);

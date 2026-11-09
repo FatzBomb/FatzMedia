@@ -101,7 +101,7 @@ The category is a free-form string, and new ones appear as the engine grows, so 
 | Network | `Network` | Waiting for the network, audio that did not open, retries. |
 | Compositing and rendering | `Composition`, `Presentation`, `D3D11`, `D3D11.DeviceLost`, `D3D11.Hdr`, `D3D11.HdrOutput`, `Vulkan`, `Subtitle`, `CdgEngine` | Device creation, present failures, HDR output, subtitle rasterization. |
 | GPU device loss | `DeviceRecovery`, `D3D11.DeviceLost`, `Vulkan.DeviceLost`, `Software.DeviceLost`, `Decoder.DeviceLost` | Device loss and recovery. See [GPU device loss](../presentation/gpu-device-loss.md). |
-| Session | `MediaFile`, `MediaControls`, `MediaControlPlayer`, `MediaControlOperationQueue`, `PreparedNext`, `PipelineMediaEngine` | Load failures, reset and dispose problems, prepared-next analysis and transitions. |
+| Session | `MediaFile`, `MediaControls`, `MediaControlPlayer`, `PlayerOperationQueue`, `PreparedNext`, `PipelineMediaEngine` | Load failures, reset and dispose problems, prepared-next analysis and transitions. |
 | Host events | `HostEvent` | One of your event handlers threw. |
 | Adapter surfaces | `Wpf.MediaSurface`, `Avalonia.MediaSurface`, `WinForms.MediaSurface` | Which presentation path a surface uses, and a Warning when the player refuses a surface. |
 

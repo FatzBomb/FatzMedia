@@ -43,7 +43,7 @@ $avaloniaSurface = Read-Text 'FatzMedia.Video.Avalonia/MediaSurface.cs'
 $avaloniaSecondary = Read-Text 'FatzMedia.Video.Avalonia/SecondaryPresentationWindow.cs'
 $winFormsSurface = Read-Text 'FatzMedia.Video.WinForms/MediaSurface.cs'
 $winFormsSecondary = Read-Text 'FatzMedia.Video.WinForms/SecondaryPresentationWindow.cs'
-$sessionContract = Read-Text 'FatzMedia.Video/Api/IMediaControlSession.cs'
+$sessionContract = Read-Text 'FatzMedia.Video/Api/IPlayerSession.cs'
 $coordinator = Read-Text 'FatzMedia.Video/Controllers/MediaPresentationCoordinator.cs'
 $backendSet = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
 $surfaceController = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
@@ -51,9 +51,9 @@ $presentationServices = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/D3D/Prese
 $compositionPresenter = Read-Text 'FatzMedia.Video.Direct3D11/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
 $targetRegistry = Read-Text 'FatzMedia.Video/Core/Graphics/Composition/Planning/CompositionTargetRegistry.cs'
 
-Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IMediaControlSession must expose neutral presentation-surface attach.'
-Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IMediaControlSession must expose neutral presentation-surface resize.'
-Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+surfaceId\s*\)' 'IMediaControlSession must expose neutral presentation-surface detach.'
+Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IPlayerSession must expose neutral presentation-surface attach.'
+Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IPlayerSession must expose neutral presentation-surface resize.'
+Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+surfaceId\s*\)' 'IPlayerSession must expose neutral presentation-surface detach.'
 
 Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaSurface must keep a stable default secondary surface id.'
 Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*(Player|session),\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
@@ -123,7 +123,7 @@ foreach ($adapter in @(
         Assert-Match $control 'public\s+bool\s+AutoPlay' "$name lightweight controls must expose AutoPlay."
         Assert-Match $control 'public\s+bool\s+AutoHide' "$name lightweight controls must expose AutoHide."
         Assert-Match $control 'event\s+EventHandler\?\s+ContentVisibilityChanged' "$name lightweight controls must expose ContentVisibilityChanged."
-        Assert-Match $control 'public\s+IMediaControlPlatformFactory\?\s+PlatformFactory' "$name lightweight controls must expose PlatformFactory."
+        Assert-Match $control 'public\s+IPlatformFactory\?\s+PlatformFactory' "$name lightweight controls must expose PlatformFactory."
         Assert-Match $control 'public\s+IReadOnlyList<string>\?\s+NativeLibraryPaths' "$name lightweight controls must expose NativeLibraryPaths."
         Assert-Match $control 'public\s+Task<bool>\s+LoadAsync\s*\(\s*string\s+path\s*\)' "$name lightweight controls must load a path."
     }
@@ -144,7 +144,7 @@ Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurfac
 foreach ($adapter in @('FatzMedia.Video.Wpf', 'FatzMedia.Video.Avalonia', 'FatzMedia.Video.WinForms')) {
     $facade = Read-Text "$adapter/Player.cs"
     Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*MediaControlPlayer' "$adapter must offer a Player facade over MediaControlPlayer."
-    Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IMediaControlPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
+    Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
 }
 
 foreach ($player in @(

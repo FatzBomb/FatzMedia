@@ -28,7 +28,7 @@ public static class MediaPlayerServiceProvider
     /// Creates a service provider with specified configuration and host-provided native library paths.
     /// </summary>
     public static IServiceProvider Create(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths)
-        => MediaControlServiceProvider.Create(configuration, nativeLibraryPaths, new WindowsMediaControlPlatformServices());
+        => PlayerServiceProvider.Create(configuration, nativeLibraryPaths, new WindowsPlatformServices());
 
     private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
         string.IsNullOrWhiteSpace(nativeLibraryPath)

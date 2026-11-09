@@ -97,7 +97,7 @@ internal sealed class PlayerRendererSelection
     public static PlayerRendererSelection Resolve(PlayerRendererRequest request, bool hdrOutput = false)
     {
         Func<IMediaPresentationCoordinatorFactory> Direct3D11(Direct3D11DeviceSelection selection) =>
-            () => WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(
+            () => WindowsDirect3D11PlatformFactory.CreatePresentationFactory(
                 new Direct3D11PresentationOptions { DeviceSelection = selection, HdrOutput = hdrOutput });
 
         switch (request)

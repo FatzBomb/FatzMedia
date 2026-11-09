@@ -16,7 +16,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void HeadlessCompositor_FallsBackToTheFrameSinkAndSaysWhy()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface);
 
@@ -29,7 +29,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void PreferGpuSharedSurfaceOff_UsesTheFrameSinkEvenWithInterop()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { PreferGpuSharedSurface = false, GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface);
@@ -42,7 +42,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void SupportedInterop_AttachesASharedImageSurfaceWithTheCompositorRequest()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface);
@@ -65,7 +65,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void RendererRejectingSharedImages_FallsBackToTheFrameSinkWithItsReason()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.AttachResult = descriptor =>
         {
             if (descriptor.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.SharedGpuImage)
@@ -90,7 +90,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void LaterUnavailableReport_ReattachesWithTheFrameSinkAndStaysThereForTheSession()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface);
@@ -116,7 +116,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void ImagesTheCompositorCannotImport_FallBackAndHandTheHandlesBack()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface);
@@ -154,7 +154,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void ContextLost_ReportsTheDeviceLoss_AndReturnsToSharedImagesOnceTheInteropWorks()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var queries = 0;
         var surface = new MediaSurface
         {
@@ -193,7 +193,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void ContextLost_RendererStillRecovering_KeepsRetryingInsteadOfGivingUp()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface);
@@ -227,7 +227,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void ContextLost_InteropNeverReturns_KeepsTheFrameSinkAfterTheRetryLimit()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var lost = false;
         var surface = new MediaSurface
         {
@@ -254,7 +254,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void PendingInterop_AttachesOnlyOnceTheCompositorAnswers()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var answer = new TaskCompletionSource<GpuInteropCapabilities?>();
         var surface = new MediaSurface { GpuInteropProvider = _ => new ValueTask<GpuInteropCapabilities?>(answer.Task) };
         surface.Player = session;
@@ -272,7 +272,7 @@ public sealed class SharedGpuImagePathTests
     [AvaloniaFact]
     public void InteropWithoutSupportedHandleKinds_FallsBack()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         GpuInteropCapabilities interop = FakeInterop.Create([KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef], CompositionGpuImportedImageSynchronizationCapabilities.Automatic);
         var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(interop) };
         surface.Player = session;

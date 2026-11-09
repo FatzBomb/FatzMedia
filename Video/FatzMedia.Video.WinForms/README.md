@@ -1,12 +1,12 @@
 # FatzMedia.Video.WinForms
 
 WinForms adapter for `FatzMedia.Video` (Stage 027A slice 3, Stage 046A): `MediaSurface`,
-an HWND control attached to any `IMediaControlSession` as a presentation surface (with a frame-sink
+an HWND control attached to any `IPlayerSession` as a presentation surface (with a frame-sink
 fallback and overlay content), `SecondaryPresentationWindow` for a second screen, the
 `KaraokeSurface` and `BackgroundSurface` controls, and `WinFormsMediaInputSources`.
 
 ```csharp
-var player = new MediaControlPlayer(new WindowsDirect3D11MediaControlPlatformFactory(), MediaPlayerConfiguration.Auto, ["native"]);
+var player = new MediaControlPlayer(new WindowsDirect3D11PlatformFactory(), MediaPlayerConfiguration.Auto, ["native"]);
 var surface = new MediaSurface { Dock = DockStyle.Fill, Player = player };
 ```
 
@@ -89,7 +89,7 @@ The same self-contained controls as the WPF and Avalonia adapters, over Core's
 destroyed; a new handle loads `Source` again.
 
 ```csharp
-var background = new BackgroundSurface(new WindowsDirect3D11MediaControlPlatformFactory()) { Dock = DockStyle.Fill };
+var background = new BackgroundSurface(new WindowsDirect3D11PlatformFactory()) { Dock = DockStyle.Fill };
 background.OverlayContent = new Label { Text = "Up next", BackColor = Color.Transparent, AutoSize = true };
 background.Source = @"C:\loops\stage.mp4";   // or a Color, a Bitmap, a MediaInputSource
 var karaoke = new KaraokeSurface(platform) { Dock = DockStyle.Fill, Source = @"C:\songs\song.zip" };

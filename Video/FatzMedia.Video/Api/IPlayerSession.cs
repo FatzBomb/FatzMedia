@@ -34,7 +34,7 @@ namespace FatzMedia.Video;
 /// callback, a task) is outside it once it runs on another thread or after the handler returned.
 /// </para>
 /// </remarks>
-public interface IMediaControlSession : IDisposable
+public interface IPlayerSession : IDisposable
 {
     /// <summary>Gets codec, container, and hardware-decode capabilities for the active platform.</summary>
     VideoDecodeCapabilities VideoDecodeCapabilities { get; }

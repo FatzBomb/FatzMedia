@@ -82,7 +82,7 @@ public sealed class MediaSurfacePresentationModeTests
         Dispatcher.PushFrame(frame);
     }
 
-    private sealed class TestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
+    private sealed class TestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         private readonly NullPresentationCoordinator _coordinator = new();
 

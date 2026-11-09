@@ -239,7 +239,7 @@ public sealed class WebStreamTests : IDisposable
     {
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         Assert.Throws<ArgumentException>(() => engine.OpenUrl("ftp://example.com/x.mp3"));
-        Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => engine.OpenUrl(Url("/missing.mp3"), DecodeOnly)).ErrorCode);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => engine.OpenUrl(Url("/missing.mp3"), DecodeOnly)).ErrorCode);
         using var file = engine.OpenMemory(_wav, new StreamOptions { DecodeOnly = true });
         Assert.Null(file.NetworkStatus);
         Assert.Equal(StreamMetadata.Empty, file.Metadata);

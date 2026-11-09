@@ -11,7 +11,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
 {
     private readonly Control _owner;
     private readonly Func<Task> _reload;
-    private IMediaControlPlatformFactory? _platformFactory;
+    private IPlatformFactory? _platformFactory;
     private bool _isContentVisible;
     private bool _reloadScheduled;
     private bool _reloadDropped;
@@ -39,7 +39,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
 
     public bool IsContentVisible => _isContentVisible;
 
-    public IMediaControlPlatformFactory? PlatformFactory
+    public IPlatformFactory? PlatformFactory
     {
         get => _platformFactory;
         set

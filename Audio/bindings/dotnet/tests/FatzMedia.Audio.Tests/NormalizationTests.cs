@@ -65,7 +65,7 @@ public class NormalizationTests
     public void ScanLoudness_MissingFile_ThrowsNotFound()
     {
         using var engine = CreateHeadless();
-        var ex = Assert.Throws<FatzAudioException>(() => engine.ScanLoudness("no-such-file.wav"));
+        var ex = Assert.Throws<AudioException>(() => engine.ScanLoudness("no-such-file.wav"));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
     }
 
@@ -109,9 +109,9 @@ public class NormalizationTests
     {
         using var engine = CreateHeadless();
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.SetNormalization(NormalizeMode.Track, 3)).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.SetNormalization(NormalizeMode.Track, 3)).ErrorCode);
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.SetLimiter(LimiterMode.On, 2)).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.SetLimiter(LimiterMode.On, 2)).ErrorCode);
         engine.SetLimiter(LimiterMode.On, -1);
         engine.SetLimiter(LimiterMode.Auto);
         engine.SetNormalization(NormalizeMode.Off);
@@ -135,7 +135,7 @@ public class NormalizationTests
                 Assert.Equal(LoudnessSource.Scan, engine.ScanLoudness(path).Source);
                 Assert.Throws<ArgumentOutOfRangeException>(() => engine.SetCacheSize(-1));
                 Assert.Equal(ErrorCode.InvalidArgument,
-                    Assert.Throws<FatzAudioException>(() => engine.SetCacheSize(1000)).ErrorCode);
+                    Assert.Throws<AudioException>(() => engine.SetCacheSize(1000)).ErrorCode);
                 engine.SetCacheSize(0);
             }
             using (var again = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = dir }))
@@ -157,9 +157,9 @@ public class NormalizationTests
         Assert.Throws<ArgumentOutOfRangeException>(() => engine.SetNormalizationStartWait(TimeSpan.FromSeconds(11)));
         Assert.Throws<ArgumentOutOfRangeException>(() => engine.SetNormalizationStartWait(TimeSpan.FromMilliseconds(-1)));
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.SetNormalizationStartWait(TimeSpan.Zero, 13)).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.SetNormalizationStartWait(TimeSpan.Zero, 13)).ErrorCode);
         Assert.Equal(ErrorCode.InvalidArgument,
-            Assert.Throws<FatzAudioException>(() => engine.SetNormalizationStartWait(TimeSpan.Zero, -1)).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.SetNormalizationStartWait(TimeSpan.Zero, -1)).ErrorCode);
     }
 
     [Fact]

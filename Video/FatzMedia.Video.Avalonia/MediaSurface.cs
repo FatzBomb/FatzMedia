@@ -8,7 +8,7 @@ using FatzMedia.Video.Core.Configuration;
 namespace FatzMedia.Video.Avalonia;
 
 /// <summary>
-/// Avalonia media surface. It attaches one surface to the bound <see cref="IMediaControlSession"/>,
+/// Avalonia media surface. It attaches one surface to the bound <see cref="IPlayerSession"/>,
 /// keeps its pixel size in sync with layout bounds and render scaling, and shows the final frames
 /// Core's selected renderer produces. It owns no media, timing, composition, or renderer logic.
 /// </summary>
@@ -41,8 +41,8 @@ public class MediaSurface : Control
     /// <summary>The surface id a non-primary surface uses when <see cref="SurfaceId"/> is not set.</summary>
     public const string DefaultSecondarySurfaceId = "secondary";
 
-    public static readonly StyledProperty<IMediaControlSession?> PlayerProperty =
-        AvaloniaProperty.Register<MediaSurface, IMediaControlSession?>(nameof(Player));
+    public static readonly StyledProperty<IPlayerSession?> PlayerProperty =
+        AvaloniaProperty.Register<MediaSurface, IPlayerSession?>(nameof(Player));
 
     public static readonly StyledProperty<VideoDisplayMode> VideoDisplayModeProperty =
         AvaloniaProperty.Register<MediaSurface, VideoDisplayMode>(nameof(VideoDisplayMode), VideoDisplayMode.Zoom);
@@ -68,7 +68,7 @@ public class MediaSurface : Control
     private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
     private AvaloniaFrameSink? _sink;
     private AvaloniaSharedImageSurface? _gpuSurface;
-    private IMediaControlSession? _attachedSession;
+    private IPlayerSession? _attachedSession;
     private (int Width, int Height) _attachedPixelSize;
     private bool _isAttachedToTree;
     private TopLevel? _topLevel;
@@ -76,7 +76,7 @@ public class MediaSurface : Control
     private GpuInteropCapabilities? _gpuInterop;
     private bool _gpuInteropResolved;
     private int _gpuInteropQuery;
-    private IMediaControlSession? _gpuRejectedSession;
+    private IPlayerSession? _gpuRejectedSession;
     private string? _gpuRejectedReason;
     // ENG-039: the compositor's graphics context was lost (a GPU reset). The frame sink is used
     // and the interop is asked for again until it works, instead of ruling the path out.
@@ -120,7 +120,7 @@ public class MediaSurface : Control
     public event EventHandler? FirstFrameReady;
 
     /// <summary>Gets or sets the session this surface presents.</summary>
-    public IMediaControlSession? Player
+    public IPlayerSession? Player
     {
         get => GetValue(PlayerProperty);
         set => SetValue(PlayerProperty, value);
@@ -206,7 +206,7 @@ public class MediaSurface : Control
     /// Gets whether the surface shows only its <see cref="Background"/> because no renderer
     /// presents to it: the session is in <see cref="MediaPlayerMode.Audio"/> mode (Stage 043A),
     /// which keeps surfaces attached but has no presentation (the session's
-    /// <see cref="IMediaControlSession.HasPresentation"/>, Stage 046A). The last video frame is not
+    /// <see cref="IPlayerSession.HasPresentation"/>, Stage 046A). The last video frame is not
     /// left on screen; frames show again once the session leaves Audio mode.
     /// </summary>
     public bool IsPresentationSuspended => _isPresentationSuspended;
@@ -310,8 +310,8 @@ public class MediaSurface : Control
             Detach();
             _bookkeeping.ResetAttachRefusal();
             if (_isAttachedToTree)
-                FollowSession(change.NewValue as IMediaControlSession);
-            if (change.NewValue is IMediaControlSession session && Role == MediaPresentationSurfaceRole.Primary)
+                FollowSession(change.NewValue as IPlayerSession);
+            if (change.NewValue is IPlayerSession session && Role == MediaPresentationSurfaceRole.Primary)
                 session.VideoDisplayMode = VideoDisplayMode;
             AttachOrResize();
         }
@@ -423,7 +423,7 @@ public class MediaSurface : Control
 
     private void AttachOrResize()
     {
-        IMediaControlSession? session = Player;
+        IPlayerSession? session = Player;
         if (!_isAttachedToTree || session is null || _sink is null || Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
@@ -474,7 +474,7 @@ public class MediaSurface : Control
         FrameSink,
     }
 
-    private GpuPathChoice ChooseGpuPath(IMediaControlSession session, out MediaSharedGpuImageRequest? request, out string reason)
+    private GpuPathChoice ChooseGpuPath(IPlayerSession session, out MediaSharedGpuImageRequest? request, out string reason)
     {
         request = null;
         if (!PreferGpuSharedSurface)
@@ -533,7 +533,7 @@ public class MediaSurface : Control
     }
 
     private bool TryAttachGpu(
-        IMediaControlSession session,
+        IPlayerSession session,
         MediaSharedGpuImageRequest request,
         (int Width, int Height) pixelSize,
         double scaling,
@@ -702,7 +702,7 @@ public class MediaSurface : Control
     /// decides auto-hide and reports Audio mode (Stage 043A), which keeps surfaces attached but
     /// presents nothing, so the last video frame would stay on screen.
     /// </summary>
-    private void FollowSession(IMediaControlSession? session)
+    private void FollowSession(IPlayerSession? session)
     {
         _contentTracker.Session = session;
         UpdateContentState();
@@ -725,7 +725,7 @@ public class MediaSurface : Control
 
     private void UpdateContentState()
     {
-        IMediaControlSession? session = _contentTracker.Session;
+        IPlayerSession? session = _contentTracker.Session;
         var suspended = session is not null && !_contentTracker.HasPresentation;
         if (suspended != _isPresentationSuspended)
         {
@@ -800,7 +800,7 @@ public class MediaSurface : Control
 
     private void Detach()
     {
-        IMediaControlSession? session = _attachedSession;
+        IPlayerSession? session = _attachedSession;
         _attachedSession = null;
         _attachedPixelSize = default;
         if (session is not null)

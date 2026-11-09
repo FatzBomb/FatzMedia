@@ -23,7 +23,7 @@ Full or Background (see "Slice 2 decisions").
 
 - `public enum MediaPlayerMode { Full, Background, Audio }`.
 - `MediaPlayerConfiguration.Mode` (default `Full`): the mode the player is created in.
-- `MediaControlPlayer.Mode` (and on `IMediaControlSession` with a default implementation returning
+- `MediaControlPlayer.Mode` (and on `IPlayerSession` with a default implementation returning
   `Full`, so other implementers do not break).
 - `MediaControlPlayer.AutoBackground` (default `true`): Full mode searches for sidecar/archive
   backgrounds. `false` = no search; explicit `Load(path, backgroundPath)` still works.
@@ -56,7 +56,7 @@ Full or Background (see "Slice 2 decisions").
 - **Mode-dependent construction in one place.** `MediaControlPlayer.CreateSessionGraph` builds
   everything from the configuration, including `Mode`; the mode-specific choices are in
   `MediaControlPlayer.Modes.cs` (presentation coordinator, audio device monitor, forced loop,
-  the host's background options), `MediaControlServiceProvider` (audio engine) and the
+  the host's background options), `PlayerServiceProvider` (audio engine) and the
   `PlaybackCoordinator` constructor (which pipelines are attached). `Reset` with another
   configuration already rebuilds the graph in another mode, so slice 2's `SetModeAsync` is a
   rebuild plus a reopen at the saved position. The player keeps the configuration it was built
@@ -80,7 +80,7 @@ Full or Background (see "Slice 2 decisions").
 - **Audio mode content.** MP3+G opens its audio only (no CD+G pipeline). No subtitle pipeline
   is built, so MIDI lyrics are not extracted. Backgrounds are never searched (`AutoBackground`
   reads false) and an explicit background is ignored with a Warning; the load still succeeds.
-- **Background mode audio.** `MediaControlServiceProvider` registers a new `SilentAudioEngine`
+- **Background mode audio.** `PlayerServiceProvider` registers a new `SilentAudioEngine`
   (no-op `IAudioEngine`) instead of `AudioEngine`, so `BASS_Init` and the MIDI soundfont setup
   never run, and the player does not resolve or start the audio device monitor. `ClockAudioEngine`
   was not reused because its setters throw `NotSupportedException`. `VideoPipeline.Open` skips
@@ -104,7 +104,7 @@ Full or Background (see "Slice 2 decisions").
   `CdgVisuals.BackgroundOpacity`, which applies again when it is turned off. The other clears were
   already Transparent. No adapter change was needed. Default off: identical output.
 - **`FromColor`** creates an 8x8 straight-alpha BGRA image (`MediaInputSource.SolidColorSize`).
-- **`IMediaControlSession`** gets `Mode`, `AutoBackground` and `TransparentBackground` with default
+- **`IPlayerSession`** gets `Mode`, `AutoBackground` and `TransparentBackground` with default
   implementations (Full, true and false, setters ignored).
 - **Avalonia test player:** `--mode=full|background|audio` sets the mode of every player.
 
@@ -112,7 +112,7 @@ Full or Background (see "Slice 2 decisions").
 
 - **API.** `MediaControlPlayer.SetModeAsync(MediaPlayerMode)` returns `Task<bool>` and
   `ModeChanged` is an `EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>` (no new event
-  args type). `IMediaControlSession` gets both with default implementations: `SetModeAsync`
+  args type). `IPlayerSession` gets both with default implementations: `SetModeAsync`
   returns `true` only for the current mode, and `ModeChanged` is never raised. `Mode` now reads the
   current mode.
 - **One rebuild path.** `Reset` and `SetModeAsync` share `RebuildSessionGraph`: tear down

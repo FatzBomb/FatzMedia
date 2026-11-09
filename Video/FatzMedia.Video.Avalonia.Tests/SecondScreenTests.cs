@@ -18,8 +18,8 @@ public sealed class SecondScreenTests
     {
         // ENG-036: with several players in one process, a surface's diagnostics reach only the
         // player it is attached to (an unowned one reaches every player's log).
-        (IMediaControlSession first, RecordingSession firstRecorder) = RecordingSession.Create();
-        (IMediaControlSession second, _) = RecordingSession.Create();
+        (IPlayerSession first, RecordingSession firstRecorder) = RecordingSession.Create();
+        (IPlayerSession second, _) = RecordingSession.Create();
         var raised = new System.Collections.Concurrent.ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
@@ -62,7 +62,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void TwoSurfacesOnOneSession_AttachWithTheirOwnIdsRolesAndSizes()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session };
         Window main = Show(primary, 320, 180);
         var second = new SecondaryPresentationWindow(session) { Width = 640, Height = 360 };
@@ -95,7 +95,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void TwoSurfaces_ShowTheFramesOfTheirOwnSinks()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session };
         var singer = new MediaSurface { Player = session, Role = MediaPresentationSurfaceRole.Projector, SurfaceId = "singer" };
         Window main = Show(primary, 320, 180);
@@ -122,7 +122,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void ChangingRoleOrSurfaceId_ReattachesUnderTheNewId()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 100, 50);
 
@@ -141,7 +141,7 @@ public sealed class SecondScreenTests
     {
         // A renderer that exports shared images for the primary only (or for neither): each
         // surface decides its path, so only the secondary falls back.
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.AttachResult = descriptor =>
         {
             if (descriptor.Role == MediaPresentationSurfaceRole.Primary || descriptor.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.SharedGpuImage)
@@ -174,7 +174,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void AudioMode_ClearsTheLastFrameUntilTheSessionLeavesIt()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 64, 32);
         Assert.Equal(1, recorder.ModeChangedSubscribers);
@@ -214,7 +214,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void AudioMode_HidesTheSharedImageVisual()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var surface = new MediaSurface { GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
         surface.Player = session;
         Window window = Show(surface, 320, 180);
@@ -236,7 +236,7 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void ASessionAlreadyInAudioMode_ShowsOnlyTheBackground()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.Mode = MediaPlayerMode.Audio;
         var surface = new MediaSurface { Player = session };
         Window window = Show(surface, 64, 32);

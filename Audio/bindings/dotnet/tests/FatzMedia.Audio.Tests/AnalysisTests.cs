@@ -203,11 +203,11 @@ public class AnalysisTests
     {
         using var engine = CreateHeadless();
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 1), DecodeOnly);
-        var tooFast = Assert.Throws<FatzAudioException>(() => s.BeatGrid = BeatGrid.Constant(200_000, 0, Rate));
+        var tooFast = Assert.Throws<AudioException>(() => s.BeatGrid = BeatGrid.Constant(200_000, 0, Rate));
         Assert.Equal(ErrorCode.InvalidArgument, tooFast.ErrorCode);
-        var barOffset = Assert.Throws<FatzAudioException>(() => s.BeatGrid = new BeatGrid(120, 0, Rate, barOffset: 4));
+        var barOffset = Assert.Throws<AudioException>(() => s.BeatGrid = new BeatGrid(120, 0, Rate, barOffset: 4));
         Assert.Equal(ErrorCode.InvalidArgument, barOffset.ErrorCode);
-        var backwards = Assert.Throws<FatzAudioException>(() => s.BeatGrid = new BeatGrid(120, 0, Rate,
+        var backwards = Assert.Throws<AudioException>(() => s.BeatGrid = new BeatGrid(120, 0, Rate,
             [new TempoSegment(1000, 120, 0), new TempoSegment(500, 120, 1)]));
         Assert.Equal(ErrorCode.InvalidArgument, backwards.ErrorCode);
         Assert.Null(s.BeatGrid);
@@ -393,7 +393,7 @@ public class AnalysisTests
     {
         using var engine = CreateHeadless();
         Assert.Equal(ErrorCode.NotFound,
-            Assert.Throws<FatzAudioException>(() => engine.Analyze("no-such-file.wav")).ErrorCode);
+            Assert.Throws<AudioException>(() => engine.Analyze("no-such-file.wav")).ErrorCode);
         Assert.Throws<ArgumentNullException>(() => engine.Analyze(null!));
 
         string path = TempFile(KickWav(5));
@@ -402,7 +402,7 @@ public class AnalysisTests
             // The tempo range must span at least 1.9 times its start.
             var bad = new AnalysisOptions { MinBpm = 100, MaxBpm = 120 };
             Assert.Equal(ErrorCode.InvalidArgument,
-                Assert.Throws<FatzAudioException>(() => engine.Analyze(path, options: bad)).ErrorCode);
+                Assert.Throws<AudioException>(() => engine.Analyze(path, options: bad)).ErrorCode);
         }
         finally { File.Delete(path); }
 
@@ -410,7 +410,7 @@ public class AnalysisTests
         try
         {
             Assert.Equal(ErrorCode.UnsupportedFormat,
-                Assert.Throws<FatzAudioException>(() => engine.Analyze(junk)).ErrorCode);
+                Assert.Throws<AudioException>(() => engine.Analyze(junk)).ErrorCode);
         }
         finally { File.Delete(junk); }
     }
@@ -419,7 +419,7 @@ public class AnalysisTests
     public async Task AnalyzeAsync_FailuresComeThroughTheTask_AndTokensCancel()
     {
         using var engine = CreateHeadless();
-        var ex = await Assert.ThrowsAsync<FatzAudioException>(() => engine.AnalyzeAsync("no-such-file.wav"));
+        var ex = await Assert.ThrowsAsync<AudioException>(() => engine.AnalyzeAsync("no-such-file.wav"));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
 
         using var cts = new CancellationTokenSource();
@@ -445,7 +445,7 @@ public class AnalysisTests
     {
         using var engine = CreateHeadless();
         using var push = engine.CreatePushStream(new AudioFormat(SampleFormat.Float32, Rate, 1));
-        var ex = Assert.Throws<FatzAudioException>(() => push.Analyze());
+        var ex = Assert.Throws<AudioException>(() => push.Analyze());
         Assert.Equal(ErrorCode.NotSeekable, ex.ErrorCode);
     }
 

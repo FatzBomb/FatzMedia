@@ -139,7 +139,7 @@ public unsafe partial class AudioStream : IDisposable
 
     internal static AudioStream Wrap(AudioEngine engine, int result, nint native, GCHandle? io)
     {
-        FatzAudioException.ThrowIfFailed(result);
+        AudioException.ThrowIfFailed(result);
         var h = new StreamHandle();
         h.Initialize(native, engine.Handle);
         return new AudioStream(engine, h, io);
@@ -169,7 +169,7 @@ public unsafe partial class AudioStream : IDisposable
     private FaStreamInfo ReadNativeInfo()
     {
         var n = NativeSized.New<FaStreamInfo>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_info(Handle, ref n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_info(Handle, ref n));
         return n;
     }
 
@@ -237,7 +237,7 @@ public unsafe partial class AudioStream : IDisposable
         get
         {
             var m = NativeSized.New<FaMetadata>();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_metadata(Handle, &m));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_metadata(Handle, &m));
             return new StreamMetadata(
                 NativeText.Read(m.StreamTitle), NativeText.Read(m.Artist), NativeText.Read(m.Title), NativeText.Read(m.Url), NativeText.Read(m.Station), NativeText.Read(m.Genre),
                 NativeText.Read(m.Description), NativeText.Read(m.StationUrl), NativeText.Read(m.ContentType), (int)m.BitrateKbps, m.Seq);
@@ -253,7 +253,7 @@ public unsafe partial class AudioStream : IDisposable
             var n = NativeSized.New<FaNetStatus>();
             int rc = NativeMethods.fa_stream_get_net_status(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return new NetworkStatus(
                 n.Connected != 0, n.HttpStatus, n.IsLive != 0, n.IsHls != 0, n.Seekable != 0, n.Finished != 0,
                 n.ContentLength, n.Downloaded, n.BufferedBytes, TimeConvert.FromNanoseconds(n.Buffered),
@@ -271,7 +271,7 @@ public unsafe partial class AudioStream : IDisposable
         byte* buf = stackalloc byte[4096];
         int rc = NativeMethods.fa_stream_get_http_header(Handle, name, buf, 4096);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return Marshal.PtrToStringUTF8((nint)buf);
     }
 
@@ -336,7 +336,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             if (gc is { } failed) _handle.Unpin(failed);
             if (rc == (int)ErrorCode.InvalidArgument) throw new InvalidOperationException("Not a web stream.");
-            throw new FatzAudioException((ErrorCode)rc);
+            throw new AudioException((ErrorCode)rc);
         }
         // The native side no longer calls the previous handler, so its handle can go.
         if (_download is { } previous) _handle.Unpin(previous);
@@ -380,7 +380,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="device">The output device.</param>
     /// <exception cref="ArgumentNullException"><paramref name="device"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The stream is decode-only (<see cref="ErrorCode.InvalidArgument"/>) or the device failed.</exception>
+    /// <exception cref="AudioException">The stream is decode-only (<see cref="ErrorCode.InvalidArgument"/>) or the device failed.</exception>
     /// <example>
     /// <code>
     /// song.PlayOn(output);
@@ -392,7 +392,7 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentNullException.ThrowIfNull(device);
         AttachTo(device, null);
         device.Start();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_play(Handle));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_play(Handle));
     }
 
     /// <summary>
@@ -401,7 +401,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="bus">The bus.</param>
     /// <exception cref="ArgumentNullException"><paramref name="bus"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The stream is decode-only (<see cref="ErrorCode.InvalidArgument"/>) or the device failed.</exception>
+    /// <exception cref="AudioException">The stream is decode-only (<see cref="ErrorCode.InvalidArgument"/>) or the device failed.</exception>
     /// <example>
     /// <code>
     /// using var deck = output.CreateBus();
@@ -414,7 +414,7 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentNullException.ThrowIfNull(bus);
         AttachTo(bus.Device, bus);
         bus.Device.Start();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_play(Handle));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_play(Handle));
     }
 
     /// <summary>
@@ -434,7 +434,7 @@ public unsafe partial class AudioStream : IDisposable
         try
         {
             bh?.DangerousAddRef(ref added);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_attach(h, dh, bh?.DangerousGetHandle() ?? 0));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_attach(h, dh, bh?.DangerousGetHandle() ?? 0));
         }
         finally
         {
@@ -493,7 +493,7 @@ public unsafe partial class AudioStream : IDisposable
     public void Detach()
     {
         var h = Handle;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_detach(h));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_detach(h));
         h.DetachDevice();
         _device = null;
         _bus = null;
@@ -504,13 +504,13 @@ public unsafe partial class AudioStream : IDisposable
     /// start); a paused one continues where it was. The stream must have been attached with <see cref="PlayOn(OutputDevice)"/> before.
     /// </summary>
     /// <exception cref="InvalidOperationException">The stream is not attached to a device.</exception>
-    /// <exception cref="FatzAudioException">The native call failed.</exception>
+    /// <exception cref="AudioException">The native call failed.</exception>
     public void Play()
     {
         var h = Handle;
         if (_device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
         _device.Start();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_play(h));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_play(h));
     }
 
     /// <summary>
@@ -537,16 +537,16 @@ public unsafe partial class AudioStream : IDisposable
         var h = Handle;
         if (_device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
         _device.Start();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_play_at(h, TimeConvert.ToNanoseconds(deviceTime)));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_play_at(h, TimeConvert.ToNanoseconds(deviceTime)));
     }
 
     /// <summary>Pauses playback, keeping the position. Also cancels a scheduled or queued start.</summary>
-    /// <exception cref="FatzAudioException">The native call failed.</exception>
-    public void Pause() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_pause(Handle));
+    /// <exception cref="AudioException">The native call failed.</exception>
+    public void Pause() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_pause(Handle));
 
     /// <summary>Stops playback and rewinds to <see cref="StreamMarkers.CueIn"/> (or the start). Also cancels a scheduled or queued start.</summary>
-    /// <exception cref="FatzAudioException">The native call failed.</exception>
-    public void Stop() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_stop(Handle));
+    /// <exception cref="AudioException">The native call failed.</exception>
+    public void Stop() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_stop(Handle));
 
     /// <summary>Current playback state.</summary>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
@@ -554,14 +554,14 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_state(Handle, out int s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_state(Handle, out int s));
             return (StreamState)s;
         }
     }
 
     /// <summary>Playback position; setting it seeks (a stopped stream becomes paused at the new position).</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
-    /// <exception cref="FatzAudioException">Seeking failed (for example <see cref="ErrorCode.NotSeekable"/>).</exception>
+    /// <exception cref="AudioException">Seeking failed (for example <see cref="ErrorCode.NotSeekable"/>).</exception>
     public TimeSpan Position
     {
         get => FramesToTime(PositionFrames);
@@ -574,18 +574,18 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>Playback position in frames (sample exact); setting it seeks.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
-    /// <exception cref="FatzAudioException">Seeking failed (for example <see cref="ErrorCode.NotSeekable"/>).</exception>
+    /// <exception cref="AudioException">Seeking failed (for example <see cref="ErrorCode.NotSeekable"/>).</exception>
     public long PositionFrames
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_position(Handle, out long f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_position(Handle, out long f));
             return f;
         }
         set
         {
             if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_seek(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek(Handle, value));
         }
     }
 
@@ -604,7 +604,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </code>
     /// </example>
     /// <exception cref="ArgumentOutOfRangeException">The position is negative.</exception>
-    /// <exception cref="FatzAudioException">The stream cannot seek (<see cref="ErrorCode.NotSeekable"/>) or the
+    /// <exception cref="AudioException">The stream cannot seek (<see cref="ErrorCode.NotSeekable"/>) or the
     /// position is past the end (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public void RequestSeek(TimeSpan position)
     {
@@ -614,11 +614,11 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>Like <see cref="RequestSeek(TimeSpan)"/>, in frames (sample exact).</summary>
     /// <exception cref="ArgumentOutOfRangeException">The frame is negative.</exception>
-    /// <exception cref="FatzAudioException">The stream cannot seek or the frame is past the end.</exception>
+    /// <exception cref="AudioException">The stream cannot seek or the frame is past the end.</exception>
     public void RequestSeekFrames(long frame)
     {
         if (frame < 0) throw new ArgumentOutOfRangeException(nameof(frame));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_async(Handle, frame));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_async(Handle, frame));
     }
 
     /// <summary>
@@ -638,7 +638,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock(Handle, out long ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -671,7 +671,7 @@ public unsafe partial class AudioStream : IDisposable
     public TimeSpan GetClockAt(long monotonicNs)
     {
         if (monotonicNs == long.MinValue) throw new ArgumentOutOfRangeException(nameof(monotonicNs));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock_at(Handle, monotonicNs, out long ns));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock_at(Handle, monotonicNs, out long ns));
         return TimeConvert.FromNanoseconds(ns);
     }
 
@@ -694,7 +694,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         FaStreamStats st = default;
         st.StructSize = (uint)sizeof(FaStreamStats);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_stats(Handle, &st));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_stats(Handle, &st));
         return new StreamStats(st.Underruns, TimeConvert.FromNanoseconds(st.Buffered));
     }
 
@@ -709,24 +709,24 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>Attaches CD+G graphics from a <c>.cdg</c> file to this stream, replacing any it had.</summary>
     /// <param name="path">The <c>.cdg</c> file; it is read in full.</param>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> if the file is missing,
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> if the file is missing,
     /// <see cref="ErrorCode.UnsupportedFormat"/> if it holds no whole CD+G pack.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void LoadCdg(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_path(Handle, path));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_path(Handle, path));
     }
 
     /// <summary>Attaches CD+G graphics held in memory (the bytes of a <c>.cdg</c> file); they are copied.</summary>
     /// <param name="cdg">The contents of a <c>.cdg</c> file.</param>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.UnsupportedFormat"/> if it holds no whole CD+G pack.</exception>
+    /// <exception cref="AudioException"><see cref="ErrorCode.UnsupportedFormat"/> if it holds no whole CD+G pack.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void LoadCdg(ReadOnlySpan<byte> cdg)
     {
-        if (cdg.IsEmpty) throw new FatzAudioException(ErrorCode.UnsupportedFormat);
+        if (cdg.IsEmpty) throw new AudioException(ErrorCode.UnsupportedFormat);
         fixed (byte* p = cdg)
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_memory(Handle, p, (nuint)cdg.Length));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_memory(Handle, p, (nuint)cdg.Length));
     }
 
     /// <summary>
@@ -739,7 +739,7 @@ public unsafe partial class AudioStream : IDisposable
         get
         {
             var i = NativeSized.New<FaCdgInfo>();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_info(Handle, ref i));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_info(Handle, ref i));
             return new CdgInfo((CdgSource)i.Source, (long)i.PackCount, TimeConvert.FromNanoseconds(i.CheckpointInterval),
                 (int)i.CheckpointCount, i.DiscParity < 0 ? null : i.DiscParity != 0, (long)i.DiscCorrected, (long)i.DiscDropped);
         }
@@ -747,7 +747,7 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>Removes the stream's CD+G graphics; surfaces show a blank picture afterwards.</summary>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
-    public void RemoveCdg() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_path(Handle, null));
+    public void RemoveCdg() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_load_cdg_path(Handle, null));
 
     /// <summary>
     /// Shifts the CD+G graphics against the audio, for files that are out of sync: positive shows them later,
@@ -758,10 +758,10 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_offset(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_offset(Handle, out long ns));
             return TimeConvert.FromNanoseconds(ns);
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_cdg_offset(Handle, TimeConvert.ToNanoseconds(value)));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_cdg_offset(Handle, TimeConvert.ToNanoseconds(value)));
     }
 
     /// <summary>
@@ -775,7 +775,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dynamic_range(Handle, out int mode));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dynamic_range(Handle, out int mode));
             return (DynamicRange)mode;
         }
         set
@@ -783,7 +783,7 @@ public unsafe partial class AudioStream : IDisposable
             int rc = NativeMethods.fa_stream_set_dynamic_range(Handle, (int)value);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown dynamic range.", nameof(value));
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
         }
     }
 
@@ -795,13 +795,13 @@ public unsafe partial class AudioStream : IDisposable
     /// plays, as <see cref="SetMatrix"/> does. Other formats ignore it.
     /// </summary>
     /// <exception cref="ArgumentException">An unknown <see cref="FatzMedia.Audio.DolbyDownmix"/>.</exception>
-    /// <exception cref="FatzAudioException">To or from Engine on a playing live stream (<see cref="ErrorCode.NotSeekable"/>): change it while detached.</exception>
+    /// <exception cref="AudioException">To or from Engine on a playing live stream (<see cref="ErrorCode.NotSeekable"/>): change it while detached.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public DolbyDownmix DolbyDownmix
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dolby_downmix(Handle, out int mode));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dolby_downmix(Handle, out int mode));
             return (DolbyDownmix)mode;
         }
         set
@@ -809,7 +809,7 @@ public unsafe partial class AudioStream : IDisposable
             int rc = NativeMethods.fa_stream_set_dolby_downmix(Handle, (int)value);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown Dolby downmix.", nameof(value));
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
         }
     }
 
@@ -853,7 +853,7 @@ public unsafe partial class AudioStream : IDisposable
             n.StructSize = (uint)sizeof(FaTrackerInfo);
             int rc = NativeMethods.fa_stream_get_tracker_info(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return new TrackerInfo(NativeText.Read(n.Type), NativeText.Read(n.TypeName), NativeText.Read(n.Tracker), NativeText.Read(n.Title), NativeText.Read(n.Artist),
                 TrackerText(0, 0), (int)n.Channels, (int)n.Orders, (int)n.Patterns, n.RestartOrder, n.RestartRow,
                 TimeSpan.FromSeconds(n.Duration), TrackerTexts(1, n.Instruments), TrackerTexts(2, n.Samples),
@@ -864,11 +864,11 @@ public unsafe partial class AudioStream : IDisposable
     private unsafe string TrackerText(int type, uint index)
     {
         nuint len = 0;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_text(Handle, type, index, null, 0, &len));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_text(Handle, type, index, null, 0, &len));
         if (len == 0) return "";
         var bytes = new byte[(int)len + 1];
         fixed (byte* p = bytes)
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_text(Handle, type, index, p, (nuint)bytes.Length, &len));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_text(Handle, type, index, p, (nuint)bytes.Length, &len));
         return System.Text.Encoding.UTF8.GetString(bytes, 0, (int)len);
     }
 
@@ -886,7 +886,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="order">Entry of the order list, 0-based.</param>
     /// <param name="row">Row of that order's pattern, 0-based.</param>
     /// <exception cref="ArgumentOutOfRangeException">A negative order or row.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TimeSpan? GetTrackerTime(int order, int row)
     {
@@ -894,7 +894,7 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(row);
         int rc = NativeMethods.fa_stream_get_tracker_time(Handle, (uint)order, (uint)row, out double s);
         if (rc == (int)ErrorCode.NotFound) return null;
-        FatzAudioException.ThrowIfFailed(rc);
+        AudioException.ThrowIfFailed(rc);
         return TimeSpan.FromSeconds(s);
     }
 
@@ -902,26 +902,26 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="order">Entry of the order list, 0-based.</param>
     /// <param name="row">Row of that order's pattern, 0-based.</param>
     /// <exception cref="ArgumentOutOfRangeException">A negative order or row.</exception>
-    /// <exception cref="FatzAudioException">The song never plays that row (<see cref="ErrorCode.NotFound"/>), or the stream is not a module.</exception>
+    /// <exception cref="AudioException">The song never plays that row (<see cref="ErrorCode.NotFound"/>), or the stream is not a module.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SeekTracker(int order, int row)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(order);
         ArgumentOutOfRangeException.ThrowIfNegative(row);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_tracker(Handle, (uint)order, (uint)row));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_tracker(Handle, (uint)order, (uint)row));
     }
 
     private int GetTrackerParam(int param)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_param(Handle, param, out int v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_param(Handle, param, out int v));
         return v;
     }
 
     private void SetTrackerParam(int param, int value) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_param(Handle, param, value));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_param(Handle, param, value));
 
     /// <summary>Tracker modules: how samples are resampled. Live, heard after the decode-ahead buffer.</summary>
-    /// <exception cref="FatzAudioException">The stream is not a module, or the value is not one of the enum's.</exception>
+    /// <exception cref="AudioException">The stream is not a module, or the value is not one of the enum's.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TrackerInterpolation TrackerInterpolation
     {
@@ -931,7 +931,7 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>Tracker modules: stereo separation in percent, 0 (mono) to 200; 100 by default. Live.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside 0..200.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module.</exception>
+    /// <exception cref="AudioException">The stream is not a module.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public int TrackerStereoSeparation
     {
@@ -948,7 +948,7 @@ public unsafe partial class AudioStream : IDisposable
     /// Tracker modules: volume ramping, -1 (default), 0 off (may click), 1..10 softer ramps (<c>BASS_MUSIC_RAMP</c>). Live.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside -1..10.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module.</exception>
+    /// <exception cref="AudioException">The stream is not a module.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public int TrackerVolumeRamping
     {
@@ -965,7 +965,7 @@ public unsafe partial class AudioStream : IDisposable
     /// Tracker modules: Amiga MOD files sound as on an Amiga's Paula chip (true; about 19 times the CPU on those
     /// files) or with the ordinary resampler (false, the default). Live.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not a module.</exception>
+    /// <exception cref="AudioException">The stream is not a module.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool TrackerAmigaResampler
     {
@@ -976,7 +976,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>
     /// Which rows of a tracker module raise <see cref="TrackerRowReached"/> as they are heard; off by default.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TrackerRowEvents TrackerRowEvents
     {
@@ -989,7 +989,7 @@ public unsafe partial class AudioStream : IDisposable
     /// row's start; null while that audio is not decoded yet (a stream never played or read, or just after a seek).
     /// Cheap and lock-free, like <see cref="Clock"/>: fine to read every video frame.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TrackerPosition? TrackerPosition
     {
@@ -997,7 +997,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             int rc = NativeMethods.fa_stream_get_tracker_position(Handle, out uint order, out uint row);
             if (rc == (int)ErrorCode.NotFound) return null;
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return new TrackerPosition((int)order, (int)row);
         }
     }
@@ -1005,23 +1005,23 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>Mutes or unmutes a tracker module's channel (0-based, the first 64), live.</summary>
     /// <param name="channel">Channel 0..Channels-1.</param>
     /// <param name="muted">True to mute.</param>
-    /// <exception cref="FatzAudioException">The stream is not a module or the channel is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module or the channel is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SetTrackerChannelMuted(int channel, bool muted)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_channel_mute(Handle, (uint)channel, muted ? 1 : 0));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_channel_mute(Handle, (uint)channel, muted ? 1 : 0));
     }
 
     /// <summary>Whether a tracker module's channel is muted by <see cref="SetTrackerChannelMuted"/>.</summary>
     /// <param name="channel">Channel 0..Channels-1.</param>
     /// <returns>True when muted.</returns>
-    /// <exception cref="FatzAudioException">The stream is not a module or the channel is out of range.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the channel is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool IsTrackerChannelMuted(int channel)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_mute(Handle, (uint)channel, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_mute(Handle, (uint)channel, out int m));
         return m != 0;
     }
 
@@ -1030,7 +1030,7 @@ public unsafe partial class AudioStream : IDisposable
     /// buffer. Independent of the module's own commands (<c>BASS_ATTRIB_MUSIC_AMPLIFY</c>).
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside -60 to 60.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public double TrackerAmplificationDb
     {
@@ -1047,7 +1047,7 @@ public unsafe partial class AudioStream : IDisposable
     /// Which notes and commands of a tracker module raise <see cref="TrackerInstrumentPlayed"/> and
     /// <see cref="TrackerSyncReached"/> as their rows are heard; none by default.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TrackerCellEvents TrackerCellEvents
     {
@@ -1063,20 +1063,20 @@ public unsafe partial class AudioStream : IDisposable
     /// decode-ahead buffer; reads the song as decoded so far.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside 32 to 512.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public double TrackerTempo
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_tempo(Handle, out double v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_tempo(Handle, out double v));
             return v;
         }
         set
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(value, 32.0);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 512.0);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_tempo(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_tempo(Handle, value));
         }
     }
 
@@ -1085,20 +1085,20 @@ public unsafe partial class AudioStream : IDisposable
     /// <see cref="TrackerTempo"/> for how it behaves.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside 1 to 255.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public int TrackerSpeed
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_speed(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_speed(Handle, out int v));
             return v;
         }
         set
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 255);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_speed(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_speed(Handle, value));
         }
     }
 
@@ -1107,20 +1107,20 @@ public unsafe partial class AudioStream : IDisposable
     /// commands change it again; a seek puts it back.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside 0 to 1.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module or the module has no such control.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the module has no such control.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public double TrackerGlobalVolume
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_global_volume(Handle, out double v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_global_volume(Handle, out double v));
             return v;
         }
         set
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(value, 0.0);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1.0);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_global_volume(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_global_volume(Handle, value));
         }
     }
 
@@ -1128,24 +1128,24 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="channel">Channel 0..Channels-1 (the first 64).</param>
     /// <param name="volume">0.0 (silent) to 1.0 (the song's own).</param>
     /// <exception cref="ArgumentOutOfRangeException">A negative channel, or a volume outside 0 to 1.</exception>
-    /// <exception cref="FatzAudioException">The stream is not a module or the channel is out of range.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the channel is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SetTrackerChannelVolume(int channel, double volume)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
         ArgumentOutOfRangeException.ThrowIfLessThan(volume, 0.0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(volume, 1.0);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_channel_volume(Handle, (uint)channel, volume));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_channel_volume(Handle, (uint)channel, volume));
     }
 
     /// <summary>A pattern channel's volume as decoded so far (see <see cref="SetTrackerChannelVolume"/>).</summary>
     /// <param name="channel">Channel 0..Channels-1 (the first 64).</param>
-    /// <exception cref="FatzAudioException">The stream is not a module or the channel is out of range.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the channel is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public double GetTrackerChannelVolume(int channel)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_volume(Handle, (uint)channel, out double v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_volume(Handle, (uint)channel, out double v));
         return v;
     }
 
@@ -1155,22 +1155,22 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="instrument">0-based instrument, or sample.</param>
     /// <param name="muted">True to mute.</param>
-    /// <exception cref="FatzAudioException">The stream is not a module or the index is out of range.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the index is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SetTrackerInstrumentMuted(int instrument, bool muted)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(instrument);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_instrument_mute(Handle, (uint)instrument, muted ? 1 : 0));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_instrument_mute(Handle, (uint)instrument, muted ? 1 : 0));
     }
 
     /// <summary>Whether an instrument is muted by <see cref="SetTrackerInstrumentMuted"/>.</summary>
     /// <param name="instrument">0-based instrument, or sample.</param>
-    /// <exception cref="FatzAudioException">The stream is not a module or the index is out of range.</exception>
+    /// <exception cref="AudioException">The stream is not a module or the index is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool IsTrackerInstrumentMuted(int instrument)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(instrument);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_instrument_mute(Handle, (uint)instrument, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_instrument_mute(Handle, (uint)instrument, out int m));
         return m != 0;
     }
 
@@ -1178,14 +1178,14 @@ public unsafe partial class AudioStream : IDisposable
     /// A tracker module's order list: the pattern of each order (<c>BASS_TAG_MUSIC_ORDERS</c>). 65534 marks a skipped
     /// order ("+++") and 65535 the end of the song ("---").
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public unsafe IReadOnlyList<int> GetTrackerOrders()
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, null, 0, out uint count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, null, 0, out uint count));
         var list = new int[count];
         fixed (int* p = list)
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, (uint*)p, count, out _));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, (uint*)p, count, out _));
         return list;
     }
 
@@ -1200,7 +1200,7 @@ public unsafe partial class AudioStream : IDisposable
             var n = NativeSized.New<FaMidiInfo>();
             int rc = NativeMethods.fa_stream_get_midi_info(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return new MidiInfo(NativeText.Read(n.Title), NativeText.Read(n.Artist), NativeText.Read(n.Copyright), n.Format, (int)n.Tracks,
                 (int)n.TextCount, (int)n.LyricCount, n.Karaoke != 0, n.HasNotes != 0);
         }
@@ -1219,7 +1219,7 @@ public unsafe partial class AudioStream : IDisposable
             n.StructSize = (uint)sizeof(FaMidiCredits);
             int rc = NativeMethods.fa_stream_get_midi_credits(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             string other = NativeText.Read(n.Other);
             return new MidiCredits((TextCodePage)n.CodePage, NativeText.Read(n.Title), NativeText.Read(n.Artist), NativeText.Read(n.Writer), NativeText.Read(n.Lyricist),
                 NativeText.Read(n.Year), NativeText.Read(n.Copyright), NativeText.Read(n.Key), NativeText.Read(n.Tempo), NativeText.Read(n.TimeSignature),
@@ -1273,7 +1273,7 @@ public unsafe partial class AudioStream : IDisposable
             if (NativeMethods.fa_stream_get_midi_marks(Handle, null, 0, &count) != 0 || count == 0) return [];
             var native = new FaMidiMark[count];
             fixed (FaMidiMark* p = native)
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_marks(Handle, p, count, &count));
+                AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_marks(Handle, p, count, &count));
             var list = new List<MidiMark>(native.Length);
             foreach (var m in native)
             {
@@ -1287,7 +1287,7 @@ public unsafe partial class AudioStream : IDisposable
     private unsafe MidiText GetMidiText(int index)
     {
         var t = NativeSized.New<FaMidiText>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_text(Handle, (uint)index, &t));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_text(Handle, (uint)index, &t));
         return new MidiText(index, (MidiTextType)t.Type, NativeText.Read(t.Text), (MidiTextFlags)t.Flags,
             TimeConvert.FromNanoseconds(t.Time), t.Frame, t.Track);
     }
@@ -1310,7 +1310,7 @@ public unsafe partial class AudioStream : IDisposable
     ///     song.SetSoundFont(piano);
     /// </code>
     /// </example>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>), or null
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>), or null
     /// was passed and there is no soundfont to fall back on (<see cref="ErrorCode.NoSoundFont"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream, or the soundfont, was disposed.</exception>
     public void SetSoundFont(SoundFont? font)
@@ -1318,11 +1318,11 @@ public unsafe partial class AudioStream : IDisposable
         var stream = Handle;
         if (font is null)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, 0));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, 0));
             return;
         }
         var native = Native.HandleRef.AddRef(font.Handle);
-        try { FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, native.DangerousGetHandle())); }
+        try { AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, native.DangerousGetHandle())); }
         finally { native.DangerousRelease(); }
     }
 
@@ -1330,7 +1330,7 @@ public unsafe partial class AudioStream : IDisposable
     /// MIDI streams: the soundfont the stream plays with (the last one set, even before it is heard), as a new
     /// <see cref="SoundFont"/> object of its own that must be disposed.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public SoundFont GetSoundFont() => SoundFont.FromNative(NativeMethods.fa_stream_get_soundfont(Handle, out nint native), native);
 
@@ -1341,19 +1341,19 @@ public unsafe partial class AudioStream : IDisposable
     /// for MIDI streams).
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside -48..48.</exception>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public int MidiTranspose
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_transpose(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_transpose(Handle, out int v));
             return v;
         }
         set
         {
             if (value is < -48 or > 48) throw new ArgumentOutOfRangeException(nameof(value));
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_transpose(Handle, value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_transpose(Handle, value));
         }
     }
 
@@ -1362,16 +1362,16 @@ public unsafe partial class AudioStream : IDisposable
     /// CC91 (reverb, 40 until the file sets it) and CC93 (chorus, 0) and the soundfont's effect sends. False plays the
     /// dry synthesizer, like <c>BASS_MIDI_NOFX</c>; the tails stop at once. Heard after the decode-ahead buffer.
     /// </summary>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool MidiEffects
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_effects(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_effects(Handle, out int v));
             return v != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_effects(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_effects(Handle, value ? 1 : 0));
     }
 
     /// <summary>
@@ -1382,24 +1382,24 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="channel">Channel 0..15.</param>
     /// <param name="muted">True to mute.</param>
     /// <exception cref="ArgumentOutOfRangeException">The channel is outside 0..15.</exception>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SetMidiChannelMuted(int channel, bool muted)
     {
         if (channel is < 0 or > 15) throw new ArgumentOutOfRangeException(nameof(channel));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_channel_mute(Handle, (uint)channel, muted ? 1 : 0));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_channel_mute(Handle, (uint)channel, muted ? 1 : 0));
     }
 
     /// <summary>Whether a MIDI channel (0..15) is muted by <see cref="SetMidiChannelMuted"/>.</summary>
     /// <param name="channel">Channel 0..15.</param>
     /// <returns>True when muted.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The channel is outside 0..15.</exception>
-    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool IsMidiChannelMuted(int channel)
     {
         if (channel is < 0 or > 15) throw new ArgumentOutOfRangeException(nameof(channel));
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_channel_mute(Handle, (uint)channel, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_channel_mute(Handle, (uint)channel, out int m));
         return m != 0;
     }
 
@@ -1419,7 +1419,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="style">The look; null = <see cref="LyricPreset.Classic"/> with the system's UI font.</param>
     /// <exception cref="ArgumentException">Not a MIDI stream, or a style value out of its range.</exception>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotFound"/> when no font could be opened (a missing
+    /// <exception cref="AudioException"><see cref="ErrorCode.NotFound"/> when no font could be opened (a missing
     /// <see cref="LyricStyle.FontPath"/>, or no system font); <see cref="ErrorCode.UnsupportedFormat"/> for a file that
     /// is not a font.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
@@ -1429,12 +1429,12 @@ public unsafe partial class AudioStream : IDisposable
 
     private float GetParam(AudioParameter p)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_param(Handle, (int)p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_param(Handle, (int)p, out float v));
         return v;
     }
 
     private void SetParam(AudioParameter p, float v) =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_param(Handle, (int)p, v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_param(Handle, (int)p, v));
 
     // ---- Equalizer ----------------------------------------------------------------
 
@@ -1454,7 +1454,7 @@ public unsafe partial class AudioStream : IDisposable
         if (bands.Count > 16) throw new ArgumentException("At most 16 bands.", nameof(bands));
         var native = stackalloc FaEqBand[16];
         for (int i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq(Handle, native, (uint)bands.Count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq(Handle, native, (uint)bands.Count));
     }
 
     /// <summary>Sets the equalizer to a built-in preset (ten octave bands).</summary>
@@ -1464,18 +1464,18 @@ public unsafe partial class AudioStream : IDisposable
     public unsafe EqualizerBand[] GetEqualizer()
     {
         var native = stackalloc FaEqBand[16];
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq(Handle, native, 16, out uint n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq(Handle, native, 16, out uint n));
         var result = new EqualizerBand[n];
         for (int i = 0; i < n; i++) result[i] = native[i].ToBand();
         return result;
     }
 
     /// <summary>Changes one band's gain, for a slider; glides while playing.</summary>
-    /// <exception cref="FatzAudioException">No such band (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">No such band (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public void SetEqualizerGain(int band, float gainDb)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(band);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq_gain(Handle, (uint)band, gainDb));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq_gain(Handle, (uint)band, gainDb));
     }
 
     /// <summary>Bypass without losing the bands: false glides to flat, true back to the bands. True by default.</summary>
@@ -1483,10 +1483,10 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq_enabled(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq_enabled(Handle, out int on));
             return on != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq_enabled(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq_enabled(Handle, value ? 1 : 0));
     }
 
     /// <summary>Linear gain of this stream (1 = unity).</summary>
@@ -1501,10 +1501,10 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_mute(Handle, out int m));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_mute(Handle, out int m));
             return m != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_mute(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_mute(Handle, value ? 1 : 0));
     }
 
     /// <summary>
@@ -1512,17 +1512,17 @@ public unsafe partial class AudioStream : IDisposable
     /// changed at any time, also while playing; <see cref="StreamOptions.Loop"/> sets it at open. Turning it off
     /// lets the stream play on to its end. <see cref="Looped"/> is raised for each jump.
     /// </summary>
-    /// <exception cref="FatzAudioException">Turning it on for a stream that cannot seek (push, packet and live web
+    /// <exception cref="AudioException">Turning it on for a stream that cannot seek (push, packet and live web
     /// streams): <see cref="ErrorCode.NotSeekable"/>.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool Loop
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loop(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loop(Handle, out int on));
             return on != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loop(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loop(Handle, value ? 1 : 0));
     }
 
     /// <summary>
@@ -1537,17 +1537,17 @@ public unsafe partial class AudioStream : IDisposable
     /// point; with <see cref="DjDeck.Slip"/> on, turning back returns to where the deck would be. The blocks the source
     /// is decoded in are cross-faded where they meet.
     /// </summary>
-    /// <exception cref="FatzAudioException">Turning it on for a stream that cannot seek (push and packet streams):
+    /// <exception cref="AudioException">Turning it on for a stream that cannot seek (push and packet streams):
     /// <see cref="ErrorCode.NotSeekable"/>; for a web stream: <see cref="ErrorCode.NotImplemented"/>.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool Reverse
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_reverse(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_reverse(Handle, out int on));
             return on != 0;
         }
-        set => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_reverse(Handle, value ? 1 : 0));
+        set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_reverse(Handle, value ? 1 : 0));
     }
 
     /// <summary>Stereo pan from -1 (left) to 1 (right).</summary>
@@ -1582,7 +1582,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             FaTempoOptions o;
             NativeMethods.fa_tempo_options_init(&o);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tempo_options(Handle, &o));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tempo_options(Handle, &o));
             return new TempoOptions
             {
                 Quality = (StretchQuality)o.Quality,
@@ -1594,7 +1594,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             if (value is null)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tempo_options(Handle, null));
+                AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tempo_options(Handle, null));
                 return;
             }
             FaTempoOptions o;
@@ -1605,7 +1605,7 @@ public unsafe partial class AudioStream : IDisposable
             int rc = NativeMethods.fa_stream_set_tempo_options(Handle, &o);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown stretch quality.", nameof(value));
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
         }
     }
 
@@ -1633,7 +1633,7 @@ public unsafe partial class AudioStream : IDisposable
     /// The value holds until then. If the stream is not playing at that moment, the ramp starts when it plays.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> or <paramref name="startAt"/> is negative.</exception>
-    /// <exception cref="FatzAudioException">The parameter cannot be ramped yet (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch), or <paramref name="startAt"/> was given for a stream that is not attached (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The parameter cannot be ramped yet (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch), or <paramref name="startAt"/> was given for a stream that is not attached (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// song.Ramp(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(3), Curve.EqualPower);   // fade out now
@@ -1645,7 +1645,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
         var ramp = c.ToNative();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
             Handle, (int)parameter, target, durationNs, startNs, &ramp));
         GC.KeepAlive(c);
     }
@@ -1663,7 +1663,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="startAt">When to start, on the <see cref="OutputDevice.Time"/> clock; null starts now.</param>
     /// <returns>A task that completes when the ramp has finished.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> or <paramref name="startAt"/> is negative.</exception>
-    /// <exception cref="FatzAudioException">The parameter cannot be ramped yet (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch).</exception>
+    /// <exception cref="AudioException">The parameter cannot be ramped yet (<see cref="ErrorCode.NotImplemented"/> for rate, tempo and pitch).</exception>
     /// <example>
     /// <code>
     /// await song.RampAsync(AudioParameter.Volume, 0f, TimeSpan.FromSeconds(2));
@@ -1681,7 +1681,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             var ramp = c.ToNative();
             ramp.Tag = tag;
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_ramp_param(
                 Handle, (int)parameter, target, durationNs, startNs, &ramp));
             GC.KeepAlive(c);
         }
@@ -1727,7 +1727,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="next"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> is negative.</exception>
     /// <exception cref="InvalidOperationException">This stream is not attached to a device.</exception>
-    /// <exception cref="FatzAudioException"><paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException"><paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// await current.CrossfadeTo(next, TimeSpan.FromSeconds(5));
@@ -1750,7 +1750,7 @@ public unsafe partial class AudioStream : IDisposable
             var ramp = c.ToNative();
             ramp.Tag = tag;
             _device.Start();
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_crossfade(h, nh, TimeConvert.ToNanoseconds(duration), &ramp));
+            AudioException.ThrowIfFailed(NativeMethods.fa_crossfade(h, nh, TimeConvert.ToNanoseconds(duration), &ramp));
             GC.KeepAlive(c);
         }
         catch
@@ -1775,7 +1775,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="next"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> is negative.</exception>
     /// <exception cref="InvalidOperationException">This stream is not attached to a device.</exception>
-    /// <exception cref="FatzAudioException"><paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException"><paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public Task CrossfadeToAsync(AudioStream next, TimeSpan duration, Curve? curve = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -1798,7 +1798,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="curve">Crossfade shape; defaults to <see cref="Curve.EqualPower"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="next"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="crossfade"/> is negative.</exception>
-    /// <exception cref="FatzAudioException"><paramref name="next"/> is already playing (<see cref="ErrorCode.Busy"/>), on another device or this stream is not attached (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException"><paramref name="next"/> is already playing (<see cref="ErrorCode.Busy"/>), on another device or this stream is not attached (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// song1.PlayOn(output);
@@ -1818,7 +1818,7 @@ public unsafe partial class AudioStream : IDisposable
         try
         {
             nh.DangerousAddRef(ref added);
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_next(h, nh.DangerousGetHandle(), TimeConvert.ToNanoseconds(crossfade), &ramp));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_next(h, nh.DangerousGetHandle(), TimeConvert.ToNanoseconds(crossfade), &ramp));
         }
         finally
         {
@@ -1832,7 +1832,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>Removes the stream queued with <see cref="QueueNext"/>; it goes back to stopped.</summary>
     public void ClearNext()
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_next(Handle, 0, 0, null));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_next(Handle, 0, 0, null));
         _queued = null;
     }
 
@@ -1841,7 +1841,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_next(Handle, out nint n));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_next(Handle, out nint n));
             var q = _queued;
             return n != 0 && q is not null && !q._handle.IsClosed && q._handle.DangerousGetHandle() == n ? q : null;
         }
@@ -1856,8 +1856,8 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="weights">A [source channels, 2] array of gains.</param>
     /// <exception cref="ArgumentNullException"><paramref name="weights"/> is null.</exception>
-    /// <exception cref="FatzAudioException">The array does not match the source's channel count and the device's 2 channels (<see cref="ErrorCode.InvalidArgument"/>).</exception>
-    /// <exception cref="FatzAudioException">The stream is a playing forward-only source, which cannot re-buffer (<see cref="ErrorCode.NotSeekable"/>); set the matrix before <c>PlayOn</c>.</exception>
+    /// <exception cref="AudioException">The array does not match the source's channel count and the device's 2 channels (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">The stream is a playing forward-only source, which cannot re-buffer (<see cref="ErrorCode.NotSeekable"/>); set the matrix before <c>PlayOn</c>.</exception>
     /// <example>
     /// <code>
     /// // Karaoke: the guide vocal is on the right channel; play only the left (music) on both speakers.
@@ -1869,13 +1869,13 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentNullException.ThrowIfNull(weights);
         fixed (float* p = weights)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_matrix(
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_matrix(
                 Handle, p, (uint)weights.GetLength(0), (uint)weights.GetLength(1)));
         }
     }
 
     /// <summary>Restores the default channel mapping (undoes <see cref="SetMatrix"/>).</summary>
-    public void ResetMatrix() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_matrix(Handle, null, 0, 0));
+    public void ResetMatrix() => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_matrix(Handle, null, 0, 0));
 
     // ---- Decode / analysis -----------------------------------------------------
 
@@ -1883,7 +1883,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="buffer">Receives interleaved 32-bit float samples; its length should be a multiple of the channel count.</param>
     /// <returns>The number of <b>frames</b> written (samples / channels); 0 at the end of the stream. For a
     /// <see cref="FeedAudioStream"/>, 0 before <see cref="FeedAudioStream.End"/> means nothing is queued yet: push more.</returns>
-    /// <exception cref="FatzAudioException">The stream is not decode-only or decoding failed.</exception>
+    /// <exception cref="AudioException">The stream is not decode-only or decoding failed.</exception>
     /// <example>
     /// <code>
     /// var buf = new float[4096 * s.Info.Format.Channels];
@@ -1900,7 +1900,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             int rc = NativeMethods.fa_stream_read(Handle, p, frames, out long got);
             if (rc == (int)ErrorCode.EndOfStream) return 0; // native signals the end with FA_ERROR_END_OF_STREAM
-            FatzAudioException.ThrowIfFailed(rc);
+            AudioException.ThrowIfFailed(rc);
             return (int)got;
         }
     }
@@ -1912,7 +1912,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="window">Length of the measurement window; defaults to 50 ms, at most about 1 s.</param>
     /// <returns>Levels for left and right (one value for a mono stream).</returns>
-    /// <exception cref="FatzAudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public StreamLevels GetLevels(TimeSpan? window = null)
     {
         int ch = _channels == 1 ? 1 : 2;
@@ -1928,7 +1928,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="window">Length of the measurement window; defaults to 50 ms, at most about 1 s.</param>
     /// <returns>The number of channels written: 1 for a mono stream, else 2.</returns>
     /// <exception cref="ArgumentException">A span shorter than the stream's channels (1 or 2).</exception>
-    /// <exception cref="FatzAudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public int GetLevels(Span<float> peak, Span<float> rms, TimeSpan? window = null)
     {
@@ -1938,7 +1938,7 @@ public unsafe partial class AudioStream : IDisposable
         fixed (float* pp = peak)
         fixed (float* pr = rms)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_levels(
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_levels(
                 handle, TimeConvert.ToNanoseconds(window ?? StreamLevels.DefaultWindow), pp, pr, (uint)ch));
         }
         return ch;
@@ -1953,12 +1953,12 @@ public unsafe partial class AudioStream : IDisposable
     /// <see cref="GetLoudness"/>.
     /// </summary>
     /// <returns>The momentary and short-term loudness.</returns>
-    /// <exception cref="FatzAudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public LoudnessMeter GetLoudnessMeter()
     {
         double m, st;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness_meter(Handle, &m, &st));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness_meter(Handle, &m, &st));
         return new LoudnessMeter(m, st);
     }
 
@@ -1969,7 +1969,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="size">Transform size: a power of two from 64 to 16384. 2048 at 48 kHz is 23.4 Hz per bin over 43 ms.</param>
     /// <param name="options">Channel and window.</param>
     /// <returns><paramref name="size"/> / 2 magnitudes and the bin width.</returns>
-    /// <exception cref="FatzAudioException">An invalid size, or a decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">An invalid size, or a decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public Spectrum GetSpectrum(int size = 2048, SpectrumOptions options = SpectrumOptions.None)
     {
         var bins = new float[Math.Max(1, size / 2)];
@@ -1980,7 +1980,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="magnitudes">Half the transform size: 32 to 8192 values, a power of two.</param>
     /// <param name="options">Channel and window.</param>
     /// <returns>The bin width in Hz; 0 while the stream is not playing.</returns>
-    /// <exception cref="FatzAudioException">An invalid length, or a decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">An invalid length, or a decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public float GetSpectrum(Span<float> magnitudes, SpectrumOptions options = SpectrumOptions.None)
     {
         return GetSpectrumCore((uint)magnitudes.Length * 2, magnitudes, options);
@@ -1991,7 +1991,7 @@ public unsafe partial class AudioStream : IDisposable
         float hz;
         fixed (float* p = bins)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_spectrum(Handle, size, (uint)options, p, &hz));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_spectrum(Handle, size, (uint)options, p, &hz));
         }
         return hz;
     }
@@ -2005,7 +2005,7 @@ public unsafe partial class AudioStream : IDisposable
     public Loudness GetLoudness()
     {
         var l = NativeSized.New<FaLoudness>();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness(Handle, ref l));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness(Handle, ref l));
         return Loudness.From(l);
     }
 
@@ -2025,7 +2025,7 @@ public unsafe partial class AudioStream : IDisposable
         l.RangeLu = rangeLu;
         l.TruePeakDbtp = truePeakDbtp;
         l.IsFinal = 1;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loudness(Handle, in l));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loudness(Handle, in l));
     }
 
     /// <summary>
@@ -2037,7 +2037,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="kinds">What to find out; defaults to the beat grid and the key.</param>
     /// <param name="options">Tempo range and cache use; null uses the defaults.</param>
     /// <returns>The result, a plain object with nothing to dispose.</returns>
-    /// <exception cref="FatzAudioException">The stream cannot be read twice (web, push and app I/O streams: <see cref="ErrorCode.NotSeekable"/>), no decoder reads it, or the options are invalid.</exception>
+    /// <exception cref="AudioException">The stream cannot be read twice (web, push and app I/O streams: <see cref="ErrorCode.NotSeekable"/>), no decoder reads it, or the options are invalid.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public TrackAnalysis Analyze(AnalysisKinds kinds = AnalysisKinds.Beats | AnalysisKinds.Key, AnalysisOptions? options = null) =>
         TrackAnalysis.Run(Handle, kinds, options);
@@ -2050,7 +2050,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="options">Tempo range and cache use; null uses the defaults.</param>
     /// <param name="cancellationToken">Stops the wait (the native analysis, which cannot be interrupted, runs to its end).</param>
     /// <returns>A task with the result.</returns>
-    /// <exception cref="FatzAudioException">As for <see cref="Analyze"/>, thrown through the task.</exception>
+    /// <exception cref="AudioException">As for <see cref="Analyze"/>, thrown through the task.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public Task<TrackAnalysis> AnalyzeAsync(AnalysisKinds kinds = AnalysisKinds.Beats | AnalysisKinds.Key,
@@ -2068,7 +2068,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <param name="options">Mode, threshold and lengths; null uses the defaults (RMS over 50 ms windows, -50 dBFS, 1 s, sounds from 200 ms).</param>
     /// <returns>The result, a plain object with nothing to dispose.</returns>
-    /// <exception cref="FatzAudioException">The stream cannot be read twice (web, push, packet, callback and app I/O streams:
+    /// <exception cref="AudioException">The stream cannot be read twice (web, push, packet, callback and app I/O streams:
     /// <see cref="ErrorCode.NotSeekable"/>; use a <see cref="SilenceDetector"/>), or the options are invalid.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public SilenceInfo DetectSilence(SilenceOptions? options = null)
@@ -2089,7 +2089,7 @@ public unsafe partial class AudioStream : IDisposable
     /// user's correction or from your library replaces it; setting null removes it (a MIDI or tracker stream then reads its
     /// file's grid again).
     /// </summary>
-    /// <exception cref="FatzAudioException">Setting: a tempo outside 0.1..100000, segments that do not start in rising order, a bar offset past the bar, or a confidence outside 0..1 (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="AudioException">Setting: a tempo outside 0.1..100000, segments that do not start in rising order, a bar offset past the bar, or a confidence outside 0..1 (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     /// <example>
     /// <code>
@@ -2104,7 +2104,7 @@ public unsafe partial class AudioStream : IDisposable
         {
             var h = Handle;
             if (value is null)
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_beat_grid(h, null, null, 0));
+                AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_beat_grid(h, null, null, 0));
             else
                 value.Apply(h);
         }
@@ -2119,18 +2119,18 @@ public unsafe partial class AudioStream : IDisposable
     /// device only. Up to 64 positions are armed at once; adding one that is already armed does nothing.
     /// </summary>
     /// <param name="position">The position to watch.</param>
-    /// <exception cref="FatzAudioException">The position is negative or past the stream's length
+    /// <exception cref="AudioException">The position is negative or past the stream's length
     /// (<see cref="ErrorCode.InvalidArgument"/>), or 64 are armed already (<see cref="ErrorCode.Busy"/>).</exception>
     public void AddPositionEvent(TimeSpan position)
     {
         long frame = TimeToFrames(position);
         // -1 would be FA_FRAMES_UNSET (remove all); any negative position is an invalid argument.
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_add_position_event(Handle, frame < 0 ? -2 : frame));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_add_position_event(Handle, frame < 0 ? -2 : frame));
     }
 
     /// <summary>Removes every position armed with <see cref="AddPositionEvent"/> that has not been reached.</summary>
     public void ClearPositionEvents() =>
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_add_position_event(Handle, -1));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_add_position_event(Handle, -1));
 
     /// <summary>
     /// Adds a user DSP processor that changes the audio in place, after rate, tempo and pitch and before the
@@ -2153,7 +2153,7 @@ public unsafe partial class AudioStream : IDisposable
         if (rc < 0)
         {
             h.Unpin(gc);
-            throw new FatzAudioException((ErrorCode)rc);
+            throw new AudioException((ErrorCode)rc);
         }
         return new DspRegistration(this, id, gc);
     }
@@ -2247,7 +2247,7 @@ public unsafe partial class AudioStream : IDisposable
                 // (the whole screen) before fa_stream_set_cdg_events even returns.
                 _cdgChanged += value;
                 if (!first) return;
-                try { FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_cdg_events(Handle, 1)); }
+                try { AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_cdg_events(Handle, 1)); }
                 catch { _cdgChanged -= value; throw; }
             }
         }
@@ -2321,7 +2321,7 @@ public unsafe partial class AudioStream : IDisposable
         if (rc < 0)
         {
             _handle.Unpin(gc);
-            throw new FatzAudioException((ErrorCode)rc);
+            throw new AudioException((ErrorCode)rc);
         }
     }
 

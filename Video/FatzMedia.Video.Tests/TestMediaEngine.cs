@@ -9,7 +9,7 @@ using FatzMedia.Video.Pipeline;
 
 namespace FatzMedia.Video.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkPlayer, IRendererVideoDecodeAttachment, ISubtitleTrackSource, IBackgroundPlaybackControl
 {
     private double _position;
     private int _cancelPendingNetworkOpenCount;

@@ -14,7 +14,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void ProjectorSurface_NeverForwardsItsVideoDisplayMode()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session, VideoDisplayMode = VideoDisplayMode.Stretch };
         Window main = Show(primary, 320, 180);
         Assert.Equal(VideoDisplayMode.Stretch, recorder.LastDisplayMode);
@@ -37,7 +37,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void AutoHide_ShowsFramesFromTheFirstPresentedFrameUntilStop()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.IsOpen = false;
         recorder.HasVisualContent = false;
         var surface = new MediaSurface { Player = session };
@@ -51,14 +51,14 @@ public sealed class AdapterParityTests
         recorder.HasVisualContent = true;
         Task.Run(() =>
         {
-            recorder.Raise(nameof(IMediaControlSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
-            recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+            recorder.Raise(nameof(IPlayerSession.MediaLoaded), new MediaLoadedEventArgs(Source, TimeSpan.Zero));
+            recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         }).Wait();
         Dispatcher.UIThread.RunJobs();
         Assert.True(surface.IsContentVisible);
         Assert.Equal(1, visibilityChanges);
 
-        Task.Run(() => recorder.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty)).Wait();
+        Task.Run(() => recorder.Raise(nameof(IPlayerSession.MediaStopped), EventArgs.Empty)).Wait();
         Dispatcher.UIThread.RunJobs();
         Assert.False(surface.IsContentVisible);
         Assert.Equal(2, visibilityChanges);
@@ -68,7 +68,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void AutoHide_HidesTheSharedImageVisualWhileNothingIsShown_AndOffShowsIt()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.IsOpen = false;
         var surface = new MediaSurface { GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
         surface.Player = session;
@@ -86,7 +86,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void Escape_LeavesFullScreen_AndClosesAWindowedSecondScreen()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         var window = new KeyWindow(session) { Width = 320, Height = 180 };
         var closed = false;
         window.Closed += (_, _) => closed = true;
@@ -104,7 +104,7 @@ public sealed class AdapterParityTests
         Assert.Contains($"detach {MediaSurface.DefaultSecondarySurfaceId}", recorder.SurfaceCalls);
     }
 
-    private sealed class KeyWindow(IMediaControlSession session) : SecondaryPresentationWindow(session)
+    private sealed class KeyWindow(IPlayerSession session) : SecondaryPresentationWindow(session)
     {
         public void Press(global::Avalonia.Input.Key key) =>
             OnKeyDown(new global::Avalonia.Input.KeyEventArgs { Key = key, RoutedEvent = KeyDownEvent });
@@ -113,7 +113,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void RefusedAttach_RaisesOneWarningOwnedByTheSession()
     {
-        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
         recorder.AttachResult = static _ => false;
         var warnings = new System.Collections.Concurrent.ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)

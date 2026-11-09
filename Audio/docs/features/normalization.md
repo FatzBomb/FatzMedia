@@ -279,7 +279,7 @@ var results = await Task.Run(() => engine.WriteLoudnessTags(albumFiles, album: t
 foreach (var r in results.Where(r => !r.Written))
     Console.WriteLine($"{r.Path}: {r.Error}");
 
-engine.WriteLoudnessTags("single.mp3");   // one file; throws FatzAudioException if it was not written
+engine.WriteLoudnessTags("single.mp3");   // one file; throws AudioException if it was not written
 ```
 
 **Safety.** Each file is written to a new file next to it (`<name>.fatzaudio-N.tmp`), flushed to the disk, and checked: its loudness tags must read back as written, and its first and middle audio must decode to exactly the same samples as the original's. Only then is it renamed over the original, so a failure, a crash or a power cut leaves the original as it was (at worst a stray `.tmp` file next to it). The original must not change while it is measured and written (`FA_ERROR_BUSY` if it did). On POSIX the new file gets the original's permissions and a symbolic link is followed (the file it points to is rewritten). On Windows the rename fails with `FA_ERROR_IO` while the file is open in another program, or in a playing stream, since FatzMedia.Audio opens files without delete sharing; close it first.

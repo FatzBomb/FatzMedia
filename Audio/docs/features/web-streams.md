@@ -127,7 +127,7 @@ using var show = engine.OpenUrl("https://cdn.example.com/show/master.m3u8", opts
 | `stream.Stalled`, `stream.Resumed` | `FA_EVENT_STALLED`, `FA_EVENT_RESUMED` |
 | `NetworkOptions.Downloaded`, `stream.SetDownloadHandler(handler)` | `fa_net_options.download_proc`, `fa_stream_set_download_callback` ([saving a station](#saving-a-station-as-it-plays)) |
 
-A URL that isn't an absolute http or https URL throws `ArgumentException`. Other failures throw `FatzAudioException` with the codes below.
+A URL that isn't an absolute http or https URL throws `ArgumentException`. Other failures throw `AudioException` with the codes below.
 
 ## Opening
 

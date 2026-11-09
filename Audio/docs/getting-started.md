@@ -128,15 +128,15 @@ More in [devices](features/devices.md): a second output for headphone preview, w
 
 ## 4. Handle errors
 
-Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `FatzAudioException` with an `ErrorCode`. There is no "last error" to poll. The BASS error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
+Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `AudioException` with an `ErrorCode`. There is no "last error" to poll. The BASS error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
 
 ```csharp
 try { using var song = engine.OpenFile(path); /* ... */ }
-catch (FatzAudioException ex) when (ex.ErrorCode == ErrorCode.NoSoundFont)
+catch (AudioException ex) when (ex.ErrorCode == ErrorCode.NoSoundFont)
 {
     // a MIDI file and no soundfont set and no system bank: ask for one (engine.DefaultSoundFont)
 }
-catch (FatzAudioException ex)
+catch (AudioException ex)
 {
     Console.Error.WriteLine($"{ex.ErrorCode}: {ex.Message}");
 }

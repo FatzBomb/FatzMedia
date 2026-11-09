@@ -78,7 +78,7 @@ IReadOnlyList<string> nativePaths =
 var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
     MediaPlayerConfiguration.Auto,
     nativePaths,
-    new WindowsDirect3D11MediaControlPlatformFactory());
+    new WindowsDirect3D11PlatformFactory());
 ```
 
 To use only the default folders, pass an empty list or <xref:FatzMedia.Video.WindowsNativeLibraryPaths.GetDefaultSearchPaths>, which returns the default folders that exist.
@@ -97,7 +97,7 @@ Read <xref:FatzMedia.Video.MediaControlPlayer.NativeDependencies> (or `NativeDep
 When a required FFmpeg library fails, the player constructor throws, and the exception message includes the hints. The player does not exist then, so read the report from the platform factory you passed in:
 
 ```csharp
-var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var platform = new WindowsDirect3D11PlatformFactory();
 try
 {
     player = await FatzMedia.Video.Wpf.Player.CreateAsync(

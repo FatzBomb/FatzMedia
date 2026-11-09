@@ -54,7 +54,7 @@ public sealed class StreamMarkers
     /// <returns>Its position, or null when it is not set.</returns>
     public TimeSpan? Get(MarkerKind kind)
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_marker(_stream.Handle, (int)kind, out long frame));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_marker(_stream.Handle, (int)kind, out long frame));
         return frame < 0 ? null : _stream.FramesToTime(frame);
     }
 
@@ -66,7 +66,7 @@ public sealed class StreamMarkers
     {
         if (position < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(position));
         long frame = position is { } t ? _stream.TimeToFrames(t) : -1;
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_marker(_stream.Handle, (int)kind, frame));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_marker(_stream.Handle, (int)kind, frame));
     }
 
     /// <summary>Shape of the <see cref="FadeInEnd"/> fade-in. Defaults to <see cref="Curve.EqualPower"/>.</summary>
@@ -84,7 +84,7 @@ public sealed class StreamMarkers
     {
         ArgumentNullException.ThrowIfNull(curve);
         var r = curve.ToNative();
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_fade_curve(_stream.Handle, fade, &r));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_fade_curve(_stream.Handle, fade, &r));
         GC.KeepAlive(curve);
         return curve;
     }

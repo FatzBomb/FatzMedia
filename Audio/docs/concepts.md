@@ -29,7 +29,7 @@ There is **no hidden state**: every call names the object it acts on. Unlike BAS
 
 Every function returns `fa_result`. `FA_OK` (0) means success, negative values are errors. `fa_result_string()` gives a readable message. Decoding problems inside a playing stream don't fail calls; they raise an `FA_EVENT_DECODE_ERROR` event and playback continues past the bad data.
 
-In .NET, errors become a `FatzAudioException` with an `ErrorCode`.
+In .NET, errors become a `AudioException` with an `ErrorCode`.
 
 ## Versioned structs
 

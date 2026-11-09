@@ -53,7 +53,7 @@ public class FingerprintTests
             var expected = AudioFingerprint.Compute(bytes);
             Assert.Equal(expected, AudioFingerprint.Compute(zip, "song.mp3"));
             Assert.Equal(expected, AudioFingerprint.Compute(zip, "deflated/song.mp3"));
-            var ex = Assert.Throws<FatzAudioException>(() => AudioFingerprint.Compute(zip, "other.mp3"));
+            var ex = Assert.Throws<AudioException>(() => AudioFingerprint.Compute(zip, "other.mp3"));
             Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
         }
         finally
@@ -65,7 +65,7 @@ public class FingerprintTests
     [Fact]
     public void Compute_Errors()
     {
-        var ex = Assert.Throws<FatzAudioException>(() => AudioFingerprint.Compute(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));
+        var ex = Assert.Throws<AudioException>(() => AudioFingerprint.Compute(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
         Assert.Throws<ArgumentException>(() => AudioFingerprint.Compute(ReadOnlySpan<byte>.Empty));
     }

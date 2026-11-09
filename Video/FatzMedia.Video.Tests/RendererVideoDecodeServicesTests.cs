@@ -96,7 +96,7 @@ public sealed class RendererVideoDecodeServicesTests
     [Fact]
     public void TheCoordinator_AttachesItsRenderersDevice_ToThePlayersDecoders()
     {
-        using ServiceProvider provider = (ServiceProvider)MediaControlServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        using ServiceProvider provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
         IMediaEngine engine = provider.GetRequiredService<IMediaEngine>();
         RendererVideoDecodeServices services = provider.GetRequiredService<RendererVideoDecodeServices>();
 
@@ -117,7 +117,7 @@ public sealed class RendererVideoDecodeServicesTests
     {
         // ENG-037: the software renderer draws only CPU frames, so with the default (Auto)
         // decoding its players must decode in software instead of dropping hardware frames.
-        using ServiceProvider provider = (ServiceProvider)MediaControlServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        using ServiceProvider provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
         IMediaEngine engine = provider.GetRequiredService<IMediaEngine>();
         RendererVideoDecodeServices services = provider.GetRequiredService<RendererVideoDecodeServices>();
         var software = new SoftwareRendererBackend();
@@ -283,7 +283,7 @@ public sealed class RendererVideoDecodeServicesTests
 
 
     /// <summary>A platform with no native libraries: no audio, software decoding services.</summary>
-    private sealed class TestPlatformServices : IMediaControlPlatformServices
+    private sealed class TestPlatformServices : IPlatformServices
     {
         public bool IsAudioAvailable => false;
 
