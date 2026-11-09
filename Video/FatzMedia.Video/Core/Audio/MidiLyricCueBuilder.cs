@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Subtitle;
 using System.Text;
+using FatzMedia.Video.Core.Subtitle;
 
 namespace FatzMedia.Video.Core.Audio;
 
@@ -10,18 +10,18 @@ namespace FatzMedia.Video.Core.Audio;
 /// the reader's positions. On BASS the reader is <see cref="BassMidiEventReader"/> on the open
 /// MIDI channel, which makes the same BASS marker calls this class made before.
 /// </summary>
-internal static class MidiLyricCueBuilder
+static class MidiLyricCueBuilder
 {
-    private const int PreferredLineLength = 42;
+    const int PreferredLineLength = 42;
 
-    private static readonly TimeSpan TargetPageHold = TimeSpan.FromMilliseconds(2000);
-    private static readonly TimeSpan TargetPagePreview = TimeSpan.FromMilliseconds(1000);
-    private static readonly TimeSpan TargetPageTransitionDuration = TimeSpan.FromMilliseconds(1000);
-    private static readonly TimeSpan TargetScrollDuration = TimeSpan.FromMilliseconds(1500);
-    private static readonly TimeSpan LyricLeadOffset = TimeSpan.FromMilliseconds(400);
-    private static readonly TimeSpan ParagraphGap = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan SentenceGap = TimeSpan.FromSeconds(0.9);
-    private static readonly HashSet<string> MidiExtensions = new(StringComparer.OrdinalIgnoreCase)
+    static readonly TimeSpan TargetPageHold = TimeSpan.FromMilliseconds(2000);
+    static readonly TimeSpan TargetPagePreview = TimeSpan.FromMilliseconds(1000);
+    static readonly TimeSpan TargetPageTransitionDuration = TimeSpan.FromMilliseconds(1000);
+    static readonly TimeSpan TargetScrollDuration = TimeSpan.FromMilliseconds(1500);
+    static readonly TimeSpan LyricLeadOffset = TimeSpan.FromMilliseconds(400);
+    static readonly TimeSpan ParagraphGap = TimeSpan.FromSeconds(2);
+    static readonly TimeSpan SentenceGap = TimeSpan.FromSeconds(0.9);
+    static readonly HashSet<string> MidiExtensions = new(StringComparer.OrdinalIgnoreCase)
     { ".mid", ".midi", ".kar", ".rmi" };
 
     public static bool IsMidiFile(string path) =>
@@ -49,17 +49,17 @@ internal static class MidiLyricCueBuilder
         if (reader is null)
             return null;
 
-        IReadOnlyList<MidiMark> lyrics = reader.GetMarks(MidiMarkKind.Lyric);
-        IReadOnlyList<MidiMark> textEvents = reader.GetMarks(MidiMarkKind.Text);
+        var lyrics = reader.GetMarks(MidiMarkKind.Lyric);
+        var textEvents = reader.GetMarks(MidiMarkKind.Text);
 
         var durationSeconds = reader.GetDurationSeconds();
-        TimeSpan duration = double.IsFinite(durationSeconds) && durationSeconds > 0
+        var duration = double.IsFinite(durationSeconds) && durationSeconds > 0
             ? TimeSpan.FromSeconds(durationSeconds)
             : TimeSpan.Zero;
         IReadOnlyList<MidiMark> metadataMarkers =
             [.. lyrics.Concat(textEvents).OrderBy(static marker => marker.Position)];
-        KaraokeMetadata metadata = MidiMetadataExtractor.Extract(reader, sourcePath, duration, metadataMarkers);
-        List<SubtitleCue> cues = BuildCuesFromMarkers(
+        var metadata = MidiMetadataExtractor.Extract(reader, sourcePath, duration, metadataMarkers);
+        var cues = BuildCuesFromMarkers(
             reader,
             lyrics,
             textEvents,
@@ -78,22 +78,22 @@ internal static class MidiLyricCueBuilder
         return cues.Count > 0 ? cues : null;
     }
 
-    private static List<SubtitleCue> BuildCuesFromMarkers(
+    static List<SubtitleCue> BuildCuesFromMarkers(
         IMidiEventReader reader,
         IReadOnlyList<MidiMark> lyrics,
         IReadOnlyList<MidiMark> textEvents,
         TimeSpan duration,
         TimeSpan transitionDuration)
     {
-        MidiMark[] lyricMarkers = FilterKaraokeEvents(lyrics);
-        MidiMark[] markers = lyricMarkers.Length > 0 ? lyricMarkers : FilterKaraokeEvents(textEvents);
+        var lyricMarkers = FilterKaraokeEvents(lyrics);
+        var markers = lyricMarkers.Length > 0 ? lyricMarkers : FilterKaraokeEvents(textEvents);
 
         if (markers.Length == 0)
             return [];
 
         var fragments = new List<MidiLyricFragment>(markers.Length);
 
-        foreach (MidiMark marker in markers)
+        foreach (var marker in markers)
         {
             var startSeconds = reader.PositionToSeconds(marker.Position);
             if (!double.IsFinite(startSeconds) || startSeconds < 0)
@@ -101,7 +101,7 @@ internal static class MidiLyricCueBuilder
 
             // Shift lyric markers 400ms earlier so the wipe highlights ahead of the note,
             // giving the singer preparation time like CDG files typically do.
-            TimeSpan adjustedStart = TimeSpan.FromSeconds(startSeconds) - LyricLeadOffset;
+            var adjustedStart = TimeSpan.FromSeconds(startSeconds) - LyricLeadOffset;
             if (adjustedStart < TimeSpan.Zero)
                 adjustedStart = TimeSpan.Zero;
 
@@ -121,10 +121,10 @@ internal static class MidiLyricCueBuilder
         TimeSpan duration,
         TimeSpan? transitionDuration = null)
     {
-        TimeSpan animationDuration = transitionDuration is { } configuredDuration
+        var animationDuration = transitionDuration is { } configuredDuration
             ? Max(TimeSpan.Zero, configuredDuration)
             : TargetPageTransitionDuration;
-        List<KaraokeLine> lines = BuildLines(fragments);
+        var lines = BuildLines(fragments);
         var cues = new List<SubtitleCue>(lines.Count);
         if (lines.Count == 0)
             return cues;
@@ -136,24 +136,24 @@ internal static class MidiLyricCueBuilder
         for (var i = 1; i < lines.Count; i++)
         {
             var clearsPage = lines[i - 1].Paragraph != lines[i].Paragraph;
-            TransitionSchedule schedule = clearsPage
+            var schedule = clearsPage
                 ? CalculatePageTransition(lines[i - 1], lines[i], animationDuration)
                 : CalculateScrollTransition(lines[i - 1], lines[i]);
-            TimeSpan minimumStart = schedules[i - 1].Start + TimeSpan.FromTicks(1);
+            var minimumStart = schedules[i - 1].Start + TimeSpan.FromTicks(1);
             schedules[i] = schedule.Start >= minimumStart
                 ? schedule
                 : schedule.MoveStart(minimumStart);
         }
 
-        TimeSpan firstLyricStart = GetFirstSyllableStart(lines[0]);
-        TimeSpan firstPresentationStart = lines[0].HasCountdown
+        var firstLyricStart = GetFirstSyllableStart(lines[0]);
+        var firstPresentationStart = lines[0].HasCountdown
             ? Max(TimeSpan.Zero, firstLyricStart - KaraokeLineTiming.CountdownDuration)
             : firstLyricStart;
 
         // Fade five seconds after the final syllable, or during the final second when the media ends sooner.
-        TimeSpan lastSyllableEnd = GetLastSyllableStart(lines[^1]);
-        TimeSpan endFadeStart = lastSyllableEnd + TimeSpan.FromSeconds(5);
-        TimeSpan endFadeEnd = endFadeStart + TimeSpan.FromMilliseconds(1000);
+        var lastSyllableEnd = GetLastSyllableStart(lines[^1]);
+        var endFadeStart = lastSyllableEnd + TimeSpan.FromSeconds(5);
+        var endFadeEnd = endFadeStart + TimeSpan.FromMilliseconds(1000);
         if (endFadeEnd > duration)
         {
             endFadeEnd = duration;
@@ -162,14 +162,14 @@ internal static class MidiLyricCueBuilder
 
         for (var i = 0; i < lines.Count; i++)
         {
-            KaraokeLine line = lines[i];
-            TransitionSchedule schedule = schedules[i];
-            TimeSpan cueStart = i == 0 ? TimeSpan.Zero : schedule.Start;
-            TimeSpan end = i + 1 < lines.Count ? schedules[i + 1].Start : duration;
+            var line = lines[i];
+            var schedule = schedules[i];
+            var cueStart = i == 0 ? TimeSpan.Zero : schedule.Start;
+            var end = i + 1 < lines.Count ? schedules[i + 1].Start : duration;
             if (i == lines.Count - 1 && end <= cueStart)
                 end = cueStart + TimeSpan.FromMilliseconds(100);
 
-            List<KaraokeLineTiming> timingLines = CreateLineWindow(lines, i, line.Paragraph, out var activeLineIndex);
+            var timingLines = CreateLineWindow(lines, i, line.Paragraph, out var activeLineIndex);
             var clearsPage = i > 0 && lines[i - 1].Paragraph != line.Paragraph;
             IReadOnlyList<KaraokeLineTiming> outgoingPageLines = [];
             var outgoingActiveLineIndex = 0;
@@ -209,20 +209,20 @@ internal static class MidiLyricCueBuilder
         return cues;
     }
 
-    private static TransitionSchedule CalculateScrollTransition(
+    static TransitionSchedule CalculateScrollTransition(
         KaraokeLine currentLine,
         KaraokeLine nextLine)
     {
-        TimeSpan nextLineStart = GetFirstSyllableStart(nextLine);
-        TimeSpan nextPresentationStart = nextLine.HasCountdown
+        var nextLineStart = GetFirstSyllableStart(nextLine);
+        var nextPresentationStart = nextLine.HasCountdown
             ? Max(TimeSpan.Zero, nextLineStart - KaraokeLineTiming.CountdownDuration)
             : nextLineStart;
 
-        TimeSpan currentLineEnd = GetLastSyllableStart(currentLine);
-        TimeSpan earliestScrollStart = GetFirstSyllableStart(currentLine);
+        var currentLineEnd = GetLastSyllableStart(currentLine);
+        var earliestScrollStart = GetFirstSyllableStart(currentLine);
         TimeSpan scrollStart;
         TimeSpan scrollComplete;
-        TimeSpan gap = nextPresentationStart - currentLineEnd;
+        var gap = nextPresentationStart - currentLineEnd;
         if (gap >= TargetScrollDuration)
         {
             scrollComplete = nextPresentationStart;
@@ -230,12 +230,12 @@ internal static class MidiLyricCueBuilder
         }
         else
         {
-            TimeSpan gapCenter = currentLineEnd + TimeSpan.FromTicks(gap.Ticks / 2);
+            var gapCenter = currentLineEnd + TimeSpan.FromTicks(gap.Ticks / 2);
             scrollStart = gapCenter - TimeSpan.FromTicks(TargetScrollDuration.Ticks / 2);
             scrollComplete = scrollStart + TargetScrollDuration;
             if (scrollStart < earliestScrollStart)
             {
-                TimeSpan shift = earliestScrollStart - scrollStart;
+                var shift = earliestScrollStart - scrollStart;
                 scrollStart += shift;
                 scrollComplete += shift;
             }
@@ -244,25 +244,25 @@ internal static class MidiLyricCueBuilder
         return TransitionSchedule.Normal(scrollStart, scrollComplete);
     }
 
-    private static TransitionSchedule CalculateInitialTransition(
+    static TransitionSchedule CalculateInitialTransition(
         KaraokeLine firstLine,
         TimeSpan transitionDuration)
     {
-        TimeSpan firstLineStart = GetFirstSyllableStart(firstLine);
-        TimeSpan preview = firstLine.HasCountdown ? KaraokeLineTiming.CountdownDuration : TargetPagePreview;
-        TimeSpan fadeInEnd = Max(TimeSpan.Zero, firstLineStart - preview);
-        TimeSpan fadeInStart = Max(TimeSpan.Zero, fadeInEnd - transitionDuration);
+        var firstLineStart = GetFirstSyllableStart(firstLine);
+        var preview = firstLine.HasCountdown ? KaraokeLineTiming.CountdownDuration : TargetPagePreview;
+        var fadeInEnd = Max(TimeSpan.Zero, firstLineStart - preview);
+        var fadeInStart = Max(TimeSpan.Zero, fadeInEnd - transitionDuration);
         return TransitionSchedule.Normal(fadeInStart, fadeInEnd);
     }
 
-    private static TransitionSchedule CalculatePageTransition(
+    static TransitionSchedule CalculatePageTransition(
         KaraokeLine currentLine,
         KaraokeLine nextLine,
         TimeSpan transitionDuration)
     {
-        TimeSpan currentPageEnd = GetLastSyllableStart(currentLine);
-        TimeSpan nextPageStart = GetFirstSyllableStart(nextLine);
-        TimeSpan totalGap = nextPageStart - currentPageEnd;
+        var currentPageEnd = GetLastSyllableStart(currentLine);
+        var nextPageStart = GetFirstSyllableStart(nextLine);
+        var totalGap = nextPageStart - currentPageEnd;
 
         // Handle zero/negative gap
         if (totalGap <= TimeSpan.Zero)
@@ -278,23 +278,23 @@ internal static class MidiLyricCueBuilder
         }
         else
         {
-            TimeSpan roomAfterFullFades = Max(TimeSpan.Zero, totalGap - (transitionDuration * 2));
+            var roomAfterFullFades = Max(TimeSpan.Zero, totalGap - (transitionDuration * 2));
             presentationLead = Min(TargetPagePreview, roomAfterFullFades);
         }
 
-        TimeSpan incomingReady = nextPageStart - presentationLead;
-        TimeSpan transitionWindow = Max(TimeSpan.Zero, incomingReady - currentPageEnd);
-        TimeSpan fadeDuration = Min(transitionDuration, transitionWindow);
-        TimeSpan outHold = TimeSpan.Zero;
+        var incomingReady = nextPageStart - presentationLead;
+        var transitionWindow = Max(TimeSpan.Zero, incomingReady - currentPageEnd);
+        var fadeDuration = Min(transitionDuration, transitionWindow);
+        var outHold = TimeSpan.Zero;
         if (transitionWindow >= transitionDuration * 2)
         {
             outHold = Min(TargetPageHold, transitionWindow - (fadeDuration * 2));
         }
 
-        TimeSpan outStart = currentPageEnd + outHold;
-        TimeSpan outFadeEnd = outStart + fadeDuration;
-        TimeSpan inFadeEnd = incomingReady;
-        TimeSpan inFadeStart = inFadeEnd - fadeDuration;
+        var outStart = currentPageEnd + outHold;
+        var outFadeEnd = outStart + fadeDuration;
+        var inFadeEnd = incomingReady;
+        var inFadeStart = inFadeEnd - fadeDuration;
 
         return TransitionSchedule.Page(
             outStart, inFadeEnd,
@@ -302,18 +302,18 @@ internal static class MidiLyricCueBuilder
             inFadeStart, inFadeEnd);
     }
 
-    private static TimeSpan GetLastSyllableStart(KaraokeLine line) => line.Segments.Count > 0
+    static TimeSpan GetLastSyllableStart(KaraokeLine line) => line.Segments.Count > 0
         ? line.Segments[^1].Start
         : line.Start;
 
-    private static TimeSpan GetFirstSyllableStart(KaraokeLine line) => line.Segments.Count > 0
+    static TimeSpan GetFirstSyllableStart(KaraokeLine line) => line.Segments.Count > 0
         ? line.Segments[0].Start
         : line.Start;
 
-    private static TimeSpan Min(TimeSpan left, TimeSpan right) => left <= right ? left : right;
-    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left >= right ? left : right;
+    static TimeSpan Min(TimeSpan left, TimeSpan right) => left <= right ? left : right;
+    static TimeSpan Max(TimeSpan left, TimeSpan right) => left >= right ? left : right;
 
-    private static List<KaraokeLineTiming> CreateLineWindow(
+    static List<KaraokeLineTiming> CreateLineWindow(
         IReadOnlyList<KaraokeLine> lines,
         int activeIndex,
         int paragraph,
@@ -335,7 +335,7 @@ internal static class MidiLyricCueBuilder
         return result;
     }
 
-    private static List<KaraokeLineTiming> CreateOutgoingPageWindow(
+    static List<KaraokeLineTiming> CreateOutgoingPageWindow(
         IReadOnlyList<KaraokeLine> lines,
         int activeIndex,
         int paragraph,
@@ -353,7 +353,7 @@ internal static class MidiLyricCueBuilder
         return result;
     }
 
-    private static List<KaraokeLine> BuildLines(IReadOnlyList<MidiLyricFragment> fragments)
+    static List<KaraokeLine> BuildLines(IReadOnlyList<MidiLyricFragment> fragments)
     {
         var lines = new List<KaraokeLine>();
         var lineText = new StringBuilder();
@@ -362,12 +362,12 @@ internal static class MidiLyricCueBuilder
         TimeSpan? previousStart = null;
         var paragraph = 0;
 
-        foreach (MidiLyricFragment fragment in fragments.OrderBy(static fragment => fragment.Start))
+        foreach (var fragment in fragments.OrderBy(static fragment => fragment.Start))
         {
             if (string.IsNullOrEmpty(fragment.Text))
                 continue;
 
-            TimeSpan gap = previousStart is { } previous ? fragment.Start - previous : TimeSpan.Zero;
+            var gap = previousStart is { } previous ? fragment.Start - previous : TimeSpan.Zero;
             var startsWithDisplayControl = fragment.Text[0] is '\\' or '/' or '\r' or '\n' or '<';
             if (!startsWithDisplayControl && lineText.Length > 0 && (gap >= ParagraphGap ||
                 (gap >= SentenceGap && EndsSentence(lineText))))
@@ -418,7 +418,7 @@ internal static class MidiLyricCueBuilder
         return lines;
     }
 
-    private static void AddPart(
+    static void AddPart(
         StringBuilder lineText,
         List<KaraokePart> lineParts,
         StringBuilder partText,
@@ -435,14 +435,14 @@ internal static class MidiLyricCueBuilder
         _ = partText.Clear();
     }
 
-    private static void FlushLine(
+    static void FlushLine(
         List<KaraokeLine> lines,
         StringBuilder lineText,
         List<KaraokePart> lineParts,
         ref TimeSpan? lineStart,
         int paragraph)
     {
-        (var text, IReadOnlyList<KaraokeTextSegment>? segments) = NormalizeParts(lineParts);
+        (var text, var segments) = NormalizeParts(lineParts);
         if (text.Length > 0 && lineStart is { } start)
             lines.Add(new KaraokeLine(start, text, paragraph, segments));
 
@@ -451,13 +451,13 @@ internal static class MidiLyricCueBuilder
         lineStart = null;
     }
 
-    private static (string Text, IReadOnlyList<KaraokeTextSegment> Segments) NormalizeParts(
+    static (string Text, IReadOnlyList<KaraokeTextSegment> Segments) NormalizeParts(
         IReadOnlyList<KaraokePart> parts)
     {
         var result = new StringBuilder(parts.Sum(static part => part.Text.Length));
         var segments = new List<KaraokeTextSegment>(parts.Count);
         var pendingSpace = false;
-        foreach (KaraokePart part in parts)
+        foreach (var part in parts)
         {
             var segmentStart = -1;
             var hasText = false;
@@ -485,7 +485,7 @@ internal static class MidiLyricCueBuilder
         return (result.ToString(), segments);
     }
 
-    private static bool EndsSentence(StringBuilder text)
+    static bool EndsSentence(StringBuilder text)
     {
         for (var i = text.Length - 1; i >= 0; i--)
         {
@@ -498,10 +498,10 @@ internal static class MidiLyricCueBuilder
         return false;
     }
 
-    private static MidiMark[] FilterKaraokeEvents(IReadOnlyList<MidiMark> events)
+    static MidiMark[] FilterKaraokeEvents(IReadOnlyList<MidiMark> events)
     {
         var result = new List<MidiMark>();
-        foreach (MidiMark marker in events)
+        foreach (var marker in events)
         {
             var text = marker.Text;
             if (string.IsNullOrEmpty(text))
@@ -518,7 +518,7 @@ internal static class MidiLyricCueBuilder
     }
 
     internal readonly record struct MidiLyricFragment(TimeSpan Start, string Text);
-    private readonly record struct TransitionSchedule(
+    readonly record struct TransitionSchedule(
         TimeSpan Start,
         TimeSpan Complete,
         bool IsPage,
@@ -548,27 +548,27 @@ internal static class MidiLyricCueBuilder
         };
     }
 
-    private readonly record struct KaraokePart(TimeSpan Start, string Text);
-    private readonly record struct KaraokeLine(
+    readonly record struct KaraokePart(TimeSpan Start, string Text);
+    readonly record struct KaraokeLine(
         TimeSpan Start,
         string Text,
         int Paragraph,
         IReadOnlyList<KaraokeTextSegment> Segments,
         bool HasCountdown = false);
 
-    private static readonly TimeSpan CountdownGap = TimeSpan.FromSeconds(6);
+    static readonly TimeSpan CountdownGap = TimeSpan.FromSeconds(6);
 
-    private static void MarkCountdownLines(List<KaraokeLine> lines)
+    static void MarkCountdownLines(List<KaraokeLine> lines)
     {
         for (var i = 0; i < lines.Count; i++)
         {
-            KaraokeLine line = lines[i];
+            var line = lines[i];
             if (line.Segments.Count == 0)
                 continue;
 
-            TimeSpan firstLyric = line.Segments[0].Start;
-            TimeSpan prevEnd = i > 0 ? GetLastSyllableStart(lines[i - 1]) : TimeSpan.Zero;
-            TimeSpan gap = firstLyric - prevEnd;
+            var firstLyric = line.Segments[0].Start;
+            var prevEnd = i > 0 ? GetLastSyllableStart(lines[i - 1]) : TimeSpan.Zero;
+            var gap = firstLyric - prevEnd;
 
             if (gap <= CountdownGap)
                 continue;

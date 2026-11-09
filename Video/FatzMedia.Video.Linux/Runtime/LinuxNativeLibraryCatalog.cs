@@ -6,13 +6,13 @@ namespace FatzMedia.Video.Linux.Runtime;
 /// A BASS shared library and the audio extensions it enables. BASS is loaded (audio available)
 /// only when every <paramref name="IsCore"/> library loads; the others are plugins.
 /// </summary>
-internal sealed record BassLibrary(string FileName, string DllImportName, IReadOnlyList<string> Extensions, bool IsCore);
+sealed record BassLibrary(string FileName, string DllImportName, IReadOnlyList<string> Extensions, bool IsCore);
 
 /// <summary>
 /// Linux shared-library names for the host-supplied BASS and FFmpeg binaries. Mirrors the
 /// Windows catalog (`bass.dll` -> `libbass.so`) without Windows-only plugins.
 /// </summary>
-internal static class LinuxNativeLibraryCatalog
+static class LinuxNativeLibraryCatalog
 {
     public static IReadOnlyList<BassLibrary> Bass { get; } =
     [
@@ -74,7 +74,7 @@ internal static class LinuxNativeLibraryCatalog
         if (name.StartsWith("lib", StringComparison.Ordinal) && name.EndsWith(".so", StringComparison.Ordinal))
             name = name[3..^3];
 
-        foreach (BassLibrary library in Bass)
+        foreach (var library in Bass)
         {
             if (string.Equals(library.DllImportName, name, StringComparison.OrdinalIgnoreCase))
                 return library.FileName;

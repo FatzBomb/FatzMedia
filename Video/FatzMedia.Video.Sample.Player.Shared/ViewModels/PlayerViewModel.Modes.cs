@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// </summary>
 public partial class PlayerViewModel
 {
-    private bool _syncingFromPlayer;
+    bool _syncingFromPlayer;
 
     public IReadOnlyList<MediaPlayerMode> PlayerModes { get; } = Enum.GetValues<MediaPlayerMode>();
 
@@ -44,21 +44,21 @@ public partial class PlayerViewModel
     /// <summary>Gets whether the mode can be switched now (an engine exists and no switch is running).</summary>
     public bool CanSwitchMode => Player is not null && !IsSwitchingMode;
 
-    private void InitializeModeControls() => PlayerMode = Options.Mode;
+    void InitializeModeControls() => PlayerMode = Options.Mode;
 
-    private void StartModeTracking(PlayerCore player)
+    void StartModeTracking(PlayerCore player)
     {
         player.ModeChanged += OnPlayerModeChanged;
         player.LoopMediaChanged += OnPlayerLoopMediaChanged;
     }
 
-    private void StopModeTracking(PlayerCore player)
+    void StopModeTracking(PlayerCore player)
     {
         player.ModeChanged -= OnPlayerModeChanged;
         player.LoopMediaChanged -= OnPlayerLoopMediaChanged;
     }
 
-    private async Task SwitchModeAsync(PlayerCore player, MediaPlayerMode mode)
+    async Task SwitchModeAsync(PlayerCore player, MediaPlayerMode mode)
     {
         IsSwitchingMode = true;
         StatusText = $"Switching to {mode} mode...";
@@ -82,17 +82,17 @@ public partial class PlayerViewModel
         }
     }
 
-    private void OnPlayerModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e)
+    void OnPlayerModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e)
     {
         if (sender is PlayerCore player)
             RunOnUiThread(() => SyncFromPlayer(player));
     }
 
-    private void OnPlayerLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e)
+    void OnPlayerLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e)
         => RunOnUiThread(() => SetLoopFromPlayer(e.CurrentValue));
 
     /// <summary>Shows the engine's mode and loop setting without sending them back to it.</summary>
-    private void SyncFromPlayer(PlayerCore player)
+    void SyncFromPlayer(PlayerCore player)
     {
         if (!ReferenceEquals(player, Player))
             return;
@@ -111,7 +111,7 @@ public partial class PlayerViewModel
         RefreshCommandStates();
     }
 
-    private void SetLoopFromPlayer(bool loop)
+    void SetLoopFromPlayer(bool loop)
     {
         if (LoopPlayback == loop)
             return;

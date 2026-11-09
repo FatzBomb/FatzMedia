@@ -1,6 +1,6 @@
-using FatzMedia.Video.Core.Configuration;
-using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Controllers;
+using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Configuration;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;

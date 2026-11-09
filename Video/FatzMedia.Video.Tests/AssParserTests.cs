@@ -9,7 +9,7 @@ public class AssParserTests
     {
         const string ass = "[Events]\nDialogue: 0,0:00:01.25,0:00:03.50,Default,,0,0,0,,{\\an8}First\\NSecond\n";
 
-        SubtitleCue cue = Assert.Single(AssParser.Parse(ass));
+        var cue = Assert.Single(AssParser.Parse(ass));
 
         Assert.Equal(TimeSpan.FromMilliseconds(1250), cue.Start);
         Assert.Equal(TimeSpan.FromMilliseconds(3500), cue.End);

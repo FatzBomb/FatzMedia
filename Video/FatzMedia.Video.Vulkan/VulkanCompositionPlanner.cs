@@ -6,7 +6,7 @@ using FatzMedia.Video.Core.Graphics.Geometry;
 namespace FatzMedia.Video.Vulkan;
 
 /// <summary>What the current Vulkan slice can draw for a composition frame.</summary>
-internal enum VulkanFrameSupport
+enum VulkanFrameSupport
 {
     Supported,
     NativeOrRetainedBackground,
@@ -22,7 +22,7 @@ internal enum VulkanFrameSupport
 /// last such frame (<see cref="Retained"/>). <see cref="Revision"/> is the frame's background
 /// revision (Core bumps it whenever the pixels change); -1 is unknown, and always uploads.
 /// </summary>
-internal readonly record struct VulkanBackgroundLayer(
+readonly record struct VulkanBackgroundLayer(
     ReadOnlyMemory<byte> Bgra,
     int Width,
     int Height,
@@ -40,7 +40,7 @@ internal readonly record struct VulkanBackgroundLayer(
 /// A nearest-sampled overlay drawn as a textured quad over <see cref="Destination"/>, with the
 /// software renderer's sampling (Core <see cref="NearestSampledPlacement"/>).
 /// </summary>
-internal readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placement)
+readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placement)
 {
     /// <summary>The clipped integer rectangle that is drawn.</summary>
     public PixelRect Destination => new(Placement.ClippedLeft, Placement.ClippedTop, Placement.ClippedRight, Placement.ClippedBottom);
@@ -62,14 +62,14 @@ internal readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placem
 }
 
 /// <summary>CDG overlay snapshot and where it lands on the output.</summary>
-internal readonly record struct VulkanCdgLayer(CdgRenderSnapshot Snapshot, VulkanOverlayQuad Quad);
+readonly record struct VulkanCdgLayer(CdgRenderSnapshot Snapshot, VulkanOverlayQuad Quad);
 
 /// <summary>
 /// Rasterized subtitle or karaoke text (premultiplied BGRA rows) and where it lands on the output.
 /// <see cref="Revision"/> is the frame's subtitle revision (Core bumps it for every new raster);
 /// zero or less is unknown, and always uploads.
 /// </summary>
-internal readonly record struct VulkanSubtitleLayer(
+readonly record struct VulkanSubtitleLayer(
     ReadOnlyMemory<byte> Bgra,
     int Width,
     int Height,
@@ -78,7 +78,7 @@ internal readonly record struct VulkanSubtitleLayer(
     VulkanOverlayQuad Quad);
 
 /// <summary>Everything the compositor draws for one frame, in software-renderer order.</summary>
-internal readonly record struct VulkanFramePlan(
+readonly record struct VulkanFramePlan(
     int OutputWidth,
     int OutputHeight,
     (byte B, byte G, byte R, byte A) ClearBgraPremultiplied,
@@ -97,7 +97,7 @@ internal readonly record struct VulkanFramePlan(
 /// clipping of off-target destinations with a proportional source crop, overlay sampling
 /// placement, and CDG palette expansion.
 /// </summary>
-internal static class VulkanCompositionPlanner
+static class VulkanCompositionPlanner
 {
     public static VulkanFrameSupport Classify(in MediaCompositionFrame frame)
     {
@@ -173,7 +173,7 @@ internal static class VulkanCompositionPlanner
         VulkanSubtitleLayer? subtitle = null;
         if (frame.HasSubtitleOverlay)
         {
-            NearestSampledPlacement placement = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
+            var placement = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
                 ? NearestSampledPlacement.CreateCanvasPlacement(
                     frame.SubtitleWidth,
                     frame.SubtitleHeight,
@@ -223,7 +223,7 @@ internal static class VulkanCompositionPlanner
             return null;
 
         var placement = NearestSampledPlacement.Create(sourceWidth, sourceHeight, outputWidth, outputHeight, stretchMode);
-        RectD destination = placement.Destination;
+        var destination = placement.Destination;
         if (destination.Width <= 0 || destination.Height <= 0 || placement.IsEmpty)
             return null;
 
@@ -279,12 +279,12 @@ internal static class VulkanCompositionPlanner
     {
         var pixelCount = snapshot.Width * snapshot.Height;
         ArgumentOutOfRangeException.ThrowIfLessThan(destinationBgra.Length, pixelCount * 4);
-        ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span[..pixelCount];
-        ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
+        var indices = snapshot.ColorIndices.Span[..pixelCount];
+        var palette = snapshot.PaletteArgb.Span;
         var backgroundIndex = snapshot.BackgroundColorIndex;
         for (var pixel = 0; pixel < pixelCount; pixel++)
         {
-            Span<byte> texel = destinationBgra.Slice(pixel * 4, 4);
+            var texel = destinationBgra.Slice(pixel * 4, 4);
             var index = indices[pixel];
             if (index == backgroundIndex || index >= palette.Length)
             {

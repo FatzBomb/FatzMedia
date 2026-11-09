@@ -11,7 +11,7 @@ public sealed partial class MediaSurface
     /// <summary>The diagnostic category of the surface's path decisions and attach problems.</summary>
     public const string DiagnosticCategory = "Wpf.MediaSurface";
 
-    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
+    readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
 
     /// <summary>Raised on the UI thread when <see cref="PresentationPath"/> or its reason changes.</summary>
     public event EventHandler? PresentationPathChanged;
@@ -27,9 +27,9 @@ public sealed partial class MediaSurface
     /// <summary>Gets why the current path was chosen.</summary>
     public string? PresentationPathReason => _bookkeeping.Reason;
 
-    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
+    string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
-    private void ReportAttachResult(IPlayerSession session, bool attached)
+    void ReportAttachResult(IPlayerSession session, bool attached)
     {
         if (!attached)
         {
@@ -38,13 +38,13 @@ public sealed partial class MediaSurface
         }
 
         _bookkeeping.ResetAttachRefusal();
-        MediaSurfacePresentationPath path = PresentationMode == WpfPresentationMode.WpfComposited
+        var path = PresentationMode == WpfPresentationMode.WpfComposited
             ? MediaSurfacePresentationPath.FrameSink
             : MediaSurfacePresentationPath.NativeWindow;
         SetPresentationPath(path, $"PresentationMode is {PresentationMode}", session);
     }
 
-    private void SetPresentationPath(MediaSurfacePresentationPath path, string? reason, IPlayerSession? session)
+    void SetPresentationPath(MediaSurfacePresentationPath path, string? reason, IPlayerSession? session)
     {
         if (_bookkeeping.SetPath(path, reason, session, EffectiveSurfaceId))
             PresentationPathChanged?.Invoke(this, EventArgs.Empty);

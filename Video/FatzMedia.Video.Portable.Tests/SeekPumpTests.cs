@@ -196,12 +196,12 @@ public sealed class SeekPumpTests
         host.Pump.Dispose();
     }
 
-    private sealed class FakeHost : ISeekPumpHost
+    sealed class FakeHost : ISeekPumpHost
     {
-        private readonly Queue<Action> _waitActions = new();
-        private readonly Queue<Action> _settleActions = new();
-        private readonly Queue<Action> _previewActions = new();
-        private double _currentFrameTime = double.NaN;
+        readonly Queue<Action> _waitActions = new();
+        readonly Queue<Action> _settleActions = new();
+        readonly Queue<Action> _previewActions = new();
+        double _currentFrameTime = double.NaN;
 
         public FakeHost() => Pump = new SeekPump(this, "TestSeek", "SeekPumpTests");
 
@@ -235,7 +235,7 @@ public sealed class SeekPumpTests
                 if (asPreview)
                 {
                     Calls.Add($"preview {Format(target)} {(allowPreviewFallback ? "nearby" : "exact")}");
-                    if (_previewActions.TryDequeue(out Action? previewAction))
+                    if (_previewActions.TryDequeue(out var previewAction))
                         previewAction();
                     if (PreviewPresents)
                         _currentFrameTime = allowPreviewFallback ? target + ShownFrameOffset : target;
@@ -244,7 +244,7 @@ public sealed class SeekPumpTests
 
                 Calls.Add($"settle {Format(target)}");
                 _currentFrameTime = target;
-                if (_settleActions.TryDequeue(out Action? action))
+                if (_settleActions.TryDequeue(out var action))
                     action();
                 OnSettle?.Invoke();
                 return true;
@@ -262,10 +262,10 @@ public sealed class SeekPumpTests
             Waits++;
             if (RealWait)
                 Pump.WaitInterval(1);
-            else if (_waitActions.TryDequeue(out Action? action))
+            else if (_waitActions.TryDequeue(out var action))
                 action();
         }
 
-        private static string Format(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        static string Format(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
     }
 }

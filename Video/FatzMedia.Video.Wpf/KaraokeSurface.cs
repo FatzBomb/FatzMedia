@@ -19,13 +19,13 @@ public sealed class KaraokeSurface : Grid, IDisposable
     /// <summary>The diagnostic category of this control's own notices (Stage 046A).</summary>
     public const string DiagnosticCategory = "Wpf.KaraokeSurface";
 
-    private readonly MediaSurface _surface;
-    private readonly LightweightPlayerController _playerController;
-    private bool _restoringPlatformFactory;
-    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
-    private bool _disposed;
+    readonly MediaSurface _surface;
+    readonly LightweightPlayerController _playerController;
+    bool _restoringPlatformFactory;
+    WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
+    bool _disposed;
     // The player holds a song the Source loaded (not one LoadAsync loaded directly).
-    private bool _sourceLoaded;
+    bool _sourceLoaded;
 
     public KaraokeSurface()
     {
@@ -66,7 +66,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
         typeof(KaraokeSurface),
         new PropertyMetadata(true, OnAutoHideChanged));
 
-    private static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
+    static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
         DependencyProperty.RegisterReadOnly(
             nameof(IsContentVisible),
             typeof(bool),
@@ -155,13 +155,13 @@ public sealed class KaraokeSurface : Grid, IDisposable
     public Task<bool> PauseAsync() => _playerController.PauseAsync();
     public Task<bool> StopAsync() => _playerController.StopAsync();
 
-    private static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((KaraokeSurface)d)._playerController.AutoPlay = e.NewValue is true;
 
-    private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((KaraokeSurface)d)._surface.AutoHide = e.NewValue is true;
 
-    private static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (KaraokeSurface)d;
         if (surface._restoringPlatformFactory
@@ -184,7 +184,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
         throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
     }
 
-    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    static object CoercePresentationMode(DependencyObject d, object baseValue)
     {
         var surface = (KaraokeSurface)d;
         if (surface._playerController.IsMediaOpen)
@@ -204,7 +204,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
         return baseValue;
     }
 
-    private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (KaraokeSurface)d;
         if (surface._playerController.IsMediaOpen)
@@ -217,18 +217,18 @@ public sealed class KaraokeSurface : Grid, IDisposable
     protected override Size ArrangeOverride(Size arrangeSize)
     {
         _ = base.ArrangeOverride(arrangeSize);
-        (double x, double y, double width, double height) = KaraokeLayout.Fit(arrangeSize.Width, arrangeSize.Height);
+        (var x, var y, var width, var height) = KaraokeLayout.Fit(arrangeSize.Width, arrangeSize.Height);
         _surface.Arrange(new Rect(x, y, width, height));
         return arrangeSize;
     }
 
-    private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((KaraokeSurface)d).QueueSourceReload();
 
-    private static void OnCanvasColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+    static void OnCanvasColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((KaraokeSurface)d).Background = CreateOpaqueBrush((Color)e.NewValue);
 
-    private void QueueSourceReload()
+    void QueueSourceReload()
     {
         if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
@@ -238,7 +238,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
 
     // Clearing the source releases the player, so the previous song does not keep playing; a
     // reload without one (Loaded) leaves a song LoadAsync loaded alone.
-    private async Task ReloadSourceAsync()
+    async Task ReloadSourceAsync()
     {
         if (!string.IsNullOrWhiteSpace(Source))
         {
@@ -252,7 +252,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
         }
     }
 
-    private Task<bool> LoadKaraokeAsync(string path)
+    Task<bool> LoadKaraokeAsync(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
@@ -265,13 +265,13 @@ public sealed class KaraokeSurface : Grid, IDisposable
         return _playerController.LoadAsync(path, PlatformFactory);
     }
 
-    private static SolidColorBrush CreateOpaqueBrush(Color color)
+    static SolidColorBrush CreateOpaqueBrush(Color color)
     {
         color.A = byte.MaxValue;
         return new SolidColorBrush(color);
     }
 
-    private void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
+    void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = _surface.IsContentVisible;
         if (IsContentVisible == isVisible)
@@ -282,9 +282,9 @@ public sealed class KaraokeSurface : Grid, IDisposable
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
-    private void OnPlayerChanged(object? sender, EventArgs e)
+    void OnPlayerChanged(object? sender, EventArgs e)
     {
-        IPlayerSession? session = _playerController.Session;
+        var session = _playerController.Session;
         if (session is not null)
             _surface.PresentationMode = PresentationMode;
 
@@ -294,7 +294,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
     }
 
     // The player's event thread.
-    private void OnPlayerMediaClosed(object? sender, EventArgs e)
+    void OnPlayerMediaClosed(object? sender, EventArgs e)
     {
         if (Dispatcher.CheckAccess())
         {
@@ -309,12 +309,12 @@ public sealed class KaraokeSurface : Grid, IDisposable
         });
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    void OnLoaded(object sender, RoutedEventArgs e)
     {
         QueueSourceReload();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => _playerController.ReleasePlayer();
+    void OnUnloaded(object sender, RoutedEventArgs e) => _playerController.ReleasePlayer();
 
     public void Dispose()
     {

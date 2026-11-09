@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Sample.Player;
 
 public partial class App : Application
 {
-    private PlayerDebugLog? _debugLog;
+    PlayerDebugLog? _debugLog;
 
     public static string LogFilePath { get; } = PlayerDebugLog.DefaultPath("player-debug.log");
 
@@ -39,7 +39,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(e.Args);
+        var options = PlayerStartupOptions.Parse(e.Args);
         StartupOptions = options;
         AutoHideSurfaces = options.AutoHideSurfaces;
 
@@ -48,18 +48,18 @@ public partial class App : Application
         UseRenderer(options.RendererRequest);
         if (options.LightweightSurfacesWindow)
             _ = ShowLightweightSurfacesWindowAsync();
-        AbSwapDemoOptions abDemo = AbSwapDemoOptions.Parse(e.Args);
+        var abDemo = AbSwapDemoOptions.Parse(e.Args);
         if (abDemo.IsEnabled)
             _ = ShowAbSwapDemoWindowAsync(abDemo);
     }
 
     /// <summary>Stage 051A: the A/B swap demo window (<c>--ab-demo=</c>), with the startup renderer.</summary>
-    private async Task ShowAbSwapDemoWindowAsync(AbSwapDemoOptions options)
+    async Task ShowAbSwapDemoWindowAsync(AbSwapDemoOptions options)
     {
-        PlayerRendererSelection selection = await RendererSelection;
+        var selection = await RendererSelection;
         await WhenMainWindowLoadedAsync();
 
-        IReadOnlyList<string> clips = options.ResolveClips(
+        var clips = options.ResolveClips(
             Directory.Exists,
             static folder =>
             {
@@ -73,7 +73,7 @@ public partial class App : Application
                 }
             });
         // The software renderer presents only through the composited path.
-        Wpf.WpfPresentationMode mode = options.Native && !selection.UsesSoftwareRenderer
+        var mode = options.Native && !selection.UsesSoftwareRenderer
             ? Wpf.WpfPresentationMode.NativeHwndOverlay
             : Wpf.WpfPresentationMode.WpfComposited;
         var window = new AbSwapDemoWindow(
@@ -90,7 +90,7 @@ public partial class App : Application
     }
 
     // An owner must have been shown: wait for the main window (StartupUri) to load.
-    private async Task WhenMainWindowLoadedAsync()
+    async Task WhenMainWindowLoadedAsync()
     {
         if (MainWindow is { IsLoaded: false } main)
         {
@@ -101,9 +101,9 @@ public partial class App : Application
     }
 
     /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
-    private async Task ShowLightweightSurfacesWindowAsync()
+    async Task ShowLightweightSurfacesWindowAsync()
     {
-        PlayerRendererSelection selection = await RendererSelection;
+        var selection = await RendererSelection;
         await WhenMainWindowLoadedAsync();
 
         var window = new LightweightSurfacesWindow(
@@ -128,9 +128,9 @@ public partial class App : Application
         RendererSelection = ResolveRendererAsync(StartupOptions, request);
     }
 
-    private static async Task<PlayerRendererSelection> ResolveRendererAsync(PlayerStartupOptions options, PlayerRendererRequest request)
+    static async Task<PlayerRendererSelection> ResolveRendererAsync(PlayerStartupOptions options, PlayerRendererRequest request)
     {
-        PlayerRendererSelection selection = await PlayerRendererSelection.ResolveInBackground(options, request).ConfigureAwait(false);
+        var selection = await PlayerRendererSelection.ResolveInBackground(options, request).ConfigureAwait(false);
         Trace.WriteLine($"[Player] Renderer: {selection.Summary}");
         return selection;
     }

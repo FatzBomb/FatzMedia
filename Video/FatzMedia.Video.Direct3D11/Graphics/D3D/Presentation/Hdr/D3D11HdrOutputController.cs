@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
 /// then it never queries Windows and every target stays SDR. Called under the renderer's
 /// presentation lock.
 /// </summary>
-internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDisplayInfo?> query, Func<long>? timestamp = null)
+sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDisplayInfo?> query, Func<long>? timestamp = null)
 {
     /// <summary>The reason given when the primary surface is offscreen (WPF composited, shared textures).</summary>
     internal const string OffscreenSurfaceReason = "this surface shows SDR only (WPF composited or shared-texture mode)";
@@ -21,14 +21,14 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
     /// <summary>The reason given while a video effect (base visual transform) is on.</summary>
     internal const string VideoEffectReason = "a video effect is on (effects are SDR)";
 
-    private readonly MonitorQueryCache<HdrDisplayInfo>? _displays = enabled ? new MonitorQueryCache<HdrDisplayInfo>(query, timestamp) : null;
-    private DecisionInputs? _lastInputs;
-    private HdrOutputDecision _lastDecision;
-    private HdrOutputDecision? _lastScRgb;
-    private HdrOutputDecision? _reported;
+    readonly MonitorQueryCache<HdrDisplayInfo>? _displays = enabled ? new MonitorQueryCache<HdrDisplayInfo>(query, timestamp) : null;
+    DecisionInputs? _lastInputs;
+    HdrOutputDecision _lastDecision;
+    HdrOutputDecision? _lastScRgb;
+    HdrOutputDecision? _reported;
     // A primary whose switch back to SDR failed with its buffers still scRGB, at that size: not
     // retried every frame, only after a resize (or a re-created swap chain, which is SDR).
-    private (ID3D11PresentationBackend Backend, int Width, int Height)? _failedRevert;
+    (ID3D11PresentationBackend Backend, int Width, int Height)? _failedRevert;
 
     public bool IsEnabled => enabled;
 
@@ -62,9 +62,9 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
             return null;
         }
 
-        HdrDisplayInfo display = _displays!.Get(backend.Hwnd) ?? default;
+        var display = _displays!.Get(backend.Hwnd) ?? default;
         var failed = blocker == null && backend.HdrOutputFailure != null;
-        HdrOutputDecision decision = Decide(content, display, blocker ?? backend.HdrOutputFailure);
+        var decision = Decide(content, display, blocker ?? backend.HdrOutputFailure);
         var revertFailedHere = decision.Mode == HdrOutputMode.Sdr
             && _failedRevert is { } stuck
             && ReferenceEquals(stuck.Backend, primary)
@@ -107,7 +107,7 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
             : decision.DisplayPeakNits);
 
     // Cached by input, so a steady state costs no allocation per frame.
-    private HdrOutputDecision Decide(HdrToneMapRequest? content, HdrDisplayInfo display, string? blocker)
+    HdrOutputDecision Decide(HdrToneMapRequest? content, HdrDisplayInfo display, string? blocker)
     {
         var inputs = new DecisionInputs(content?.Transfer, display, blocker);
         if (_lastInputs == inputs)
@@ -118,7 +118,7 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
         return _lastDecision;
     }
 
-    private void Report(HdrOutputDecision decision, bool failed)
+    void Report(HdrOutputDecision decision, bool failed)
     {
         if (_reported is { } previous && previous.Mode == decision.Mode && string.Equals(previous.Reason, decision.Reason, StringComparison.Ordinal))
             return;
@@ -130,5 +130,5 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
             $"{(decision.Mode == HdrOutputMode.ScRgb ? "scRGB" : "SDR")} ({decision.Reason}).");
     }
 
-    private readonly record struct DecisionInputs(HdrTransferFunction? Transfer, HdrDisplayInfo Display, string? Blocker);
+    readonly record struct DecisionInputs(HdrTransferFunction? Transfer, HdrDisplayInfo Display, string? Blocker);
 }

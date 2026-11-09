@@ -1,6 +1,5 @@
 using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Graphics.Composition;
-using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Software;
 using FatzMedia.Video.Text;
 
@@ -11,7 +10,7 @@ public sealed class VulkanCompositionPlannerTests
     [Fact]
     public void PlanBackground_UniformFit_Letterboxes()
     {
-        VulkanBlit? blit = VulkanCompositionPlanner.PlanBackground(4, 2, 8, 8, MediaCompositionStretchMode.UniformFit);
+        var blit = VulkanCompositionPlanner.PlanBackground(4, 2, 8, 8, MediaCompositionStretchMode.UniformFit);
 
         Assert.Equal(new PixelRect(0, 0, 4, 2), blit!.Value.Source);
         Assert.Equal(new PixelRect(0, 2, 8, 6), blit.Value.Destination);
@@ -20,7 +19,7 @@ public sealed class VulkanCompositionPlannerTests
     [Fact]
     public void PlanBackground_Fill_CoversOutput()
     {
-        VulkanBlit? blit = VulkanCompositionPlanner.PlanBackground(3, 5, 7, 11, MediaCompositionStretchMode.Fill);
+        var blit = VulkanCompositionPlanner.PlanBackground(3, 5, 7, 11, MediaCompositionStretchMode.Fill);
 
         Assert.Equal(new PixelRect(0, 0, 3, 5), blit!.Value.Source);
         Assert.Equal(new PixelRect(0, 0, 7, 11), blit.Value.Destination);
@@ -29,7 +28,7 @@ public sealed class VulkanCompositionPlannerTests
     [Fact]
     public void PlanBackground_UniformToFill_CropsSourceProportionally()
     {
-        VulkanBlit? blit = VulkanCompositionPlanner.PlanBackground(8, 4, 4, 4, MediaCompositionStretchMode.UniformToFill);
+        var blit = VulkanCompositionPlanner.PlanBackground(8, 4, 4, 4, MediaCompositionStretchMode.UniformToFill);
 
         Assert.Equal(new PixelRect(0, 0, 4, 4), blit!.Value.Destination);
         Assert.Equal(new PixelRect(2, 0, 6, 4), blit.Value.Source);
@@ -68,8 +67,8 @@ public sealed class VulkanCompositionPlannerTests
     [Fact]
     public void Plan_CollectsWashAndCdgInDrawOrder()
     {
-        CdgRenderSnapshot snapshot = CdgFixtures.Snapshot();
-        VulkanFramePlan plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { WashArgb = 0x40FF0000, CdgOverlay = snapshot }, 300, 216);
+        var snapshot = CdgFixtures.Snapshot();
+        var plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { WashArgb = 0x40FF0000, CdgOverlay = snapshot }, 300, 216);
 
         Assert.True(plan.HasDraws);
         Assert.Equal(0x40FF0000u, plan.WashArgb);
@@ -89,7 +88,7 @@ public sealed class VulkanCompositionPlannerTests
     [Fact]
     public void PlanOverlay_ExactFit_UsesWholeTexture()
     {
-        VulkanOverlayQuad quad = VulkanCompositionPlanner.PlanOverlay(300, 216, 600, 432, MediaCompositionStretchMode.UniformFit)!.Value;
+        var quad = VulkanCompositionPlanner.PlanOverlay(300, 216, 600, 432, MediaCompositionStretchMode.UniformFit)!.Value;
 
         Assert.Equal(new PixelRect(0, 0, 600, 432), quad.Destination);
         Assert.Equal((0f, 0f, 1f, 1f), quad.TexCoords);
@@ -101,7 +100,7 @@ public sealed class VulkanCompositionPlannerTests
     public void PlanOverlay_FractionalFit_RoundsEdgesAwayFromZeroAndOffsetsTexCoords()
     {
         // 300x216 into 640x480: 640x461 at top 9.5, so rows 10..470 are covered.
-        VulkanOverlayQuad quad = VulkanCompositionPlanner.PlanOverlay(300, 216, 640, 480, MediaCompositionStretchMode.UniformFit)!.Value;
+        var quad = VulkanCompositionPlanner.PlanOverlay(300, 216, 640, 480, MediaCompositionStretchMode.UniformFit)!.Value;
 
         Assert.Equal(new PixelRect(0, 10, 640, 471), quad.Destination);
         Assert.Equal(9.5, quad.Placement.Destination.Top);
@@ -121,9 +120,9 @@ public sealed class VulkanCompositionPlannerTests
     [InlineData(333, 250)]
     public void PlanOverlay_TexCoordsInterpolateToSoftwareSourcePixels(int width, int height)
     {
-        VulkanOverlayQuad quad = VulkanCompositionPlanner.PlanOverlay(300, 216, width, height, MediaCompositionStretchMode.UniformFit)!.Value;
-        (float u0, float v0, float u1, float v1) = quad.TexCoords;
-        PixelRect destination = quad.Destination;
+        var quad = VulkanCompositionPlanner.PlanOverlay(300, 216, width, height, MediaCompositionStretchMode.UniformFit)!.Value;
+        (var u0, var v0, var u1, var v1) = quad.TexCoords;
+        var destination = quad.Destination;
 
         // What a rasterizer interpolates at pixel centres across a viewport equal to Destination,
         // followed by nearest texel selection.
@@ -164,7 +163,7 @@ public sealed class VulkanCompositionPlannerTests
         Assert.Equal(new byte[4], bgra[12..16]);
     }
 
-    private static MediaCompositionFrame SubtitleFrame() => MediaCompositionFrame.Empty() with
+    static MediaCompositionFrame SubtitleFrame() => MediaCompositionFrame.Empty() with
     {
         SubtitleBgra = new byte[16],
         SubtitleWidth = 2,
@@ -182,12 +181,12 @@ public sealed class VulkanConformanceTests
     // Fixed-function ONE / ONE_MINUS_SRC_ALPHA blending may round the source and destination
     // terms separately where the software renderer rounds their sum once. Measured on lavapipe:
     // 0 for a wash over a uniform clear, 1 over the gradient background.
-    private const int WashTolerance = 1;
+    const int WashTolerance = 1;
 
     [Fact]
     public void ClearOnly_MatchesSoftware()
     {
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+        var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
         AssertMatchesSoftware(frame, 9, 5, minimumExactRatio: 1.0);
     }
 
@@ -260,8 +259,8 @@ public sealed class VulkanConformanceTests
     public void RasterizedSubtitleText_MatchesSoftwareAndIsVisible()
     {
         using var rasterizer = new SkiaSubtitleRasterizer();
-        SubtitleRasterResult text = rasterizer.Render("Vulkan subtitle text", 1920, 1080);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var text = rasterizer.Render("Vulkan subtitle text", 1920, 1080);
+        var frame = MediaCompositionFrame.Empty() with
         {
             SubtitleBgra = text.Pixels,
             SubtitleWidth = text.Width,
@@ -277,11 +276,11 @@ public sealed class VulkanConformanceTests
         // 2/3 scale keeps destination pixel centres off source texel edges (see CdgAtTexelEdgeScales).
         AssertMatchesSoftware(frame, 1280, 720, minimumExactRatio: 1.0, maxChannelDelta: WashTolerance);
 
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 1280, 720));
+        var pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 1280, 720));
         var white = 0;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
@@ -295,11 +294,11 @@ public sealed class VulkanConformanceTests
     [Fact]
     public void SubtitleRaster_IsUploadedOncePerRevision()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        MediaCompositionFrame frame = WithSubtitle(MediaCompositionFrame.Empty());
+        var frame = WithSubtitle(MediaCompositionFrame.Empty());
         _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 640, 360));
         _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 320, 180));
         _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 640, 360));
@@ -320,23 +319,23 @@ public sealed class VulkanConformanceTests
     [InlineData(150, 108)]
     public void CdgAtTexelEdgeScales_StaysWithinOneSourceTexel(int width, int height)
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        CdgRenderSnapshot snapshot = CdgFixtures.Snapshot();
-        VulkanFramePlan plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = snapshot }, width, height);
-        ReadOnlySpan<byte> actual = compositor.Render(plan);
+        var snapshot = CdgFixtures.Snapshot();
+        var plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = snapshot }, width, height);
+        var actual = compositor.Render(plan);
         var texels = new byte[snapshot.Width * snapshot.Height * 4];
         VulkanCompositionPlanner.ExpandCdg(snapshot, texels);
-        VulkanOverlayQuad quad = plan.Cdg!.Value.Quad;
+        var quad = plan.Cdg!.Value.Quad;
 
         for (var y = quad.Destination.Top; y < quad.Destination.Bottom; y++)
         {
             for (var x = quad.Destination.Left; x < quad.Destination.Right; x++)
             {
-                (int sourceX, int sourceY) = quad.GetSourcePixel(x, y);
-                ReadOnlySpan<byte> pixel = actual.Slice(((y * width) + x) * 4, 4);
+                (var sourceX, var sourceY) = quad.GetSourcePixel(x, y);
+                var pixel = actual.Slice(((y * width) + x) * 4, 4);
                 var found = false;
                 for (var dy = -1; dy <= 1 && !found; dy++)
                 {
@@ -359,12 +358,12 @@ public sealed class VulkanConformanceTests
     [Fact]
     public void UnchangedCdgSnapshot_ReusesTheUploadedTexture()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        CdgRenderSnapshot snapshot = CdgFixtures.Snapshot();
-        VulkanFramePlan plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = snapshot }, 320, 240);
+        var snapshot = CdgFixtures.Snapshot();
+        var plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = snapshot }, 320, 240);
         var first = compositor.Render(plan).ToArray();
         var withoutCdg = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty(), 320, 240);
         _ = compositor.Render(withoutCdg);
@@ -378,7 +377,7 @@ public sealed class VulkanConformanceTests
         Assert.Equal(first, compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = sameBuffers }, 320, 240)).ToArray());
         Assert.Equal(1, compositor.CdgUploadCount);
 
-        CdgRenderSnapshot changed = CdgFixtures.Snapshot(backgroundIndex: 1);
+        var changed = CdgFixtures.Snapshot(backgroundIndex: 1);
         var changedPixels = compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = changed }, 320, 240)).ToArray();
 
         Assert.Equal(2, compositor.CdgUploadCount);
@@ -405,14 +404,14 @@ public sealed class VulkanConformanceTests
     {
         var supported = VulkanPresentationCoordinatorFactory.IsSupported(out _);
 
-        Controllers.MediaPresentationAvailability availability = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
+        var availability = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
 
         Assert.Equal(supported, availability.IsAvailable);
         Assert.False(string.IsNullOrWhiteSpace(availability.Detail));
         Assert.True(availability.RequiresFrameSinkSurface);
         // Stage 045A slice 2: software decoding only when the device has no Vulkan Video decoder
         // (lavapipe has none; a real GPU usually has one).
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         Assert.Equal(compositor?.VideoDecode is null, availability.RequiresSoftwareDecoding);
     }
 
@@ -465,14 +464,14 @@ public sealed class VulkanConformanceTests
     [Fact]
     public void Compositor_ResizesBetweenOverlayFrames()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with { WashArgb = 0x80FF0000, CdgOverlay = CdgFixtures.Snapshot() };
-        foreach ((int width, int height) in new[] { (64, 48), (300, 216), (17, 5), (64, 48) })
+        var frame = MediaCompositionFrame.Empty() with { WashArgb = 0x80FF0000, CdgOverlay = CdgFixtures.Snapshot() };
+        foreach ((var width, var height) in new[] { (64, 48), (300, 216), (17, 5), (64, 48) })
         {
-            ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
+            var pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
             Assert.Equal(width * height * 4, pixels.Length);
         }
     }
@@ -508,7 +507,7 @@ public sealed class VulkanConformanceTests
     [Fact]
     public void Classify_RejectsABackgroundBufferShorterThanItsRows()
     {
-        MediaCompositionFrame frame = CreateBackgroundFrame(4, 3, MediaCompositionStretchMode.Fill);
+        var frame = CreateBackgroundFrame(4, 3, MediaCompositionStretchMode.Fill);
 
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(frame));
         Assert.Equal(VulkanFrameSupport.InvalidBackground, VulkanCompositionPlanner.Classify(frame with { BackgroundBgra = new byte[(4 * 4 * 3) - 1] }));
@@ -523,16 +522,16 @@ public sealed class VulkanConformanceTests
     [Fact]
     public void CdgBeforeMemoryPreset_ShowsTheClearColour()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
         var indices = new byte[300 * 216];
         Array.Fill(indices, (byte)1);
         var snapshot = new CdgRenderSnapshot(1, 1, indices, new[] { unchecked((int)0xFF000000), unchecked((int)0xFFFF0000) }, 0, -1, []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
+        var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
 
-        ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 300, 216));
+        var pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 300, 216));
 
         Assert.Equal(new byte[] { 255, 0, 0, 255 }, pixels[..4].ToArray());
     }
@@ -542,18 +541,18 @@ public sealed class VulkanConformanceTests
     /// within <paramref name="maxChannelDelta"/>; at least <paramref name="minimumExactRatio"/> of
     /// the pixels must match.
     /// </summary>
-    private static void AssertMatchesSoftware(MediaCompositionFrame frame, int width, int height, double minimumExactRatio, int maxChannelDelta = 0)
+    static void AssertMatchesSoftware(MediaCompositionFrame frame, int width, int height, double minimumExactRatio, int maxChannelDelta = 0)
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
-        SoftwareRenderOutput expected = new SoftwareCompositionRenderer().Render(frame, width, height);
+        var expected = new SoftwareCompositionRenderer().Render(frame, width, height);
         Assert.True(expected.IsRendered, expected.Message);
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(frame));
-        ReadOnlySpan<byte> actual = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
+        var actual = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
 
-        ReadOnlySpan<byte> expectedPixels = expected.Pixels.Span;
+        var expectedPixels = expected.Pixels.Span;
         Assert.Equal(expectedPixels.Length, actual.Length);
         var matching = 0;
         var largestDelta = 0;
@@ -573,7 +572,7 @@ public sealed class VulkanConformanceTests
             $"{ratio:P1} of pixels match within {maxChannelDelta} on {compositor.DeviceName} (required {minimumExactRatio:P0}, largest channel delta {largestDelta})");
     }
 
-    private static MediaCompositionFrame CreateBackgroundFrame(int width, int height, MediaCompositionStretchMode stretch)
+    static MediaCompositionFrame CreateBackgroundFrame(int width, int height, MediaCompositionStretchMode stretch)
     {
         var stride = width * 4;
         var pixels = new byte[stride * height];
@@ -601,7 +600,7 @@ public sealed class VulkanConformanceTests
 
     // A premultiplied raster with every alpha level, padded rows, placed on a 1920x1080 canvas as
     // the subtitle rasterizers place text.
-    private static MediaCompositionFrame WithSubtitle(MediaCompositionFrame frame)
+    static MediaCompositionFrame WithSubtitle(MediaCompositionFrame frame)
     {
         const int Width = 301;
         const int Height = 83;
@@ -634,7 +633,7 @@ public sealed class VulkanConformanceTests
         };
     }
 
-    private sealed class RecordingFrameSink : IMediaPresentationFrameSink
+    sealed class RecordingFrameSink : IMediaPresentationFrameSink
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -645,7 +644,7 @@ public sealed class VulkanConformanceTests
     }
 }
 
-internal static class CdgFixtures
+static class CdgFixtures
 {
     /// <summary>
     /// Full-size CDG snapshot whose neighbouring source pixels always differ, so any sampling

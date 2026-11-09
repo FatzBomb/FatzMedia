@@ -61,7 +61,7 @@ public class D3D11DeviceLostClassifierTests
     [Fact]
     public void Describe_DoesNotThrow_WhenSwapChainIsNull()
     {
-        Result result = DxgiResultCode.DeviceRemoved;
+        var result = DxgiResultCode.DeviceRemoved;
 
         var description = D3D11DeviceLostClassifier.Describe(result, swapChain: null);
 

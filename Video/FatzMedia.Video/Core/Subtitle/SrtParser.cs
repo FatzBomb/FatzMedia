@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace FatzMedia.Video.Core.Subtitle;
 
-internal static class SrtParser
+static class SrtParser
 {
     public static IReadOnlyList<SubtitleCue> Parse(string content)
     {
@@ -28,7 +28,7 @@ internal static class SrtParser
 
             fallbackSequence = Math.Max(fallbackSequence + 1, sequence + 1);
 
-            if (!TryParseTiming(timingLine, out TimeSpan start, out TimeSpan end) || end <= start)
+            if (!TryParseTiming(timingLine, out var start, out var end) || end <= start)
             {
                 SkipCueBody(reader);
                 continue;
@@ -49,7 +49,7 @@ internal static class SrtParser
         return cues;
     }
 
-    private static bool TryReadNonEmptyLine(StringReader reader, out string line)
+    static bool TryReadNonEmptyLine(StringReader reader, out string line)
     {
         while (reader.ReadLine() is { } candidate)
         {
@@ -64,14 +64,14 @@ internal static class SrtParser
         return false;
     }
 
-    private static void SkipCueBody(StringReader reader)
+    static void SkipCueBody(StringReader reader)
     {
         while (reader.ReadLine() is { } line && !string.IsNullOrWhiteSpace(line))
         {
         }
     }
 
-    private static bool TryParseTiming(string line, out TimeSpan start, out TimeSpan end)
+    static bool TryParseTiming(string line, out TimeSpan start, out TimeSpan end)
     {
         start = default;
         end = default;
@@ -86,7 +86,7 @@ internal static class SrtParser
             && TryParseTimestamp(endLength < 0 ? endText : endText[..endLength], out end);
     }
 
-    private static bool TryParseTimestamp(string value, out TimeSpan timestamp)
+    static bool TryParseTimestamp(string value, out TimeSpan timestamp)
     {
         timestamp = default;
         var parts = value.Trim().Replace(',', '.').Split(':');

@@ -1,7 +1,7 @@
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>What BASS reports about a device's output (<c>BASS_IsStarted</c>).</summary>
-internal enum BassOutputStatus
+enum BassOutputStatus
 {
     /// <summary>The status could not be read (an older BASS without <c>BASS_IsStarted</c>).</summary>
     Unknown = 0,
@@ -20,13 +20,13 @@ internal enum BassOutputStatus
 /// Of those, the channels BASS reports as <c>BASS_ACTIVE_PAUSED_DEVICE</c> (paused because the
 /// output device is unavailable).
 /// </param>
-internal readonly record struct AudioOutputObservation(
+readonly record struct AudioOutputObservation(
     BassOutputStatus Output,
     int PlayingChannels,
     int ChannelsPausedByDevice);
 
 /// <summary>The next step of output-loss recovery for one BASS device.</summary>
-internal enum AudioOutputRecoveryAction
+enum AudioOutputRecoveryAction
 {
     /// <summary>Nothing to do now.</summary>
     None = 0,
@@ -54,15 +54,15 @@ internal enum AudioOutputRecoveryAction
 /// it out and reports the outcome through <see cref="Record"/>. Time is passed in, so the unit
 /// needs neither BASS nor a clock.
 /// </summary>
-internal sealed class AudioOutputRecoveryTracker
+sealed class AudioOutputRecoveryTracker
 {
     /// <summary>How often a lost output is retried.</summary>
     internal static readonly TimeSpan DefaultRetryInterval = TimeSpan.FromSeconds(1);
 
-    private readonly TimeSpan _retryInterval;
-    private TimeSpan? _lastAttempt;
-    private bool _reinitNext;
-    private bool _resumeAttempted;
+    readonly TimeSpan _retryInterval;
+    TimeSpan? _lastAttempt;
+    bool _reinitNext;
+    bool _resumeAttempted;
 
     public AudioOutputRecoveryTracker()
         : this(DefaultRetryInterval)
@@ -170,7 +170,7 @@ internal sealed class AudioOutputRecoveryTracker
         _resumeAttempted = false;
     }
 
-    private void RecordAttempt(TimeSpan now)
+    void RecordAttempt(TimeSpan now)
     {
         _lastAttempt = now;
         _resumeAttempted = false;

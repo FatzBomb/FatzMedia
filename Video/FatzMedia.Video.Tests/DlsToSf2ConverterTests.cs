@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Audio;
 using System.Text;
+using FatzMedia.Video.Core.Audio;
 
 namespace FatzMedia.Video.Tests;
 
@@ -49,26 +49,26 @@ public sealed class DlsToSf2ConverterTests
         {
             File.WriteAllBytes(sourcePath, CreateMinimalDls());
 
-            string? result = DlsToSf2Converter.ConvertAndSave(sourcePath, outputPath);
+            var result = DlsToSf2Converter.ConvertAndSave(sourcePath, outputPath);
 
             Assert.Equal(outputPath, result);
-            byte[] sf2 = File.ReadAllBytes(outputPath);
+            var sf2 = File.ReadAllBytes(outputPath);
             Assert.Equal("RIFF", Encoding.ASCII.GetString(sf2, 0, 4));
             Assert.Equal(sf2.Length - 8, (int)BitConverter.ToUInt32(sf2, 4));
             Assert.Equal("sfbk", Encoding.ASCII.GetString(sf2, 8, 4));
 
-            int phdr = FindChunk(sf2, "phdr") + 8;
+            var phdr = FindChunk(sf2, "phdr") + 8;
             Assert.Equal("Inst0", ReadPaddedString(sf2, phdr, 20));
             Assert.Equal((ushort)7, BitConverter.ToUInt16(sf2, phdr + 20));
             Assert.Equal((ushort)5, BitConverter.ToUInt16(sf2, phdr + 22));
 
-            int igen = FindChunk(sf2, "igen") + 8;
+            var igen = FindChunk(sf2, "igen") + 8;
             Assert.Equal((ushort)43, BitConverter.ToUInt16(sf2, igen));
             Assert.Equal((short)((100 << 8) | 10), BitConverter.ToInt16(sf2, igen + 2));
             Assert.Equal((ushort)44, BitConverter.ToUInt16(sf2, igen + 4));
             Assert.Equal((short)((110 << 8) | 20), BitConverter.ToInt16(sf2, igen + 6));
 
-            int shdr = FindChunk(sf2, "shdr") + 8;
+            var shdr = FindChunk(sf2, "shdr") + 8;
             Assert.Equal("Sample0", ReadPaddedString(sf2, shdr, 20));
             Assert.Equal(44100u, BitConverter.ToUInt32(sf2, shdr + 36));
             Assert.Equal((byte)60, sf2[shdr + 40]);
@@ -95,12 +95,12 @@ public sealed class DlsToSf2ConverterTests
 
             _ = DlsToSf2Converter.ConvertAndSave(sourcePath, outputPath);
 
-            byte[] sf2 = File.ReadAllBytes(outputPath);
-            int igen = FindChunk(sf2, "igen") + 8;
+            var sf2 = File.ReadAllBytes(outputPath);
+            var igen = FindChunk(sf2, "igen") + 8;
             Assert.Equal((ushort)53, BitConverter.ToUInt16(sf2, igen + 12));
             Assert.Equal((short)0, BitConverter.ToInt16(sf2, igen + 14));
 
-            int shdr = FindChunk(sf2, "shdr") + 8;
+            var shdr = FindChunk(sf2, "shdr") + 8;
             Assert.Equal("Sample1", ReadPaddedString(sf2, shdr, 20));
             Assert.Equal(1u, BitConverter.ToUInt32(sf2, shdr + 28));
             Assert.Equal(3u, BitConverter.ToUInt32(sf2, shdr + 32));
@@ -111,7 +111,7 @@ public sealed class DlsToSf2ConverterTests
         }
     }
 
-    private static byte[] CreateHeader(string container, string type)
+    static byte[] CreateHeader(string container, string type)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
@@ -121,7 +121,7 @@ public sealed class DlsToSf2ConverterTests
         return stream.ToArray();
     }
 
-    private static byte[] CreateMinimalDls(bool leadingUnsupportedWave = false, (uint Start, uint Length)? loop = null)
+    static byte[] CreateMinimalDls(bool leadingUnsupportedWave = false, (uint Start, uint Length)? loop = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
@@ -174,7 +174,7 @@ public sealed class DlsToSf2ConverterTests
                             chunk.Write((ushort)1);
                             chunk.Write((ushort)8);
                         });
-                        WriteChunk(wave, "data", chunk => chunk.Write(new byte[] { 128, 129 }));
+                        WriteChunk(wave, "data", chunk => chunk.Write([128, 129]));
                     });
                 }
 
@@ -203,7 +203,7 @@ public sealed class DlsToSf2ConverterTests
         return stream.ToArray();
     }
 
-    private static void WriteWaveSampleChunk(BinaryWriter writer, (uint Start, uint Length)? loop = null) =>
+    static void WriteWaveSampleChunk(BinaryWriter writer, (uint Start, uint Length)? loop = null) =>
         WriteChunk(writer, "wsmp", chunk =>
         {
             chunk.Write(20u);
@@ -221,22 +221,22 @@ public sealed class DlsToSf2ConverterTests
             }
         });
 
-    private static void WriteList(BinaryWriter writer, string type, Action<BinaryWriter> writeContents) =>
+    static void WriteList(BinaryWriter writer, string type, Action<BinaryWriter> writeContents) =>
         WriteChunk(writer, "LIST", chunk =>
         {
             WriteFourCc(chunk, type);
             writeContents(chunk);
         });
 
-    private static void WriteChunk(BinaryWriter writer, string name, Action<BinaryWriter> writeContents)
+    static void WriteChunk(BinaryWriter writer, string name, Action<BinaryWriter> writeContents)
     {
         WriteFourCc(writer, name);
-        long sizePosition = writer.BaseStream.Position;
+        var sizePosition = writer.BaseStream.Position;
         writer.Write(0u);
-        long contentStart = writer.BaseStream.Position;
+        var contentStart = writer.BaseStream.Position;
         writeContents(writer);
-        long contentEnd = writer.BaseStream.Position;
-        uint size = checked((uint)(contentEnd - contentStart));
+        var contentEnd = writer.BaseStream.Position;
+        var size = checked((uint)(contentEnd - contentStart));
         writer.BaseStream.Position = sizePosition;
         writer.Write(size);
         writer.BaseStream.Position = contentEnd;
@@ -244,20 +244,20 @@ public sealed class DlsToSf2ConverterTests
             writer.Write((byte)0);
     }
 
-    private static void WriteFourCc(BinaryWriter writer, string value) =>
+    static void WriteFourCc(BinaryWriter writer, string value) =>
         writer.Write(Encoding.ASCII.GetBytes(value));
 
-    private static int FindChunk(byte[] contents, string name)
+    static int FindChunk(byte[] contents, string name)
     {
-        int index = contents.AsSpan().IndexOf(Encoding.ASCII.GetBytes(name));
+        var index = contents.AsSpan().IndexOf(Encoding.ASCII.GetBytes(name));
         Assert.True(index >= 0, $"Chunk '{name}' was not found.");
         return index;
     }
 
-    private static string ReadPaddedString(byte[] contents, int offset, int length)
+    static string ReadPaddedString(byte[] contents, int offset, int length)
     {
-        string value = Encoding.ASCII.GetString(contents, offset, length);
-        int terminator = value.IndexOf('\0');
+        var value = Encoding.ASCII.GetString(contents, offset, length);
+        var terminator = value.IndexOf('\0');
         return terminator >= 0 ? value[..terminator] : value;
     }
 }

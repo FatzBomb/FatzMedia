@@ -63,7 +63,7 @@ public static class PlayerRendererRules
     /// </summary>
     public static (PlayerRendererRequest Request, string? UnknownValue) Resolve(string? renderer, bool software)
     {
-        if (renderer is not null && TryParse(renderer, out PlayerRendererRequest request))
+        if (renderer is not null && TryParse(renderer, out var request))
             return (request, null);
 
         return (software ? PlayerRendererRequest.Software : PlayerRendererRequest.Auto, renderer);
@@ -104,7 +104,7 @@ public static class PlayerRendererRules
     public static PlayerRendererRequest? NextAvailableAfterDeviceLoss(PlayerRendererRequest current, bool windows, Func<PlayerRendererRequest, bool> isAvailable)
     {
         ArgumentNullException.ThrowIfNull(isAvailable);
-        PlayerRendererRequest? next = FallbackAfterDeviceLoss(current, windows);
+        var next = FallbackAfterDeviceLoss(current, windows);
         while (next is { } candidate && !isAvailable(candidate))
             next = FallbackAfterDeviceLoss(candidate, windows);
         return next;

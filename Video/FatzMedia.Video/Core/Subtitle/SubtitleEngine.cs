@@ -2,13 +2,13 @@ using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Core.Subtitle;
 
-internal sealed class SubtitleEngine : ISubtitleEngine
+sealed class SubtitleEngine : ISubtitleEngine
 {
-    private readonly Lock _gate = new();
+    readonly Lock _gate = new();
     // Sorted by start; _latestEndThrough[i] is the latest end among cues 0..i, which bounds the
     // backward scan for cues still active at a position.
-    private SubtitleCue[] _cues = [];
-    private TimeSpan[] _latestEndThrough = [];
+    SubtitleCue[] _cues = [];
+    TimeSpan[] _latestEndThrough = [];
 
     public bool IsOpen { get; private set; }
 
@@ -18,7 +18,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         var content = File.ReadAllText(filePath);
-        IReadOnlyList<SubtitleCue> cues = Path.GetExtension(filePath).ToLowerInvariant() switch
+        var cues = Path.GetExtension(filePath).ToLowerInvariant() switch
         {
             ".ass" or ".ssa" => AssParser.Parse(content),
             _ => SrtParser.Parse(content)
@@ -85,7 +85,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
 
     public void Dispose() => Close();
 
-    private void SetCues(IReadOnlyList<SubtitleCue> cues)
+    void SetCues(IReadOnlyList<SubtitleCue> cues)
     {
         _cues = [.. cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence)];
         _latestEndThrough = new TimeSpan[_cues.Length];
@@ -99,7 +99,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
     }
 
     /// <summary>The index of the last cue starting at or before <paramref name="position"/>, or -1.</summary>
-    private int LastStartingAtOrBefore(TimeSpan position)
+    int LastStartingAtOrBefore(TimeSpan position)
     {
         int low = 0, high = _cues.Length;
         while (low < high)

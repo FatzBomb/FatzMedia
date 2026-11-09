@@ -14,7 +14,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 1, row: 32, bytePositionSeconds: 15);
         _ = timeline.Resolve(order: 2, row: 0, bytePositionSeconds: 20);
 
-        double loopPosition = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
+        var loopPosition = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
 
         Assert.Equal(10, loopPosition);
     }
@@ -29,7 +29,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 4, row: 0, bytePositionSeconds: 40);
         _ = timeline.Resolve(order: 3, row: 0, bytePositionSeconds: 40);
 
-        double loopPosition = timeline.Resolve(order: 3, row: 16, bytePositionSeconds: 40);
+        var loopPosition = timeline.Resolve(order: 3, row: 16, bytePositionSeconds: 40);
 
         Assert.Equal(32, loopPosition);
     }
@@ -44,7 +44,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
         timeline.Reset();
 
-        double position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 55);
+        var position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 55);
 
         Assert.Equal(55, position);
     }
@@ -57,7 +57,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 10);
         _ = timeline.Resolve(order: 2, row: 0, bytePositionSeconds: 20);
 
-        double position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 30);
+        var position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 30);
 
         Assert.Equal(10, position);
     }
@@ -72,7 +72,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
         _ = timeline.Resolve(order: 2, row: 0, bytePositionSeconds: 20);
 
-        double position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
+        var position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 20);
 
         Assert.Equal(10, position);
     }
@@ -85,7 +85,7 @@ public sealed class TrackerPositionTimelineTests
         _ = timeline.Resolve(order: 2, row: 0, bytePositionSeconds: 20);
         _ = timeline.Resolve(order: 3, row: 0, bytePositionSeconds: 30);
 
-        double position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 30);
+        var position = timeline.Resolve(order: 1, row: 0, bytePositionSeconds: 30);
 
         Assert.Equal(30, position);
     }

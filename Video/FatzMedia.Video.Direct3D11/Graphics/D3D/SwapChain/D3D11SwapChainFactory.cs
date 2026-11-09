@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.SwapChain;
 /// <summary>
 /// Centralizes DXGI swap-chain descriptions and fallback policy for native presentation targets.
 /// </summary>
-internal static class D3D11SwapChainFactory
+static class D3D11SwapChainFactory
 {
     public const int DirectCompositionBufferCount = 3;
 
@@ -39,10 +39,10 @@ internal static class D3D11SwapChainFactory
         // gives DXGI/DWM a cleaner cadence than the legacy one-buffer discard chain. Some wrapper or
         // driver combinations reject flip model through this older CreateSwapChain path, so fall back
         // to the legacy chain instead of disabling native mode entirely.
-        SwapChainDescription flipDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 2, SwapEffect.FlipSequential);
+        var flipDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 2, SwapEffect.FlipSequential);
         try
         {
-            IDXGISwapChain swapChain = factory.CreateSwapChain(device, flipDescription);
+            var swapChain = factory.CreateSwapChain(device, flipDescription);
             if (configuration.EnableLogging) Debug.WriteLine("[VorticeD3D11] Native HWND swap-chain mode: FlipSequential, buffers=2");
             return swapChain;
         }
@@ -52,13 +52,13 @@ internal static class D3D11SwapChainFactory
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Flip-model swap chain unavailable; using the legacy Discard swap chain. Reason: {ex.Message}");
         }
 
-        SwapChainDescription legacyDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 1, SwapEffect.Discard);
-        IDXGISwapChain legacySwapChain = factory.CreateSwapChain(device, legacyDescription);
+        var legacyDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 1, SwapEffect.Discard);
+        var legacySwapChain = factory.CreateSwapChain(device, legacyDescription);
         if (configuration.EnableLogging) Debug.WriteLine("[VorticeD3D11] Native HWND swap-chain mode: Discard, buffers=1");
         return legacySwapChain;
     }
 
-    private static SwapChainDescription CreateNativeSwapChainDescription(IntPtr hwnd, int width, int height, int bufferCount, SwapEffect swapEffect) => new()
+    static SwapChainDescription CreateNativeSwapChainDescription(IntPtr hwnd, int width, int height, int bufferCount, SwapEffect swapEffect) => new()
     {
         BufferCount = (uint)bufferCount,
         BufferDescription = new ModeDescription(

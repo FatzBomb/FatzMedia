@@ -1,12 +1,12 @@
-using FatzMedia.Video.Core.Files;
-using FFmpeg.AutoGen;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Files;
+using FFmpeg.AutoGen;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video;
 
-internal static partial class Bootstrap
+static partial class Bootstrap
 {
     public static bool LoadBass()
     {
@@ -42,7 +42,7 @@ internal static partial class Bootstrap
         List<string> failedOptional = [];
         List<string> coreExtensions = [];
 
-        Dictionary<string, string> found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
+        var found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
 
         foreach ((var dllFile, var extensions, _) in libraryFiles.Where(static l => l.isCore))
         {
@@ -190,7 +190,7 @@ internal static partial class Bootstrap
         else
         {
             // No folder holds the full set: report which files exist anywhere and which do not.
-            Dictionary<string, string> partial = DirectoryScanner.LocateFiles(searchPaths, libraryFiles, true, CompatibilityLevel.Compatible);
+            var partial = DirectoryScanner.LocateFiles(searchPaths, libraryFiles, true, CompatibilityLevel.Compatible);
             foreach (var dllFile in libraryFiles)
             {
                 if (partial.TryGetValue(dllFile, out var partialPath))

@@ -1,7 +1,7 @@
-using FatzMedia.Video.Core.Network;
-using FFmpeg.AutoGen;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Network;
+using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Core.Media;
 
@@ -12,17 +12,17 @@ namespace FatzMedia.Video.Core.Media;
 /// <param name="Cancellation">Cancels an open in progress (Close or Dispose while connecting).</param>
 /// <param name="Tls">The host's certificate checks for https (ENG-034).</param>
 /// <param name="ReadAhead">How far a <see cref="SharedDemuxer"/> reads ahead (slice 2); null uses the default.</param>
-internal sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls, NetworkReadAheadPolicy? ReadAhead = null)
+sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls, NetworkReadAheadPolicy? ReadAhead = null)
 {
     /// <summary>The default policies, not cancellable.</summary>
     public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, CancellationToken.None, NetworkTlsPolicy.Default);
 }
 
 /// <summary>Process-wide FFmpeg network setup (Stage 039A).</summary>
-internal static class FfmpegNetwork
+static class FfmpegNetwork
 {
-    private static int _initialized;
-    private static FfmpegTlsBackend? _tlsBackend;
+    static int _initialized;
+    static FfmpegTlsBackend? _tlsBackend;
 
     /// <summary>Calls <c>avformat_network_init</c> once per process, before the first network open.</summary>
     public static void EnsureInitialized()
@@ -89,19 +89,19 @@ internal static class FfmpegNetwork
 /// the open was cancelled, the operation's deadline passed, or a newer seek superseded the
 /// operation (ENG-035). It also times the read in progress, which is how buffering is detected.
 /// </summary>
-internal sealed unsafe class FfmpegInterrupt : IDisposable
+sealed unsafe class FfmpegInterrupt : IDisposable
 {
     // Kept alive for the life of the process: FFmpeg holds the function pointer.
-    private static readonly AVIOInterruptCB_callback Callback = OnInterrupt;
-    private static readonly nint CallbackPointer = Marshal.GetFunctionPointerForDelegate(Callback);
+    static readonly AVIOInterruptCB_callback Callback = OnInterrupt;
+    static readonly nint CallbackPointer = Marshal.GetFunctionPointerForDelegate(Callback);
 
-    private GCHandle _handle;
-    private volatile bool _aborted;
-    private CancellationToken _cancellation;
-    private long _deadline;
-    private long _operationStarted;
-    private long _supersededBefore;
-    private Func<bool>? _operationCancelled;
+    GCHandle _handle;
+    volatile bool _aborted;
+    CancellationToken _cancellation;
+    long _deadline;
+    long _operationStarted;
+    long _supersededBefore;
+    Func<bool>? _operationCancelled;
 
     public FfmpegInterrupt() => _handle = GCHandle.Alloc(this, GCHandleType.Weak);
 
@@ -145,7 +145,7 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     /// was last called, or the owner's cancellation condition (<see cref="SetOperationCancellation"/>)
     /// holds.
     /// </summary>
-    private bool IsOperationSuperseded
+    bool IsOperationSuperseded
     {
         get
         {
@@ -242,7 +242,7 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
             _handle.Free();
     }
 
-    private static int OnInterrupt(void* opaque)
+    static int OnInterrupt(void* opaque)
     {
         if (opaque == null)
             return 0;
@@ -260,11 +260,11 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
 /// the context's <c>io_open</c> and adds the TLS options to each http/https open that does not set
 /// them, so a segment is verified exactly like its playlist.
 /// </summary>
-internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
+sealed unsafe class FfmpegTlsIoOpen : IDisposable
 {
-    private GCHandle _handle;
-    private AVDictionary* _options;
-    private nint _defaultIoOpen;
+    GCHandle _handle;
+    readonly AVDictionary* _options;
+    nint _defaultIoOpen;
 
     public FfmpegTlsIoOpen() => _handle = GCHandle.Alloc(this, GCHandleType.Weak);
 
@@ -275,7 +275,7 @@ internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
         fixed (AVDictionary** dictionary = &_options)
         {
             ffmpeg.av_dict_free(dictionary);
-            foreach (KeyValuePair<string, string> option in options)
+            foreach (var option in options)
                 _ = ffmpeg.av_dict_set(dictionary, option.Key, option.Value, 0);
         }
     }
@@ -283,7 +283,7 @@ internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
     /// <summary>Wraps the <c>io_open</c> of a freshly allocated <paramref name="context"/>.</summary>
     public void Install(AVFormatContext* context)
     {
-        _defaultIoOpen = (nint)context->io_open.Pointer;
+        _defaultIoOpen = context->io_open.Pointer;
         context->opaque = (void*)GCHandle.ToIntPtr(_handle);
         context->io_open = new AVFormatContext_io_open_func { Pointer = (nint)(delegate* unmanaged[Cdecl]<AVFormatContext*, AVIOContext**, byte*, int, AVDictionary**, int>)&OnIoOpen };
     }
@@ -297,7 +297,7 @@ internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    private static int OnIoOpen(AVFormatContext* context, AVIOContext** pb, byte* url, int flags, AVDictionary** options)
+static int OnIoOpen(AVFormatContext* context, AVIOContext** pb, byte* url, int flags, AVDictionary** options)
     {
         FfmpegTlsIoOpen? hook = null;
         if (context != null && context->opaque != null)
@@ -315,7 +315,7 @@ internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
 
         // The caller's dictionary keeps the options FFmpeg did not use; a NULL one gets a local copy.
         AVDictionary* local = null;
-        AVDictionary** target = options != null ? options : &local;
+        var target = options != null ? options : &local;
         _ = ffmpeg.av_dict_copy(target, hook._options, ffmpeg.AV_DICT_DONT_OVERWRITE);
         var result = open(context, pb, url, flags, target);
         ffmpeg.av_dict_free(&local);

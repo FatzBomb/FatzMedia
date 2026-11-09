@@ -1,5 +1,4 @@
 using FatzMedia.Video.Core.Abstractions;
-using ManagedBass;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -13,7 +12,7 @@ public sealed class BassOutputLatencyProvider(bool enableHeuristic) : IOutputLat
 
     public double GetOutputLatencySeconds()
     {
-        if (!MBass.GetInfo(out BassInfo info))
+        if (!MBass.GetInfo(out var info))
             return 0;
 
         var reportedSeconds = info.Latency / 1000.0;
@@ -23,7 +22,7 @@ public sealed class BassOutputLatencyProvider(bool enableHeuristic) : IOutputLat
                 ? reportedSeconds
                 : !OutputLatencyHeuristic.RequiresDeviceName(reportedSeconds, enabled: true)
                     ? reportedSeconds
-                    : !MBass.GetDeviceInfo(MBass.CurrentDevice, out DeviceInfo deviceInfo)
+                    : !MBass.GetDeviceInfo(MBass.CurrentDevice, out var deviceInfo)
                         ? reportedSeconds
                         : OutputLatencyHeuristic.Apply(reportedSeconds, deviceInfo.Name, enabled: true);
     }

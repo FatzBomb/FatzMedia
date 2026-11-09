@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Tests;
 [Collection("File type registry")]
 public sealed class SidecarCaseSensitivityTests : IDisposable
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-sidecar-" + Guid.NewGuid().ToString("N"));
+    readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-sidecar-" + Guid.NewGuid().ToString("N"));
 
     public SidecarCaseSensitivityTests() => Directory.CreateDirectory(_directory);
 
@@ -21,7 +21,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         var audio = CreateFile("song.mp3");
         var sidecar = CreateFile("song.PNG");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio);
 
         // Linux lists the directory and returns the real name. Case-insensitive file systems
         // (Windows, macOS) keep the original exact-name probe, whose path differs only in case
@@ -64,7 +64,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         Assert.Null(MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio));
     }
 
-    private string CreateFile(string name)
+    string CreateFile(string name)
     {
         var path = Path.Combine(_directory, name);
         File.WriteAllBytes(path, []);

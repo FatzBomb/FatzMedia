@@ -7,7 +7,7 @@ namespace FatzMedia.Video;
 /// </summary>
 public sealed class MediaInputSource
 {
-    private MediaInputSource(
+    MediaInputSource(
         MediaInputSourceKind kind,
         string displayName,
         string? filePath,
@@ -133,7 +133,7 @@ public sealed class MediaInputSource
             string.IsNullOrWhiteSpace(displayName) ? $"Solid colour #{argb:X8}" : displayName);
     }
 
-    private static int ValidateBgra32Image(int bufferLength, int width, int height, int stride, string bufferParameterName)
+    static int ValidateBgra32Image(int bufferLength, int width, int height, int stride, string bufferParameterName)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);

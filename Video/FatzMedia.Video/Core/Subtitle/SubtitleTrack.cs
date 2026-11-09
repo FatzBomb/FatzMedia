@@ -5,4 +5,4 @@ namespace FatzMedia.Video.Core.Subtitle;
 /// </summary>
 public sealed record SubtitleTrack(string Id, string DisplayName, bool IsEmbedded);
 
-internal sealed record EmbeddedSubtitleTrack(int StreamIndex, string CodecName, IReadOnlyList<SubtitleCue> Cues);
+sealed record EmbeddedSubtitleTrack(int StreamIndex, string CodecName, IReadOnlyList<SubtitleCue> Cues);

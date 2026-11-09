@@ -7,7 +7,7 @@ public sealed class ViewportGeometryTests
     [Fact]
     public void MapCanvasRegionToViewport_PreservesCanvasAspectAndPlacement()
     {
-        RectD result = ViewportGeometry.MapCanvasRegionToViewport(
+        var result = ViewportGeometry.MapCanvasRegionToViewport(
             new RectD(480, 540, 960, 270),
             1920,
             1080,

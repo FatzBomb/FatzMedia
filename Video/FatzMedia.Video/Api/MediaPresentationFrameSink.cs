@@ -24,10 +24,10 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     /// Thread-safe registry that strongly roots sinks while they are exposed to unmanaged code.
     /// The dictionary itself serves as the root set — no separate GCHandle is needed.
     /// </summary>
-    private static readonly OpaqueTokenRegistry<IMediaPresentationFrameSink> Registry =
+    static readonly OpaqueTokenRegistry<IMediaPresentationFrameSink> Registry =
         new("The presentation frame-sink token space has been exhausted.");
 
-    private long _token;
+    long _token;
 
     /// <summary>
     /// Allocates a monotonic nonzero token and registers the sink in the global thread-safe registry.
@@ -57,7 +57,7 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     /// <exception cref="ObjectDisposedException">Thrown when this instance has been disposed.</exception>
     public MediaNativeSurfaceDescriptor CreateSurfaceDescriptor()
     {
-        long token = Volatile.Read(ref _token);
+        var token = Volatile.Read(ref _token);
         ObjectDisposedException.ThrowIf(token == 0, this);
         return new(
             MediaNativeSurfaceTypeIds.ManagedBgraFrameSink,
@@ -89,7 +89,7 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
         sink = null;
         return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
-            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
+            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle)
             && TryResolve(handle, out sink)
             && sink != null;
     }
@@ -100,7 +100,7 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     /// </summary>
     public void Dispose()
     {
-        long token = Interlocked.Exchange(ref _token, 0);
+        var token = Interlocked.Exchange(ref _token, 0);
         if (token != 0)
             Registry.Remove(token);
     }

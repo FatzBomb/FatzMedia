@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Audio.Filters;
@@ -7,84 +10,81 @@ using FatzMedia.Video.Core.Network;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
-using System.Buffers;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace FatzMedia.Video.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
+sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
 {
-    private const double AudioBufferHighWatermarkSeconds = 4.0;
-    private const double AudioBufferLowWatermarkSeconds = 2.0;
+    const double AudioBufferHighWatermarkSeconds = 4.0;
+    const double AudioBufferLowWatermarkSeconds = 2.0;
     // The quick normalization pass may attenuate but not boost; see RunNormalizationAnalysis.
-    private static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
+    static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
 
-    private readonly IOutputLatencyProvider _outputLatencyProvider;
-    private readonly int _bassDeviceIndex;
+    readonly IOutputLatencyProvider _outputLatencyProvider;
+    readonly int _bassDeviceIndex;
     // Lock order: _ioGate, then _sync. _ioGate owns the demuxer cursor (open, read, seek, close);
     // the packet reads and container seeks (network I/O for a network source: a segment download
     // can take seconds) run under it but never under _sync. _sync guards the decoder, the BASS
     // channel and the position bookkeeping, and is only ever held for CPU work, so Position,
     // Normalize and the volume/pitch/tempo setters a host calls from its UI thread never wait for
     // the network (ENG-035: the Avalonia player froze when a network seek held _sync).
-    private readonly Lock _ioGate = new();
-    private readonly Lock _sync = new();
-    private readonly SharedDemuxer _demuxer;
-    private readonly bool _ownsDemuxer;
-    private AVCodecContext* _codecContext;
-    private AVStream* _audioStream;
-    private SwrContext* _resampler;
-    private AVFrame* _frame;
-    private byte* _audioBuffer;
-    private int _audioBufferSize;
-    private int _sampleRate;
-    private int _sourceChannels;
-    private int _channels;
-    private double _streamStartSeconds;
-    private double? _discardAudioBeforeSeconds;
-    private double _positionBaseSeconds;
-    private double _volume = 1.0;
-    private int _pitch;
-    private bool _normalize = true;
-    private string? _tempPath;
-    private long _pushedAudioFrameCount;
-    private double _lastPushedAudioEndSeconds;
-    private long _positionSnapshotBits;
-    private long _positionSnapshotTimestamp;
-    private long _positionSnapshotDurationBits;
-    private int _positionSnapshotAvailable;
+    readonly Lock _ioGate = new();
+    readonly Lock _sync = new();
+    readonly SharedDemuxer _demuxer;
+    readonly bool _ownsDemuxer;
+    AVCodecContext* _codecContext;
+    AVStream* _audioStream;
+    SwrContext* _resampler;
+    AVFrame* _frame;
+    byte* _audioBuffer;
+    int _audioBufferSize;
+    int _sampleRate;
+    int _sourceChannels;
+    int _channels;
+    double _streamStartSeconds;
+    double? _discardAudioBeforeSeconds;
+    double _positionBaseSeconds;
+    double _volume = 1.0;
+    int _pitch;
+    bool _normalize = true;
+    string? _tempPath;
+    long _pushedAudioFrameCount;
+    double _lastPushedAudioEndSeconds;
+    long _positionSnapshotBits;
+    long _positionSnapshotTimestamp;
+    long _positionSnapshotDurationBits;
+    int _positionSnapshotAvailable;
     // IsOpenCore as of the last open or close, published for lock-free IsOpen reads (Stage 022A
     // slice 2: the video presentation loop asked IsOpen every frame and contended with the
     // decode thread on _sync).
-    private volatile bool _openPublished;
-    private int _positionSnapshotPlaying;
-    private int _positionSnapshotTempoPercent;
-    private bool _audioPushThrottled;
-    private bool _disposed;
+    volatile bool _openPublished;
+    int _positionSnapshotPlaying;
+    int _positionSnapshotTempoPercent;
+    bool _audioPushThrottled;
+    bool _disposed;
 
     // Effects chain on PlayHandle, in the same order as AudioEngine: equalizer, normalization
     // gain, fade envelope, then the channel volume attribute (user volume).
-    private readonly BassEqualizerFilter _equalizer = new();
-    private readonly AudioNormalizer _normalizer = new();
-    private readonly BassFadeGainStage _fade = new("VideoAudioEngine");
+    readonly BassEqualizerFilter _equalizer = new();
+    readonly AudioNormalizer _normalizer = new();
+    readonly BassFadeGainStage _fade = new("VideoAudioEngine");
 
     // Normalization runs on a background FfmpegAudioReader. _gainGate serializes gain FX writes
     // between it and the Normalize setter; the analysis never takes _sync, so CloseCore can join
     // it while holding _sync.
-    private readonly Lock _gainGate = new();
-    private CancellationTokenSource? _normalizationCts;
-    private Task? _normalizationTask;
-    private int _normalizationGeneration;
-    private volatile bool _normalizationReady = true;
-    private readonly Lock _gainEventGate = new();
-    private Task _gainEvents = Task.CompletedTask;
+    readonly Lock _gainGate = new();
+    CancellationTokenSource? _normalizationCts;
+    Task? _normalizationTask;
+    int _normalizationGeneration;
+    volatile bool _normalizationReady = true;
+    readonly Lock _gainEventGate = new();
+    Task _gainEvents = Task.CompletedTask;
 
     // Gapless loop bookkeeping (see AudioLoopBoundaryTracker). _pendingLoopBoundaries and
     // _completedLoopSeconds are only ever touched from within _sync (GetPositionCore and
     // WrapDecoderForLoop are both always called under lock).
-    private readonly Queue<double> _pendingLoopBoundaries = new();
-    private double _completedLoopSeconds;
+    readonly Queue<double> _pendingLoopBoundaries = new();
+    double _completedLoopSeconds;
 
     /// <summary>
     /// When true, the decoder seeks back to 0 and keeps pushing into the same BASS channel
@@ -214,7 +214,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         _ownsDemuxer = sharedDemuxer == null;
     }
 
-    private double ApplyOutputLatency(double rawPositionSeconds)
+    double ApplyOutputLatency(double rawPositionSeconds)
     {
         if (rawPositionSeconds <= 0 || !double.IsFinite(rawPositionSeconds))
             return rawPositionSeconds;
@@ -230,12 +230,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return corrected < 0 ? 0 : corrected;
     }
 
-    private bool IsOpenCore => _demuxer.IsOpen && AudioStreamIndex >= 0 && PlayHandle != 0;
+    bool IsOpenCore => _demuxer.IsOpen && AudioStreamIndex >= 0 && PlayHandle != 0;
 
     // The raw BASS channel position, never reset across a loop wrap (only Seek/Stop touch
     // _positionBaseSeconds or the channel's own position counter). This is the timeline that
     // loop boundaries are recorded against - see AudioLoopBoundaryTracker.
-    private double GetContinuousPositionCore()
+    double GetContinuousPositionCore()
     {
         if (PlayHandle == 0)
             return _positionBaseSeconds;
@@ -245,14 +245,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
     }
 
-    private double GetPositionCore()
+    double GetPositionCore()
     {
         var continuous = GetContinuousPositionCore();
         AdvanceCompletedLoops(continuous);
         return Math.Max(0, continuous - _completedLoopSeconds);
     }
 
-    private void AdvanceCompletedLoops(double continuousPositionSeconds)
+    void AdvanceCompletedLoops(double continuousPositionSeconds)
     {
         var crossed = AudioLoopBoundaryTracker.Advance(continuousPositionSeconds, _pendingLoopBoundaries, ref _completedLoopSeconds);
         if (crossed > 0)
@@ -264,7 +264,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void PublishPositionSnapshot(double position)
+    void PublishPositionSnapshot(double position)
     {
         var cleanPosition = double.IsFinite(position) && position > 0 ? position : 0;
         if (Duration > 0)
@@ -278,7 +278,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         Volatile.Write(ref _positionSnapshotAvailable, IsOpenCore ? 1 : 0);
     }
 
-    private void ClearPositionSnapshot()
+    void ClearPositionSnapshot()
     {
         _ = Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
         _ = Interlocked.Exchange(ref _positionSnapshotDurationBits, 0);
@@ -364,10 +364,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return _demuxer.TryTakeStreamMetadata(playedUpTo, out metadata);
     }
 
-    private bool OpenFile(string filePath, string? normalizationCacheKey) =>
+    bool OpenFile(string filePath, string? normalizationCacheKey) =>
         OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true);
 
-    private bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization)
+    bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization)
     {
         lock (_ioGate)
         {
@@ -389,7 +389,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     }
 
     // Under _ioGate and _sync, with the demuxer open.
-    private bool CompleteOpenCore(string filePath, string? normalizationCacheKey, bool analyzeNormalization)
+    bool CompleteOpenCore(string filePath, string? normalizationCacheKey, bool analyzeNormalization)
     {
         // A network source takes the audio of the variant the picture plays (039A).
         AudioStreamIndex = _demuxer.SelectAudioStream();
@@ -457,7 +457,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     }
 
     // Under _ioGate: the packet read runs outside _sync.
-    private bool DecodeAndPushAudioCore()
+    bool DecodeAndPushAudioCore()
     {
         lock (_sync)
         {
@@ -479,7 +479,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             }
         }
 
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         if (packet == null)
             return false;
 
@@ -520,7 +520,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     // below) keeps _lastPushedAudioEndSeconds increasing across the wrap automatically. Under
     // _ioGate (nothing is pushed meanwhile); the mark is recorded only once the seek succeeded,
     // so AdvanceCompletedLoops never sees a boundary that will never be reached.
-    private bool WrapDecoderForLoop()
+    bool WrapDecoderForLoop()
     {
         if (!SeekDecoder(0))
             return false;
@@ -536,7 +536,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return PlayCore();
     }
 
-    private bool PlayCore()
+    bool PlayCore()
     {
         if (PlayHandle == 0)
             return false;
@@ -546,7 +546,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         {
             // The output may be paused because the device became unavailable (another application
             // holding it exclusively, or unplugged): restart it once and retry (ENG-032).
-            Errors error = Bass.LastError;
+            var error = Bass.LastError;
             if (BassOutputWatchdog.IsOutputUnavailableError(error)
                 && BassOutputWatchdog.TryRestoreOutputForPlay(PlayHandle, _bassDeviceIndex, 0))
             {
@@ -605,7 +605,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return PauseCore();
     }
 
-    private bool PauseCore()
+    bool PauseCore()
     {
         if (PlayHandle == 0)
             return false;
@@ -680,7 +680,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     }
 
     // Under _ioGate and _sync, once the decoder sought to target.
-    private bool CompleteSeekCore(double target, bool resumePlayback)
+    bool CompleteSeekCore(double target, bool resumePlayback)
     {
         var wasPlaying = State == AudioEngineState.Playing;
         if (PlayHandle != 0)
@@ -737,7 +737,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void CloseCore()
+    void CloseCore()
     {
         if (_disposed)
             return;
@@ -898,7 +898,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         GC.SuppressFinalize(this);
     }
 
-    private bool InitializeDecoder()
+    bool InitializeDecoder()
     {
         if (!FfmpegAudioDecoderSetup.TryOpen(_audioStream, out _codecContext, out _resampler, out _sampleRate, out _channels))
             return false;
@@ -914,12 +914,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return _audioBuffer != null;
     }
 
-    private bool CreateBassStreams()
+    bool CreateBassStreams()
     {
         if (!BassAudioOutputDevices.TrySetCurrentDevice(_bassDeviceIndex, "VideoAudioEngine"))
             return false;
 
-        BassFlags flags = BassFlags.Decode | BassFlags.Float;
+        var flags = BassFlags.Decode | BassFlags.Float;
         if (_channels == 1)
             flags |= BassFlags.Mono;
 
@@ -952,7 +952,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return true;
     }
 
-    private bool ProcessAudioPacket(AVPacket* packet)
+    bool ProcessAudioPacket(AVPacket* packet)
     {
         var processed = false;
         if (ffmpeg.avcodec_send_packet(_codecContext, packet) < 0)
@@ -967,7 +967,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return processed;
     }
 
-    private bool IsAudioBufferThrottledCore()
+    bool IsAudioBufferThrottledCore()
     {
         var bufferedSeconds = GetBufferedAudioSecondsCore();
         if (!double.IsFinite(bufferedSeconds) || bufferedSeconds <= 0)
@@ -997,12 +997,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     // _lastPushedAudioEndSeconds is continuous (see PushAudioFrame's monotonic guard, which
     // keeps it increasing across a loop wrap), so it must be compared against the continuous
     // position, not the wrapped/reported one.
-    private double GetBufferedAudioSecondsCore() =>
+    double GetBufferedAudioSecondsCore() =>
         _lastPushedAudioEndSeconds <= 0
             ? 0
             : Math.Max(0, _lastPushedAudioEndSeconds - GetContinuousPositionCore());
 
-    private void ResetAudioBufferTracking()
+    void ResetAudioBufferTracking()
     {
         _lastPushedAudioEndSeconds = _positionBaseSeconds;
         _audioPushThrottled = false;
@@ -1013,10 +1013,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         _completedLoopSeconds = 0;
     }
 
-    private void PushAudioFrame()
+    void PushAudioFrame()
     {
         var framePosition = GetFramePositionSeconds(_frame);
-        double? discardBefore = _discardAudioBeforeSeconds;
+        var discardBefore = _discardAudioBeforeSeconds;
         // After a seek, frames wholly before the target are dropped; the resampler keeps the rate,
         // so its output samples line up with the frame's samples.
         if (discardBefore is { } target
@@ -1075,7 +1075,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     // Under _ioGate and not under _sync: the container seek is network I/O for a network source.
     // The stream fields it reads change only under _ioGate (open, close).
-    private bool SeekDecoder(double seconds)
+    bool SeekDecoder(double seconds)
     {
         if (!_demuxer.IsOpen || _audioStream == null)
             return false;
@@ -1104,7 +1104,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return true;
     }
 
-    private double GetFramePositionSeconds(AVFrame* frame)
+    double GetFramePositionSeconds(AVFrame* frame)
     {
         if (_audioStream == null || frame == null)
             return 0;
@@ -1117,12 +1117,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return timestamp == ffmpeg.AV_NOPTS_VALUE ? _positionBaseSeconds : Math.Max(0, (timestamp * timeBase) - _streamStartSeconds);
     }
 
-    private static double GetStreamStartSeconds(AVStream* stream) =>
+    static double GetStreamStartSeconds(AVStream* stream) =>
         stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
             ? 0
             : Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
 
-    private bool ApplyVolume()
+    bool ApplyVolume()
     {
         if (PlayHandle == 0)
             return false;
@@ -1131,7 +1131,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return BassChannelVolume.Set(PlayHandle, _volume);
     }
 
-    private void StartNormalizationAnalysis(string filePath, string? cacheKey)
+    void StartNormalizationAnalysis(string filePath, string? cacheKey)
     {
         CancelNormalizationAnalysis();
         var generation = Volatile.Read(ref _normalizationGeneration);
@@ -1147,11 +1147,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         _normalizationTask = Task.Run(() => RunNormalizationAnalysis(filePath, cacheKey, generation, cts.Token));
     }
 
-    private void RunNormalizationAnalysis(string filePath, string? cacheKey, int generation, CancellationToken cancellationToken)
+    void RunNormalizationAnalysis(string filePath, string? cacheKey, int generation, CancellationToken cancellationToken)
     {
         try
         {
-            using FfmpegAudioReader? reader = FfmpegAudioReader.Open(filePath);
+            using var reader = FfmpegAudioReader.Open(filePath);
             if (reader is null)
                 return;
 
@@ -1190,10 +1190,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message, string sourcePath) =>
+    void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message, string sourcePath) =>
         ApplyNormalizationGain(AudioNormalizer.CalculateGainFromPeak(peak), cacheKey, generation, message, sourcePath);
 
-    private void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message, string sourcePath)
+    void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message, string sourcePath)
     {
         lock (_gainGate)
         {
@@ -1216,7 +1216,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     /// Raises <see cref="NormalizationGainChanged"/> in order on the thread pool. Host handlers
     /// must never run on the analysis thread, which <see cref="CloseCore"/> joins under _sync.
     /// </summary>
-    private void QueueNormalizationGainChanged(double gain, int generation)
+    void QueueNormalizationGainChanged(double gain, int generation)
     {
         lock (_gainEventGate)
         {
@@ -1232,11 +1232,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void CancelNormalizationAnalysis()
+    void CancelNormalizationAnalysis()
     {
         _ = Interlocked.Increment(ref _normalizationGeneration);
-        CancellationTokenSource? cts = _normalizationCts;
-        Task? task = _normalizationTask;
+        var cts = _normalizationCts;
+        var task = _normalizationTask;
         _normalizationCts = null;
         _normalizationTask = null;
         if (cts is null)
@@ -1252,7 +1252,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         _normalizationReady = true;
     }
 
-    private static string? CreatePathNormalizationCacheKey(string filePath)
+    static string? CreatePathNormalizationCacheKey(string filePath)
     {
         try
         {
@@ -1265,7 +1265,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void SetState(AudioEngineState state)
+    void SetState(AudioEngineState state)
     {
         if (State == state)
             return;
@@ -1281,7 +1281,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         StateChanged?.Invoke(this, state);
     }
 
-    private void CleanupTempPath()
+    void CleanupTempPath()
     {
         if (string.IsNullOrWhiteSpace(_tempPath))
             return;

@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Pipeline;
 /// What <see cref="SeekPump"/> asks of the pipeline it drives (Stage 015A slice 2; CDG uses it
 /// too since ENG-013).
 /// </summary>
-internal interface ISeekPumpHost
+interface ISeekPumpHost
 {
     /// <summary>Clamps a requested position to the media (<see cref="VideoSeekPolicy.NormalizeTarget"/>).</summary>
     double NormalizeSeekTarget(double seconds);
@@ -42,27 +42,27 @@ internal interface ISeekPumpHost
 /// <see cref="DrainPendingRequests"/> runs one burst synchronously, so tests can replay
 /// drags, holds, and releases without FFmpeg or threads.
 /// </summary>
-internal sealed class SeekPump : IDisposable
+sealed class SeekPump : IDisposable
 {
-    private const int ShutdownJoinMilliseconds = 2000;
-    private const int IntervalPollMilliseconds = 10;
+    const int ShutdownJoinMilliseconds = 2000;
+    const int IntervalPollMilliseconds = 10;
 
-    private readonly ISeekPumpHost _host;
-    private readonly string _threadName;
-    private readonly string _diagnosticSource;
-    private readonly Lock _gate = new();
-    private readonly AutoResetEvent _signal = new(false);
-    private Thread? _thread;
+    readonly ISeekPumpHost _host;
+    readonly string _threadName;
+    readonly string _diagnosticSource;
+    readonly Lock _gate = new();
+    readonly AutoResetEvent _signal = new(false);
+    Thread? _thread;
     // A worker whose join timed out (its seek still held the transport gate). Start waits for it
     // while the shutdown flag is still set, so it cannot resume next to the new worker.
-    private Thread? _lingeringThread;
-    private volatile bool _shutdown;
-    private double? _pendingSeconds;
-    private double _activeTargetSeconds = double.NaN;
+    Thread? _lingeringThread;
+    volatile bool _shutdown;
+    double? _pendingSeconds;
+    double _activeTargetSeconds = double.NaN;
     // True from a request until its exact settle completes with nothing newer queued. A Play
     // in that window is applied by the settle, which resumes playback from the new position.
-    private bool _sequenceActive;
-    private double _minimumCommittedSeconds = double.NaN;
+    bool _sequenceActive;
+    double _minimumCommittedSeconds = double.NaN;
 
     /// <param name="host">The pipeline the pump drives.</param>
     /// <param name="threadName">Name of the worker thread, such as <c>VideoSeek</c>.</param>
@@ -105,7 +105,7 @@ internal sealed class SeekPump : IDisposable
     /// </summary>
     public void Stop()
     {
-        Thread? thread = _thread;
+        var thread = _thread;
         if (thread == null)
             return;
 
@@ -337,7 +337,7 @@ internal sealed class SeekPump : IDisposable
         _signal.Dispose();
     }
 
-    private void WorkerLoop()
+    void WorkerLoop()
     {
         while (!_shutdown)
         {
@@ -346,7 +346,7 @@ internal sealed class SeekPump : IDisposable
         }
     }
 
-    private void Settle(double target)
+    void Settle(double target)
     {
         if (_shutdown || HasSupersedingRequest)
             return;
@@ -361,7 +361,7 @@ internal sealed class SeekPump : IDisposable
         }
     }
 
-    private bool TryTakePending(out double target)
+    bool TryTakePending(out double target)
     {
         lock (_gate)
         {

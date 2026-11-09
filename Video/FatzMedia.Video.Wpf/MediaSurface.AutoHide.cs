@@ -9,9 +9,9 @@ namespace FatzMedia.Video.Wpf;
 /// </summary>
 public sealed partial class MediaSurface
 {
-    private readonly MediaSurfaceContentTracker _contentTracker = new();
-    private int _contentStateQueued;
-    private bool _presentationCleared;
+    readonly MediaSurfaceContentTracker _contentTracker = new();
+    int _contentStateQueued;
+    bool _presentationCleared;
 
     public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
         nameof(AutoHide),
@@ -19,7 +19,7 @@ public sealed partial class MediaSurface
         typeof(MediaSurface),
         new PropertyMetadata(true, OnAutoHideChanged));
 
-    private static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
+    static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
         DependencyProperty.RegisterReadOnly(
             nameof(IsContentVisible),
             typeof(bool),
@@ -53,7 +53,7 @@ public sealed partial class MediaSurface
     /// <summary>Raised on the UI thread when <see cref="IsContentVisible"/> changes.</summary>
     public event EventHandler? ContentVisibilityChanged;
 
-    private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         surface._contentTracker.AutoHide = e.NewValue is true;
@@ -64,7 +64,7 @@ public sealed partial class MediaSurface
             secondary.Surface.AutoHide = e.NewValue is true;
     }
 
-    private void InitializeAutoHide()
+    void InitializeAutoHide()
     {
         _contentTracker.AutoHide = AutoHide;
         _contentTracker.Changed += CreateWeakContentHandler(this);
@@ -73,12 +73,12 @@ public sealed partial class MediaSurface
     // The tracker follows the session while Player is set, also while this surface is unloaded.
     // The session must not keep an unloaded, dropped surface alive through it, so the tracker
     // holds the surface weakly; once the surface is collected, the tracker stops following.
-    private static EventHandler CreateWeakContentHandler(MediaSurface surface)
+    static EventHandler CreateWeakContentHandler(MediaSurface surface)
     {
         var weakSurface = new WeakReference<MediaSurface>(surface);
         return (sender, e) =>
         {
-            if (weakSurface.TryGetTarget(out MediaSurface? target))
+            if (weakSurface.TryGetTarget(out var target))
                 target.OnContentTrackerChanged(sender, e);
             else
                 (sender as MediaSurfaceContentTracker)?.Dispose();
@@ -87,7 +87,7 @@ public sealed partial class MediaSurface
 
     // Raised on the thread that changed the state (often Core's render or event thread): marshal,
     // coalesce, then read the tracker's current state.
-    private void OnContentTrackerChanged(object? sender, EventArgs e)
+    void OnContentTrackerChanged(object? sender, EventArgs e)
     {
         if (Dispatcher.CheckAccess())
         {
@@ -105,7 +105,7 @@ public sealed partial class MediaSurface
         }));
     }
 
-    private void ApplyContentState(bool forceVisibilityWrite)
+    void ApplyContentState(bool forceVisibilityWrite)
     {
         var isVisible = _contentTracker.IsContentVisible;
         var visibilityChanged = IsContentVisible != isVisible;
@@ -126,7 +126,7 @@ public sealed partial class MediaSurface
 
     // Audio mode (Stage 043A) keeps the surface attached, but whatever drew the last
     // frame is gone: the host hides (ShowsContent is false) and a composited host drops its frame.
-    private void UpdatePresentationCleared()
+    void UpdatePresentationCleared()
     {
         var cleared = _contentTracker.Session is not null && !_contentTracker.HasPresentation;
         if (cleared == _presentationCleared)
@@ -144,7 +144,7 @@ public sealed partial class MediaSurface
             MediaSurfacePresentationPathText.DescribeAudioModeCleared(DescribeSurface()));
     }
 
-    private void ApplyAutoHideVisibility(bool forceVisibilityWrite)
+    void ApplyAutoHideVisibility(bool forceVisibilityWrite)
     {
         var shouldEnableHost = _contentTracker.ShowsContent;
         var visibility = shouldEnableHost ? Visibility.Visible : Visibility.Hidden;

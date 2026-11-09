@@ -4,9 +4,9 @@ namespace FatzMedia.Video.Core.Cdg;
 /// Represents a CDG packet with command and instruction data.
 /// This is the basic unit of CDG processing.
 /// </summary>
-internal readonly struct CdgPacket
+readonly struct CdgPacket
 {
-    private readonly ReadOnlyMemory<byte> _data;
+    readonly ReadOnlyMemory<byte> _data;
 
     public CdgPacket(ReadOnlySpan<byte> data)
     {

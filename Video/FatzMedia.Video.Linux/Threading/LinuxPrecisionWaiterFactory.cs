@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Threading;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Threading;
 
 namespace FatzMedia.Video.Linux.Threading;
 
@@ -8,12 +8,12 @@ namespace FatzMedia.Video.Linux.Threading;
 /// spin window, then a short spin to the deadline. Core's <see cref="MediaLoopPacer"/> owns
 /// deadline policy; this only supplies the primitive.
 /// </summary>
-internal sealed class LinuxPrecisionWaiterFactory : IPrecisionWaiterFactory
+sealed class LinuxPrecisionWaiterFactory : IPrecisionWaiterFactory
 {
     public IPrecisionWaiter Create() => new LinuxPrecisionWaiter();
 }
 
-internal sealed class LinuxPrecisionWaiter : IPrecisionWaiter
+sealed class LinuxPrecisionWaiter : IPrecisionWaiter
 {
     /// <summary>Time left to the deadline that is spun instead of slept.</summary>
     internal static readonly TimeSpan SpinWindow = TimeSpan.FromMilliseconds(1);
@@ -27,7 +27,7 @@ internal sealed class LinuxPrecisionWaiter : IPrecisionWaiter
             return;
 
         var deadline = Stopwatch.GetTimestamp() + (long)(duration.TotalSeconds * Stopwatch.Frequency);
-        TimeSpan sleep = duration - SpinWindow;
+        var sleep = duration - SpinWindow;
         if (sleep > TimeSpan.Zero && cancellationHandle.WaitOne(sleep))
             return;
 

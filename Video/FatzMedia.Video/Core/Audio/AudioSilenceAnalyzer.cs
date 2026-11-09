@@ -1,6 +1,6 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal readonly record struct SilenceScanResult(
+readonly record struct SilenceScanResult(
     double SourceDuration,
     IReadOnlyList<SilenceRegion> SilenceRegions);
 
@@ -9,7 +9,7 @@ internal readonly record struct SilenceScanResult(
 /// engine-neutral <see cref="IAudioLevelSource"/> (037A slice 1; BASS:
 /// <see cref="BassChannelLevelSource"/>).
 /// </summary>
-internal sealed class AudioSilenceAnalyzer
+sealed class AudioSilenceAnalyzer
 {
     internal const double BlockDurationSeconds = 0.1;
 
@@ -32,7 +32,7 @@ internal sealed class AudioSilenceAnalyzer
             cancellationToken);
     }
 
-    private static SilenceScanResult Scan(
+    static SilenceScanResult Scan(
         IAudioLevelSource source,
         double sourceDuration,
         double thresholdDecibels,

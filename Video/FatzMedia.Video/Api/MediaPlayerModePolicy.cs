@@ -5,7 +5,7 @@ using FatzMedia.Video.Core.Files;
 namespace FatzMedia.Video;
 
 /// <summary>How a player in a given mode opens a kind of media (Stage 043A).</summary>
-internal enum MediaModeRoute
+enum MediaModeRoute
 {
     /// <summary>Opened the normal way. Kinds no mode knows still fail through the normal error path.</summary>
     Normal,
@@ -24,7 +24,7 @@ internal enum MediaModeRoute
 /// What each <see cref="MediaPlayerMode"/> accepts (Stage 043A spec table). Pure decisions, so the
 /// engine and the tests share one source of truth.
 /// </summary>
-internal static class MediaPlayerModePolicy
+static class MediaPlayerModePolicy
 {
     /// <summary>Diagnostic category for mode decisions (rejected loads, ignored settings).</summary>
     public const string DiagnosticCategory = "PlayerMode";

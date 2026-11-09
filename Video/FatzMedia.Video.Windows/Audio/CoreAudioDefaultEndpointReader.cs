@@ -2,10 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace FatzMedia.Video.Windows.Audio;
 
-internal static partial class CoreAudioDefaultEndpointReader
+static partial class CoreAudioDefaultEndpointReader
 {
-    private static readonly Guid MMDeviceEnumeratorClassId = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
-    private static readonly PropertyKey PkeyDeviceFriendlyName = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
+    static readonly Guid MMDeviceEnumeratorClassId = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
+    static readonly PropertyKey PkeyDeviceFriendlyName = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
 
     public static bool TryGetDefaultRenderEndpoint(out string? endpointId, out string? endpointName)
     {
@@ -16,7 +16,7 @@ internal static partial class CoreAudioDefaultEndpointReader
             || TryGetDefaultRenderEndpoint(ERole.Console, out endpointId, out endpointName);
     }
 
-    private static bool TryGetDefaultRenderEndpoint(ERole role, out string? endpointId, out string? endpointName)
+    static bool TryGetDefaultRenderEndpoint(ERole role, out string? endpointId, out string? endpointName)
     {
         endpointId = null;
         endpointName = null;
@@ -51,7 +51,7 @@ internal static partial class CoreAudioDefaultEndpointReader
         }
     }
 
-    private static string? TryGetFriendlyName(IMMDevice device)
+    static string? TryGetFriendlyName(IMMDevice device)
     {
         IPropertyStore? propertyStore = null;
         PropVariant variant = default;
@@ -61,7 +61,7 @@ internal static partial class CoreAudioDefaultEndpointReader
             if (hr < 0 || propertyStore == null)
                 return null;
 
-            PropertyKey key = PkeyDeviceFriendlyName;
+            var key = PkeyDeviceFriendlyName;
             hr = propertyStore.GetValue(ref key, out variant);
             return hr < 0 || variant.VarType != VarEnum.VT_LPWSTR || variant.Pointer == IntPtr.Zero
                 ? null
@@ -78,7 +78,7 @@ internal static partial class CoreAudioDefaultEndpointReader
         }
     }
 
-    private static void ReleaseCom(object? value)
+    static void ReleaseCom(object? value)
     {
         if (value != null && Marshal.IsComObject(value))
             _ = Marshal.ReleaseComObject(value);
@@ -87,14 +87,14 @@ internal static partial class CoreAudioDefaultEndpointReader
     [LibraryImport("Ole32.dll")]
     private static partial int PropVariantClear(ref PropVariant pvar);
 
-    private enum EDataFlow
+    enum EDataFlow
     {
         Render = 0,
         Capture = 1,
         All = 2,
     }
 
-    private enum ERole
+    enum ERole
     {
         Console = 0,
         Multimedia = 1,
@@ -106,7 +106,7 @@ internal static partial class CoreAudioDefaultEndpointReader
     [ComImport]
     [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IMMDeviceEnumerator
+interface IMMDeviceEnumerator
     {
         [PreserveSig]
         int EnumAudioEndpoints(EDataFlow dataFlow, uint stateMask, out IntPtr devices);
@@ -127,7 +127,7 @@ internal static partial class CoreAudioDefaultEndpointReader
     [ComImport]
     [Guid("D666063F-1587-4E43-81F1-B948E807363F")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IMMDevice
+interface IMMDevice
     {
         [PreserveSig]
         int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, out IntPtr interfacePointer);
@@ -145,7 +145,7 @@ internal static partial class CoreAudioDefaultEndpointReader
     [ComImport]
     [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IPropertyStore
+interface IPropertyStore
     {
         [PreserveSig]
         int GetCount(out uint propertyCount);
@@ -166,14 +166,14 @@ internal static partial class CoreAudioDefaultEndpointReader
 #pragma warning restore SYSLIB1096
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly struct PropertyKey(Guid formatId, int propertyId)
+readonly struct PropertyKey(Guid formatId, int propertyId)
     {
         public readonly Guid FormatId = formatId;
         public readonly int PropertyId = propertyId;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct PropVariant
+struct PropVariant
     {
         public ushort VariantType;
         public ushort Reserved1;

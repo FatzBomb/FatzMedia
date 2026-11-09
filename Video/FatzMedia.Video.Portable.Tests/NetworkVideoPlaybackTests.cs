@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Media;
@@ -5,7 +6,6 @@ using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Pipeline;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Tests;
 
@@ -16,20 +16,20 @@ namespace FatzMedia.Video.Tests;
 [Collection("File type registry")]
 public sealed class NetworkVideoPlaybackTests
 {
-    private static readonly Uri ClipUri = new("http://media.example/clip.mp4");
+    static readonly Uri ClipUri = new("http://media.example/clip.mp4");
     // The hint, not the extension: the portable tests register no native video extensions.
-    private static readonly MediaInputSource ClipSource = MediaInputSource.FromUri(ClipUri, MediaNetworkContent.Video);
-    private static readonly Uri PlaylistUri = new("http://media.example/live/index.m3u8");
+    static readonly MediaInputSource ClipSource = MediaInputSource.FromUri(ClipUri, MediaNetworkContent.Video);
+    static readonly Uri PlaylistUri = new("http://media.example/live/index.m3u8");
 
-    private static readonly MediaSourceCapabilities SeekableFile = Core.Network.NetworkVideoPolicy.Resolve(new(false, 4_000_000, true, 10));
-    private static readonly MediaSourceCapabilities LivePlaylist = Core.Network.NetworkVideoPolicy.Resolve(new(true, null, false, 0));
+    static readonly MediaSourceCapabilities SeekableFile = Core.Network.NetworkVideoPolicy.Resolve(new(false, 4_000_000, true, 10));
+    static readonly MediaSourceCapabilities LivePlaylist = Core.Network.NetworkVideoPolicy.Resolve(new(true, null, false, 0));
 
     [Fact]
     public void NetworkVideo_OpensThroughTheVideoPipelineWithTheProbedRow()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
         var audio = new TestAudioEngine();
-        using PipelineMediaEngine engine = CreateEngine(audio, video);
+        using var engine = CreateEngine(audio, video);
 
         Assert.True(engine.Open(ClipSource));
 
@@ -43,7 +43,7 @@ public sealed class NetworkVideoPlaybackTests
     public void HlsPlaylist_ClassifiesAsVideo_AndALiveRowRejectsSeeks()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = LivePlaylist };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video);
+        using var engine = CreateEngine(new TestAudioEngine(), video);
 
         Assert.True(engine.Open(MediaInputSource.FromUri(PlaylistUri)));
 
@@ -56,7 +56,7 @@ public sealed class NetworkVideoPlaybackTests
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => false, LastNetworkError = "Connection refused" };
         var policy = new NetworkRetryPolicy { MaxRetries = 2, InitialDelay = TimeSpan.Zero };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        using var engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
@@ -74,7 +74,7 @@ public sealed class NetworkVideoPlaybackTests
         const string Rejected = "certificate verification failed for media.example: error:0A000086:SSL routines::certificate verify failed (Input/output error)";
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => false, LastNetworkError = Rejected };
         var policy = new NetworkRetryPolicy { MaxRetries = 3, InitialDelay = TimeSpan.Zero };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        using var engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
@@ -90,12 +90,12 @@ public sealed class NetworkVideoPlaybackTests
     {
         FfmpegNetworkOptions? seen = null;
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, options) => { seen = options; return true; }, NetworkCapabilities = SeekableFile };
-        using (PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video))
+        using (var engine = CreateEngine(new TestAudioEngine(), video))
             Assert.True(engine.Open(ClipSource));
         Assert.Same(NetworkTlsPolicy.Default, seen!.Tls);
 
         var tls = new NetworkTlsPolicy { AllowInvalidCertificates = true };
-        using PipelineMediaEngine optedOut = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkTls = tls });
+        using var optedOut = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkTls = tls });
         Assert.True(optedOut.Open(MediaInputSource.FromUri(new Uri("https://media.example/clip.mp4"), MediaNetworkContent.Video)));
         Assert.Same(tls, seen.Tls);
     }
@@ -112,7 +112,7 @@ public sealed class NetworkVideoPlaybackTests
             NetworkOpen = (_, _) => ++attempts == 2,
         };
         var policy = new NetworkRetryPolicy { MaxRetries = 3, InitialDelay = TimeSpan.Zero };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        using var engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
 
         Assert.True(engine.Open(ClipSource));
         Assert.Equal(2, attempts);
@@ -134,14 +134,14 @@ public sealed class NetworkVideoPlaybackTests
             },
         };
         var policy = new NetworkRetryPolicy { MaxRetries = 5, InitialDelay = TimeSpan.FromSeconds(10) };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        using var engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
-        Task<bool> open = Task.Run(() => engine.Open(ClipSource));
+        var open = Task.Run(() => engine.Open(ClipSource));
         Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
         var cancel = Stopwatch.StartNew();
-        ((INetworkPlayer)engine).CancelPendingNetworkOpen();
+        engine.CancelPendingNetworkOpen();
 
         Assert.Same(open, await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))));
         Assert.False(await open);
@@ -166,12 +166,12 @@ public sealed class NetworkVideoPlaybackTests
             },
         };
         var policy = new NetworkRetryPolicy { MaxRetries = 5, InitialDelay = TimeSpan.FromSeconds(10) };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        using var engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
         using var load = new CancellationTokenSource();
 
-        Task<bool> open = Task.Run(() =>
+        var open = Task.Run(() =>
         {
             using (MediaOpenCancellation.Enter(load.Token))
                 return engine.Open(ClipSource);
@@ -189,9 +189,9 @@ public sealed class NetworkVideoPlaybackTests
     public void CancelPendingNetworkOpen_WithNoOpenInProgress_DoesNothing()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video);
+        using var engine = CreateEngine(new TestAudioEngine(), video);
 
-        ((INetworkPlayer)engine).CancelPendingNetworkOpen();
+        engine.CancelPendingNetworkOpen();
 
         Assert.True(engine.Open(ClipSource));
     }
@@ -201,7 +201,7 @@ public sealed class NetworkVideoPlaybackTests
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
         var audio = new TestAudioEngine();
-        using PipelineMediaEngine engine = CreateEngine(audio, video, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background });
+        using var engine = CreateEngine(audio, video, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background });
 
         Assert.True(engine.Open(ClipSource));
         engine.Close();
@@ -213,7 +213,7 @@ public sealed class NetworkVideoPlaybackTests
     public void WithoutBass_FullModeStillOpensNetworkVideo()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, audioAvailable: false);
+        using var engine = CreateEngine(new TestAudioEngine(), video, audioAvailable: false);
 
         Assert.True(engine.Open(ClipSource));
     }
@@ -221,7 +221,7 @@ public sealed class NetworkVideoPlaybackTests
     [Fact]
     public void AudioMode_WithoutBass_RejectsNetworkVideoAsAudioUnavailable()
     {
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), new TestVideoEngine(), new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, audioAvailable: false);
+        using var engine = CreateEngine(new TestAudioEngine(), new TestVideoEngine(), new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, audioAvailable: false);
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
@@ -233,9 +233,9 @@ public sealed class NetworkVideoPlaybackTests
     public void VideoBufferingChanges_AreForwardedByTheEngine()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
-        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video);
+        using var engine = CreateEngine(new TestAudioEngine(), video);
         List<bool> changes = [];
-        ((INetworkPlayer)engine).NetworkBufferingChanged += (_, args) => changes.Add(args.IsBuffering);
+        engine.NetworkBufferingChanged += (_, args) => changes.Add(args.IsBuffering);
         Assert.True(engine.Open(ClipSource));
 
         video.RaiseNetworkBuffering(true, 0);
@@ -244,7 +244,7 @@ public sealed class NetworkVideoPlaybackTests
         Assert.Equal([true, false], changes);
     }
 
-    private static PipelineMediaEngine CreateEngine(
+    static PipelineMediaEngine CreateEngine(
         TestAudioEngine audio,
         TestVideoEngine video,
         MediaPlayerConfiguration? configuration = null,
@@ -261,12 +261,12 @@ public sealed class NetworkVideoPlaybackTests
             configuration ?? MediaPlayerConfiguration.Auto,
             audioAvailable: audioAvailable);
 
-    private sealed class FixedVideoFactory(TestVideoEngine video) : IVideoEngineFactory
+    sealed class FixedVideoFactory(TestVideoEngine video) : IVideoEngineFactory
     {
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) => video;
     }
 
-    private sealed class NoMidiLyrics : IMidiLyricProvider
+    sealed class NoMidiLyrics : IMidiLyricProvider
     {
         public bool IsMidiFile(string path) => false;
 

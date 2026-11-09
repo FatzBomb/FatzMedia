@@ -9,10 +9,10 @@ namespace FatzMedia.Video.Core.Threading;
 /// </remarks>
 public sealed class MediaLoopPacer : IDisposable
 {
-    private readonly IPrecisionWaiter _waiter;
-    private readonly TimeProvider _timeProvider;
-    private long _nextDeadlineTimestamp;
-    private bool _disposed;
+    readonly IPrecisionWaiter _waiter;
+    readonly TimeProvider _timeProvider;
+    long _nextDeadlineTimestamp;
+    bool _disposed;
 
     public MediaLoopPacer(IPrecisionWaiterFactory waiterFactory, TimeProvider? timeProvider = null)
     {
@@ -109,17 +109,17 @@ public sealed class MediaLoopPacer : IDisposable
         _waiter.Dispose();
     }
 
-    private long ToTimestampTicks(TimeSpan duration)
+    long ToTimestampTicks(TimeSpan duration)
     {
         var ticks = duration.TotalSeconds * _timeProvider.TimestampFrequency;
         return Math.Max(1L, (long)Math.Round(ticks));
     }
 
-    private TimeSpan ToTimeSpan(long timestampTicks) =>
+    TimeSpan ToTimeSpan(long timestampTicks) =>
         TimeSpan.FromSeconds(timestampTicks / (double)_timeProvider.TimestampFrequency);
 
-    private static long AddTimestampTicks(long timestamp, long ticks) =>
+    static long AddTimestampTicks(long timestamp, long ticks) =>
         timestamp > long.MaxValue - ticks ? long.MaxValue : timestamp + ticks;
 
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+    void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

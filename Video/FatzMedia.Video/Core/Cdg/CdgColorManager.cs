@@ -6,18 +6,18 @@ namespace FatzMedia.Video.Core.Cdg;
 /// Manages CDG color table, lookup table, and background color operations.
 /// Handles all color-related optimizations and calculations.
 /// </summary>
-internal sealed class CdgColorManager
+sealed class CdgColorManager
 {
     #region Private Fields
 
-    private readonly Color[] _colorTable = new Color[CdgConstants.ColorCount];
-    private readonly int[] _colorArgbLut = new int[CdgConstants.ColorCount];
+    readonly Color[] _colorTable = new Color[CdgConstants.ColorCount];
+    readonly int[] _colorArgbLut = new int[CdgConstants.ColorCount];
 
-    private int _borderColorIndex = -1;
-    private byte _backgroundOpacity = 255; // 0..255
-    private bool _lutNeedsUpdate = true;
-    private bool _backgroundWashNeedsUpdate = true;
-    private uint _backgroundWashArgb;
+    int _borderColorIndex = -1;
+    byte _backgroundOpacity = 255; // 0..255
+    bool _lutNeedsUpdate = true;
+    bool _backgroundWashNeedsUpdate = true;
+    uint _backgroundWashArgb;
 
     #endregion
 
@@ -134,7 +134,7 @@ internal sealed class CdgColorManager
         for (var i = 0; i < CdgConstants.ColorCount; i++)
         {
             var isBg = i == 0 || i == _borderColorIndex || i == BackgroundColorIndex;
-            Color baseColor = _colorTable[i];
+            var baseColor = _colorTable[i];
 
             // Apply background override if applicable
             if (BackgroundOverrideArgb.HasValue && isBg)
@@ -226,7 +226,7 @@ internal sealed class CdgColorManager
 
     #region Private Methods
 
-    private void LoadColorTableRange(ReadOnlySpan<byte> colorData, int offset)
+    void LoadColorTableRange(ReadOnlySpan<byte> colorData, int offset)
     {
         if (colorData.Length < 16) return;
 
@@ -251,7 +251,7 @@ internal sealed class CdgColorManager
         InvalidateColorState(invalidateWash: true);
     }
 
-    private void InvalidateColorState(bool invalidateWash)
+    void InvalidateColorState(bool invalidateWash)
     {
         _lutNeedsUpdate = true;
         if (invalidateWash)
@@ -260,7 +260,7 @@ internal sealed class CdgColorManager
         }
     }
 
-    private uint CalculateBackgroundWashArgb()
+    uint CalculateBackgroundWashArgb()
     {
         // Until a CDG memory-preset establishes the background color, the CDG plane is transparent so
         // any underlying background (sidecar image/video) shows through instead of the opaque default
@@ -271,7 +271,7 @@ internal sealed class CdgColorManager
         }
 
         var bgIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
-        Color baseColor = _colorTable[bgIndex];
+        var baseColor = _colorTable[bgIndex];
 
         if (BackgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == BackgroundColorIndex))
         {
@@ -286,7 +286,7 @@ internal sealed class CdgColorManager
         return (uint)((finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B);
     }
 
-    private static Color FromArgb(uint argb) =>
+    static Color FromArgb(uint argb) =>
         Color.FromArgb(
             (byte)((argb >> 24) & 0xFF),
             (byte)((argb >> 16) & 0xFF),
@@ -297,4 +297,4 @@ internal sealed class CdgColorManager
 }
 
 /// <summary>The packet-driven part of <see cref="CdgColorManager"/> (Stage 022A slice 4 replay checkpoints).</summary>
-internal sealed record CdgColorReplayState(Color[] ColorTable, int BorderColorIndex, int BackgroundColorIndex);
+sealed record CdgColorReplayState(Color[] ColorTable, int BorderColorIndex, int BackgroundColorIndex);

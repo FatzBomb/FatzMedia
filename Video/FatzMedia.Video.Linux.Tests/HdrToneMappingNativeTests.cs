@@ -1,8 +1,8 @@
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -17,14 +17,14 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
 {
-    private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
+    const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
 
     [Theory]
     [InlineData("hevc_hlg.mp4", "HLG HDR, tone mapped to SDR", "HLG video is tone mapped to SDR on the CPU")]
     [InlineData("hevc_hdr10.mp4", "HDR10/PQ, tone mapped to SDR", "HDR10 video is tone mapped to SDR on the CPU")]
     public void HdrClip_IsToneMappedOnTheSoftwarePath(string fileName, string decodingNote, string toneMapLine)
     {
-        Frame? toneMapped = CaptureFrame(fileName, default, out IReadOnlyList<string> diagnostics);
+        var toneMapped = CaptureFrame(fileName, default, out var diagnostics);
         if (toneMapped is not { } frame)
             return;
 
@@ -32,7 +32,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
         Assert.Contains(diagnostics, line => line.StartsWith(toneMapLine, StringComparison.Ordinal));
         Assert.DoesNotContain(diagnostics, line => line.Contains("without tone mapping", StringComparison.Ordinal));
 
-        Stats stats = Measure(frame);
+        var stats = Measure(frame);
         output.WriteLine($"{fileName}: mean luma {stats.MeanLuma:F1}, white-clipped {stats.WhiteFraction:P2}, black {stats.BlackFraction:P2}");
 
         // No clipping to white: the clip is color bars with no white area, so only a small share
@@ -45,20 +45,20 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
 
         // Hue is kept through the BT.2020 to BT.709 conversion: the first bar (left edge, a
         // third of the way down) stays red.
-        (byte red, byte green, byte blue) = frame.Pixel(frame.Width / 28, frame.Height / 3);
+        (var red, var green, var blue) = frame.Pixel(frame.Width / 28, frame.Height / 3);
         output.WriteLine($"{fileName}: first bar {red},{green},{blue}");
         Assert.True(red > 150 && green < 60 && blue < 60, $"the red bar shows as {red},{green},{blue}");
 
         // The tone mapper changed the picture: with tone mapping off the same frame differs.
-        Frame? plain = CaptureFrame(fileName, new HdrToneMappingOptions(Disabled: true), out IReadOnlyList<string> plainDiagnostics);
+        var plain = CaptureFrame(fileName, new HdrToneMappingOptions(Disabled: true), out var plainDiagnostics);
         Assert.NotNull(plain);
         Assert.Contains(plainDiagnostics, line => line.Contains("without tone mapping", StringComparison.Ordinal));
-        Stats plainStats = Measure(plain.Value);
+        var plainStats = Measure(plain.Value);
         output.WriteLine($"{fileName} without tone mapping: mean luma {plainStats.MeanLuma:F1}, white-clipped {plainStats.WhiteFraction:P2}");
         Assert.True(Math.Abs(plainStats.MeanLuma - stats.MeanLuma) > 2, "tone mapping did not change the picture");
     }
 
-    private Frame? CaptureFrame(string fileName, HdrToneMappingOptions hdr, out IReadOnlyList<string> diagnostics)
+    Frame? CaptureFrame(string fileName, HdrToneMappingOptions hdr, out IReadOnlyList<string> diagnostics)
     {
         diagnostics = [];
         var ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
@@ -109,7 +109,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
         }
     }
 
-    private static Stats Measure(Frame frame)
+    static Stats Measure(Frame frame)
     {
         double lumaSum = 0;
         long white = 0, black = 0;
@@ -117,7 +117,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
         {
             for (var x = 0; x < frame.Width; x++)
             {
-                (byte r, byte g, byte b) = frame.Pixel(x, y);
+                (var r, var g, var b) = frame.Pixel(x, y);
                 lumaSum += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
                 if (r >= 250 && g >= 250 && b >= 250)
                     white++;
@@ -126,13 +126,13 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
             }
         }
 
-        double pixels = frame.Width * (double)frame.Height;
+        var pixels = frame.Width * (double)frame.Height;
         return new Stats(lumaSum / pixels, white / pixels, black / pixels);
     }
 
-    private readonly record struct Stats(double MeanLuma, double WhiteFraction, double BlackFraction);
+    readonly record struct Stats(double MeanLuma, double WhiteFraction, double BlackFraction);
 
-    private readonly record struct Frame(byte[] Bgra, int Width, int Height, int Stride)
+    readonly record struct Frame(byte[] Bgra, int Width, int Height, int Stride)
     {
         public (byte R, byte G, byte B) Pixel(int x, int y)
         {
@@ -142,10 +142,10 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
     }
 
     /// <summary>Keeps a copy of one presented frame, after skipping the first few.</summary>
-    private sealed class CapturingFrameSink(int framesToSkip) : IMediaPresentationFrameSink
+    sealed class CapturingFrameSink(int framesToSkip) : IMediaPresentationFrameSink
     {
-        private int _frames;
-        private volatile StrongBox<Frame>? _captured;
+        int _frames;
+        volatile StrongBox<Frame>? _captured;
 
         public int Frames => Volatile.Read(ref _frames);
 

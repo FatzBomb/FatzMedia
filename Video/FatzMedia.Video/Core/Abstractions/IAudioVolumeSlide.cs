@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// linear ramp instead of a step, as <see cref="IAudioEngine.SetVolume"/> does. Like
 /// <see cref="IAudioEngine.SetVolume"/>, the level replaces the user volume the engine holds.
 /// </summary>
-internal interface IAudioVolumeSlide
+interface IAudioVolumeSlide
 {
     void SlideVolume(double volume01, TimeSpan duration);
 }

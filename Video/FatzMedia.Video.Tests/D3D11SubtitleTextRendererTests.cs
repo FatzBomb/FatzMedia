@@ -10,14 +10,14 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11SubtitleTextRendererTests
 {
-    private const int CanvasWidth = 1920;
-    private const int CanvasHeight = 1080;
+    const int CanvasWidth = 1920;
+    const int CanvasHeight = 1080;
 
     [Fact]
     public void RenderKaraoke_SteadyWipe_AllocatesUnder64KbPerFrame()
     {
         using var renderer = new SubtitleTextRenderer();
-        KaraokeCueTiming timing = CreateTiming();
+        var timing = CreateTiming();
         var buffer = new byte[CanvasWidth * CanvasHeight * 4];
         Func<int, Memory<byte>> rent = length => buffer.AsMemory(0, length);
 
@@ -37,7 +37,7 @@ public sealed class D3D11SubtitleTextRendererTests
     [Fact]
     public void RenderKaraoke_CachedPath_MatchesUncachedPixels()
     {
-        KaraokeCueTiming timing = CreateTiming();
+        var timing = CreateTiming();
         using var warm = new SubtitleTextRenderer();
         for (var frame = 0; frame < 30; frame++)
             _ = warm.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight);
@@ -46,8 +46,8 @@ public sealed class D3D11SubtitleTextRendererTests
         // rare mismatch has more chances to show and its message says which frame it was.
         for (var frame = 30; frame <= 90; frame++)
         {
-            TimeSpan position = FramePosition(frame);
-            SubtitleRasterResult cached = warm.RenderKaraoke(timing, position, CanvasWidth, CanvasHeight);
+            var position = FramePosition(frame);
+            var cached = warm.RenderKaraoke(timing, position, CanvasWidth, CanvasHeight);
             AssertSameRaster(
                 $"karaoke frame {frame} ({position.TotalSeconds:0.000} s)",
                 () => RenderCold(renderer => renderer.RenderKaraoke(timing, position, CanvasWidth, CanvasHeight)),
@@ -55,7 +55,7 @@ public sealed class D3D11SubtitleTextRendererTests
         }
 
         // The plain subtitle path shares the caches and the render target.
-        SubtitleRasterResult text = warm.Render("A plain subtitle", CanvasWidth, CanvasHeight);
+        var text = warm.Render("A plain subtitle", CanvasWidth, CanvasHeight);
         AssertSameRaster(
             "plain subtitle",
             () => RenderCold(renderer => renderer.Render("A plain subtitle", CanvasWidth, CanvasHeight)),
@@ -63,14 +63,14 @@ public sealed class D3D11SubtitleTextRendererTests
 
         // The caller's buffer receives the same pixels.
         var buffer = new byte[CanvasWidth * CanvasHeight * 4];
-        SubtitleRasterResult rented = warm.RenderKaraoke(timing, FramePosition(45), CanvasWidth, CanvasHeight, length => buffer.AsMemory(0, length));
+        var rented = warm.RenderKaraoke(timing, FramePosition(45), CanvasWidth, CanvasHeight, length => buffer.AsMemory(0, length));
         AssertSameRaster(
             "karaoke frame 45 into the caller's buffer",
             () => RenderCold(renderer => renderer.RenderKaraoke(timing, FramePosition(45), CanvasWidth, CanvasHeight)),
             rented);
     }
 
-    private static SubtitleRasterResult RenderCold(Func<SubtitleTextRenderer, SubtitleRasterResult> render)
+    static SubtitleRasterResult RenderCold(Func<SubtitleTextRenderer, SubtitleRasterResult> render)
     {
         using var renderer = new SubtitleTextRenderer();
         return render(renderer);
@@ -82,9 +82,9 @@ public sealed class D3D11SubtitleTextRendererTests
     /// matches the first: if fresh renderers disagree with each other, Direct2D itself is not
     /// deterministic on this machine; if they agree, the cached path drew something else.
     /// </summary>
-    private static void AssertSameRaster(string label, Func<SubtitleRasterResult> renderCold, SubtitleRasterResult actual)
+    static void AssertSameRaster(string label, Func<SubtitleRasterResult> renderCold, SubtitleRasterResult actual)
     {
-        SubtitleRasterResult expected = renderCold();
+        var expected = renderCold();
         var expectedBounds = (expected.Width, expected.Height, expected.Stride, expected.CanvasLeft, expected.CanvasTop);
         var actualBounds = (actual.Width, actual.Height, actual.Stride, actual.CanvasLeft, actual.CanvasTop);
         Assert.True(expectedBounds == actualBounds, $"Cached raster bounds {actualBounds} differ from uncached {expectedBounds} at {label}.");
@@ -92,7 +92,7 @@ public sealed class D3D11SubtitleTextRendererTests
         if (expected.Pixels.Span.SequenceEqual(actual.Pixels.Span))
             return;
 
-        SubtitleRasterResult secondCold = renderCold();
+        var secondCold = renderCold();
         var coldAgrees = expected.Pixels.Span.SequenceEqual(secondCold.Pixels.Span);
         Assert.Fail(
             $"Cached raster pixels differ from an uncached raster at {label}. "
@@ -105,10 +105,10 @@ public sealed class D3D11SubtitleTextRendererTests
                     + "): Direct2D rasterization is not deterministic here."));
     }
 
-    private static string DescribeDifference(SubtitleRasterResult expected, SubtitleRasterResult actual)
+    static string DescribeDifference(SubtitleRasterResult expected, SubtitleRasterResult actual)
     {
-        ReadOnlySpan<byte> left = expected.Pixels.Span;
-        ReadOnlySpan<byte> right = actual.Pixels.Span;
+        var left = expected.Pixels.Span;
+        var right = actual.Pixels.Span;
         int count = 0, maxDelta = 0, minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
         var samples = new List<string>();
         for (var y = 0; y < expected.Height; y++)
@@ -138,7 +138,7 @@ public sealed class D3D11SubtitleTextRendererTests
     }
 
     // The second of three lines is active and its syllables start every 250 ms from 1 s.
-    private static KaraokeCueTiming CreateTiming()
+    static KaraokeCueTiming CreateTiming()
     {
         static KaraokeLineTiming Line(string text, double startSeconds)
         {
@@ -165,5 +165,5 @@ public sealed class D3D11SubtitleTextRendererTests
             TransitionEnd: TimeSpan.FromSeconds(10));
     }
 
-    private static TimeSpan FramePosition(int frame) => TimeSpan.FromSeconds(1 + (frame / 60.0));
+    static TimeSpan FramePosition(int frame) => TimeSpan.FromSeconds(1 + (frame / 60.0));
 }

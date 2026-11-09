@@ -12,7 +12,7 @@ public sealed class FileTypeRegistryCollection
 [Collection("File type registry")]
 public class MediaBackgroundResolverTests : IDisposable
 {
-    private readonly string _tempDir;
+    readonly string _tempDir;
 
     public MediaBackgroundResolverTests()
     {
@@ -27,7 +27,7 @@ public class MediaBackgroundResolverTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private string CreateFile(string name)
+    string CreateFile(string name)
     {
         var path = Path.Combine(_tempDir, name);
         File.WriteAllBytes(path, []);
@@ -40,7 +40,7 @@ public class MediaBackgroundResolverTests : IDisposable
     [InlineData("   ")]
     public void Resolve_ReturnsNullForNullOrWhitespaceSourcePath(string? sourcePath)
     {
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(sourcePath!, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(sourcePath!, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -50,7 +50,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = Path.Combine(_tempDir, "missing.mp3");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -60,7 +60,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = CreateFile("clip.mp4");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Video);
+        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Video);
 
         Assert.Null(result);
     }
@@ -70,7 +70,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = CreateFile("photo.png");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Image);
+        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Image);
 
         Assert.Null(result);
     }
@@ -93,7 +93,7 @@ public class MediaBackgroundResolverTests : IDisposable
         {
             _ = FileTypes.Video.Add(".testvideo");
 
-            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
+            var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
 
             Assert.NotNull(result);
             Assert.Equal(MediaBackgroundKind.Video, result.Kind);
@@ -111,7 +111,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var audioPath = CreateFile("song.mp3");
         var sidecarPath = CreateFile("song.png");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.NotNull(result);
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
@@ -128,7 +128,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var mediaPath = CreateFile($"audio-like-{extension}.{extension}");
         var sidecarPath = CreateFile($"audio-like-{extension}.png");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(
+        var result = MediaBackgroundResolver.Resolve(
             mediaPath,
             new FakeArchiveService(),
             MediaContent.Audio);
@@ -144,7 +144,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var cdgPath = CreateFile("track.cdg");
         var sidecarPath = CreateFile("track.jpg");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(cdgPath, new FakeArchiveService(), MediaContent.Cdg);
+        var result = MediaBackgroundResolver.Resolve(cdgPath, new FakeArchiveService(), MediaContent.Cdg);
 
         Assert.NotNull(result);
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
@@ -156,7 +156,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var audioPath = CreateFile("lonely.mp3");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -167,7 +167,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var audioPath = CreateFile("song.mp3");
         _ = CreateFile("other.png"); // different base name
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -178,7 +178,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var audioPath = CreateFile("song.mp3");
         var sidecarPath = CreateFile("song.PNG");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.NotNull(result);
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
@@ -194,7 +194,7 @@ public class MediaBackgroundResolverTests : IDisposable
 
         // Archive path is exercised; without archive entries it falls through to sidecar
         // lookup (which finds nothing here), so result is null. The test verifies no crash.
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(archivePath, archiveService, MediaContent.Audio);
+        var result = MediaBackgroundResolver.Resolve(archivePath, archiveService, MediaContent.Audio);
 
         Assert.Null(result);
         Assert.True(archiveService.OpenCalled);
@@ -208,7 +208,7 @@ public class MediaBackgroundResolverTests : IDisposable
             new FakeArchiveEntry("song.kar", [1]),
             new FakeArchiveEntry("background.png", [2, 3, 4]));
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(
+        var result = MediaBackgroundResolver.Resolve(
             archivePath,
             archiveService,
             MediaContent.Audio);
@@ -234,8 +234,8 @@ public class MediaBackgroundResolverTests : IDisposable
             _ = FileTypes.Audio.Add(".testmod");
             _ = FileTypes.Video.Add(".testvideo");
 
-            using FileTree tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
-            MediaBackgroundCandidate? background = MediaBackgroundResolver.Resolve(
+            using var tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
+            var background = MediaBackgroundResolver.Resolve(
                 archivePath,
                 archiveService,
                 MediaContent.Audio);
@@ -264,7 +264,7 @@ public class MediaBackgroundResolverTests : IDisposable
         {
             _ = FileTypes.Video.Add(".testvideo");
 
-            using FileTree tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
+            using var tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
 
             Assert.Equal(FileType.VideoArchive, tree.Type);
             Assert.Equal("main.testvideo", tree.VideoEntry?.Key);
@@ -289,7 +289,7 @@ public class MediaBackgroundResolverTests : IDisposable
             _ = FileTypes.Audio.Add(".testaudio");
             _ = FileTypes.Video.Add(".testvideo");
 
-            using FileTree tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
+            using var tree = FileTreeBuilder.GetFileTree(archivePath, archiveService);
 
             Assert.Equal(FileType.AudioCdgArchive, tree.Type);
             Assert.Equal("song.testaudio", tree.AudioEntry?.Key);
@@ -313,7 +313,7 @@ public class MediaBackgroundResolverTests : IDisposable
         {
             _ = FileTypes.Video.Add(".testvideo");
 
-            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+            var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
             Assert.NotNull(result);
             Assert.Equal(MediaBackgroundKind.Video, result.Kind);
@@ -336,7 +336,7 @@ public class MediaBackgroundResolverTests : IDisposable
         {
             _ = FileTypes.Video.Add(".testvideo");
 
-            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+            var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
             Assert.NotNull(result);
             Assert.True(result.Kind is MediaBackgroundKind.Video or MediaBackgroundKind.Image);
@@ -384,7 +384,7 @@ public class MediaBackgroundResolverTests : IDisposable
             resolverAvailable: true));
     }
 
-    private sealed class FakeArchiveService(params IArchiveEntryInfo[] entries) : IArchiveService
+    sealed class FakeArchiveService(params IArchiveEntryInfo[] entries) : IArchiveService
     {
         public bool OpenCalled { get; private set; }
 
@@ -395,13 +395,13 @@ public class MediaBackgroundResolverTests : IDisposable
         }
     }
 
-    private sealed class FakeArchiveHandle(IReadOnlyList<IArchiveEntryInfo> entries) : IArchiveHandle
+    sealed class FakeArchiveHandle(IReadOnlyList<IArchiveEntryInfo> entries) : IArchiveHandle
     {
         public IEnumerable<IArchiveEntryInfo> Entries => entries;
         public void Dispose() { }
     }
 
-    private sealed class FakeArchiveEntry(string key, byte[] data) : IArchiveEntryInfo
+    sealed class FakeArchiveEntry(string key, byte[] data) : IArchiveEntryInfo
     {
         public string Key => key;
         public long? Size => data.Length;

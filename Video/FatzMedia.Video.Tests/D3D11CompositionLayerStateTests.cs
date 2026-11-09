@@ -8,7 +8,7 @@ public sealed class D3D11CompositionLayerStateTests
     [Fact]
     public void BaseVisualPixelShaderCompiles()
     {
-        byte[] bytecode = D3D11MediaCompositionPresenter.CompileShaderBytecode(
+        var bytecode = D3D11MediaCompositionPresenter.CompileShaderBytecode(
             D3D11MediaCompositionPresenter.CdgShaderSource,
             "PSBaseVisual",
             "ps_5_0");
@@ -19,7 +19,7 @@ public sealed class D3D11CompositionLayerStateTests
     [Fact]
     public void BaseVisualPremultipliedPixelShaderCompiles()
     {
-        byte[] bytecode = D3D11MediaCompositionPresenter.CompileShaderBytecode(
+        var bytecode = D3D11MediaCompositionPresenter.CompileShaderBytecode(
             D3D11MediaCompositionPresenter.CdgShaderSource,
             "PSBaseVisualPremultiplied",
             "ps_5_0");
@@ -30,11 +30,11 @@ public sealed class D3D11CompositionLayerStateTests
     [Fact]
     public void ShaderBytecodeIsCompiledOncePerProcess()
     {
-        byte[] first = D3D11MediaCompositionPresenter.GetShaderBytecode(
+        var first = D3D11MediaCompositionPresenter.GetShaderBytecode(
             D3D11MediaCompositionPresenter.CdgShaderSource,
             "PSSolid",
             "ps_5_0");
-        byte[] second = D3D11MediaCompositionPresenter.GetShaderBytecode(
+        var second = D3D11MediaCompositionPresenter.GetShaderBytecode(
             D3D11MediaCompositionPresenter.CdgShaderSource,
             "PSSolid",
             "ps_5_0");

@@ -43,16 +43,16 @@ public class RecordingSession : DispatchProxy
     /// <summary>Gets or sets what <see cref="IPlayerSession.State"/> returns.</summary>
     public MediaPlayerState State { get; set; } = MediaPlayerState.Stopped;
 
-    private readonly ConcurrentDictionary<string, Delegate?> _handlers = new();
+    readonly ConcurrentDictionary<string, Delegate?> _handlers = new();
 
     /// <summary>Raises a session event (by name) to its subscribers, as the session would.</summary>
     public void Raise(string eventName, object args)
     {
-        if (_handlers.TryGetValue(eventName, out Delegate? handler) && handler is not null)
+        if (_handlers.TryGetValue(eventName, out var handler) && handler is not null)
             _ = handler.DynamicInvoke(this, args);
     }
 
-    private EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? _modeChanged;
+    EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? _modeChanged;
 
     /// <summary>Gets how many <see cref="IPlayerSession.ModeChanged"/> handlers are subscribed.</summary>
     public int ModeChangedSubscribers => _modeChanged?.GetInvocationList().Length ?? 0;
@@ -60,14 +60,14 @@ public class RecordingSession : DispatchProxy
     /// <summary>Sets <see cref="Mode"/> and raises ModeChanged, as a session's control queue would.</summary>
     public void SwitchMode(MediaPlayerMode mode)
     {
-        MediaPlayerMode old = Mode;
+        var old = Mode;
         Mode = mode;
         _modeChanged?.Invoke(this, new MediaValueChangedEventArgs<MediaPlayerMode>(old, mode));
     }
 
     public static (IPlayerSession Session, RecordingSession Recorder) Create()
     {
-        IPlayerSession session = Create<IPlayerSession, RecordingSession>();
+        var session = Create<IPlayerSession, RecordingSession>();
         return (session, (RecordingSession)(object)session);
     }
 
@@ -120,7 +120,7 @@ public class RecordingSession : DispatchProxy
                 return null;
         }
 
-        Type returnType = targetMethod.ReturnType;
+        var returnType = targetMethod.ReturnType;
         return returnType == typeof(bool)
             ? true
             : returnType == typeof(void) || !returnType.IsValueType ? null : Activator.CreateInstance(returnType);

@@ -37,16 +37,16 @@ public sealed class MediaSharedGpuImageRing : IDisposable
     /// <summary>The key the consumer acquires a keyed mutex with (and the producer releases).</summary>
     public const ulong ConsumerKey = 1;
 
-    private readonly Lock _gate = new();
-    private readonly ManualResetEventSlim _available = new(true);
-    private readonly BufferState[] _states;
-    private readonly ulong[] _keys;
-    private readonly bool[] _consumerSignalPending;
-    private readonly long[] _lastPresented;
-    private long _generation;
-    private long _frameNumber;
-    private long _presentSequence;
-    private bool _disposed;
+    readonly Lock _gate = new();
+    readonly ManualResetEventSlim _available = new(true);
+    readonly BufferState[] _states;
+    readonly ulong[] _keys;
+    readonly bool[] _consumerSignalPending;
+    readonly long[] _lastPresented;
+    long _generation;
+    long _frameNumber;
+    long _presentSequence;
+    bool _disposed;
 
     public MediaSharedGpuImageRing(int bufferCount = 2)
     {
@@ -57,7 +57,7 @@ public sealed class MediaSharedGpuImageRing : IDisposable
         _lastPresented = new long[bufferCount];
     }
 
-    private enum BufferState
+    enum BufferState
     {
         Free,
         Writing,
@@ -221,7 +221,7 @@ public sealed class MediaSharedGpuImageRing : IDisposable
         _available.Dispose();
     }
 
-    private bool WaitAvailable(TimeSpan timeout)
+    bool WaitAvailable(TimeSpan timeout)
     {
         try
         {
@@ -234,13 +234,13 @@ public sealed class MediaSharedGpuImageRing : IDisposable
         }
     }
 
-    private int Count(BufferState state)
+    int Count(BufferState state)
     {
         lock (_gate)
             return _states.Count(s => s == state);
     }
 
-    private void RequireState(int bufferIndex, BufferState expected)
+    void RequireState(int bufferIndex, BufferState expected)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bufferIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bufferIndex, _states.Length);

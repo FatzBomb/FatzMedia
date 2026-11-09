@@ -1,5 +1,4 @@
 using System.Collections.Specialized;
-using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
 using FatzMedia.Video.Sample.Player.Shared.Presentation;
@@ -17,31 +16,31 @@ namespace FatzMedia.Video.Sample.Player.WinForms;
 /// second screen and file drops. The chrome rule, the stats line and the screen choice are shared
 /// with the WPF and Avalonia players (Player.Shared).
 /// </summary>
-internal sealed class PlayerPanel : UserControl, IPlayerSlot
+sealed class PlayerPanel : UserControl, IPlayerSlot
 {
-    private const int SeekScale = 10;
+    const int SeekScale = 10;
 
-    private readonly PlayerViewModel _viewModel;
-    private readonly ViewModelBinder _binder;
-    private readonly List<ViewModelBinder> _bandBinders = [];
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-    private readonly Control _topBar;
-    private readonly Control _bottom;
-    private readonly SeekBar _seekBar = new() { Dock = DockStyle.Fill, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, Height = 28 };
-    private readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
-    private readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
-    private readonly Label _stats = new() { Dock = DockStyle.Fill, AutoSize = false, Height = 18, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(FontFamily.GenericMonospace, 8f) };
-    private readonly FullScreenChromeController _chrome;
-    private readonly PlayerStartupOptions _options;
-    private readonly bool _atStartup;
-    private readonly int _index;
-    private SecondaryPresentationWindow? _secondScreen;
-    private bool _isDragging;
-    private bool _isUpdatingSeek;
-    private bool _isUpdatingSecondScreen;
-    private bool _cursorHidden;
-    private bool _disposed;
+    readonly PlayerViewModel _viewModel;
+    readonly ViewModelBinder _binder;
+    readonly List<ViewModelBinder> _bandBinders = [];
+    readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+    readonly Control _topBar;
+    readonly Control _bottom;
+    readonly SeekBar _seekBar = new() { Dock = DockStyle.Fill, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, Height = 28 };
+    readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
+    readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
+    readonly Label _stats = new() { Dock = DockStyle.Fill, AutoSize = false, Height = 18, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(FontFamily.GenericMonospace, 8f) };
+    readonly FullScreenChromeController _chrome;
+    readonly PlayerStartupOptions _options;
+    readonly bool _atStartup;
+    readonly int _index;
+    SecondaryPresentationWindow? _secondScreen;
+    bool _isDragging;
+    bool _isUpdatingSeek;
+    bool _isUpdatingSecondScreen;
+    bool _cursorHidden;
+    bool _disposed;
 
     /// <param name="index">The player's number (1-based).</param>
     /// <param name="options">The command line (shared by every player of the form).</param>
@@ -102,7 +101,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         // Only real moves show the bars (the controller ignores a move to where the pointer was).
         _surface.MouseMove += (_, _) => _chrome.PointerMoved(Cursor.Position.X, Cursor.Position.Y);
         _secondScreenBox.CheckedChanged += OnSecondScreenChanged;
-        foreach (Control target in new Control[] { this, _surface })
+        foreach (var target in new Control[] { this, _surface })
         {
             target.DragEnter += OnDragEnter;
             target.DragOver += OnDragEnter;
@@ -132,7 +131,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
     public void UpdateStatus(ProcessSample process)
     {
         var surface = PlayerStatsLine.DescribeSurface(_surface.ClientSize.Width, _surface.ClientSize.Height, _surface.PresentationPath, _surface.IsPresentationSuspended);
-        string? second = _secondScreen?.Surface is { } other
+        var second = _secondScreen?.Surface is { } other
             ? PlayerStatsLine.DescribeSurface(other.ClientSize.Width, other.ClientSize.Height, other.PresentationPath, other.IsPresentationSuspended)
             : null;
         _viewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, second));
@@ -156,7 +155,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         _chrome.Dispose();
         CloseSecondScreen();
         _binder.Dispose();
-        foreach (ViewModelBinder binder in _bandBinders)
+        foreach (var binder in _bandBinders)
             binder.Dispose();
         _surface.Player = null;
         try
@@ -181,7 +180,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
             _chrome.Exit();
     }
 
-    private Control BuildTopBar()
+    Control BuildTopBar()
     {
         var bar = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 4, RowCount = 1, Padding = new Padding(4) };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -208,7 +207,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return bar;
     }
 
-    private Control BuildBottom()
+    Control BuildBottom()
     {
         var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 5 };
         bottom.Controls.Add(BuildSeekRow(), 0, 0);
@@ -221,7 +220,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return bottom;
     }
 
-    private Control BuildSeekRow()
+    Control BuildSeekRow()
     {
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, RowCount = 1 };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
@@ -238,7 +237,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return row;
     }
 
-    private Control BuildTransportRow()
+    Control BuildTransportRow()
     {
         var row = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
         var play = new Button { Text = "Play", AutoSize = true };
@@ -272,7 +271,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return row;
     }
 
-    private TabControl BuildTabs()
+    TabControl BuildTabs()
     {
         var tabs = new TabControl { Dock = DockStyle.Top, Height = 230 };
         tabs.TabPages.Add(Tab("Sync", BuildSyncTab()));
@@ -286,10 +285,10 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return tabs;
     }
 
-    private Control BuildSyncTab()
+    Control BuildSyncTab()
     {
         var panel = Flow();
-        foreach ((var label, var key, Func<string> text, var property) in new (string, string, Func<string>, string)[]
+        foreach ((var label, var key, var text, var property) in new (string, string, Func<string>, string)[]
         {
             ("A/V", "audio", () => _viewModel.AudioVideoSyncText, nameof(PlayerViewModel.AudioVideoSyncText)),
             ("CDG", "cdg", () => _viewModel.CdgSyncText, nameof(PlayerViewModel.CdgSyncText)),
@@ -315,7 +314,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
             try
             {
                 subtitles.Items.Clear();
-                foreach (SubtitleChoice choice in _viewModel.SubtitleChoices)
+                foreach (var choice in _viewModel.SubtitleChoices)
                     _ = subtitles.Items.Add(choice);
                 subtitles.SelectedItem = _viewModel.SelectedSubtitle;
                 subtitles.Enabled = _viewModel.HasSubtitleChoices;
@@ -337,7 +336,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    private Control BuildVideoTab()
+    Control BuildVideoTab()
     {
         var panel = Flow();
         AddSlider(panel, "HUE", () => _viewModel.HueDegrees, value => _viewModel.HueDegrees = value, nameof(PlayerViewModel.HueDegrees), -180, 180, 1, "+0;-0;0", "°");
@@ -357,7 +356,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    private Control BuildAudioTab()
+    Control BuildAudioTab()
     {
         var panel = Flow();
         AddSlider(panel, "PITCH", () => _viewModel.Pitch, value => _viewModel.Pitch = (int)Math.Round(value), nameof(PlayerViewModel.Pitch), -12, 12, 1, "+0;-0;0", " st");
@@ -378,7 +377,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         panel.Controls.Add(eq);
 
         var bands = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-        foreach (EqualizerBandViewModel band in _viewModel.EqualizerBands)
+        foreach (var band in _viewModel.EqualizerBands)
         {
             var binder = new ViewModelBinder(band);
             _bandBinders.Add(binder);
@@ -398,7 +397,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    private Control BuildAVTab()
+    Control BuildAVTab()
     {
         var panel = Flow();
         var checks = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
@@ -412,7 +411,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    private Control BuildNextTab()
+    Control BuildNextTab()
     {
         var panel = Flow();
         var choose = SmallButton("Choose...");
@@ -445,7 +444,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return panel;
     }
 
-    private Control BuildLogTab()
+    Control BuildLogTab()
     {
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -465,7 +464,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         _log.Columns.Add("Category", 150);
         _log.Columns.Add("Message", 900);
         void RefreshCount() => count.Text = $"{_viewModel.DiagnosticLog.Count} entries, newest first";
-        foreach (DiagnosticLogEntry entry in _viewModel.DiagnosticLog)
+        foreach (var entry in _viewModel.DiagnosticLog)
             _ = _log.Items.Add(ToItem(entry));
         _binder.Collection(_viewModel.DiagnosticLog, (_, e) =>
         {
@@ -480,7 +479,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // The view model inserts new entries at the top, trims the bottom and clears.
-    private void OnLogChanged(NotifyCollectionChangedEventArgs e)
+    void OnLogChanged(NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
         {
@@ -494,13 +493,13 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
                 break;
             default:
                 _log.Items.Clear();
-                foreach (DiagnosticLogEntry entry in _viewModel.DiagnosticLog)
+                foreach (var entry in _viewModel.DiagnosticLog)
                     _ = _log.Items.Add(ToItem(entry));
                 break;
         }
     }
 
-    private static ListViewItem ToItem(DiagnosticLogEntry entry)
+    static ListViewItem ToItem(DiagnosticLogEntry entry)
     {
         var item = new ListViewItem([entry.TimeText, entry.Level.ToString(), entry.Category, entry.Message]) { UseItemStyleForSubItems = false };
         // SetColorMode(Dark) does not apply everywhere (high contrast, older Windows): keep the light colours there.
@@ -515,7 +514,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return item;
     }
 
-    private void AddSlider(Control panel, string caption, Func<double> get, Action<double> set, string property, double minimum, double maximum, double scale, string format, string unit)
+    void AddSlider(Control panel, string caption, Func<double> get, Action<double> set, string property, double minimum, double maximum, double scale, string format, string unit)
     {
         var bar = new TrackBar { Width = 150, TickStyle = TickStyle.None, AutoSize = false, Height = 28 };
         var value = new Label { AutoSize = false, Width = 56, Height = 26, TextAlign = ContentAlignment.MiddleLeft };
@@ -524,14 +523,14 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         panel.Controls.AddRange([Caption(caption), bar, value]);
     }
 
-    private void AddCheck(Control panel, string text, Func<bool> get, Action<bool> set, string property)
+    void AddCheck(Control panel, string text, Func<bool> get, Action<bool> set, string property)
     {
         var box = new CheckBox { Text = text, AutoSize = true };
         _binder.Check(box, get, set, property);
         panel.Controls.Add(box);
     }
 
-    private static TabPage Tab(string text, Control content)
+    static TabPage Tab(string text, Control content)
     {
         var page = new TabPage(text) { Padding = new Padding(4) };
         content.Dock = DockStyle.Fill;
@@ -539,13 +538,13 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         return page;
     }
 
-    private static FlowLayoutPanel Flow() => new() { AutoScroll = true, WrapContents = true };
+    static FlowLayoutPanel Flow() => new() { AutoScroll = true, WrapContents = true };
 
-    private static Label Caption(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(8, 9, 2, 3), ForeColor = SystemColors.GrayText };
+    static Label Caption(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(8, 9, 2, 3), ForeColor = SystemColors.GrayText };
 
-    private static Button SmallButton(string text) => new() { Text = text, AutoSize = true };
+    static Button SmallButton(string text) => new() { Text = text, AutoSize = true };
 
-    private void UpdateSeekBar()
+    void UpdateSeekBar()
     {
         _isUpdatingSeek = true;
         try
@@ -562,7 +561,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
 
     // A press starts a scrub (before the value jumps to the pointer, so that step is a drag seek too)
     // and jumps to the pointer; dragging the thumb seeks as it moves.
-    private void OnSeekPressStarting(object? sender, EventArgs e)
+    void OnSeekPressStarting(object? sender, EventArgs e)
     {
         if (_isDragging || !_viewModel.CanSeek)
             return;
@@ -571,7 +570,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         _viewModel.BeginSeekPreview();
     }
 
-    private void EndSeekDrag()
+    void EndSeekDrag()
     {
         if (!_isDragging)
             return;
@@ -580,7 +579,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         _viewModel.EndSeekPreview();
     }
 
-    private void OnSeekValueChanged(object? sender, EventArgs e)
+    void OnSeekValueChanged(object? sender, EventArgs e)
     {
         if (_isUpdatingSeek)
             return;
@@ -592,11 +591,11 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
             _viewModel.SeekTo(seconds);
     }
 
-    private static bool IsPointerOver(Control control) =>
+    static bool IsPointerOver(Control control) =>
         control.Visible && control.ClientRectangle.Contains(control.PointToClient(Cursor.Position));
 
     // Called by the shared chrome controller, only on a change.
-    private void ShowChrome(bool visible)
+    void ShowChrome(bool visible)
     {
         _topBar.Visible = visible;
         _bottom.Visible = visible;
@@ -612,7 +611,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
     }
 
     /// <summary>Opens or closes the second screen: the same player on another monitor (projector role).</summary>
-    private void OnSecondScreenChanged(object? sender, EventArgs e)
+    void OnSecondScreenChanged(object? sender, EventArgs e)
     {
         if (_isUpdatingSecondScreen)
             return;
@@ -623,7 +622,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
             CloseSecondScreen();
     }
 
-    private void OpenSecondScreen()
+    void OpenSecondScreen()
     {
         if (_viewModel.Player is not { } player || _secondScreen is not null)
         {
@@ -632,8 +631,8 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         }
 
         // The shared rule (PlayerScreenChooser) over Screen.AllScreens.
-        Screen[] screens = Screen.AllScreens;
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose(
+        var screens = Screen.AllScreens;
+        var choice = PlayerScreenChooser.Choose(
             [.. screens.Select(static screen => new PlayerScreen(screen.DeviceName, ToBounds(screen.Bounds), screen.Primary))],
             FindForm() is { } form ? ToBounds(form.Bounds) : null,
             _options.SecondScreen);
@@ -646,11 +645,11 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         window.ShowOnScreen(choice.ScreenIndex is { } index ? screens[index] : null, choice.FullScreen, FindForm());
     }
 
-    private static PlayerScreenBounds ToBounds(Rectangle rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+    static PlayerScreenBounds ToBounds(Rectangle rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
-    private void CloseSecondScreen()
+    void CloseSecondScreen()
     {
-        SecondaryPresentationWindow? window = _secondScreen;
+        var window = _secondScreen;
         if (window is null)
             return;
 
@@ -661,7 +660,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
     }
 
     // The user closed the window.
-    private void OnSecondScreenClosed(object? sender, FormClosedEventArgs e)
+    void OnSecondScreenClosed(object? sender, FormClosedEventArgs e)
     {
         if (!ReferenceEquals(sender, _secondScreen))
             return;
@@ -671,7 +670,7 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         SetSecondScreenBox(false);
     }
 
-    private void SetSecondScreenBox(bool isChecked)
+    void SetSecondScreenBox(bool isChecked)
     {
         _isUpdatingSecondScreen = true;
         try
@@ -684,10 +683,10 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         }
     }
 
-    private void OnDragEnter(object? sender, DragEventArgs e) =>
+    void OnDragEnter(object? sender, DragEventArgs e) =>
         e.Effect = e.Data?.GetDataPresent(DataFormats.FileDrop) == true && _viewModel.CanOpen ? DragDropEffects.Copy : DragDropEffects.None;
 
-    private async void OnDragDrop(object? sender, DragEventArgs e)
+    async void OnDragDrop(object? sender, DragEventArgs e)
     {
         if (e.Data?.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
             await _viewModel.LoadMediaAsync(files[0]);

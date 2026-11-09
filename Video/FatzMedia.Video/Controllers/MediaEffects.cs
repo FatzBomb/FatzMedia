@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Threading;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Controllers;
 
@@ -9,22 +9,22 @@ namespace FatzMedia.Video.Controllers;
 /// </summary>
 public sealed class MediaEffects
 {
-    private readonly IMediaEngine _mediaEngine;
+    readonly IMediaEngine _mediaEngine;
     // Orders user-volume writes (host thread) against the scrub mute (control queue and the
     // scrub timer) so the engine always ends on the level the latest decision asked for.
-    private readonly Lock _volumeGate = new();
-    private IAudioEngine? _subscribedAudioEngine;
-    private bool _scrubMuted;
-    private int _pitch;
-    private int _tempo = 100;
+    readonly Lock _volumeGate = new();
+    IAudioEngine? _subscribedAudioEngine;
+    bool _scrubMuted;
+    int _pitch;
+    int _tempo = 100;
 
-    private bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
+    bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
 
-    private IClockSource? ClockSource => (_mediaEngine as IClockBackedMediaEngine)?.ClockSource;
+    IClockSource? ClockSource => (_mediaEngine as IClockBackedMediaEngine)?.ClockSource;
 
     // Clock-backed media (video or CDG without a real audio stream) drives timing through the
     // virtual clock directly. Volume, pitch, and normalization remain real-audio only.
-    private bool HasClockBackedTempo => !HasAudio
+    bool HasClockBackedTempo => !HasAudio
         && ClockSource != null
         && (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
 
@@ -35,7 +35,7 @@ public sealed class MediaEffects
         EnsureActiveAudioSubscription();
     }
 
-    private IAudioEngine Audio
+    IAudioEngine Audio
     {
         get
         {
@@ -44,7 +44,7 @@ public sealed class MediaEffects
         }
     }
 
-    private void EnsureActiveAudioSubscription()
+    void EnsureActiveAudioSubscription()
     {
         if (!HasAudio)
         {
@@ -57,7 +57,7 @@ public sealed class MediaEffects
             return;
         }
 
-        IAudioEngine current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
+        var current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
         if (ReferenceEquals(_subscribedAudioEngine, current)) return;
 
         _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
@@ -74,13 +74,13 @@ public sealed class MediaEffects
     /// </summary>
     internal void RefreshActiveEngine()
     {
-        IAudioEngine? previous = _subscribedAudioEngine;
+        var previous = _subscribedAudioEngine;
         EnsureActiveAudioSubscription();
         if (_subscribedAudioEngine is { } current && ReferenceEquals(previous, current))
             ApplyEffectsTo(current);
     }
 
-    private void ApplyEffectsTo(IAudioEngine engine)
+    void ApplyEffectsTo(IAudioEngine engine)
     {
         engine.Normalize = Normalize;
         ApplyVolume(engine);
@@ -108,13 +108,13 @@ public sealed class MediaEffects
         }
     }
 
-    private void ApplyVolume(IAudioEngine engine)
+    void ApplyVolume(IAudioEngine engine)
     {
         lock (_volumeGate)
             ApplyVolumeLocked(engine, TimeSpan.Zero);
     }
 
-    private void ApplyVolumeLocked(IAudioEngine engine, TimeSpan ramp)
+    void ApplyVolumeLocked(IAudioEngine engine, TimeSpan ramp)
     {
         var volume = _scrubMuted ? 0 : Volume;
         if (ramp > TimeSpan.Zero && engine is IAudioVolumeSlide slide)
@@ -216,7 +216,7 @@ public sealed class MediaEffects
             if (field.Equals(value))
                 return;
 
-            AudioEqualizerSettings previous = field;
+            var previous = field;
             field = value;
             if (HasAudio)
                 (Audio as IAudioFilterHost)?.SetEqualizer(value);
@@ -247,7 +247,7 @@ public sealed class MediaEffects
             SetTempo(100, MediaChangeReason.LoadReset);
     }
 
-    private void SetPitch(int value, MediaChangeReason reason)
+    void SetPitch(int value, MediaChangeReason reason)
     {
         var clamped = Math.Clamp(value, -60, 60);
         if (_pitch == clamped)
@@ -265,7 +265,7 @@ public sealed class MediaEffects
             nameof(PitchChanged));
     }
 
-    private void SetTempo(int value, MediaChangeReason reason)
+    void SetTempo(int value, MediaChangeReason reason)
     {
         var clamped = Math.Clamp(value, 5, 5000);
         var previous = Tempo;
@@ -285,5 +285,5 @@ public sealed class MediaEffects
             nameof(TempoChanged));
     }
 
-    private void OnNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
+    void OnNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
 }

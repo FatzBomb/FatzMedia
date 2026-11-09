@@ -3,12 +3,12 @@ namespace FatzMedia.Video.Core.Audio.Fade;
 /// <summary>
 /// One linear native ramp of a fade: reach <see cref="ToGain"/> over <see cref="Duration"/>.
 /// </summary>
-internal readonly record struct AudioFadeSegment(TimeSpan StartOffset, TimeSpan Duration, double FromGain, double ToGain);
+readonly record struct AudioFadeSegment(TimeSpan StartOffset, TimeSpan Duration, double FromGain, double ToGain);
 
 /// <summary>
 /// Converts an envelope into chained linear ramps and composes the final gain.
 /// </summary>
-internal static class AudioFadeSchedule
+static class AudioFadeSchedule
 {
     /// <summary>
     /// Builds the ramps from <paramref name="startPosition"/> to the end of the envelope. Offsets
@@ -25,7 +25,7 @@ internal static class AudioFadeSchedule
         var segments = new List<AudioFadeSegment>();
         var cursor = startPosition;
         var cursorGain = envelope.Evaluate(cursor);
-        foreach (AudioFadePoint point in envelope.Points)
+        foreach (var point in envelope.Points)
         {
             if (point.Position <= cursor)
                 continue;

@@ -38,7 +38,7 @@ public static class BinaryCompatibility
 {
     public static CompatibilityInfo Analyze(string path)
     {
-        CpuType proc = GetProcessCpu();
+        var proc = GetProcessCpu();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return new(proc, FileCpuType.Unknown, isMatch: false, isCompat: false);
 
@@ -52,16 +52,16 @@ public static class BinaryCompatibility
             if (!IsLikelyPe(path))
                 return new(proc, FileCpuType.NonPe, isMatch: true, isCompat: true); // not system-dependent
 
-            using FileStream fs = File.OpenRead(path);
+            using var fs = File.OpenRead(path);
             using var pe = new PEReader(fs);
-            PEHeaders h = pe.PEHeaders;
-            Machine machine = h.CoffHeader.Machine;
+            var h = pe.PEHeaders;
+            var machine = h.CoffHeader.Machine;
             var isPE32Plus = h.PEHeader?.Magic == PEMagic.PE32Plus; // 64-bit image?
-            CorHeader? cor = h.CorHeader;
+            var cor = h.CorHeader;
 
             if (cor is not null)
             {
-                CorFlags flags = cor.Flags;
+                var flags = cor.Flags;
                 var ilOnly = (flags & CorFlags.ILOnly) != 0;
                 var req32 = (flags & CorFlags.Requires32Bit) != 0;
                 var pref32 = (flags & CorFlags.Prefers32Bit) != 0;
@@ -102,7 +102,7 @@ public static class BinaryCompatibility
 
     // --- helpers ---
 
-    private static (bool compat, bool match) Evaluate(CpuType proc, FileCpuType file) => file switch
+    static (bool compat, bool match) Evaluate(CpuType proc, FileCpuType file) => file switch
     {
         FileCpuType.NonPe => (true, true),  // not system-dependent
         FileCpuType.ManagedAnyCpu => (true, false), // compatible everywhere; not exact
@@ -119,7 +119,7 @@ public static class BinaryCompatibility
         _ => (false, false)
     };
 
-    private static CpuType GetProcessCpu() => RuntimeInformation.ProcessArchitecture switch
+    static CpuType GetProcessCpu() => RuntimeInformation.ProcessArchitecture switch
     {
         Architecture.X86 => CpuType.X86,
         Architecture.X64 => CpuType.X64,
@@ -128,9 +128,9 @@ public static class BinaryCompatibility
     };
 
     /// <summary>Cheap check for Windows PE magic ("MZ" + "PE\0\0").</summary>
-    private static bool IsLikelyPe(string path)
+    static bool IsLikelyPe(string path)
     {
-        using FileStream fs = File.OpenRead(path);
+        using var fs = File.OpenRead(path);
         if (fs.Length < 64) return false;
 
         Span<byte> b = stackalloc byte[4];

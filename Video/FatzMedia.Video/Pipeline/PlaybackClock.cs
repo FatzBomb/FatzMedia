@@ -1,13 +1,13 @@
 
-using FatzMedia.Video.Core.Abstractions;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class PlaybackClock : IClockSource
+sealed class PlaybackClock : IClockSource
 {
-    private readonly Stopwatch _stopwatch = new();
-    private double _basePositionSeconds;
+    readonly Stopwatch _stopwatch = new();
+    double _basePositionSeconds;
 
     public double DurationSeconds
     {
@@ -72,8 +72,8 @@ internal sealed class PlaybackClock : IClockSource
         }
     }
 
-    private double ClampToDuration(double seconds) =>
+    double ClampToDuration(double seconds) =>
         DurationSeconds <= 0 ? Math.Max(0, seconds) : Math.Clamp(seconds, 0, DurationSeconds);
 
-    private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+    static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

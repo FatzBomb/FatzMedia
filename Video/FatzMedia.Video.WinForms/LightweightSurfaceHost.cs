@@ -7,16 +7,16 @@ namespace FatzMedia.Video.WinForms;
 /// stands for the WPF control's Loaded state: created, the source loads; destroyed, the player is
 /// released (not when the handle is only recreated).
 /// </summary>
-internal sealed class LightweightSurfaceHost : IDisposable
+sealed class LightweightSurfaceHost : IDisposable
 {
-    private readonly Control _owner;
-    private readonly Func<Task> _reload;
-    private IPlatformFactory? _platformFactory;
-    private bool _isContentVisible;
-    private bool _reloadScheduled;
-    private bool _reloadDropped;
-    private bool _recreatingHandle;
-    private bool _disposed;
+    readonly Control _owner;
+    readonly Func<Task> _reload;
+    IPlatformFactory? _platformFactory;
+    bool _isContentVisible;
+    bool _reloadScheduled;
+    bool _reloadDropped;
+    bool _recreatingHandle;
+    bool _disposed;
 
     public LightweightSurfaceHost(Control owner, MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
     {
@@ -118,16 +118,16 @@ internal sealed class LightweightSurfaceHost : IDisposable
         Surface.ContentVisibilityChanged -= OnSurfaceContentVisibilityChanged;
     }
 
-    private async void RunQueuedReload()
+    async void RunQueuedReload()
     {
         _reloadScheduled = false;
         await Controller.RunQueuedReloadAsync(() => !_disposed && _owner.IsHandleCreated, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
-    private void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
+    void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
 
-    private void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
+    void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = Surface.IsContentVisible;
         if (isVisible == _isContentVisible)

@@ -17,11 +17,11 @@ namespace FatzMedia.Video.Audio;
 /// <see cref="MidiMarkKind.Lyric"/> where BASS gave them as text events; the builder takes lyric
 /// events first and text events only when there are none, so it builds the same lines.
 /// </remarks>
-internal sealed class FatzAudioMidiEventReader : IMidiEventReader
+sealed class FatzAudioMidiEventReader : IMidiEventReader
 {
-    private readonly IReadOnlyList<Fa.MidiText> _texts;
-    private readonly IReadOnlyList<Fa.MidiMark> _marks;
-    private readonly double _durationSeconds;
+    readonly IReadOnlyList<Fa.MidiText> _texts;
+    readonly IReadOnlyList<Fa.MidiMark> _marks;
+    readonly double _durationSeconds;
 
     internal FatzAudioMidiEventReader(IReadOnlyList<Fa.MidiText> texts, IReadOnlyList<Fa.MidiMark> marks, double durationSeconds)
     {
@@ -59,11 +59,11 @@ internal sealed class FatzAudioMidiEventReader : IMidiEventReader
 
     public double PositionToSeconds(long position) => TimeSpan.FromTicks(position).TotalSeconds;
 
-    private MidiMark[] Texts(Fa.MidiTextType type, bool withLayoutMarks) =>
+    MidiMark[] Texts(Fa.MidiTextType type, bool withLayoutMarks) =>
         [.. Order(_texts.Where(text => text.Type == type), static text => text.Position, static text => text.Track)
             .Select(text => new MidiMark(text.Position.Ticks, text.Track, withLayoutMarks ? WithLayoutMarks(text) : text.Text))];
 
-    private MidiMark[] Marks(Fa.MidiMarkType type, Func<Fa.MidiMark, string> format) =>
+    MidiMark[] Marks(Fa.MidiMarkType type, Func<Fa.MidiMark, string> format) =>
         [.. Order(_marks.Where(mark => mark.Type == type), static mark => mark.Position, static mark => mark.Track)
             .Select(mark => new MidiMark(mark.Position.Ticks, mark.Track, format(mark)))];
 
@@ -74,6 +74,6 @@ internal sealed class FatzAudioMidiEventReader : IMidiEventReader
         : text.Text;
 
     // Chronological, lowest track first at equal times (the order BASS returns marks in).
-    private static IEnumerable<T> Order<T>(IEnumerable<T> items, Func<T, TimeSpan> position, Func<T, int> track) =>
+    static IEnumerable<T> Order<T>(IEnumerable<T> items, Func<T, TimeSpan> position, Func<T, int> track) =>
         items.OrderBy(position).ThenBy(track);
 }

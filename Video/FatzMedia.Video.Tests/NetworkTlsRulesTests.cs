@@ -6,14 +6,14 @@ namespace FatzMedia.Video.Tests;
 public sealed class NetworkTlsRulesTests
 {
     // Trimmed configure lines of the builds the docs name.
-    private const string LinuxBtbN = "--prefix=/ffbuild/prefix --enable-gpl=no --enable-version3 --disable-debug --enable-openssl --disable-schannel --enable-libdav1d";
-    private const string WindowsTqk = "--arch=x86_64 --target-os=mingw32 --enable-version3 --enable-librist --enable-libssh --enable-schannel --enable-libsrt";
-    private const string WindowsOpenSsl = "--arch=x86_64 --target-os=mingw32 --enable-openssl --disable-schannel";
+    const string LinuxBtbN = "--prefix=/ffbuild/prefix --enable-gpl=no --enable-version3 --disable-debug --enable-openssl --disable-schannel --enable-libdav1d";
+    const string WindowsTqk = "--arch=x86_64 --target-os=mingw32 --enable-version3 --enable-librist --enable-libssh --enable-schannel --enable-libsrt";
+    const string WindowsOpenSsl = "--arch=x86_64 --target-os=mingw32 --enable-openssl --disable-schannel";
 
     [Fact]
     public void FfmpegOptions_Default_VerifiesWithThePlatformRoots()
     {
-        Dictionary<string, string> options = NetworkTlsRules.CreateFfmpegOptions(NetworkTlsPolicy.Default).ToDictionary();
+        var options = NetworkTlsRules.CreateFfmpegOptions(NetworkTlsPolicy.Default).ToDictionary();
 
         Assert.Equal("1", options["tls_verify"]);
         Assert.False(options.ContainsKey("ca_file"));
@@ -24,7 +24,7 @@ public sealed class NetworkTlsRulesTests
     {
         Assert.Equal("0", NetworkTlsRules.CreateFfmpegOptions(new NetworkTlsPolicy { AllowInvalidCertificates = true }).ToDictionary()["tls_verify"]);
 
-        Dictionary<string, string> withCa = NetworkTlsRules.CreateFfmpegOptions(new NetworkTlsPolicy { CertificateAuthorityFile = "/etc/media/ca.pem" }).ToDictionary();
+        var withCa = NetworkTlsRules.CreateFfmpegOptions(new NetworkTlsPolicy { CertificateAuthorityFile = "/etc/media/ca.pem" }).ToDictionary();
         Assert.Equal("1", withCa["tls_verify"]);
         Assert.Equal("/etc/media/ca.pem", withCa["ca_file"]);
     }

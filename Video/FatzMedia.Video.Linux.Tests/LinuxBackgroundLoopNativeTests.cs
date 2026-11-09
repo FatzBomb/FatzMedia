@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
 {
-    private const string FfmpegCli = "/opt/fatzbomb-native/ffmpeg/bin/ffmpeg";
+    const string FfmpegCli = "/opt/fatzbomb-native/ffmpeg/bin/ffmpeg";
 
     [Fact]
     public void LoopingSong_LeavesTheBackgroundVideoPlaying()
@@ -29,7 +29,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
             Run($"-f lavfi -i \"nullsrc=size=320x180:rate=30:duration=8,geq=lum='N':cb=128:cr=128\" -c:v mpeg4 -q:v 2 -g 30 -pix_fmt yuv420p \"{Path.Combine(folder, "loop.mp4")}\"");
 
             using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-            PlayerCore player = session.Player;
+            var player = session.Player;
             player.LoopMedia = true;
             var loops = 0;
             player.MediaLooped += (_, _) => Interlocked.Increment(ref loops);
@@ -75,7 +75,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
 
             using (var session = LinuxNativeTestPlayer.Create([bass, ffmpeg]))
             {
-                PlayerCore player = session.Player;
+                var player = session.Player;
                 Assert.True(player.Load(song), string.Join(" | ", session.Errors));
                 Assert.True(Moves(session), "independent: the background should move before Play");
                 Assert.True(player.Play());
@@ -94,7 +94,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
 
             using (var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], new Core.Configuration.MediaPlayerConfiguration { BackgroundFollowsMedia = true }))
             {
-                PlayerCore player = session.Player;
+                var player = session.Player;
                 Assert.True(player.Load(song), string.Join(" | ", session.Errors));
                 Assert.False(Moves(session), "following the media: the background waits for Play");
                 Assert.True(player.Play());
@@ -114,7 +114,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
     }
 
     // Whether the presented background changes within a second (the clip brightens every frame).
-    private static bool Moves(LinuxNativeTestPlayer session)
+    static bool Moves(LinuxNativeTestPlayer session)
     {
         Thread.Sleep(400);
         var before = session.Sink.LastCentreBlue;
@@ -122,11 +122,11 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
         return Math.Abs(session.Sink.LastCentreBlue - before) > 5;
     }
 
-    private static void Run(string arguments)
+    static void Run(string arguments)
     {
         var info = new ProcessStartInfo(FfmpegCli, "-hide_banner -loglevel error -y " + arguments) { UseShellExecute = false };
         info.Environment["LD_LIBRARY_PATH"] = "/opt/fatzbomb-native/ffmpeg/lib";
-        using Process process = Process.Start(info)!;
+        using var process = Process.Start(info)!;
         process.WaitForExit();
         Assert.Equal(0, process.ExitCode);
     }

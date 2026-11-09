@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Core.Subtitle;
 /// separate demuxer so reading the complete subtitle track cannot consume or buffer packets needed
 /// by the live audio/video demuxer.
 /// </summary>
-internal static unsafe class EmbeddedSubtitleDecoder
+static unsafe class EmbeddedSubtitleDecoder
 {
     /// <summary>Decodes the text subtitle tracks of <paramref name="path"/>.</summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; checked before every packet.</exception>
@@ -21,7 +21,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         if (!demuxer.Open(path))
             return [];
 
-        Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)> streams = FindTextSubtitleStreams(demuxer);
+        var streams = FindTextSubtitleStreams(demuxer);
         if (streams.Count == 0)
             return [];
 
@@ -33,7 +33,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
                 demuxer.SetStreamDiscard((int)index, AVDiscard.AVDISCARD_ALL);
         }
 
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         if (packet == null)
             return [];
 
@@ -42,7 +42,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
             var cuesByStream = streams.Keys.ToDictionary(static index => index, static _ => new List<SubtitleCue>());
             while (!cancellationToken.IsCancellationRequested && demuxer.ReadPacket(packet) >= 0)
             {
-                if (streams.TryGetValue(packet->stream_index, out (AVRational TimeBase, AVCodecID CodecId) stream))
+                if (streams.TryGetValue(packet->stream_index, out var stream))
                     TryAddCue(packet, stream.TimeBase, stream.CodecId, playbackStartSeconds, cuesByStream[packet->stream_index]);
 
                 ffmpeg.av_packet_unref(packet);
@@ -61,12 +61,12 @@ internal static unsafe class EmbeddedSubtitleDecoder
         }
     }
 
-    private static Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)> FindTextSubtitleStreams(MediaDemuxer demuxer)
+    static Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)> FindTextSubtitleStreams(MediaDemuxer demuxer)
     {
         var streams = new Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)>();
         for (uint index = 0; index < demuxer.StreamCount; index++)
         {
-            AVStream* stream = demuxer.GetStream((int)index);
+            var stream = demuxer.GetStream((int)index);
             if (stream != null
                 && stream->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_SUBTITLE
                 && IsSupportedTextCodec(stream->codecpar->codec_id))
@@ -78,7 +78,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         return streams;
     }
 
-    private static bool IsSupportedTextCodec(AVCodecID codecId) => codecId is
+    static bool IsSupportedTextCodec(AVCodecID codecId) => codecId is
         AVCodecID.AV_CODEC_ID_ASS or
         AVCodecID.AV_CODEC_ID_MOV_TEXT or
         AVCodecID.AV_CODEC_ID_SSA or
@@ -86,15 +86,15 @@ internal static unsafe class EmbeddedSubtitleDecoder
         AVCodecID.AV_CODEC_ID_TEXT or
         AVCodecID.AV_CODEC_ID_WEBVTT;
 
-    private static string GetCodecName(AVCodecID codecId) => codecId.ToString().Replace("AV_CODEC_ID_", string.Empty, StringComparison.Ordinal);
+    static string GetCodecName(AVCodecID codecId) => codecId.ToString().Replace("AV_CODEC_ID_", string.Empty, StringComparison.Ordinal);
 
-    private static double GetPlaybackStartSeconds(MediaDemuxer demuxer)
+    static double GetPlaybackStartSeconds(MediaDemuxer demuxer)
     {
         // VideoPipeline uses VideoAudioEngine.Position when audio exists. VideoAudioEngine subtracts
         // its audio stream start time, so embedded cues must use that same origin to stay in sync.
-        foreach (AVMediaType mediaType in new[] { AVMediaType.AVMEDIA_TYPE_AUDIO, AVMediaType.AVMEDIA_TYPE_VIDEO })
+        foreach (var mediaType in new[] { AVMediaType.AVMEDIA_TYPE_AUDIO, AVMediaType.AVMEDIA_TYPE_VIDEO })
         {
-            AVStream* stream = demuxer.GetStream(demuxer.FindBestStream(mediaType));
+            var stream = demuxer.GetStream(demuxer.FindBestStream(mediaType));
             if (stream != null && stream->start_time != ffmpeg.AV_NOPTS_VALUE)
                 return stream->start_time * ffmpeg.av_q2d(stream->time_base);
         }
@@ -102,7 +102,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         return 0;
     }
 
-    private static void TryAddCue(AVPacket* packet, AVRational timeBase, AVCodecID codecId, double playbackStartSeconds, List<SubtitleCue> cues)
+    static void TryAddCue(AVPacket* packet, AVRational timeBase, AVCodecID codecId, double playbackStartSeconds, List<SubtitleCue> cues)
     {
         if (packet->data == null || packet->size <= 0 || packet->pts == ffmpeg.AV_NOPTS_VALUE)
             return;
@@ -114,7 +114,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         var startSeconds = NormalizeTimestampSeconds(packet->pts, timeBase, playbackStartSeconds);
         var durationSeconds = packet->duration > 0 ? packet->duration * ffmpeg.av_q2d(timeBase) : 0;
         var start = TimeSpan.FromSeconds(Math.Max(0, startSeconds));
-        TimeSpan end = durationSeconds > 0
+        var end = durationSeconds > 0
             ? TimeSpan.FromSeconds(Math.Max(start.TotalSeconds + 0.1, start.TotalSeconds + durationSeconds))
             : start;
         cues.Add(new SubtitleCue(cues.Count + 1, start, end, text));
@@ -129,8 +129,8 @@ internal static unsafe class EmbeddedSubtitleDecoder
         var resolved = new SubtitleCue[ordered.Length];
         for (var index = 0; index < ordered.Length; index++)
         {
-            SubtitleCue cue = ordered[index];
-            TimeSpan end = cue.End;
+            var cue = ordered[index];
+            var end = cue.End;
             if (end <= cue.Start)
                 end = index + 1 < ordered.Length && ordered[index + 1].Start > cue.Start
                     ? ordered[index + 1].Start
@@ -142,7 +142,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         return resolved;
     }
 
-    private static string ExtractText(ReadOnlySpan<byte> payload, AVCodecID codecId)
+    static string ExtractText(ReadOnlySpan<byte> payload, AVCodecID codecId)
     {
         if (codecId == AVCodecID.AV_CODEC_ID_MOV_TEXT)
         {
@@ -159,7 +159,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
             : text;
     }
 
-    private static string NormalizeAssText(string value)
+    static string NormalizeAssText(string value)
     {
         if (value.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase))
         {

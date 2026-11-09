@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Pipeline;
 /// refreshes, and how each 120-frame diagnostics window nudges it. Values and rules are
 /// unchanged from the original inline code.
 /// </summary>
-internal static class PresentationLeadController
+static class PresentationLeadController
 {
     public const double DefaultLeadRefreshes = 0.75;
     public const double MinimumLeadRefreshes = 0.50;

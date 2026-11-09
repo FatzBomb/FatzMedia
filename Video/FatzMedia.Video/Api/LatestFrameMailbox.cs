@@ -19,18 +19,18 @@ namespace FatzMedia.Video;
 /// </remarks>
 public sealed class LatestFrameMailbox
 {
-    private readonly Lock _gate = new();
-    private byte[]? _pending;
+    readonly Lock _gate = new();
+    byte[]? _pending;
     // Idle arrays: two slots, because the UI thread can hand one back while another waits idle
     // (it took a frame, the renderer posted none since), and dropping either would allocate again.
-    private byte[]? _spare;
-    private byte[]? _secondSpare;
-    private int _pendingWidth;
-    private int _pendingHeight;
-    private int _pendingStride;
-    private bool _publishQueued;
-    private bool _closed;
-    private int _bufferAllocations;
+    byte[]? _spare;
+    byte[]? _secondSpare;
+    int _pendingWidth;
+    int _pendingHeight;
+    int _pendingStride;
+    bool _publishQueued;
+    bool _closed;
+    int _bufferAllocations;
 
     /// <summary>Gets how many frame arrays were allocated (diagnostics and tests).</summary>
     public int BufferAllocations => Volatile.Read(ref _bufferAllocations);
@@ -56,8 +56,7 @@ public sealed class LatestFrameMailbox
             if (_closed)
                 return false;
 
-            if (_pending is null)
-                _pending = TakeSpare(length);
+            _pending ??= TakeSpare(length);
 
             if (_pending is null || _pending.Length < length)
             {
@@ -158,7 +157,7 @@ public sealed class LatestFrameMailbox
     // that, trying both slots. When neither fits, one is dropped as before: a too-small array
     // would be replaced anyway, and one left over from a much larger window (after a maximize)
     // is not kept.
-    private byte[]? TakeSpare(int length)
+    byte[]? TakeSpare(int length)
     {
         if (Fits(_spare, length))
             return Take(ref _spare);
@@ -172,7 +171,7 @@ public sealed class LatestFrameMailbox
 
         static byte[]? Take(ref byte[]? slot)
         {
-            byte[]? array = slot;
+            var array = slot;
             slot = null;
             return array;
         }
@@ -180,7 +179,7 @@ public sealed class LatestFrameMailbox
 
     // Under _gate. Two arrays circulate in steady playback; a third (a frame posted while both
     // were out) is dropped.
-    private void KeepSpare(byte[] pixels)
+    void KeepSpare(byte[] pixels)
     {
         if (_spare is null)
             _spare = pixels;

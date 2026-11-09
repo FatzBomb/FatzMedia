@@ -10,16 +10,16 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// host's thread), and a read of a value older than <see cref="MaxAge"/> returns it and
 /// schedules one background refresh, which follows the window to another monitor.
 /// </summary>
-internal class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp = null)
+class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp = null)
     where T : struct
 {
     /// <summary>How long a cached value is used before it is refreshed in the background.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(1);
 
-    private readonly Func<nint, T?> _query = query ?? throw new ArgumentNullException(nameof(query));
-    private readonly Func<long> _timestamp = timestamp ?? Stopwatch.GetTimestamp;
-    private readonly Lock _gate = new();
-    private readonly Dictionary<nint, Entry> _entries = [];
+    readonly Func<nint, T?> _query = query ?? throw new ArgumentNullException(nameof(query));
+    readonly Func<long> _timestamp = timestamp ?? Stopwatch.GetTimestamp;
+    readonly Lock _gate = new();
+    readonly Dictionary<nint, Entry> _entries = [];
 
     /// <summary>
     /// Queries and caches the value of a window not cached yet; a known window is left to the
@@ -36,7 +36,7 @@ internal class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp 
                 return;
         }
 
-        T? value = SafeQuery(hwnd);
+        var value = SafeQuery(hwnd);
         lock (_gate)
             _ = _entries.TryAdd(hwnd, new Entry(value, _timestamp(), Refreshing: false));
     }
@@ -77,9 +77,9 @@ internal class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp 
             _ = _entries.Remove(hwnd);
     }
 
-    private void RefreshInBackground(nint hwnd)
+    void RefreshInBackground(nint hwnd)
     {
-        T? value = SafeQuery(hwnd);
+        var value = SafeQuery(hwnd);
         lock (_gate)
         {
             // Detached while the query ran: do not bring the entry back.
@@ -88,7 +88,7 @@ internal class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp 
         }
     }
 
-    private T? SafeQuery(nint hwnd)
+    T? SafeQuery(nint hwnd)
     {
         try
         {
@@ -103,12 +103,12 @@ internal class MonitorQueryCache<T>(Func<nint, T?> query, Func<long>? timestamp 
         }
     }
 
-    private readonly record struct Entry(T? Value, long Timestamp, bool Refreshing);
+    readonly record struct Entry(T? Value, long Timestamp, bool Refreshing);
 }
 
 /// <summary>
 /// Caches the refresh rate of each window's monitor for <see cref="IMediaRendererBackend.GetSurfaceRefreshRateHz"/>
 /// (Stage 017A slice 3); see <see cref="MonitorQueryCache{T}"/>.
 /// </summary>
-internal sealed class MonitorRefreshRateCache(Func<nint, double?> query, Func<long>? timestamp = null)
+sealed class MonitorRefreshRateCache(Func<nint, double?> query, Func<long>? timestamp = null)
     : MonitorQueryCache<double>(query, timestamp);

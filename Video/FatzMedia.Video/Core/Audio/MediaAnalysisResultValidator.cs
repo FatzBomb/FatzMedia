@@ -1,8 +1,8 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal static class MediaAnalysisResultValidator
+static class MediaAnalysisResultValidator
 {
-    private const double EqualityTolerance = 0.000001;
+    const double EqualityTolerance = 0.000001;
 
     public static bool IsValid(MediaAnalysisResult? result)
     {
@@ -41,8 +41,8 @@ internal static class MediaAnalysisResultValidator
         return true;
     }
 
-    private static bool IsFiniteNonNegative(double value) => double.IsFinite(value) && value >= 0;
+    static bool IsFiniteNonNegative(double value) => double.IsFinite(value) && value >= 0;
 
-    private static bool ApproximatelyEqual(double left, double right)
+    static bool ApproximatelyEqual(double left, double right)
         => Math.Abs(left - right) <= EqualityTolerance;
 }

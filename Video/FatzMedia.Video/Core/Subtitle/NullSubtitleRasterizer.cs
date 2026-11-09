@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Subtitle;
 /// </summary>
 public sealed class NullSubtitleRasterizer : ISubtitleRasterizer
 {
-    private NullSubtitleRasterizer()
+    NullSubtitleRasterizer()
     {
     }
 

@@ -1,6 +1,5 @@
 using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Graphics.Composition;
-using FatzMedia.Video.Direct3D11;
 using FatzMedia.Video.Software;
 
 namespace FatzMedia.Video.Tests;
@@ -13,7 +12,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11CdgParityTests
 {
-    private const uint BlueClear = 0xFF0000FF;
+    const uint BlueClear = 0xFF0000FF;
 
     [Theory]
     [InlineData(-1)]
@@ -34,16 +33,16 @@ public sealed class D3D11CdgParityTests
             0,
             backgroundColorIndex,
             []);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, BlueClear) with
+        var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, BlueClear) with
         {
             CdgOverlay = snapshot
         };
 
-        byte[] software = new SoftwareCompositionRenderer()
+        var software = new SoftwareCompositionRenderer()
             .Render(frame, CdgConstants.FrameWidth, CdgConstants.FrameHeight)
             .Pixels.ToArray();
 
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var sink = new D3D11MultiTargetTests.CopyingFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
         Assert.True(bridge.AttachSurface(new MediaPresentationSurfaceDescriptor(

@@ -24,7 +24,7 @@ public sealed class VideoAudioEffectsTests
     {
         using var engine = new VideoAudioEngine(new FixedLatencyProvider());
         var filters = (IAudioFilterHost)engine;
-        AudioEqualizerSettings settings = AudioEqualizerSettings.CreateGraphic10Band([6, 6, 3, 0, 0, 0, 0, 0, 0, 0]);
+        var settings = AudioEqualizerSettings.CreateGraphic10Band([6, 6, 3, 0, 0, 0, 0, 0, 0, 0]);
 
         Assert.Equal(0, ((IAudioFadeGainTarget)engine).BeginFadeSession());
         Assert.True(filters.SetEqualizer(settings));
@@ -46,7 +46,7 @@ public sealed class VideoAudioEffectsTests
     [Fact]
     public void PlanWindows_ShortFile_ReadsEveryHalfSecond()
     {
-        IReadOnlyList<double> windows = FfmpegAudioPeakScanner.PlanWindows(3.0, 0.5, 240);
+        var windows = FfmpegAudioPeakScanner.PlanWindows(3.0, 0.5, 240);
 
         Assert.Equal([0.0, 0.5, 1.0, 1.5, 2.0, 2.5], windows);
     }
@@ -55,7 +55,7 @@ public sealed class VideoAudioEffectsTests
     public void PlanWindows_LongFile_SpreadsAtMostTheWindowBudgetOverTheWholeDuration()
     {
         const double duration = 2 * 60 * 60;
-        IReadOnlyList<double> windows = FfmpegAudioPeakScanner.PlanWindows(duration, 0.5, 240);
+        var windows = FfmpegAudioPeakScanner.PlanWindows(duration, 0.5, 240);
 
         // Same stride as AudioNormalizer.AnalyzePeakBySeek: ceil(7200 / 120) = 60 windows apart.
         Assert.Equal(240, windows.Count);
@@ -91,7 +91,7 @@ public sealed class VideoAudioEffectsTests
     public void QuickWindow_MatchesTheBassQuickPass() =>
         Assert.Equal(6.0, FfmpegAudioPeakScanner.QuickSeconds);
 
-    private sealed class FixedLatencyProvider : IOutputLatencyProvider
+    sealed class FixedLatencyProvider : IOutputLatencyProvider
     {
         public double GetOutputLatencySeconds() => 0;
     }

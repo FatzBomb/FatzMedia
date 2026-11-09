@@ -10,13 +10,13 @@ namespace FatzMedia.Video.Text;
 /// placed by their advances without shaping, and each run of one typeface becomes a cached
 /// <see cref="SKTextBlob"/>, so drawing a layout allocates nothing.
 /// </summary>
-internal sealed class SkiaTextLayout : IDisposable
+sealed class SkiaTextLayout : IDisposable
 {
-    private readonly string _text;
-    private readonly float[] _advances;
-    private readonly Line[] _lines;
+    readonly string _text;
+    readonly float[] _advances;
+    readonly Line[] _lines;
 
-    private SkiaTextLayout(string text, float[] advances, Line[] lines, float width, float height)
+    SkiaTextLayout(string text, float[] advances, Line[] lines, float width, float height)
     {
         _text = text;
         _advances = advances;
@@ -64,11 +64,11 @@ internal sealed class SkiaTextLayout : IDisposable
             // Line height from every font the text uses, as DirectWrite takes the tallest.
             float ascent = 0, descent = 0, leading = 0;
             _ = GetFont(0);
-            foreach (SKFont? font in fonts)
+            foreach (var font in fonts)
             {
                 if (font is null)
                     continue;
-                font.GetFontMetrics(out SKFontMetrics metrics);
+                font.GetFontMetrics(out var metrics);
                 ascent = Math.Max(ascent, -metrics.Ascent);
                 descent = Math.Max(descent, metrics.Descent);
                 leading = Math.Max(leading, metrics.Leading);
@@ -101,7 +101,7 @@ internal sealed class SkiaTextLayout : IDisposable
                     var runEnd = runStart + 1;
                     while (runEnd < visibleEnd && fontIndices[runEnd] == fontIndices[runStart])
                         runEnd++;
-                    SKTextBlob? blob = SKTextBlob.Create(text.AsSpan(runStart, runEnd - runStart), GetFont(fontIndices[runStart]));
+                    var blob = SKTextBlob.Create(text.AsSpan(runStart, runEnd - runStart), GetFont(fontIndices[runStart]));
                     if (blob is not null)
                         runs.Add(new Run(blob, Sum(advances, start, runStart)));
                     runStart = runEnd;
@@ -119,7 +119,7 @@ internal sealed class SkiaTextLayout : IDisposable
         }
         finally
         {
-            foreach (SKFont? font in fonts)
+            foreach (var font in fonts)
                 font?.Dispose();
         }
     }
@@ -127,9 +127,9 @@ internal sealed class SkiaTextLayout : IDisposable
     /// <summary>Draws every line with the layout box's top-left corner at (<paramref name="x"/>, <paramref name="y"/>).</summary>
     public void Draw(SKCanvas canvas, float x, float y, SKPaint paint)
     {
-        foreach (Line line in _lines)
+        foreach (var line in _lines)
         {
-            foreach (Run run in line.Runs)
+            foreach (var run in line.Runs)
                 canvas.DrawText(run.Blob, x + line.Left + run.X, y + line.Baseline, paint);
         }
     }
@@ -147,14 +147,14 @@ internal sealed class SkiaTextLayout : IDisposable
 
     public void Dispose()
     {
-        foreach (Line line in _lines)
+        foreach (var line in _lines)
         {
-            foreach (Run run in line.Runs)
+            foreach (var run in line.Runs)
                 run.Blob.Dispose();
         }
     }
 
-    private static void Wrap(string text, float[] advances, int start, int end, float maxWidth, List<(int Start, int End)> lines)
+    static void Wrap(string text, float[] advances, int start, int end, float maxWidth, List<(int Start, int End)> lines)
     {
         var wrap = float.IsFinite(maxWidth) && maxWidth > 0;
         var lineStart = start;
@@ -197,14 +197,14 @@ internal sealed class SkiaTextLayout : IDisposable
         lines.Add((lineStart, end));
     }
 
-    private static int TrimEnd(string text, int start, int end)
+    static int TrimEnd(string text, int start, int end)
     {
         while (end > start && char.IsWhiteSpace(text[end - 1]))
             end--;
         return end;
     }
 
-    private static float Sum(float[] advances, int start, int end)
+    static float Sum(float[] advances, int start, int end)
     {
         var sum = 0f;
         for (var i = start; i < end; i++)
@@ -212,9 +212,9 @@ internal sealed class SkiaTextLayout : IDisposable
         return sum;
     }
 
-    private readonly record struct Run(SKTextBlob Blob, float X);
+    readonly record struct Run(SKTextBlob Blob, float X);
 
-    private readonly record struct Line(float Width, float Baseline, Run[] Runs)
+    readonly record struct Line(float Width, float Baseline, Run[] Runs)
     {
         public float Left { get; init; }
     }

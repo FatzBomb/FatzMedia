@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Graphics;
@@ -5,20 +6,19 @@ using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Direct3D11;
 
-internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
+sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 {
-    private readonly D3D11DeviceResources _deviceResources;
-    private readonly D3D11RendererPresentationServices _presentation;
-    private readonly Lock _lock = new();
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
-    private readonly MonitorVblankClocks _vblankClocks = new();
-    private bool _disposed;
-    private bool _videoSupportRefusalReported;
+    readonly D3D11DeviceResources _deviceResources;
+    readonly D3D11RendererPresentationServices _presentation;
+    readonly Lock _lock = new();
+    readonly MediaPlayerConfiguration _configuration;
+    readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
+    readonly MonitorVblankClocks _vblankClocks = new();
+    bool _disposed;
+    bool _videoSupportRefusalReported;
 
     public NativeD3D11PresentationBridge(
         MediaPlayerConfiguration configuration,
@@ -55,7 +55,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     public bool ProbeDeviceLost(out string? reason)
     {
         reason = null;
-        if (Volatile.Read(ref _disposed) || !_deviceResources.ProbeDeviceRemoved(out SharpGen.Runtime.Result removed))
+        if (Volatile.Read(ref _disposed) || !_deviceResources.ProbeDeviceRemoved(out var removed))
             return false;
 
         reason = $"Direct3D11 {D3D11DeviceLostClassifier.Describe(removed, swapChain: null)}";
@@ -75,7 +75,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool InitializeFromNativeDevice(nint devicePointer, nint deviceContextPointer)
+    bool InitializeFromNativeDevice(nint devicePointer, nint deviceContextPointer)
     {
         if (_disposed || devicePointer == IntPtr.Zero)
         {
@@ -88,7 +88,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateNativeHwndSurface(nint hwnd, int width, int height)
+    bool CreateNativeHwndSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -101,7 +101,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateDirectCompositionSurface(nint hwnd, int width, int height)
+    bool CreateDirectCompositionSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -114,7 +114,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateSecondaryNativeHwndSurface(string targetId, nint hwnd, int width, int height)
+    bool CreateSecondaryNativeHwndSurface(string targetId, nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -127,7 +127,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateManagedFrameSinkSurface(
+    bool CreateManagedFrameSinkSurface(
         IMediaPresentationFrameSink sink,
         int width,
         int height)
@@ -146,7 +146,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private bool CreateSharedTextureSurface(IMediaSharedGpuImageConsumer consumer, int width, int height)
+    bool CreateSharedTextureSurface(IMediaSharedGpuImageConsumer consumer, int width, int height)
     {
         if (_disposed)
             return false;
@@ -176,7 +176,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return created;
     }
 
-    private bool CreateSecondaryManagedFrameSinkSurface(string targetId, IMediaPresentationFrameSink sink, int width, int height)
+    bool CreateSecondaryManagedFrameSinkSurface(string targetId, IMediaPresentationFrameSink sink, int width, int height)
     {
         if (_disposed)
             return false;
@@ -185,7 +185,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return _presentation.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
     }
 
-    private bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
+    bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
     {
         if (_disposed)
             return false;
@@ -204,7 +204,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return created;
     }
 
-    private bool RemoveSecondaryPresentationTarget(string targetId)
+    bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
         {
@@ -212,7 +212,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private void SetNativeLiveResizeInProgress(bool isResizing)
+    void SetNativeLiveResizeInProgress(bool isResizing)
     {
         lock (_lock)
         {
@@ -228,7 +228,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private void QueueNativeHwndPresentationResize(int width, int height)
+    void QueueNativeHwndPresentationResize(int width, int height)
     {
         lock (_lock)
         {
@@ -236,7 +236,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private void QueueDirectCompositionPresentationResize(int width, int height)
+    void QueueDirectCompositionPresentationResize(int width, int height)
     {
         lock (_lock)
         {
@@ -252,7 +252,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (TryAttachOffscreenSurface(surface, out var offscreenAttached))
             return offscreenAttached;
 
-        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+        if (!TryGetWin32Hwnd(surface, out var hwnd))
             return false;
 
         var attached = surface.Role == MediaPresentationSurfaceRole.Primary
@@ -281,7 +281,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     /// picked up within a second. Managed frame-sink surfaces have no monitor: null.
     /// </summary>
     public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) =>
-        !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out nint hwnd) ? _refreshRates.Get(hwnd) : null;
+        !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out var hwnd) ? _refreshRates.Get(hwnd) : null;
 
     /// <summary>
     /// The vertical-blank timing of the monitor showing a native-window surface (Stage 017A slice
@@ -291,7 +291,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         timing = default;
         return !Volatile.Read(ref _disposed)
-            && TryGetWin32Hwnd(surface, out nint hwnd)
+            && TryGetWin32Hwnd(surface, out var hwnd)
             && _vblankClocks.TryGet(hwnd, _refreshRates.Get(hwnd), out timing);
     }
 
@@ -304,7 +304,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (TryAttachOffscreenSurface(surface, out var offscreenResized))
             return offscreenResized;
 
-        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+        if (!TryGetWin32Hwnd(surface, out var hwnd))
             return false;
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
@@ -353,10 +353,10 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     /// offscreen primary backend, any other role as its own secondary target (Stage 027A slice
     /// 5). Returns false when the surface is of neither kind.
     /// </summary>
-    private bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
+    bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
     {
         var isPrimary = surface.Role == MediaPresentationSurfaceRole.Primary;
-        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out var sink))
         {
             attached = isPrimary
                 ? CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight)
@@ -364,7 +364,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return true;
         }
 
-        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out var consumer))
         {
             attached = isPrimary
                 ? CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight)
@@ -376,7 +376,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return false;
     }
 
-    private static bool TryGetWin32Hwnd(
+    static bool TryGetWin32Hwnd(
         MediaPresentationSurfaceDescriptor? surface,
         out nint hwnd)
     {
@@ -393,7 +393,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return false;
         }
 
-        if (TryGetWin32Hwnd(surface, out nint hwnd))
+        if (TryGetWin32Hwnd(surface, out var hwnd))
         {
             _refreshRates.Remove(hwnd);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
@@ -409,7 +409,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return true;
     }
 
-    private void DetachPrimarySurface()
+    void DetachPrimarySurface()
     {
         lock (_lock)
         {
@@ -514,15 +514,15 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
-    private void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
+    void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
 
-    private bool NotifyPresentedResult(int _width, int _height) => NotifyPresentedCore();
+    bool NotifyPresentedResult(int _width, int _height) => NotifyPresentedCore();
 
-    private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
+    void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
 
-    private bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
+    bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
 
-    private void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
+    void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {

@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 038A slice 1: HDR10 (PQ) to SDR tone mapping.</summary>
 public sealed class HdrToneMapperTests
 {
-    private const double Reference = HdrToneMappingOptions.DefaultReferenceWhiteNits;
+    const double Reference = HdrToneMappingOptions.DefaultReferenceWhiteNits;
 
     [Theory]
     [InlineData(0, 0)]
@@ -64,7 +64,7 @@ public sealed class HdrToneMapperTests
         foreach (var nits in new[] { 1.0, 10, 50, 100, 203, 500, 1000 })
         {
             var code = Code(nits);
-            byte[] bgra = Convert(mapper, code, code, code);
+            var bgra = Convert(mapper, code, code, code);
             Assert.True(bgra[0] == bgra[1] && bgra[1] == bgra[2], $"{nits} nits gray is not neutral: {string.Join(",", bgra)}");
             Assert.True(bgra[0] > previous, $"{nits} nits ({bgra[0]}) is not brighter than the level below ({previous})");
             previous = bgra[0];
@@ -76,7 +76,7 @@ public sealed class HdrToneMapperTests
     {
         var mapper = new HdrToneMapper(1000, Reference);
         var code = Code(Reference);
-        byte value = Convert(mapper, code, code, code)[0];
+        var value = Convert(mapper, code, code, code)[0];
         Assert.InRange(value, 200, 250);
     }
 
@@ -84,7 +84,7 @@ public sealed class HdrToneMapperTests
     public void Bt2020Red_StaysRedAfterGamutClipping()
     {
         var mapper = new HdrToneMapper(1000, Reference);
-        byte[] bgra = Convert(mapper, Code(100), 0, 0);
+        var bgra = Convert(mapper, Code(100), 0, 0);
         Assert.True(bgra[2] > 200, $"red {bgra[2]}");
         Assert.Equal(0, bgra[1]);
         Assert.Equal(0, bgra[0]);
@@ -106,13 +106,13 @@ public sealed class HdrToneMapperTests
         var destination = new byte[destinationStride * height];
         mapper.Convert(source, sourceStride, destination, destinationStride, width, height);
 
-        byte expected = Convert(mapper, code, code, code)[0];
+        var expected = Convert(mapper, code, code, code)[0];
         for (var y = 0; y < height; y++)
         {
             for (var x = 0; x < width; x++)
             {
                 var offset = (y * destinationStride) + (x * 4);
-                Assert.Equal(new[] { expected, expected, expected, (byte)255 }, destination.AsSpan(offset, 4).ToArray());
+                Assert.Equal([expected, expected, expected, (byte)255], destination.AsSpan(offset, 4).ToArray());
             }
 
             Assert.Equal(0, destination[(y * destinationStride) + (width * 4)]);
@@ -126,7 +126,7 @@ public sealed class HdrToneMapperTests
     [InlineData(20000, 1000, 1000, "mastering display")]
     public void ThePeak_ComesFromUsableMetadata(double maxCll, double mastering, double expected, string source)
     {
-        (double nits, string actualSource) = FFmpegVideoColor.ChoosePeak(maxCll, mastering, Reference);
+        (var nits, var actualSource) = FFmpegVideoColor.ChoosePeak(maxCll, mastering, Reference);
         Assert.Equal(expected, nits);
         Assert.Equal(source, actualSource);
     }
@@ -152,9 +152,9 @@ public sealed class HdrToneMapperTests
         Assert.Equal("not P010", fallback.Reason);
     }
 
-    private static ushort Code(double nits) => (ushort)Math.Round(PqCurve.FromNits(nits) * 65535);
+    static ushort Code(double nits) => (ushort)Math.Round(PqCurve.FromNits(nits) * 65535);
 
-    private static byte[] Convert(HdrToneMapper mapper, ushort r, ushort g, ushort b)
+    static byte[] Convert(HdrToneMapper mapper, ushort r, ushort g, ushort b)
     {
         var output = new byte[4];
         mapper.ConvertRow([r, g, b], output);

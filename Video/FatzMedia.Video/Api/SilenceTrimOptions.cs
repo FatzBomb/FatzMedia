@@ -10,15 +10,15 @@ public readonly record struct SilenceTrimOptions
     public const double DefaultMinimumSilenceSeconds = 0.5;
     public const double DefaultPaddingSeconds = 0.1;
 
-    private const double MinimumThresholdDecibels = -96;
-    private const double MaximumThresholdDecibels = 0;
-    private const double MaximumDurationSeconds = 30;
+    const double MinimumThresholdDecibels = -96;
+    const double MaximumThresholdDecibels = 0;
+    const double MaximumDurationSeconds = 30;
 
-    private readonly double _thresholdOffset;
-    private readonly double _minimumSilenceOffset;
-    private readonly double _paddingOffset;
-    private readonly bool _preserveLeadingSilence;
-    private readonly bool _preserveTrailingSilence;
+    readonly double _thresholdOffset;
+    readonly double _minimumSilenceOffset;
+    readonly double _paddingOffset;
+    readonly bool _preserveLeadingSilence;
+    readonly bool _preserveTrailingSilence;
 
     /// <summary>
     /// Gets whether analyzed silence should affect the playable window.
@@ -82,6 +82,6 @@ public readonly record struct SilenceTrimOptions
         init => _preserveTrailingSilence = !value;
     }
 
-    private static double Normalize(double value, double minimum, double maximum, double fallback)
+    static double Normalize(double value, double minimum, double maximum, double fallback)
         => double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : fallback;
 }

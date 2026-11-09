@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// to the host-facing <see cref="PlayerCore"/> without leaking pipeline
 /// internals into the public <see cref="IPlayerSession"/> contract.
 /// </summary>
-internal interface IMediaErrorSource
+interface IMediaErrorSource
 {
     /// <summary>
     /// Raised when a high-value failure occurs inside the engine. Carries a

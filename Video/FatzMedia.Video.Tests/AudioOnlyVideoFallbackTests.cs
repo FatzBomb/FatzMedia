@@ -1,12 +1,11 @@
+using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
-using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Pipeline;
-using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
@@ -17,12 +16,12 @@ namespace FatzMedia.Video.Tests;
 [Collection("File type registry")]
 public sealed class AudioOnlyVideoFallbackTests
 {
-    private const string Extension = ".testcontainer";
+    const string Extension = ".testcontainer";
 
     [Fact]
     public void VideoContainerWithoutVideo_FallsBackToItsAudio()
     {
-        List<string> messages = OpenWith(new TestVideoEngine { OpenFindsNoVideo = true });
+        var messages = OpenWith(new TestVideoEngine { OpenFindsNoVideo = true });
 
         Assert.Contains(messages, message => message.Contains("has no video stream; playing its audio", StringComparison.Ordinal));
     }
@@ -31,7 +30,7 @@ public sealed class AudioOnlyVideoFallbackTests
     public void VideoThatOpens_DoesNotFallBack()
     {
         var video = new TestVideoEngine();
-        List<string> messages = OpenWith(video);
+        var messages = OpenWith(video);
 
         Assert.Single(video.OpenedPaths);
         Assert.DoesNotContain(messages, message => message.Contains("has no video stream", StringComparison.Ordinal));
@@ -43,7 +42,7 @@ public sealed class AudioOnlyVideoFallbackTests
     public void RingtoneAndAlacExtensions_ArePlayableThroughFfmpeg(string extension) =>
         Assert.Contains(extension, FileTypes.FfmpegAudioExtensions);
 
-    private static List<string> OpenWith(TestVideoEngine video)
+    static List<string> OpenWith(TestVideoEngine video)
     {
         var path = Path.Combine(Path.GetTempPath(), $"fatzbomb-audio-only-{Guid.NewGuid():N}{Extension}");
         File.WriteAllBytes(path, [0]);
@@ -84,12 +83,12 @@ public sealed class AudioOnlyVideoFallbackTests
         return [.. messages];
     }
 
-    private sealed class FixedVideoFactory(TestVideoEngine video) : IVideoEngineFactory
+    sealed class FixedVideoFactory(TestVideoEngine video) : IVideoEngineFactory
     {
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) => video;
     }
 
-    private sealed class NoMidiLyrics : IMidiLyricProvider
+    sealed class NoMidiLyrics : IMidiLyricProvider
     {
         public bool IsMidiFile(string path) => false;
 

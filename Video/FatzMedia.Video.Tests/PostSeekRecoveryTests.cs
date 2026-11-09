@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Tests;
 /// <summary>Stage 041A: the post-seek recovery state machine extracted from VideoPipeline.</summary>
 public sealed class PostSeekRecoveryTests
 {
-    private const long Frequency = 1000; // 1 tick = 1 ms
+    const long Frequency = 1000; // 1 tick = 1 ms
 
     [Theory]
     [InlineData(0, 900)]

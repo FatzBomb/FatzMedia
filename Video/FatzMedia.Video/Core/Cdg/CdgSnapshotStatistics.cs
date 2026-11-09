@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Core.Cdg;
 /// <summary>
 /// Allocation and copy counters for <see cref="CdgStateMachine.CreateSnapshot(bool)"/>.
 /// </summary>
-internal struct CdgSnapshotStatistics
+struct CdgSnapshotStatistics
 {
     /// <summary>Gets or sets the number of snapshot objects created.</summary>
     public long SnapshotsCreated { get; set; }

@@ -15,15 +15,15 @@ namespace FatzMedia.Video.Sample.Player.ViewModels;
 /// </summary>
 public sealed class MainWindowViewModel : PlayerViewModel
 {
-    private static readonly WpfPresentationMode[] SoftwarePresentationModes = [WpfPresentationMode.WpfComposited];
-    private static readonly WpfPresentationMode[] AllPresentationModes =
+    static readonly WpfPresentationMode[] SoftwarePresentationModes = [WpfPresentationMode.WpfComposited];
+    static readonly WpfPresentationMode[] AllPresentationModes =
     [
         WpfPresentationMode.NativeHwndOverlay,
         WpfPresentationMode.WpfComposited
     ];
 
     // Stage 036A: what startup expects until App.RendererSelection resolves (OnRendererResolved).
-    private bool _usesSoftwareRenderer = App.ExpectsSoftwareRenderer;
+    bool _usesSoftwareRenderer = App.ExpectsSoftwareRenderer;
 
     /// <param name="owner">The window that owns this player's dialogs.</param>
     /// <param name="index">The player's number (1-based).</param>

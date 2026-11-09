@@ -1,8 +1,8 @@
-using FatzMedia.Video.Core.Files;
-using ManagedBass;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Files;
+using ManagedBass;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// memory or, above <see cref="FfmpegAudioFallback.MaxInMemoryBytes"/>, in a temp file deleted
 /// on dispose. Disposing must follow freeing every stream created from it.
 /// </summary>
-internal sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, string? tempPath) : IDisposable
+sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, string? tempPath) : IDisposable
 {
     public string SourceIdentity { get; } = sourceIdentity;
 
@@ -43,17 +43,17 @@ internal sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long l
 /// trimming, prepared-next). The conversion made for a prepared-next item is kept so the
 /// transition does not convert again (one per player, up to <see cref="MaxPreparedConversions"/>).
 /// </summary>
-internal static class FfmpegAudioFallback
+static class FfmpegAudioFallback
 {
     internal const long DefaultMaxInMemoryBytes = 160L * 1024 * 1024;
 
     // RIFF sizes are 32-bit; the header below is 58 bytes.
-    private const long MaxWavDataBytes = uint.MaxValue - FloatWav.HeaderBytes;
+    const long MaxWavDataBytes = uint.MaxValue - FloatWav.HeaderBytes;
 
     /// <summary>Prepared conversions kept at once: one per player's next item, for a few players.</summary>
     internal const int MaxPreparedConversions = 4;
 
-    private static readonly PreparedConversionCache<ConvertedAudio> Prepared =
+    static readonly PreparedConversionCache<ConvertedAudio> Prepared =
         new(MaxPreparedConversions, static converted => converted.SourceIdentity);
 
     /// <summary>Converted WAVs larger than this go to a temp file instead of memory.</summary>
@@ -81,7 +81,7 @@ internal static class FfmpegAudioFallback
         if (Prepared.Find(identity) is { } kept)
             return kept;
 
-        ConvertedAudio? converted = Convert(path, identity, cancellationToken);
+        var converted = Convert(path, identity, cancellationToken);
         return converted is null ? null : Prepared.Add(converted);
     }
 
@@ -133,18 +133,18 @@ internal static class FfmpegAudioFallback
         return estimate > maxInMemory ? (ConversionTarget.File, 0) : (ConversionTarget.Memory, estimate);
     }
 
-    private static ConvertedAudio? Convert(string path, string identity, CancellationToken cancellationToken)
+    static ConvertedAudio? Convert(string path, string identity, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var stopwatch = Stopwatch.StartNew();
-        using FfmpegAudioReader? reader = FfmpegAudioReader.Open(path);
+        using var reader = FfmpegAudioReader.Open(path);
         if (reader is null)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"FFmpeg found no decodable audio in '{Path.GetFileName(path)}'.", sourcePath: path);
             return null;
         }
 
-        (ConversionTarget target, long capacity) = PlanOutput(reader.DurationSeconds, reader.SampleRate, reader.Channels, MaxInMemoryBytes);
+        (var target, var capacity) = PlanOutput(reader.DurationSeconds, reader.SampleRate, reader.Channels, MaxInMemoryBytes);
         if (target == ConversionTarget.TooLong)
         {
             ReportTooLong(path);
@@ -172,12 +172,12 @@ internal static class FfmpegAudioFallback
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ReadOnlySpan<float> samples = reader.ReadFrame();
+                var samples = reader.ReadFrame();
                 if (samples.IsEmpty)
                     break;
 
                 // WAV is little-endian, as is every platform the engine runs on.
-                ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(samples);
+                var bytes = MemoryMarshal.AsBytes(samples);
                 if (dataBytes + bytes.Length > MaxWavDataBytes)
                 {
                     // The container's duration ran short of the real length.
@@ -187,7 +187,7 @@ internal static class FfmpegAudioFallback
 
                 if (output is MemoryStream memory && memory.Length + bytes.Length > MaxInMemoryBytes)
                 {
-                    FileStream file = CreateSpillFile(out tempPath);
+                    var file = CreateSpillFile(out tempPath);
                     try
                     {
                         memory.WriteTo(file);
@@ -215,7 +215,7 @@ internal static class FfmpegAudioFallback
             output.Position = 0;
             output.Write(header);
 
-            ConvertedAudio converted = output is MemoryStream buffer
+            var converted = output is MemoryStream buffer
                 ? new ConvertedAudio(identity, buffer.GetBuffer(), buffer.Length, tempPath: null)
                 : new ConvertedAudio(identity, data: null, output.Length, tempPath);
             output.Dispose();
@@ -238,16 +238,16 @@ internal static class FfmpegAudioFallback
         }
     }
 
-    private static FileStream CreateSpillFile(out string tempPath)
+    static FileStream CreateSpillFile(out string tempPath)
     {
         tempPath = TempMediaFile.NewPath(".wav");
         return new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
     }
 
-    private static void ReportTooLong(string path) =>
+    static void ReportTooLong(string path) =>
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"'{Path.GetFileName(path)}' is too long to convert (WAV is limited to 4 GB).", sourcePath: path);
 
-    private static ConvertedAudio? Discard(Stream output, string? tempPath)
+    static ConvertedAudio? Discard(Stream output, string? tempPath)
     {
         output.Dispose();
         if (tempPath is not null)
@@ -255,7 +255,7 @@ internal static class FfmpegAudioFallback
         return null;
     }
 
-    private static string CreateIdentity(string path)
+    static string CreateIdentity(string path)
     {
         try
         {
@@ -273,12 +273,12 @@ internal static class FfmpegAudioFallback
 /// Header of a 32-bit IEEE float WAV: RIFF, an 18-byte <c>fmt </c> chunk
 /// (<c>WAVE_FORMAT_IEEE_FLOAT</c>), a <c>fact</c> chunk, then the <c>data</c> chunk header.
 /// </summary>
-internal static class FloatWav
+static class FloatWav
 {
     public const int HeaderBytes = 12 + 8 + 18 + 8 + 4 + 8;
 
-    private const ushort WaveFormatIeeeFloat = 3;
-    private const int BytesPerSample = sizeof(float);
+    const ushort WaveFormatIeeeFloat = 3;
+    const int BytesPerSample = sizeof(float);
 
     public static void WriteHeader(Span<byte> header, int sampleRate, int channels, long dataBytes)
     {
@@ -312,19 +312,19 @@ internal static class FloatWav
         WriteUInt32(header, ref offset, (uint)dataBytes);
     }
 
-    private static void WriteTag(Span<byte> header, ref int offset, string tag)
+    static void WriteTag(Span<byte> header, ref int offset, string tag)
     {
         foreach (var character in tag)
             header[offset++] = (byte)character;
     }
 
-    private static void WriteUInt16(Span<byte> header, ref int offset, ushort value)
+    static void WriteUInt16(Span<byte> header, ref int offset, ushort value)
     {
         BinaryPrimitives.WriteUInt16LittleEndian(header[offset..], value);
         offset += sizeof(ushort);
     }
 
-    private static void WriteUInt32(Span<byte> header, ref int offset, uint value)
+    static void WriteUInt32(Span<byte> header, ref int offset, uint value)
     {
         BinaryPrimitives.WriteUInt32LittleEndian(header[offset..], value);
         offset += sizeof(uint);

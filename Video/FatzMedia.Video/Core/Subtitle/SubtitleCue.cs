@@ -13,13 +13,13 @@ public sealed record KaraokeCueTiming(
     TimeSpan TransitionStart,
     TimeSpan TransitionEnd)
 {
-    private const int TransitionFrameRate = 60;
-    private static readonly TimeSpan IntroFadeInStart = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan IntroFadeDuration = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan IntroClearLead = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan SplitBandEnd = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan EndCardMinimumWindow = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan EndCardFadeDuration = TimeSpan.FromMilliseconds(750);
+    const int TransitionFrameRate = 60;
+    static readonly TimeSpan IntroFadeInStart = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan IntroFadeDuration = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan IntroClearLead = TimeSpan.FromSeconds(3);
+    static readonly TimeSpan SplitBandEnd = TimeSpan.FromSeconds(8);
+    static readonly TimeSpan EndCardMinimumWindow = TimeSpan.FromSeconds(3);
+    static readonly TimeSpan EndCardFadeDuration = TimeSpan.FromMilliseconds(750);
 
     public IReadOnlyList<KaraokeLineTiming> OutgoingPageLines { get; init; } = [];
     public int OutgoingActiveLineIndex { get; init; }
@@ -60,11 +60,11 @@ public sealed record KaraokeCueTiming(
         return hash.ToHashCode();
     }
 
-    private static void AddLineProgress(ref HashCode hash, IReadOnlyList<KaraokeLineTiming> lines, TimeSpan position, TimeSpan wipeDuration)
+    static void AddLineProgress(ref HashCode hash, IReadOnlyList<KaraokeLineTiming> lines, TimeSpan position, TimeSpan wipeDuration)
     {
         for (var i = 0; i < lines.Count; i++)
         {
-            KaraokeLineTiming line = lines[i];
+            var line = lines[i];
             hash.Add(line.GetHighlightedLength(position));
             hash.Add((int)(line.GetSyllableWipeFraction(position, wipeDuration) * 100));
             hash.Add(line.GetCountdownRevision(position));
@@ -76,7 +76,7 @@ public sealed record KaraokeCueTiming(
         if (TransitionComplete <= TransitionStart)
             return 1;
 
-        TimeSpan transitionDuration = TransitionComplete - TransitionStart;
+        var transitionDuration = TransitionComplete - TransitionStart;
         if (transitionDuration <= TimeSpan.Zero)
             return 1;
 
@@ -86,7 +86,7 @@ public sealed record KaraokeCueTiming(
 
     public float GetPageFadeOutProgress(TimeSpan position)
     {
-        TimeSpan duration = PageFadeOutEnd - PageFadeOutStart;
+        var duration = PageFadeOutEnd - PageFadeOutStart;
         if (duration <= TimeSpan.Zero)
             return 1;
 
@@ -111,11 +111,11 @@ public sealed record KaraokeCueTiming(
         if (Metadata == null || position < IntroFadeInStart)
             return 0;
 
-        TimeSpan fadeOutEnd = GetIntroFadeOutEnd();
+        var fadeOutEnd = GetIntroFadeOutEnd();
         if (position >= fadeOutEnd)
             return 0;
 
-        TimeSpan fadeInEnd = IntroFadeInStart + IntroFadeDuration;
+        var fadeInEnd = IntroFadeInStart + IntroFadeDuration;
         if (position < fadeInEnd)
         {
             var fadeInProgress = Math.Clamp(
@@ -125,7 +125,7 @@ public sealed record KaraokeCueTiming(
             return SmoothStep(fadeInProgress);
         }
 
-        TimeSpan fadeOutStart = fadeOutEnd - IntroFadeDuration;
+        var fadeOutStart = fadeOutEnd - IntroFadeDuration;
         if (position <= fadeOutStart)
             return 1;
 
@@ -146,7 +146,7 @@ public sealed record KaraokeCueTiming(
             return 0;
         }
 
-        TimeSpan fadeInEnd = EndLyricFadeEnd + EndCardFadeDuration;
+        var fadeInEnd = EndLyricFadeEnd + EndCardFadeDuration;
         if (position < fadeInEnd)
         {
             var progress = Math.Clamp(
@@ -156,7 +156,7 @@ public sealed record KaraokeCueTiming(
             return SmoothStep(progress);
         }
 
-        TimeSpan fadeOutStart = MediaDuration - EndCardFadeDuration;
+        var fadeOutStart = MediaDuration - EndCardFadeDuration;
         if (position <= fadeOutStart)
             return 1;
 
@@ -179,47 +179,47 @@ public sealed record KaraokeCueTiming(
         return 1 - SmoothStep(progress);
     }
 
-    private TimeSpan GetEffectiveIncomingTransitionDuration(TimeSpan requestedDuration)
+    TimeSpan GetEffectiveIncomingTransitionDuration(TimeSpan requestedDuration)
     {
-        TimeSpan availableDuration = TransitionEnd - IncomingStart;
+        var availableDuration = TransitionEnd - IncomingStart;
         return availableDuration > TimeSpan.Zero && availableDuration < requestedDuration
             ? availableDuration
             : requestedDuration;
     }
 
-    private TimeSpan GetIntroFadeOutEnd() => UseSplitMetadataBands
+    TimeSpan GetIntroFadeOutEnd() => UseSplitMetadataBands
         ? Min(SplitBandEnd, MediaDuration)
         : Max(IntroFadeInStart + IntroFadeDuration, FirstPresentationStart - IntroClearLead);
 
-    private int GetTransitionFrame(TimeSpan position)
+    int GetTransitionFrame(TimeSpan position)
     {
         if (ClearsPage)
         {
             if (position >= PageFadeOutStart && position < PageFadeOutEnd)
             {
-                TimeSpan elapsed = position - PageFadeOutStart;
+                var elapsed = position - PageFadeOutStart;
                 return (int)(elapsed.TotalSeconds * TransitionFrameRate);
             }
 
-            TimeSpan incomingElapsed = position - PageFadeInStart;
+            var incomingElapsed = position - PageFadeInStart;
             return position >= PageFadeInStart && position < PageFadeInEnd
                 ? 10_000 + (int)(incomingElapsed.TotalSeconds * TransitionFrameRate)
                 : -1;
         }
 
-        TimeSpan normalElapsed = position - TransitionStart;
+        var normalElapsed = position - TransitionStart;
         return TransitionComplete > TransitionStart && normalElapsed >= TimeSpan.Zero && position < TransitionComplete
             ? (int)(normalElapsed.TotalSeconds * TransitionFrameRate)
             : -1;
     }
 
-    private static float SmoothStep(double progress) => (float)(progress * progress * (3 - (2 * progress)));
-    private static float EaseInCubic(double progress) => (float)(progress * progress * progress);
-    private static float EaseInOutCubic(double progress) => progress < 0.5
+    static float SmoothStep(double progress) => (float)(progress * progress * (3 - (2 * progress)));
+    static float EaseInCubic(double progress) => (float)(progress * progress * progress);
+    static float EaseInOutCubic(double progress) => progress < 0.5
         ? (float)(4 * progress * progress * progress)
         : (float)(1 - (Math.Pow((-2 * progress) + 2, 3) / 2));
-    private static TimeSpan Min(TimeSpan left, TimeSpan right) => left <= right ? left : right;
-    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left >= right ? left : right;
+    static TimeSpan Min(TimeSpan left, TimeSpan right) => left <= right ? left : right;
+    static TimeSpan Max(TimeSpan left, TimeSpan right) => left >= right ? left : right;
 }
 
 public sealed record KaraokeLineTiming(
@@ -228,7 +228,7 @@ public sealed record KaraokeLineTiming(
     bool HasCountdown = false)
 {
     internal static readonly TimeSpan CountdownDuration = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan InstantCutThreshold = TimeSpan.FromMilliseconds(150);
+    static readonly TimeSpan InstantCutThreshold = TimeSpan.FromMilliseconds(150);
 
     public TimeSpan FirstLyricStart => Segments.Count > 0 ? Segments[0].Start : TimeSpan.Zero;
 
@@ -237,7 +237,7 @@ public sealed record KaraokeLineTiming(
         if (!HasCountdown || Segments.Count == 0)
             return KaraokeCountdownState.None;
 
-        TimeSpan timeRemaining = FirstLyricStart - position;
+        var timeRemaining = FirstLyricStart - position;
         if (timeRemaining > CountdownDuration || timeRemaining <= TimeSpan.Zero)
             return KaraokeCountdownState.None;
 
@@ -261,11 +261,11 @@ public sealed record KaraokeLineTiming(
 
     public int GetCountdownRevision(TimeSpan position)
     {
-        KaraokeCountdownState state = GetCountdownState(position);
+        var state = GetCountdownState(position);
         if (!state.IsVisible)
             return -1;
 
-        TimeSpan countdownStart = FirstLyricStart - CountdownDuration;
+        var countdownStart = FirstLyricStart - CountdownDuration;
         return (int)((position - countdownStart).TotalSeconds * 60);
     }
 
@@ -274,7 +274,7 @@ public sealed record KaraokeLineTiming(
         var length = 0;
         for (var i = 0; i < Segments.Count; i++)
         {
-            KaraokeTextSegment segment = Segments[i];
+            var segment = Segments[i];
             if (segment.Start > position)
                 break;
             length = Math.Max(length, segment.TextStart + segment.TextLength);
@@ -293,7 +293,7 @@ public sealed record KaraokeLineTiming(
         var length = 0;
         for (var i = 0; i < Segments.Count; i++)
         {
-            KaraokeTextSegment segment = Segments[i];
+            var segment = Segments[i];
             if (segment.Start > position)
                 break;
             lastSegment = segment;
@@ -304,8 +304,8 @@ public sealed record KaraokeLineTiming(
             return Math.Min(length, Text.Length);
 
         // If the last segment is still within its wipe window, exclude it
-        TimeSpan effectiveWipe = GetSegmentWipeDuration(lastSegment.Value, wipeDuration);
-        TimeSpan elapsed = position - lastSegment.Value.Start;
+        var effectiveWipe = GetSegmentWipeDuration(lastSegment.Value, wipeDuration);
+        var elapsed = position - lastSegment.Value.Start;
         if (elapsed >= TimeSpan.Zero && elapsed < effectiveWipe)
         {
             length -= lastSegment.Value.TextLength;
@@ -324,7 +324,7 @@ public sealed record KaraokeLineTiming(
         KaraokeTextSegment? currentSegment = null;
         for (var i = 0; i < Segments.Count; i++)
         {
-            KaraokeTextSegment segment = Segments[i];
+            var segment = Segments[i];
             if (segment.Start > position)
                 break;
             currentSegment = segment;
@@ -333,11 +333,11 @@ public sealed record KaraokeLineTiming(
         if (currentSegment == null)
             return 0;
 
-        TimeSpan elapsed = position - currentSegment.Value.Start;
+        var elapsed = position - currentSegment.Value.Start;
         if (elapsed < TimeSpan.Zero)
             return 0;
 
-        TimeSpan effectiveDuration = GetSegmentWipeDuration(currentSegment.Value, wipeDuration);
+        var effectiveDuration = GetSegmentWipeDuration(currentSegment.Value, wipeDuration);
 
         if (effectiveDuration <= TimeSpan.Zero)
             return 1;
@@ -351,17 +351,17 @@ public sealed record KaraokeLineTiming(
     /// capped at the configured wipe duration. If below the instant-cut threshold, snaps to 0.
     /// For the last segment with no next marker, uses the configured duration.
     /// </summary>
-    private TimeSpan GetSegmentWipeDuration(KaraokeTextSegment segment, TimeSpan wipeDuration)
+    TimeSpan GetSegmentWipeDuration(KaraokeTextSegment segment, TimeSpan wipeDuration)
     {
         if (wipeDuration <= TimeSpan.Zero)
             return TimeSpan.Zero;
 
         // Find next segment start
-        TimeSpan nextStart = TimeSpan.MaxValue;
+        var nextStart = TimeSpan.MaxValue;
         var found = false;
         for (var i = 0; i < Segments.Count; i++)
         {
-            KaraokeTextSegment s = Segments[i];
+            var s = Segments[i];
             if (found)
             {
                 nextStart = s.Start;
@@ -374,12 +374,12 @@ public sealed record KaraokeLineTiming(
         if (nextStart == TimeSpan.MaxValue)
             return wipeDuration;
 
-        TimeSpan timeToNext = nextStart - segment.Start;
+        var timeToNext = nextStart - segment.Start;
         if (timeToNext <= TimeSpan.Zero)
             return TimeSpan.Zero;
 
         var calculated = TimeSpan.FromTicks((long)(timeToNext.Ticks * 0.8));
-        TimeSpan clamped = calculated <= wipeDuration ? calculated : wipeDuration;
+        var clamped = calculated <= wipeDuration ? calculated : wipeDuration;
 
         return clamped < InstantCutThreshold ? TimeSpan.Zero : clamped;
     }

@@ -1,5 +1,5 @@
-using FFmpeg.AutoGen;
 using System.Runtime.InteropServices;
+using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Linux.Video;
 
@@ -7,10 +7,10 @@ namespace FatzMedia.Video.Linux.Video;
 /// Software-decode capabilities from the loaded FFmpeg build. Hardware decode (VA-API/VDPAU)
 /// is a later slice, so every codec reports software decode only.
 /// </summary>
-internal static unsafe class LinuxVideoDecodeCapabilities
+static unsafe class LinuxVideoDecodeCapabilities
 {
-    private static readonly Lock CacheLock = new();
-    private static VideoDecodeCapabilities? _cached;
+    static readonly Lock CacheLock = new();
+    static VideoDecodeCapabilities? _cached;
 
     public static VideoDecodeCapabilities GetOrScan(bool ffmpegLoaded)
     {
@@ -24,7 +24,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
             return _cached ??= Scan();
     }
 
-    private static VideoDecodeCapabilities Scan()
+    static VideoDecodeCapabilities Scan()
     {
         var capabilities = new List<CodecCapability>();
         var codecIds = new List<(AVCodecID CodecId, CodecCapability Capability)>();
@@ -32,7 +32,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
         void* codecOpaque = null;
         while (true)
         {
-            AVCodec* codec = ffmpeg.av_codec_iterate(&codecOpaque);
+            var codec = ffmpeg.av_codec_iterate(&codecOpaque);
             if (codec == null)
                 break;
 
@@ -40,7 +40,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
                 continue;
 
             var decoderName = Marshal.PtrToStringAnsi((IntPtr)codec->name) ?? "unknown";
-            AVCodecDescriptor* descriptor = ffmpeg.avcodec_descriptor_get(codec->id);
+            var descriptor = ffmpeg.avcodec_descriptor_get(codec->id);
             var canonicalName = descriptor != null ? Marshal.PtrToStringAnsi((IntPtr)descriptor->name) ?? decoderName : decoderName;
             var friendlyName = descriptor != null ? Marshal.PtrToStringAnsi((IntPtr)descriptor->long_name) ?? canonicalName : canonicalName;
             var capability = new CodecCapability(canonicalName, friendlyName, true, decoderName, false, null);
@@ -52,7 +52,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
         void* demuxerOpaque = null;
         while (true)
         {
-            AVInputFormat* format = ffmpeg.av_demuxer_iterate(&demuxerOpaque);
+            var format = ffmpeg.av_demuxer_iterate(&demuxerOpaque);
             if (format == null)
                 break;
 
@@ -66,7 +66,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
             if (format->codec_tag != null)
             {
                 var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach ((AVCodecID codecId, CodecCapability capability) in codecIds)
+                foreach ((var codecId, var capability) in codecIds)
                 {
                     uint tag = 0;
                     if (ffmpeg.av_codec_get_tag2(format->codec_tag, codecId, &tag) != 0 && names.Add(capability.CodecName))
@@ -80,7 +80,7 @@ internal static unsafe class LinuxVideoDecodeCapabilities
                 if (normalized == ".*")
                     continue;
 
-                containers[normalized] = containers.TryGetValue(normalized, out ContainerCapability? existing)
+                containers[normalized] = containers.TryGetValue(normalized, out var existing)
                     ? new ContainerCapability(
                         existing.Extension,
                         existing.FormatName + ", " + formatName,

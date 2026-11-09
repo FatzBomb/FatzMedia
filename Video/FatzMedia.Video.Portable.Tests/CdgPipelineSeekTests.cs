@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Portable.Tests;
 /// </summary>
 public sealed class CdgPipelineSeekTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"cdg-seek-{Guid.NewGuid():N}.cdg");
+    readonly string _path = Path.Combine(Path.GetTempPath(), $"cdg-seek-{Guid.NewGuid():N}.cdg");
 
     public CdgPipelineSeekTests() => File.WriteAllBytes(_path, []);
 
@@ -70,11 +70,11 @@ public sealed class CdgPipelineSeekTests : IDisposable
 
     public void Dispose() => File.Delete(_path);
 
-    private sealed class RecordingCdgEngine : ICdgEngine
+    sealed class RecordingCdgEngine : ICdgEngine
     {
-        private readonly Lock _gate = new();
-        private readonly List<string> _renders = [];
-        private readonly List<(double Seconds, TaskCompletionSource Done)> _waiters = [];
+        readonly Lock _gate = new();
+        readonly List<string> _renders = [];
+        readonly List<(double Seconds, TaskCompletionSource Done)> _waiters = [];
 
         public IReadOnlyList<string> Renders
         {

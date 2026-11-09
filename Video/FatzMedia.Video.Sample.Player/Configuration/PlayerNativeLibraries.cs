@@ -10,13 +10,13 @@ public static class PlayerNativeLibraries
 {
     public static IReadOnlyList<string> ResolveSearchPaths()
     {
-        IReadOnlyList<string> defaultPaths = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
+        var defaultPaths = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
         return defaultPaths.Count > 0
             ? defaultPaths
             : [ResolveFromAppBase(WindowsNativeLibraryPaths.AppNativeRelativePath)];
     }
 
-    private static string ResolveFromAppBase(string path)
+    static string ResolveFromAppBase(string path)
     {
         var resolvedPath = Path.IsPathRooted(path)
             ? path

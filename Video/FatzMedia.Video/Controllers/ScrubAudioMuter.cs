@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Controllers;
 /// fades and normalization are untouched. The quiet-period timer runs off the control queue;
 /// one lock orders it against seeks so the last decision is the one applied.
 /// </remarks>
-internal sealed class ScrubAudioMuter : IDisposable
+sealed class ScrubAudioMuter : IDisposable
 {
     /// <summary>How long a drag must rest before its audio comes back.</summary>
     internal static readonly TimeSpan DefaultQuietPeriod = TimeSpan.FromMilliseconds(120);
@@ -20,17 +20,17 @@ internal sealed class ScrubAudioMuter : IDisposable
     /// <summary>Ramp that brings audio back, short enough to feel immediate without a click.</summary>
     internal static readonly TimeSpan UnmuteRamp = TimeSpan.FromMilliseconds(20);
 
-    private readonly Action<bool, TimeSpan> _setMuted;
-    private readonly TimeProvider _timeProvider;
-    private TimeSpan _quietPeriod;
-    private readonly ITimer _timer;
-    private readonly Lock _gate = new();
-    private MediaScrubAudio _mode;
-    private long _lastSeekTimestamp;
-    private int _seeksRunning;
-    private bool _muted;
-    private bool _armed;
-    private bool _disposed;
+    readonly Action<bool, TimeSpan> _setMuted;
+    readonly TimeProvider _timeProvider;
+    TimeSpan _quietPeriod;
+    readonly ITimer _timer;
+    readonly Lock _gate = new();
+    MediaScrubAudio _mode;
+    long _lastSeekTimestamp;
+    int _seeksRunning;
+    bool _muted;
+    bool _armed;
+    bool _disposed;
 
     /// <param name="setMuted">Applies the mute (<see langword="true"/>) or unmute with the given ramp.</param>
     public ScrubAudioMuter(Action<bool, TimeSpan> setMuted, TimeProvider? timeProvider = null, TimeSpan? quietPeriod = null)
@@ -149,7 +149,7 @@ internal sealed class ScrubAudioMuter : IDisposable
         }
     }
 
-    private void OnQuietPeriodElapsed()
+    void OnQuietPeriodElapsed()
     {
         try
         {
@@ -162,7 +162,7 @@ internal sealed class ScrubAudioMuter : IDisposable
         }
     }
 
-    private void OnQuietPeriodElapsedCore()
+    void OnQuietPeriodElapsedCore()
     {
         lock (_gate)
         {
@@ -173,7 +173,7 @@ internal sealed class ScrubAudioMuter : IDisposable
             // The timer is armed once per quiet period rather than reset by every seek; a seek
             // that arrived meanwhile pushes the unmute out by the rest of its own quiet period,
             // and a seek still running holds it for a whole one.
-            TimeSpan remaining = _seeksRunning > 0
+            var remaining = _seeksRunning > 0
                 ? _quietPeriod
                 : _quietPeriod - _timeProvider.GetElapsedTime(_lastSeekTimestamp);
             if (remaining > TimeSpan.Zero)
@@ -187,7 +187,7 @@ internal sealed class ScrubAudioMuter : IDisposable
         }
     }
 
-    private void UnmuteLocked()
+    void UnmuteLocked()
     {
         if (!_muted)
             return;
@@ -196,7 +196,7 @@ internal sealed class ScrubAudioMuter : IDisposable
         Apply(muted: false, UnmuteRamp);
     }
 
-    private void Apply(bool muted, TimeSpan ramp)
+    void Apply(bool muted, TimeSpan ramp)
     {
         try
         {

@@ -23,7 +23,7 @@ public static class WpfMediaInputSources
         if (source is not BitmapSource bitmapSource)
             throw new NotSupportedException($"ImageSource type {source.GetType().Name} cannot be converted to a Core media input source. Use a BitmapSource-compatible image or pass MediaInputSource directly.");
 
-        BitmapSource bgraSource = bitmapSource.Format == PixelFormats.Bgra32
+        var bgraSource = bitmapSource.Format == PixelFormats.Bgra32
             ? bitmapSource
             : new FormatConvertedBitmap(bitmapSource, PixelFormats.Bgra32, null, 0);
 

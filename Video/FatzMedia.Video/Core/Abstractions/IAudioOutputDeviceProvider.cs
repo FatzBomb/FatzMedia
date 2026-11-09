@@ -1,6 +1,6 @@
 namespace FatzMedia.Video.Core.Abstractions;
 
-internal interface IAudioOutputDeviceProvider
+interface IAudioOutputDeviceProvider
 {
     int BassDeviceIndex { get; }
 }

@@ -94,7 +94,7 @@ public interface IMediaEngine : IDisposable
     event EventHandler? BackgroundCleared;
 }
 
-internal interface ILoopPlaybackControl
+interface ILoopPlaybackControl
 {
     bool LoopPlayback { get; set; }
     bool HandlesLoopInternally { get; }
@@ -104,7 +104,7 @@ internal interface ILoopPlaybackControl
 /// The background video's own pause, separate from the media's (owner decision 2026-11-06): an
 /// explicit pause holds until it is resumed, whatever the media does.
 /// </summary>
-internal interface IBackgroundPlaybackControl
+interface IBackgroundPlaybackControl
 {
     bool IsBackgroundPaused { get; }
 
@@ -113,7 +113,7 @@ internal interface IBackgroundPlaybackControl
     bool ResumeBackground();
 }
 
-internal interface IMediaLoopEventSource
+interface IMediaLoopEventSource
 {
     event EventHandler? MediaLooped;
 }

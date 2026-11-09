@@ -11,17 +11,17 @@ namespace FatzMedia.Video.Core.Video;
 /// supplies the device type, the FFmpeg device context, frame descriptors and device-loss checks,
 /// so no decoder produces frames on a device the renderer cannot draw.
 /// </summary>
-internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServices platform) : IVideoHardwareAccelerationServices
+sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServices platform) : IVideoHardwareAccelerationServices
 {
-    private readonly IVideoHardwareAccelerationServices _platform = platform ?? throw new ArgumentNullException(nameof(platform));
-    private readonly Lock _reportGate = new();
-    private IMediaRendererVideoDecodeDevice? _renderer;
-    private string? _reportedReason;
+    readonly IVideoHardwareAccelerationServices _platform = platform ?? throw new ArgumentNullException(nameof(platform));
+    readonly Lock _reportGate = new();
+    IMediaRendererVideoDecodeDevice? _renderer;
+    string? _reportedReason;
 
     // The device type of the last context the attached renderer supplied: its frames and device
     // stay the renderer's even while the renderer briefly has no device (recovering from a loss),
     // and routing them does not query the renderer for every frame.
-    private string? _suppliedDeviceType;
+    string? _suppliedDeviceType;
 
     /// <summary>Gets the attached renderer device, or null.</summary>
     public IMediaRendererVideoDecodeDevice? Renderer => Volatile.Read(ref _renderer);
@@ -57,7 +57,7 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     public bool TryCreateRendererDeviceContext(string deviceTypeName, out nint context)
     {
         context = 0;
-        if (!IsRendererType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer))
+        if (!IsRendererType(deviceTypeName, out var renderer))
             return false;
 
         context = renderer!.CreateVideoDecodeDeviceContext(out var reason);
@@ -79,21 +79,21 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     }
 
     public NativeVideoDeviceResource? CreateDeviceResource(string deviceTypeName, nint ffmpegHardwareDeviceContext) =>
-        IsSuppliedType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(deviceTypeName, out var renderer)
             ? renderer!.CreateVideoDecodeDeviceResource(ffmpegHardwareDeviceContext)
             : _platform.CreateDeviceResource(deviceTypeName, ffmpegHardwareDeviceContext);
 
     public NativeVideoFrameResource? CreateFrameResource(string deviceTypeName, NativeVideoDeviceResource device, nint ffmpegFrame) =>
-        IsSuppliedType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(deviceTypeName, out var renderer)
             ? renderer!.CreateVideoDecodeFrameResource(device, ffmpegFrame)
             : _platform.CreateFrameResource(deviceTypeName, device, ffmpegFrame);
 
     public bool IsDeviceLost(NativeVideoDeviceResource device) =>
-        IsSuppliedType(device.BackendId.Value, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(device.BackendId.Value, out var renderer)
             ? renderer!.IsVideoDecodeDeviceLost(device)
             : _platform.IsDeviceLost(device);
 
-    private bool IsRendererType(string? deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+    bool IsRendererType(string? deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
     {
         renderer = Renderer;
         return renderer is not null
@@ -105,7 +105,7 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     /// Whether <paramref name="deviceTypeName"/> belongs to the attached renderer: the type of a
     /// context it supplied, or the type it offers now.
     /// </summary>
-    private bool IsSuppliedType(string? deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+    bool IsSuppliedType(string? deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
     {
         renderer = Renderer;
         if (renderer is not null && deviceTypeName is not null
@@ -117,7 +117,7 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
         return IsRendererType(deviceTypeName, out renderer);
     }
 
-    private void ReportUnavailable(string reason)
+    void ReportUnavailable(string reason)
     {
         lock (_reportGate)
         {

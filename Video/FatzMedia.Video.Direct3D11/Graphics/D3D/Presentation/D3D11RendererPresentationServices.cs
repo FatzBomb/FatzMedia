@@ -1,5 +1,6 @@
-using FatzMedia.Video.Core.Configuration;
+using System.Diagnostics;
 using FatzMedia.Video.Core.Cdg;
+using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Graphics.Composition;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
@@ -12,7 +13,6 @@ using FatzMedia.Video.Core.Graphics.D3D.Upload;
 using FatzMedia.Video.Core.Graphics.D3D.Video;
 using FatzMedia.Video.Core.Video.Hdr;
 using FatzMedia.Video.Direct3D11;
-using System.Diagnostics;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 
@@ -21,24 +21,24 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// Keeping this object graph out of the renderer makes the renderer a small coordinator while
 /// preserving the existing backend, upload, compositor, and presenter lifetimes.
 /// </summary>
-internal sealed class D3D11RendererPresentationServices
+sealed class D3D11RendererPresentationServices
 {
-    private const int DirectCompositionOverlaySplitDiagnosticInterval = 120;
+    const int DirectCompositionOverlaySplitDiagnosticInterval = 120;
 
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly D3D11DeviceResources _deviceResources;
-    private bool _directCompositionOverlaySplitActive;
-    private bool _directCompositionOverlaySplitBaseStateValid;
-    private bool _directCompositionOverlaySplitOverlayStateValid;
-    private DirectCompositionOverlaySplitBaseState _directCompositionOverlaySplitBaseState;
-    private DirectCompositionOverlaySplitOverlayState _directCompositionOverlaySplitOverlayState;
-    private int _directCompositionOverlaySplitPresents;
-    private int _directCompositionOverlaySplitFallbacks;
-    private int _directCompositionOverlaySplitOverlayPresentFailures;
-    private int _directCompositionOverlaySplitBasePresents;
-    private int _directCompositionOverlaySplitBaseSkips;
-    private int _directCompositionOverlaySplitOverlayPresents;
-    private int _directCompositionOverlaySplitOverlaySkips;
+    readonly MediaPlayerConfiguration _configuration;
+    readonly D3D11DeviceResources _deviceResources;
+    bool _directCompositionOverlaySplitActive;
+    bool _directCompositionOverlaySplitBaseStateValid;
+    bool _directCompositionOverlaySplitOverlayStateValid;
+    DirectCompositionOverlaySplitBaseState _directCompositionOverlaySplitBaseState;
+    DirectCompositionOverlaySplitOverlayState _directCompositionOverlaySplitOverlayState;
+    int _directCompositionOverlaySplitPresents;
+    int _directCompositionOverlaySplitFallbacks;
+    int _directCompositionOverlaySplitOverlayPresentFailures;
+    int _directCompositionOverlaySplitBasePresents;
+    int _directCompositionOverlaySplitBaseSkips;
+    int _directCompositionOverlaySplitOverlayPresents;
+    int _directCompositionOverlaySplitOverlaySkips;
 
     public D3D11RendererPresentationServices(
         MediaPlayerConfiguration configuration,
@@ -63,7 +63,7 @@ internal sealed class D3D11RendererPresentationServices
             () => VideoProcessorPresenter.Reset(),
             static () => { });
 
-        D3D11NativeHwndSwapChainBackend nativeHwndBackend = CreateNativeHwndBackend();
+        var nativeHwndBackend = CreateNativeHwndBackend();
         var directCompositionBackend = new D3D11DirectCompositionSingleTargetBackend(
             configuration,
             options.NativeSwapChainPresentMode,
@@ -323,12 +323,12 @@ internal sealed class D3D11RendererPresentationServices
         return PresentMediaCompositionToFinalTargets(isDisposed, frame, framePresented);
     }
 
-    private bool PresentMediaCompositionToFinalTargets(
+    bool PresentMediaCompositionToFinalTargets(
         Func<bool> isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented)
     {
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = Surfaces.GetActiveTargetSnapshots(
+        var targets = Surfaces.GetActiveTargetSnapshots(
             applyPendingNativeResize: true,
             reason: "media composition presentation");
         if (targets.Count == 0)
@@ -338,14 +338,14 @@ internal sealed class D3D11RendererPresentationServices
             return false;
         }
 
-        HdrOutputDecision? hdrOutput = PrepareCompositionHdrOutput(frame, ref targets);
+        var hdrOutput = PrepareCompositionHdrOutput(frame, ref targets);
         if (!MediaCompositor.PresentToTargets(
                 _deviceResources,
                 frame,
                 targets,
                 VideoProcessorPresenter,
                 hdrOutput,
-                out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
+                out var presentedTargets))
         {
             LastPresentFailureReason = MediaCompositor.LastFailureReason ?? "media compositor draw failed";
             if (_configuration.EnableLogging) Debug.WriteLine($"[COMPOSITION] Visible present failed in media compositor reason={frame.Reason}.");
@@ -371,28 +371,28 @@ internal sealed class D3D11RendererPresentationServices
     /// buffer (a format change, or a failed attempt that released it), the targets are taken
     /// again: the old snapshot holds a disposed texture.
     /// </summary>
-    private HdrOutputDecision? PrepareCompositionHdrOutput(MediaCompositionFrame frame, ref IReadOnlyList<D3D11PresentationTargetSnapshot> targets)
+    HdrOutputDecision? PrepareCompositionHdrOutput(MediaCompositionFrame frame, ref IReadOnlyList<D3D11PresentationTargetSnapshot> targets)
     {
         if (!HdrOutput.IsEnabled)
             return null;
 
-        HdrToneMapRequest? content = frame.HasNativeBackground
+        var content = frame.HasNativeBackground
             ? frame.BackgroundNativeResource!.HdrToneMap
             : frame.HasBackground ? null : frame.HasRetainedBackground ? MediaCompositor.BackgroundHdrContent : null;
-        string? blocker = targets.Count > 1
+        var blocker = targets.Count > 1
             ? D3D11HdrOutputController.SecondaryTargetReason
             : !frame.BaseVisualTransform.IsIdentity ? D3D11HdrOutputController.VideoEffectReason : null;
 
-        ID3D11PresentationBackend? primary = Backends.Active;
+        var primary = Backends.Active;
         var before = primary?.TargetTexture;
-        HdrOutputDecision? decision = HdrOutput.PreparePrimary(primary, content, blocker);
+        var decision = HdrOutput.PreparePrimary(primary, content, blocker);
         if (primary != null && !ReferenceEquals(primary.TargetTexture, before))
             targets = Surfaces.GetActiveTargetSnapshots(applyPendingNativeResize: false, reason: "media composition presentation (HDR output changed)");
 
         return decision;
     }
 
-    private bool PresentMediaCompositionWithDirectCompositionOverlaySplit(
+    bool PresentMediaCompositionWithDirectCompositionOverlaySplit(
         Func<bool> isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented,
@@ -406,11 +406,11 @@ internal sealed class D3D11RendererPresentationServices
         overlaySkipped = false;
         overlayPresentFailure = false;
 
-        CdgRenderSnapshot? snapshot = frame.CdgOverlay;
-        if (snapshot == null || !Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot overlayTarget))
+        var snapshot = frame.CdgOverlay;
+        if (snapshot == null || !Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out var overlayTarget))
             return false;
 
-        DirectCompositionOverlaySplitBaseState baseState = CreateDirectCompositionOverlaySplitBaseState(frame, overlayTarget);
+        var baseState = CreateDirectCompositionOverlaySplitBaseState(frame, overlayTarget);
         var shouldPresentBase = ShouldPresentDirectCompositionOverlaySplitBase(baseState);
         if (shouldPresentBase && !PresentMediaCompositionToFinalTargets(isDisposed, AsDirectCompositionBaseFrame(frame), framePresented))
             return false;
@@ -422,7 +422,7 @@ internal sealed class D3D11RendererPresentationServices
             basePresented = true;
         }
 
-        DirectCompositionOverlaySplitOverlayState overlayState = CreateDirectCompositionOverlaySplitOverlayState(snapshot, overlayTarget);
+        var overlayState = CreateDirectCompositionOverlaySplitOverlayState(snapshot, overlayTarget);
         var shouldPresentOverlay = ShouldPresentDirectCompositionOverlaySplitOverlay(overlayState);
         if (!shouldPresentOverlay)
         {
@@ -448,21 +448,21 @@ internal sealed class D3D11RendererPresentationServices
         return true;
     }
 
-    private bool ShouldPresentDirectCompositionOverlaySplitBase(DirectCompositionOverlaySplitBaseState baseState) =>
+    bool ShouldPresentDirectCompositionOverlaySplitBase(DirectCompositionOverlaySplitBaseState baseState) =>
         !_directCompositionOverlaySplitActive
         || !_directCompositionOverlaySplitBaseStateValid
         || baseState != _directCompositionOverlaySplitBaseState;
 
-    private bool ShouldPresentDirectCompositionOverlaySplitOverlay(DirectCompositionOverlaySplitOverlayState overlayState) =>
+    bool ShouldPresentDirectCompositionOverlaySplitOverlay(DirectCompositionOverlaySplitOverlayState overlayState) =>
         !_directCompositionOverlaySplitActive
         || !_directCompositionOverlaySplitOverlayStateValid
         || overlayState != _directCompositionOverlaySplitOverlayState;
 
-    private static bool IsDirectCompositionOverlaySplitCandidate(MediaCompositionFrame frame) =>
+    static bool IsDirectCompositionOverlaySplitCandidate(MediaCompositionFrame frame) =>
         frame.HasCdgOverlay
         && (frame.HasBackground || frame.HasNativeBackground || frame.HasRetainedBackground);
 
-    private bool CanUseDirectCompositionOverlaySplit(MediaCompositionFrame frame) =>
+    bool CanUseDirectCompositionOverlaySplit(MediaCompositionFrame frame) =>
         Backends.DirectComposition.IsActive
         && !Backends.HasMultipleActiveTargets
         && !State.IsNativeLiveResizeInProgress
@@ -470,7 +470,7 @@ internal sealed class D3D11RendererPresentationServices
         && (frame.BaseVisualTransform.IsIdentity || !frame.BaseVisualTransform.IncludeOverlays)
         && IsDirectCompositionOverlaySplitCandidate(frame);
 
-    private void RecordDirectCompositionOverlaySplitDiagnostics(
+    void RecordDirectCompositionOverlaySplitDiagnostics(
         bool splitPresented,
         bool fallback,
         bool overlayPresentFailure,
@@ -524,7 +524,7 @@ internal sealed class D3D11RendererPresentationServices
         _directCompositionOverlaySplitOverlaySkips = 0;
     }
 
-    private void ClearDirectCompositionOverlaySplitIfNeeded(bool isDisposed)
+    void ClearDirectCompositionOverlaySplitIfNeeded(bool isDisposed)
     {
         if (!_directCompositionOverlaySplitActive)
             return;
@@ -562,7 +562,7 @@ internal sealed class D3D11RendererPresentationServices
         frame.BackgroundNativeWidth,
         frame.BackgroundNativeHeight);
 
-    private static DirectCompositionOverlaySplitOverlayState CreateDirectCompositionOverlaySplitOverlayState(
+    static DirectCompositionOverlaySplitOverlayState CreateDirectCompositionOverlaySplitOverlayState(
         CdgRenderSnapshot snapshot,
         D3D11PresentationTargetSnapshot overlayTarget) => new(
         overlayTarget.Revision,
@@ -571,7 +571,7 @@ internal sealed class D3D11RendererPresentationServices
         overlayTarget.Width,
         overlayTarget.Height);
 
-    private static MediaCompositionFrame AsDirectCompositionBaseFrame(MediaCompositionFrame frame) => frame with
+    static MediaCompositionFrame AsDirectCompositionBaseFrame(MediaCompositionFrame frame) => frame with
     {
         SuppressCdgOverlayDraw = true,
         Reason = string.IsNullOrWhiteSpace(frame.Reason)
@@ -627,7 +627,7 @@ internal sealed class D3D11RendererPresentationServices
         int BackgroundNativeWidth,
         int BackgroundNativeHeight);
 
-    private readonly record struct DirectCompositionOverlaySplitOverlayState(
+    readonly record struct DirectCompositionOverlaySplitOverlayState(
         long TargetRevision,
         long SnapshotRevision,
         long PaletteRevision,

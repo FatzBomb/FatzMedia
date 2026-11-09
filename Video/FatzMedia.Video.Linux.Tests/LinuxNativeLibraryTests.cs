@@ -50,7 +50,7 @@ public sealed class LinuxNativeLibraryCatalogTests
 
 public sealed class LinuxNativeLibraryLocatorTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "fbm-linux-" + Guid.NewGuid().ToString("N"));
+    readonly string _root = Path.Combine(Path.GetTempPath(), "fbm-linux-" + Guid.NewGuid().ToString("N"));
 
     public LinuxNativeLibraryLocatorTests() => Directory.CreateDirectory(_root);
 
@@ -66,7 +66,7 @@ public sealed class LinuxNativeLibraryLocatorTests : IDisposable
         var native = Directory.CreateDirectory(Path.Combine(_root, "native")).FullName;
         var rid = Directory.CreateDirectory(Path.Combine(_root, "runtimes", "linux-x64", "native")).FullName;
 
-        IReadOnlyList<string> paths = LinuxNativeLibraryLocator.BuildSearchPaths([host, "native"], _root, "linux-x64");
+        var paths = LinuxNativeLibraryLocator.BuildSearchPaths([host, "native"], _root, "linux-x64");
 
         Assert.Equal([host, native, Path.GetFullPath(_root), rid], paths);
     }
@@ -76,7 +76,7 @@ public sealed class LinuxNativeLibraryLocatorTests : IDisposable
     {
         var rejected = new List<string>();
 
-        IReadOnlyList<string> paths = LinuxNativeLibraryLocator.BuildSearchPaths([Path.Combine(_root, "missing")], _root, "linux-x64", rejected);
+        var paths = LinuxNativeLibraryLocator.BuildSearchPaths([Path.Combine(_root, "missing")], _root, "linux-x64", rejected);
 
         Assert.Single(rejected);
         Assert.Equal([Path.GetFullPath(_root)], paths);
@@ -91,7 +91,7 @@ public sealed class LinuxNativeLibraryLocatorTests : IDisposable
         File.WriteAllText(Path.Combine(second, "libbass.so"), "");
         File.WriteAllText(Path.Combine(second, "libbass_fx.so"), "");
 
-        Dictionary<string, string> found = LinuxNativeLibraryLocator.Locate([first, second], ["libbass.so", "libbass_fx.so", "libbassflac.so"]);
+        var found = LinuxNativeLibraryLocator.Locate([first, second], ["libbass.so", "libbass_fx.so", "libbassflac.so"]);
 
         Assert.Equal(Path.Combine(first, "libbass.so"), found["libbass.so"]);
         Assert.Equal(Path.Combine(second, "libbass_fx.so"), found["libbass_fx.so"]);
@@ -117,8 +117,8 @@ public sealed class LinuxNativeLibraryLocatorTests : IDisposable
 [Collection("File type registry")]
 public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "fbm-linux-boot-" + Guid.NewGuid().ToString("N"));
-    private readonly ITestOutputHelper _output;
+    readonly string _root = Path.Combine(Path.GetTempPath(), "fbm-linux-boot-" + Guid.NewGuid().ToString("N"));
+    readonly ITestOutputHelper _output;
 
     public LinuxNativeLibraryBootstrapperTests(ITestOutputHelper output)
     {
@@ -139,7 +139,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var operations = new FakeOperations();
         var bootstrapper = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64");
 
-        LinuxNativeLoadResult result = bootstrapper.EnsureInitialized([dir]);
+        var result = bootstrapper.EnsureInitialized([dir]);
 
         Assert.True(result.IsInitialized, result.Message);
         Assert.Equal(dir, result.BassDirectory);
@@ -159,7 +159,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var dir = CreateLibraries(["libbass.so", "libbassflac.so", .. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
         var operations = new FakeOperations();
 
-        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
+        var result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
 
         Assert.True(result.IsInitialized, result.Message);
         Assert.False(result.IsBassLoaded);
@@ -177,12 +177,12 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
     {
         var dir = CreateLibraries([.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
 
-        NativeDependencyReport report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]).Report;
+        var report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]).Report;
 
         Assert.False(report.IsAudioAvailable);
         Assert.True(report.RequiredLoaded);
         Assert.Empty(report.RequiredProblems);
-        NativeLibraryCheck bass = Single(report, "libbass.so");
+        var bass = Single(report, "libbass.so");
         Assert.False(bass.IsRequired);
         Assert.Equal(NativeLibraryStatus.Missing, bass.Status);
         Assert.Equal(NativeDependencyReport.AudioUnavailableLine, report.Describe()[0]);
@@ -197,7 +197,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         Assert.False(bootstrapper.EnsureInitialized([ffmpegOnly]).IsAudioAvailable);
         var bass = CreateLibraries(["libbass.so", "libbass_fx.so"]);
 
-        LinuxNativeLoadResult result = bootstrapper.EnsureInitialized([bass]);
+        var result = bootstrapper.EnsureInitialized([bass]);
 
         Assert.True(result.IsAudioAvailable, result.Message);
         Assert.Equal(ffmpegOnly, result.FfmpegDirectory);
@@ -211,7 +211,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
     {
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]]);
 
-        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]);
+        var result = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]);
 
         Assert.True(result.IsBassLoaded);
         Assert.False(result.IsFfmpegLoaded);
@@ -224,7 +224,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
         var operations = new FakeOperations { FfmpegActivates = false };
 
-        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
+        var result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
 
         Assert.False(result.IsFfmpegLoaded);
         Assert.Contains("did not initialize", result.Message, StringComparison.Ordinal);
@@ -244,10 +244,10 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
         var operations = new FakeOperations();
         var bootstrapper = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64");
-        LinuxNativeLoadResult first = bootstrapper.EnsureInitialized([dir]);
+        var first = bootstrapper.EnsureInitialized([dir]);
         var loads = operations.Loaded.Count;
 
-        LinuxNativeLoadResult second = bootstrapper.EnsureInitialized([Path.Combine(_root, "elsewhere")]);
+        var second = bootstrapper.EnsureInitialized([Path.Combine(_root, "elsewhere")]);
 
         Assert.Same(first, second);
         Assert.Equal(loads, operations.Loaded.Count);
@@ -270,7 +270,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
         var operations = new FakeOperations { FailLoading = "libbass.so" };
 
-        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
+        var result = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64").EnsureInitialized([dir]);
 
         Assert.True(result.IsInitialized);
         Assert.False(result.IsBassLoaded);
@@ -285,8 +285,8 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         string[] ffmpeg8 = [.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Select(static name => DowngradeMajor(name))];
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", "libbassflac.so", .. ffmpeg8]);
 
-        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]);
-        NativeDependencyReport report = result.Report;
+        var result = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]);
+        var report = result.Report;
 
         Assert.False(report.RequiredLoaded);
         Assert.Equal(NativeLibraryStatus.Loaded, Single(report, "libbass.so").Status);
@@ -295,7 +295,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         Assert.Contains(report.OptionalProblems, static check => check.FileName == "libbassopus.so");
 
         var avcodec = $"libavcodec.so.{FFmpeg.AutoGen.ffmpeg.LIBAVCODEC_VERSION_MAJOR}";
-        NativeLibraryCheck codec = Single(report, avcodec);
+        var codec = Single(report, avcodec);
         Assert.Equal(NativeLibraryStatus.Missing, codec.Status);
         Assert.True(codec.IsRequired);
         Assert.Contains(DowngradeMajor(avcodec), codec.Hint, StringComparison.Ordinal);
@@ -309,7 +309,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
     {
         var dir = CreateLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
 
-        NativeDependencyReport report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]).Report;
+        var report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]).Report;
 
         Assert.True(report.RequiredLoaded);
         Assert.Empty(report.RequiredProblems);
@@ -322,17 +322,17 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var first = CreateLibraries(["libbass.so", "libbass_fx.so", LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]]);
         var second = CreateLibraries([.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Skip(1)]);
 
-        NativeDependencyReport report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([first, second]).Report;
+        var report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([first, second]).Report;
 
-        NativeLibraryCheck avutil = Single(report, LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]);
+        var avutil = Single(report, LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]);
         Assert.Equal(NativeLibraryStatus.NotLoaded, avutil.Status);
         Assert.Equal(Path.Combine(first, avutil.FileName), avutil.Path);
     }
 
-    private static NativeLibraryCheck Single(NativeDependencyReport report, string fileName) =>
+    static NativeLibraryCheck Single(NativeDependencyReport report, string fileName) =>
         Assert.Single(report.Libraries, check => check.FileName == fileName);
 
-    private static string DowngradeMajor(string soname)
+    static string DowngradeMajor(string soname)
     {
         var index = soname.LastIndexOf('.');
         return $"{soname[..(index + 1)]}{int.Parse(soname[(index + 1)..], System.Globalization.CultureInfo.InvariantCulture) - 1}";
@@ -350,7 +350,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         var operations = new FakeOperations { FailLoading = "libbass.so" };
         File.WriteAllText(Path.Combine(dir, "libbass.so"), "");
         var bootstrapper = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64");
-        LinuxNativeLoadResult first = bootstrapper.EnsureInitialized([dir]);
+        var first = bootstrapper.EnsureInitialized([dir]);
         Assert.False(first.IsAudioAvailable);
         var loads = operations.Loaded.Count;
 
@@ -363,7 +363,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         Assert.Same(first, bootstrapper.LastResult);
     }
 
-    private string CreateLibraries(IEnumerable<string> fileNames)
+    string CreateLibraries(IEnumerable<string> fileNames)
     {
         var dir = Directory.CreateDirectory(Path.Combine(_root, "libs-" + Guid.NewGuid().ToString("N")[..6])).FullName;
         foreach (var fileName in fileNames)
@@ -371,7 +371,7 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         return dir;
     }
 
-    private sealed class FakeOperations : ILinuxNativeOperations
+    sealed class FakeOperations : ILinuxNativeOperations
     {
         public List<string> Loaded { get; } = [];
         public List<string> Plugins { get; } = [];

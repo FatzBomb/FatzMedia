@@ -28,17 +28,17 @@ public enum PlayerFlyout
 /// </summary>
 public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
-    private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
+    static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
 
-    private readonly PlayerHost _host;
-    private readonly IPlayerTimer _positionTimer;
-    private readonly Lock _startGate = new();
-    private Task? _startTask;
-    private bool _isSeekPreviewActive;
-    private DateTime _suppressPositionRefresh = DateTime.MinValue;
-    private int _pitch;
-    private int _tempo = 100;
-    private bool _disposed;
+    readonly PlayerHost _host;
+    readonly IPlayerTimer _positionTimer;
+    readonly Lock _startGate = new();
+    Task? _startTask;
+    bool _isSeekPreviewActive;
+    DateTime _suppressPositionRefresh = DateTime.MinValue;
+    int _pitch;
+    int _tempo = 100;
+    bool _disposed;
 
     public PlayerViewModel(PlayerStartupOptions options, PlayerHost host)
     {
@@ -224,7 +224,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     } = true;
 
-    private static MediaScrubAudio ToScrubAudio(bool silentDrag) =>
+    static MediaScrubAudio ToScrubAudio(bool silentDrag) =>
         silentDrag ? MediaScrubAudio.SilentWhileMoving : MediaScrubAudio.Audible;
 
     /// <summary>
@@ -242,7 +242,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
-    private static VideoFrameTiming ToFrameTiming(bool displayLocked) =>
+    static VideoFrameTiming ToFrameTiming(bool displayLocked) =>
         displayLocked ? VideoFrameTiming.DisplayLocked : VideoFrameTiming.SourceCadence;
 
     public bool AutoPlay
@@ -368,7 +368,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             return _startTask ??= StartCoreAsync();
     }
 
-    private async Task StartCoreAsync()
+    async Task StartCoreAsync()
     {
         _positionTimer.Start();
         await InitializePlayerAsync();
@@ -388,7 +388,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             IsBusy = true;
             LoadingMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } loading ? loading : mediaPath;
             StatusText = $"Loading: {mediaPath}";
-            PlayerCore? player = Player;
+            var player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             if (loaded)
                 LoadedMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } name ? name : mediaPath;
@@ -407,7 +407,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
-    private async Task OpenFileAsync()
+    async Task OpenFileAsync()
     {
         if (_host.FilePicker is not { } picker)
         {
@@ -440,7 +440,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     /// <summary>Adds host-specific parts to the startup status line (for example the presentation mode), or null.</summary>
     protected virtual string? DescribeHostStartup() => null;
 
-    private async Task InitializePlayerAsync()
+    async Task InitializePlayerAsync()
     {
         PlayerCore? createdPlayer = null;
         var creationStarted = false;
@@ -449,7 +449,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            PlayerRendererInfo renderer = await _host.Engine.ResolveRendererAsync();
+            var renderer = await _host.Engine.ResolveRendererAsync();
             if (_disposed)
                 return;
 
@@ -476,11 +476,11 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             };
 
             // Logged before the engine starts, so they are there even when native loading fails.
-            foreach ((MediaDiagnosticLevel level, string message) in renderer.LogLines)
+            foreach ((var level, var message) in renderer.LogLines)
                 HandleDiagnosticOnUiThread(level, "Renderer", message);
 
             creationStarted = true;
-            PlayerCore player = await _host.Engine.CreatePlayerAsync(renderer, configuration);
+            var player = await _host.Engine.CreatePlayerAsync(renderer, configuration);
             createdPlayer = player;
             if (_disposed)
             {
@@ -544,23 +544,23 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
-    private bool CanLoadMedia(string? filePath) => !IsBusy && Player is not null && !string.IsNullOrWhiteSpace(filePath);
+    bool CanLoadMedia(string? filePath) => !IsBusy && Player is not null && !string.IsNullOrWhiteSpace(filePath);
 
-    private bool CanUsePlayer() => !IsBusy && Player is not null;
+    bool CanUsePlayer() => !IsBusy && Player is not null;
 
-    private Task PlayAsync() =>
+    Task PlayAsync() =>
         RunTransportCommandAsync("Starting playback...", "Playing", "Could not start playback.", player => player.PlayAsync());
 
-    private Task PauseAsync() =>
+    Task PauseAsync() =>
         RunTransportCommandAsync("Pausing...", "Paused", "Could not pause playback.", player => player.PauseAsync());
 
     // State is a plain read (no engine lock), unlike Position: safe on the UI thread.
-    private Task TogglePlayPauseAsync() => (Player?.State ?? PlaybackState) == MediaPlayerState.Playing ? PauseAsync() : PlayAsync();
+    Task TogglePlayPauseAsync() => (Player?.State ?? PlaybackState) == MediaPlayerState.Playing ? PauseAsync() : PlayAsync();
 
-    private Task StopAsync() =>
+    Task StopAsync() =>
         RunTransportCommandAsync("Stopping...", "Stopped", "Could not stop playback.", player => player.StopAsync());
 
-    private async Task RunTransportCommandAsync(
+    async Task RunTransportCommandAsync(
         string workingStatus,
         string completedStatus,
         string failedStatus,
@@ -587,7 +587,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
-    private void RefreshCommandStates()
+    void RefreshCommandStates()
     {
         OnPropertyChanged(nameof(CanOpen));
         OnPropertyChanged(nameof(CanSeek));
@@ -605,7 +605,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         OnPropertyChanged(nameof(CanSwitchMode));
     }
 
-    private void AdjustSync(string? command)
+    void AdjustSync(string? command)
     {
         if (Player is not { } player || string.IsNullOrWhiteSpace(command))
             return;
@@ -628,14 +628,14 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         StatusText = $"{GetSyncLabel(command)} sync {FormatSyncOffset(offset.Value)}";
     }
 
-    private void ResetSync()
+    void ResetSync()
     {
         Player?.ResetSyncOffsets();
         RefreshSyncOffsets();
         StatusText = "Playback sync offsets reset.";
     }
 
-    private void ToggleFlyout(string? key)
+    void ToggleFlyout(string? key)
     {
         var flyout = ParseFlyout(key);
         ActiveFlyout = ActiveFlyout == flyout ? PlayerFlyout.None : flyout;
@@ -655,7 +655,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     public void CloseFlyout() => ActiveFlyout = PlayerFlyout.None;
 
-    private void RefreshSyncOffsets()
+    void RefreshSyncOffsets()
     {
         AudioVideoSyncText = FormatSyncOffset(Player?.AudioSyncOffset ?? TimeSpan.Zero);
         CdgSyncText = FormatSyncOffset(Player?.CdgSyncOffset ?? TimeSpan.Zero);
@@ -663,7 +663,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         RefreshCommandStates();
     }
 
-    private static string GetSyncLabel(string command) => command.StartsWith("audio", StringComparison.Ordinal)
+    static string GetSyncLabel(string command) => command.StartsWith("audio", StringComparison.Ordinal)
         ? "A/V"
         : command.StartsWith("cdg", StringComparison.Ordinal)
             ? "CDG"
@@ -672,9 +672,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     /// <summary>Formats a sync offset as shown in the Sync flyout, for example "+0.1s".</summary>
     public static string FormatSyncOffset(TimeSpan offset) => $"{offset.TotalSeconds:+0.0;-0.0;0.0}s";
 
-    private void SuppressPositionRefresh() => _suppressPositionRefresh = DateTime.UtcNow + SeekRefreshHold;
+    void SuppressPositionRefresh() => _suppressPositionRefresh = DateTime.UtcNow + SeekRefreshHold;
 
-    private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+    static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 
     /// <summary>Formats a time as the seek bar shows it: m:ss, or h:mm:ss from an hour.</summary>
     public static string FormatTime(double totalSeconds)
@@ -685,10 +685,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             : $"{time.Minutes}:{time.Seconds:00}";
     }
 
-    private void OnPlayerDiagnostic(object? sender, MediaDiagnosticEventArgs e)
+    void OnPlayerDiagnostic(object? sender, MediaDiagnosticEventArgs e)
         => HandleDiagnosticOnUiThread(e.Level, e.Category, e.Message);
 
-    private void OnPlayerError(object? sender, MediaErrorEventArgs e)
+    void OnPlayerError(object? sender, MediaErrorEventArgs e)
     {
         HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
         if (e.Code == MediaErrorCode.RendererDeviceLost)
@@ -703,20 +703,20 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     // Traced on the raising thread before the hop, so a frozen UI thread does not hide it from
     // the debug log (ENG-039: a GPU reset froze the UI and the log ended before it).
-    private void HandleDiagnosticOnUiThread(MediaDiagnosticLevel level, string category, string message)
+    void HandleDiagnosticOnUiThread(MediaDiagnosticLevel level, string category, string message)
     {
         var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
         TraceLogEntry(entry);
         RunOnUiThread(() => ShowDiagnostic(entry));
     }
 
-    private void OnPlayerPitchChanged(object? sender, MediaValueChangedEventArgs<int> e)
+    void OnPlayerPitchChanged(object? sender, MediaValueChangedEventArgs<int> e)
         => RunOnUiThread(() => SetPitchFromPlayer(e.CurrentValue));
 
-    private void OnPlayerTempoChanged(object? sender, MediaValueChangedEventArgs<int> e)
+    void OnPlayerTempoChanged(object? sender, MediaValueChangedEventArgs<int> e)
         => RunOnUiThread(() => SetTempoFromPlayer(e.CurrentValue));
 
-    private void RefreshEffectValues()
+    void RefreshEffectValues()
     {
         if (Player is not { } player)
             return;
@@ -725,13 +725,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         SetTempoFromPlayer(player.Effects.Tempo);
     }
 
-    private void SetPitchFromPlayer(int value)
+    void SetPitchFromPlayer(int value)
     {
         _pitch = Math.Clamp(value, -12, 12);
         OnPropertyChanged(nameof(Pitch));
     }
 
-    private void SetTempoFromPlayer(int value)
+    void SetTempoFromPlayer(int value)
     {
         _tempo = Math.Clamp(value, 50, 200);
         OnPropertyChanged(nameof(Tempo));
@@ -746,7 +746,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         if (_disposed)
             return;
 
-        IPlayerDispatcher dispatcher = _host.Dispatcher;
+        var dispatcher = _host.Dispatcher;
         if (dispatcher.CheckAccess())
         {
             update();
@@ -764,9 +764,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     /// Logs each native library that did not load, with its exact file name and any version hint
     /// (for example an FFmpeg 8 DLL where FFmpeg 9 is needed). Required ones are errors.
     /// </summary>
-    private void ReportNativeDependencies(NativeDependencyReport report)
+    void ReportNativeDependencies(NativeDependencyReport report)
     {
-        IReadOnlyList<string> lines = report.Describe();
+        var lines = report.Describe();
         var requiredCount = report.RequiredProblems.Count;
         for (var index = 0; index < lines.Count; index++)
             HandleDiagnostic(index < requiredCount ? MediaDiagnosticLevel.Error : MediaDiagnosticLevel.Warning, "NativeLibraries", lines[index]);
@@ -788,7 +788,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     }
 
     // UI thread: the log panel and, for a warning or an error, the status line.
-    private void ShowDiagnostic(DiagnosticLogEntry entry)
+    void ShowDiagnostic(DiagnosticLogEntry entry)
     {
         AppendToLog(entry);
         if (entry.Level >= MediaDiagnosticLevel.Warning)
@@ -823,7 +823,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         GC.SuppressFinalize(this);
     }
 
-    private PlayerCore? DetachPlayer()
+    PlayerCore? DetachPlayer()
     {
         if (_disposed) return null;
 

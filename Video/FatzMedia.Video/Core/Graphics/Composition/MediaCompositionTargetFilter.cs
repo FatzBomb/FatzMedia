@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Graphics.Composition;
 /// </summary>
 public sealed class MediaCompositionTargetFilter
 {
-    private readonly HashSet<string> _secondarySurfaceIds;
+    readonly HashSet<string> _secondarySurfaceIds;
 
     public MediaCompositionTargetFilter(bool includesPrimary, IEnumerable<string> secondarySurfaceIds)
     {

@@ -7,19 +7,19 @@ namespace FatzMedia.Video.Controllers;
 /// <summary>
 /// Controls media playback operations.
 /// </summary>
-internal sealed class MediaControls
+sealed class MediaControls
 {
-    private readonly IMediaEngine _mediaEngine;
-    private readonly IMediaRenderCoordinator? _mediaRenderer;
-    private readonly Action<Action>? _dispatchControlOperation;
-    private MediaPlayerState _lastReportedState;
-    private long _transportGeneration;
-    private volatile bool _handlingMediaEnd;
-    private volatile bool _disposed;
-    private const double ScrubRepeatToleranceSeconds = 0.001;
-    private readonly Lock _scrubGate = new();
-    private bool _scrubbing;
-    private double _lastScrubTarget = double.NaN;
+    readonly IMediaEngine _mediaEngine;
+    readonly IMediaRenderCoordinator? _mediaRenderer;
+    readonly Action<Action>? _dispatchControlOperation;
+    MediaPlayerState _lastReportedState;
+    long _transportGeneration;
+    volatile bool _handlingMediaEnd;
+    volatile bool _disposed;
+    const double ScrubRepeatToleranceSeconds = 0.001;
+    readonly Lock _scrubGate = new();
+    bool _scrubbing;
+    double _lastScrubTarget = double.NaN;
 
     internal MediaControls(
         IMediaEngine mediaEngine,
@@ -309,7 +309,7 @@ internal sealed class MediaControls
     /// </summary>
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    private void OnMediaEnded(object? sender, EventArgs e)
+    void OnMediaEnded(object? sender, EventArgs e)
     {
         var transportGeneration = Volatile.Read(ref _transportGeneration);
         if (_dispatchControlOperation is not null)
@@ -321,7 +321,7 @@ internal sealed class MediaControls
         BeginMediaEnd(transportGeneration);
     }
 
-    private void BeginMediaEnd(long transportGeneration)
+    void BeginMediaEnd(long transportGeneration)
     {
         try
         {
@@ -354,7 +354,7 @@ internal sealed class MediaControls
         }
     }
 
-    private void CompleteMediaEnd(long transportGeneration)
+    void CompleteMediaEnd(long transportGeneration)
     {
         try
         {
@@ -410,16 +410,16 @@ internal sealed class MediaControls
         }
     }
 
-    private bool IsNetworkSource =>
+    bool IsNetworkSource =>
         _mediaEngine is IMediaSourceCapabilityProvider { CurrentCapabilities.SourceClass: MediaSourceClass.NetworkFile or MediaSourceClass.NetworkLive };
 
-    private void StartRendering() => _mediaRenderer?.StartRendering();
+    void StartRendering() => _mediaRenderer?.StartRendering();
 
-    private void StopRendering() => _mediaRenderer?.StopRendering();
+    void StopRendering() => _mediaRenderer?.StopRendering();
 
-    private void OnEngineMediaLooped(object? sender, EventArgs e) => RaiseMediaLooped();
+    void OnEngineMediaLooped(object? sender, EventArgs e) => RaiseMediaLooped();
 
-    private void RaiseMediaLooped() => HostEventDispatcher.Raise(
+    void RaiseMediaLooped() => HostEventDispatcher.Raise(
         this,
         MediaLooped,
         new MediaLoopedEventArgs(Position),
@@ -427,9 +427,9 @@ internal sealed class MediaControls
 
     internal bool ReportCurrentState() => RaiseStateChanged();
 
-    private bool RaiseStateChanged()
+    bool RaiseStateChanged()
     {
-        MediaPlayerState current = _mediaEngine.State;
+        var current = _mediaEngine.State;
         if (current == _lastReportedState)
             return false;
 

@@ -10,11 +10,11 @@ namespace FatzMedia.Video.Core.Audio;
 /// on all tracks (failures read as empty), <c>BASS_ChannelGetLength</c> and
 /// <c>BASS_ChannelBytes2Seconds</c>.
 /// </summary>
-internal sealed class BassMidiEventReader : IMidiEventReader
+sealed class BassMidiEventReader : IMidiEventReader
 {
-    private readonly int _handle;
+    readonly int _handle;
 
-    private BassMidiEventReader(int handle) => _handle = handle;
+    BassMidiEventReader(int handle) => _handle = handle;
 
     /// <summary>Returns a reader over <paramref name="handle"/>, or <see langword="null"/> for 0 (no channel).</summary>
     public static BassMidiEventReader? ForHandle(int handle) => handle == 0 ? null : new BassMidiEventReader(handle);
@@ -23,7 +23,7 @@ internal sealed class BassMidiEventReader : IMidiEventReader
     {
         try
         {
-            MidiMarker[] markers = BassMidi.StreamGetMarks(_handle, -1, ToBass(kind)) ?? [];
+            var markers = BassMidi.StreamGetMarks(_handle, -1, ToBass(kind)) ?? [];
             var marks = new MidiMark[markers.Length];
             for (var i = 0; i < markers.Length; i++)
                 marks[i] = new MidiMark(markers[i].Position, markers[i].Track, markers[i].Text);
@@ -61,7 +61,7 @@ internal sealed class BassMidiEventReader : IMidiEventReader
 
     public double PositionToSeconds(long position) => MBass.ChannelBytes2Seconds(_handle, position);
 
-    private static MidiMarkerType ToBass(MidiMarkKind kind) => kind switch
+    static MidiMarkerType ToBass(MidiMarkKind kind) => kind switch
     {
         MidiMarkKind.Lyric => MidiMarkerType.Lyric,
         MidiMarkKind.Text => MidiMarkerType.Text,

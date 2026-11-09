@@ -2,9 +2,9 @@ namespace FatzMedia.Video.Core.Graphics.Composition.Planning;
 
 public sealed class CompositionTargetRegistry
 {
-    private readonly Dictionary<string, CompositionTargetState> _targets = [];
-    private readonly List<string> _scratchActiveIds = [];
-    private readonly List<CompositionTargetUpdate> _scratchTargetUpdates = [];
+    readonly Dictionary<string, CompositionTargetState> _targets = [];
+    readonly List<string> _scratchActiveIds = [];
+    readonly List<CompositionTargetUpdate> _scratchTargetUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool HasMultipleActiveTargets => ActiveTargetCount > 1;
@@ -14,7 +14,7 @@ public sealed class CompositionTargetRegistry
         get
         {
             var count = 0;
-            foreach (CompositionTargetState target in _targets.Values)
+            foreach (var target in _targets.Values)
                 if (target.IsActive)
                     count++;
 
@@ -35,7 +35,7 @@ public sealed class CompositionTargetRegistry
         _scratchActiveIds.Clear();
         CaptureSequence++;
 
-        foreach (CompositionTargetDescriptor target in targets)
+        foreach (var target in targets)
         {
             if (!target.IsValid)
                 continue;
@@ -45,12 +45,12 @@ public sealed class CompositionTargetRegistry
         }
 
         // Per frame: no snapshot of the keys (ENG-026). Deactivate only changes the entry.
-        foreach (KeyValuePair<string, CompositionTargetState> pair in _targets)
+        foreach (var pair in _targets)
             if (!IsCapturedId(pair.Key))
                 pair.Value.Deactivate(CaptureSequence);
     }
 
-    private bool IsCapturedId(string id)
+    bool IsCapturedId(string id)
     {
         foreach (var capturedId in _scratchActiveIds)
             if (string.Equals(capturedId, id, StringComparison.Ordinal))
@@ -62,7 +62,7 @@ public sealed class CompositionTargetRegistry
     public CompositionTargetPlan CreatePlan()
     {
         _scratchTargetUpdates.Clear();
-        foreach (CompositionTargetState target in _targets.Values)
+        foreach (var target in _targets.Values)
         {
             if (target.IsActive || target.WasDeactivated)
                 _scratchTargetUpdates.Add(target.CreateUpdatePlanEntry());
@@ -80,7 +80,7 @@ public sealed class CompositionTargetRegistry
 
     public void MarkPlanConsumed()
     {
-        foreach (KeyValuePair<string, CompositionTargetState> pair in _targets)
+        foreach (var pair in _targets)
         {
             pair.Value.MarkPlanConsumed();
             // Removing the current entry while enumerating is supported by Dictionary.
@@ -97,9 +97,9 @@ public sealed class CompositionTargetRegistry
         CaptureSequence = 0;
     }
 
-    private CompositionTargetState GetOrCreate(string id)
+    CompositionTargetState GetOrCreate(string id)
     {
-        if (_targets.TryGetValue(id, out CompositionTargetState? state))
+        if (_targets.TryGetValue(id, out var state))
             return state;
 
         state = new CompositionTargetState(id);

@@ -18,9 +18,9 @@ public readonly record struct ProcessSample(double CpuPercent, double CoresUsed,
 /// </summary>
 public sealed class ProcessSampler : IDisposable
 {
-    private readonly Process _process = Process.GetCurrentProcess();
-    private TimeSpan _lastCpu;
-    private long _lastTimestamp;
+    readonly Process _process = Process.GetCurrentProcess();
+    TimeSpan _lastCpu;
+    long _lastTimestamp;
 
     public ProcessSampler()
     {
@@ -54,10 +54,10 @@ public sealed class ProcessSampler : IDisposable
 /// </summary>
 public sealed class PresentedFrameCounter
 {
-    private readonly Func<long> _timestamp;
-    private IPlayerSession? _session;
-    private long _frames;
-    private long _lastTimestamp;
+    readonly Func<long> _timestamp;
+    IPlayerSession? _session;
+    long _frames;
+    long _lastTimestamp;
 
     public PresentedFrameCounter()
         : this(Stopwatch.GetTimestamp)
@@ -82,8 +82,7 @@ public sealed class PresentedFrameCounter
         _session = session;
         _ = Interlocked.Exchange(ref _frames, 0);
         _lastTimestamp = _timestamp();
-        if (session is not null)
-            session.PresentationFramePresented += OnFramePresented;
+        session?.PresentationFramePresented += OnFramePresented;
     }
 
     /// <summary>Gets the frames per second since the previous call (or since tracking started) and starts a new period.</summary>
@@ -98,7 +97,7 @@ public sealed class PresentedFrameCounter
     /// <summary>Counts one presented frame (what the session event does; from any thread).</summary>
     public void CountFrame() => Interlocked.Increment(ref _frames);
 
-    private void OnFramePresented(object? sender, EventArgs e) => CountFrame();
+    void OnFramePresented(object? sender, EventArgs e) => CountFrame();
 }
 
 /// <summary>
@@ -108,11 +107,11 @@ public sealed class PresentedFrameCounter
 /// </summary>
 public sealed class UiThreadCostMeter
 {
-    private readonly Func<long> _timestamp;
-    private long _lastTimestamp;
-    private TimeSpan _lastTime;
-    private long _lastFrames;
-    private bool _started;
+    readonly Func<long> _timestamp;
+    long _lastTimestamp;
+    TimeSpan _lastTime;
+    long _lastFrames;
+    bool _started;
 
     public UiThreadCostMeter()
         : this(Stopwatch.GetTimestamp)

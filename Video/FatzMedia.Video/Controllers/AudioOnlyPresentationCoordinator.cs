@@ -6,10 +6,10 @@ namespace FatzMedia.Video.Controllers;
 /// the player keeps them, at their latest size, for a switch to Full or Background mode
 /// (slice 2); everything else does nothing.
 /// </summary>
-internal sealed class AudioOnlyPresentationCoordinator : IMediaPresentationCoordinator
+sealed class AudioOnlyPresentationCoordinator : IMediaPresentationCoordinator
 {
-    private readonly HashSet<string> _surfaceIds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Lock _gate = new();
+    readonly HashSet<string> _surfaceIds = new(StringComparer.OrdinalIgnoreCase);
+    readonly Lock _gate = new();
 
     public event EventHandler? FramePresented { add { } remove { } }
 
@@ -42,7 +42,7 @@ internal sealed class AudioOnlyPresentationCoordinator : IMediaPresentationCoord
             return _surfaceIds.Remove(surfaceId);
     }
 
-    private bool HasSurface(string surfaceId)
+    bool HasSurface(string surfaceId)
     {
         lock (_gate)
             return _surfaceIds.Contains(surfaceId);

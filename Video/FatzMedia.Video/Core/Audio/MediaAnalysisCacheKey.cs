@@ -1,6 +1,6 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal readonly record struct MediaAnalysisCacheKey(
+readonly record struct MediaAnalysisCacheKey(
     string MediaIdentity,
     int AnalyzerVersion,
     SilenceTrimOptions TrimOptions)

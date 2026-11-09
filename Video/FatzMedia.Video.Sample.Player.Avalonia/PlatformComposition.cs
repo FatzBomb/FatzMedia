@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// uses <c>FatzMedia.Video.Windows</c>; the portable build (net10.0) uses
 /// <c>FatzMedia.Video.Linux</c>. Both pair with the frame-sink renderers chosen separately.
 /// </summary>
-internal static class PlatformComposition
+static class PlatformComposition
 {
 #if WINDOWS
     public static string Name => "Windows";

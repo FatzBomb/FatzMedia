@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11HdrToneMapTests
 {
-    private static readonly VideoColorSpace Hdr10 = new(VideoColorMatrix.Bt2020, VideoColorRange.Limited);
+    static readonly VideoColorSpace Hdr10 = new(VideoColorMatrix.Bt2020, VideoColorRange.Limited);
 
     [Theory]
     [InlineData(64, 512, 512)]    // black
@@ -25,8 +25,8 @@ public sealed class D3D11HdrToneMapTests
     public void TheShaderFormula_MatchesTheCpuMapper(int y, int cb, int cr)
     {
         var request = new HdrToneMapRequest(1000, 203);
-        byte[] cpu = Cpu(y, cb, cr, request);
-        byte[] gpu = Shader(y, cb, cr, request);
+        var cpu = Cpu(y, cb, cr, request);
+        var gpu = Shader(y, cb, cr, request);
 
         for (var channel = 0; channel < 3; channel++)
             Assert.InRange(gpu[channel], cpu[channel] - 2, cpu[channel] + 2);
@@ -45,8 +45,8 @@ public sealed class D3D11HdrToneMapTests
     public void TheShaderFormula_MatchesTheCpuMapper_ForHlg(int y, int cb, int cr)
     {
         var request = new HdrToneMapRequest(1000, 203) { Transfer = HdrTransferFunction.Hlg };
-        byte[] cpu = Cpu(y, cb, cr, request);
-        byte[] gpu = Shader(y, cb, cr, request);
+        var cpu = Cpu(y, cb, cr, request);
+        var gpu = Shader(y, cb, cr, request);
 
         for (var channel = 0; channel < 3; channel++)
             Assert.InRange(gpu[channel], cpu[channel] - 2, cpu[channel] + 2);
@@ -55,10 +55,10 @@ public sealed class D3D11HdrToneMapTests
     [Fact]
     public void TheTransferConstant_SelectsHlgAndItsOotf()
     {
-        D3D11HdrToneMapPresenter.ToneMapConstants pq = D3D11HdrToneMapPresenter.CreateConstants(
+        var pq = D3D11HdrToneMapPresenter.CreateConstants(
             Hdr10, new HdrToneMapRequest(1000, 203), 16, 16, 16, 16,
             new Vortice.RawRect(0, 0, 16, 16), new Vortice.RawRect(0, 0, 16, 16));
-        D3D11HdrToneMapPresenter.ToneMapConstants hlg = D3D11HdrToneMapPresenter.CreateConstants(
+        var hlg = D3D11HdrToneMapPresenter.CreateConstants(
             Hdr10, new HdrToneMapRequest(1000, 203) { Transfer = HdrTransferFunction.Hlg }, 16, 16, 16, 16,
             new Vortice.RawRect(0, 0, 16, 16), new Vortice.RawRect(0, 0, 16, 16));
 
@@ -72,7 +72,7 @@ public sealed class D3D11HdrToneMapTests
     [Fact]
     public void Rectangles_MapToClipSpaceAndTextureSpace()
     {
-        D3D11HdrToneMapPresenter.ToneMapConstants constants = D3D11HdrToneMapPresenter.CreateConstants(
+        var constants = D3D11HdrToneMapPresenter.CreateConstants(
             Hdr10,
             new HdrToneMapRequest(1000, 203),
             textureWidth: 3840,
@@ -112,9 +112,9 @@ public sealed class D3D11HdrToneMapTests
     }
 
     // The PSToneMap shader, line for line, with the presenter's constants.
-    private static byte[] Shader(int y, int cb, int cr, HdrToneMapRequest request)
+    static byte[] Shader(int y, int cb, int cr, HdrToneMapRequest request)
     {
-        D3D11HdrToneMapPresenter.ToneMapConstants k = D3D11HdrToneMapPresenter.CreateConstants(
+        var k = D3D11HdrToneMapPresenter.CreateConstants(
             Hdr10, request, 16, 16, 16, 16, new Vortice.RawRect(0, 0, 16, 16), new Vortice.RawRect(0, 0, 16, 16));
         double Sample(int code) => code * 64 / 65535.0;
 
@@ -123,7 +123,7 @@ public sealed class D3D11HdrToneMapTests
         var v = (Sample(cr) * k.YuvScaleOffset.Z) + k.YuvScaleOffset.W;
         double[] signal = [yy + (k.Matrix.X * v), yy - (k.Matrix.Y * u) - (k.Matrix.Z * v), yy + (k.Matrix.W * u)];
 
-        double[] nits = k.Transfer.X > 0.5 ? HlgToNits(signal, k) : [.. signal.Select(s => PqCurve.ToNits(Math.Clamp(s, 0, 1)))];
+        var nits = k.Transfer.X > 0.5 ? HlgToNits(signal, k) : [.. signal.Select(s => PqCurve.ToNits(Math.Clamp(s, 0, 1)))];
         var brightest = nits.Max();
         var gain = brightest > 0 ? ToneCurve(brightest, k) / brightest : 1;
         double[] l = [.. nits.Select(n => n * gain * k.Output.X)];
@@ -137,7 +137,7 @@ public sealed class D3D11HdrToneMapTests
     }
 
     // The shader's HlgToNits: inverse OETF per channel, then the OOTF on BT.2020 luminance.
-    private static double[] HlgToNits(double[] signal, D3D11HdrToneMapPresenter.ToneMapConstants k)
+    static double[] HlgToNits(double[] signal, D3D11HdrToneMapPresenter.ToneMapConstants k)
     {
         const double a = 0.17883277, b = 0.28466892, c = 0.55991073;
         double[] scene = [.. signal.Select(s => Math.Clamp(s, 0, 1)).Select(s => s <= 0.5 ? s * s / 3 : (Math.Exp((s - c) / a) + b) / 12)];
@@ -146,7 +146,7 @@ public sealed class D3D11HdrToneMapTests
         return [.. scene.Select(e => e * ootf)];
     }
 
-    private static double ToneCurve(double nits, D3D11HdrToneMapPresenter.ToneMapConstants k)
+    static double ToneCurve(double nits, D3D11HdrToneMapPresenter.ToneMapConstants k)
     {
         if (k.Curve.W < 0.5)
             return Math.Min(nits, k.Output.Z);

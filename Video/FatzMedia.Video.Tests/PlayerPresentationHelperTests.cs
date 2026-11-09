@@ -23,7 +23,7 @@ public sealed class PlayerPresentationHelperTests
     [InlineData("d3d11", PlayerRendererRequest.Direct3D11)]
     public void RendererNames_Parse(string value, PlayerRendererRequest expected)
     {
-        Assert.True(PlayerRendererRules.TryParse(value, out PlayerRendererRequest request));
+        Assert.True(PlayerRendererRules.TryParse(value, out var request));
         Assert.Equal(expected, request);
     }
 
@@ -41,7 +41,7 @@ public sealed class PlayerPresentationHelperTests
         Assert.Equal(PlayerRendererRequest.Software, PlayerStartupOptions.Parse(["--software"]).RendererRequest);
         Assert.Equal(PlayerRendererRequest.Vulkan, PlayerStartupOptions.Parse(["--software", "--renderer=vulkan"]).RendererRequest);
 
-        PlayerStartupOptions invalid = PlayerStartupOptions.Parse(["--software", "--renderer=opengl"]);
+        var invalid = PlayerStartupOptions.Parse(["--software", "--renderer=opengl"]);
         Assert.Equal(PlayerRendererRequest.Software, invalid.RendererRequest);
         Assert.Equal("opengl", invalid.UnknownRenderer);
         Assert.Contains(invalid.DescribeUnknownValues(), line => line.Contains("'opengl'", StringComparison.Ordinal) && line.EndsWith("using software.", StringComparison.Ordinal));
@@ -71,7 +71,7 @@ public sealed class PlayerPresentationHelperTests
     [Fact]
     public void PlayerFlags_HaveTheirDefaults()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse([]);
+        var options = PlayerStartupOptions.Parse([]);
 
         Assert.Equal(1, options.Players);
         Assert.False(options.PreferFrameSinkSurface);
@@ -91,20 +91,20 @@ public sealed class PlayerPresentationHelperTests
     [Fact]
     public void SurfaceDecodingAndSecondScreen_Parse()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["--surface=FrameSink", "--decoding=software", "--second-screen=2"]);
+        var options = PlayerStartupOptions.Parse(["--surface=FrameSink", "--decoding=software", "--second-screen=2"]);
 
         Assert.True(options.PreferFrameSinkSurface);
         Assert.True(options.SoftwareDecoding);
         Assert.Equal(2, options.SecondScreen);
         Assert.Equal((VideoDecodingMethod.Software, "software decoding (--decoding=software)"), options.ApplyDecoding(VideoDecodingMethod.Hardware));
-        Assert.Equal((VideoDecodingMethod.Software, (string?)null), options.ApplyDecoding(VideoDecodingMethod.Software));
-        Assert.Equal((VideoDecodingMethod.Auto, (string?)null), PlayerStartupOptions.Parse([]).ApplyDecoding(VideoDecodingMethod.Auto));
+        Assert.Equal((VideoDecodingMethod.Software, null), options.ApplyDecoding(VideoDecodingMethod.Software));
+        Assert.Equal((VideoDecodingMethod.Auto, null), PlayerStartupOptions.Parse([]).ApplyDecoding(VideoDecodingMethod.Auto));
     }
 
     [Fact]
     public void UnknownSurfaceAndDecoding_FallBackToAuto_WithWarnings()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["--surface=gpu", "--decoding=fast", "--second-screen=0"]);
+        var options = PlayerStartupOptions.Parse(["--surface=gpu", "--decoding=fast", "--second-screen=0"]);
 
         Assert.False(options.PreferFrameSinkSurface);
         Assert.False(options.SoftwareDecoding);
@@ -115,7 +115,7 @@ public sealed class PlayerPresentationHelperTests
     [Fact]
     public void ForPlayer_GivesTheStartupMediaToPlayerOneOnly()
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--prepare-next=next.mp3", "--players=2"]);
+        var options = PlayerStartupOptions.Parse(["song.mp3", "--prepare-next=next.mp3", "--players=2"]);
 
         Assert.Equal("song.mp3", options.ForPlayer(1).MediaPath);
         Assert.Null(options.ForPlayer(2).MediaPath);
@@ -125,7 +125,7 @@ public sealed class PlayerPresentationHelperTests
 
     // --- full-screen chrome ---
 
-    private sealed class ChromeHost
+    sealed class ChromeHost
     {
         public ChromeHost((double, double)? pointer = null)
         {
@@ -243,13 +243,13 @@ public sealed class PlayerPresentationHelperTests
 
     // --- screen choice ---
 
-    private static readonly PlayerScreen Left = new("DISPLAY1", new PlayerScreenBounds(0, 0, 1920, 1080), IsPrimary: true);
-    private static readonly PlayerScreen Right = new("DISPLAY2", new PlayerScreenBounds(1920, 0, 1920, 1080), IsPrimary: false);
+    static readonly PlayerScreen Left = new("DISPLAY1", new PlayerScreenBounds(0, 0, 1920, 1080), IsPrimary: true);
+    static readonly PlayerScreen Right = new("DISPLAY2", new PlayerScreenBounds(1920, 0, 1920, 1080), IsPrimary: false);
 
     [Fact]
     public void Screen_TheRequestedOneWhenItExists()
     {
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose([Left, Right], new PlayerScreenBounds(2000, 100, 800, 600), requested: 2);
+        var choice = PlayerScreenChooser.Choose([Left, Right], new PlayerScreenBounds(2000, 100, 800, 600), requested: 2);
 
         Assert.Equal(1, choice.ScreenIndex);
         Assert.True(choice.FullScreen);
@@ -260,7 +260,7 @@ public sealed class PlayerPresentationHelperTests
     public void Screen_OtherwiseTheFirstThatIsNotTheMainWindows()
     {
         // The main window is mostly on the right screen.
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose([Left, Right], new PlayerScreenBounds(1800, 100, 800, 600), requested: null);
+        var choice = PlayerScreenChooser.Choose([Left, Right], new PlayerScreenBounds(1800, 100, 800, 600), requested: null);
 
         Assert.Equal(0, choice.ScreenIndex);
         Assert.True(choice.FullScreen);
@@ -269,7 +269,7 @@ public sealed class PlayerPresentationHelperTests
     [Fact]
     public void Screen_WithOneScreen_AWindowOnIt_SayingWhenTheRequestedOneIsMissing()
     {
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose([Left], new PlayerScreenBounds(100, 100, 800, 600), requested: 3);
+        var choice = PlayerScreenChooser.Choose([Left], new PlayerScreenBounds(100, 100, 800, 600), requested: 3);
 
         Assert.Equal(0, choice.ScreenIndex);
         Assert.False(choice.FullScreen);
@@ -279,7 +279,7 @@ public sealed class PlayerPresentationHelperTests
     [Fact]
     public void Screen_None_GivesTheHostsDefaultPlacement()
     {
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose([], null, requested: null);
+        var choice = PlayerScreenChooser.Choose([], null, requested: null);
 
         Assert.Null(choice.ScreenIndex);
         Assert.False(choice.FullScreen);
@@ -324,7 +324,7 @@ public sealed class PlayerPresentationHelperTests
     {
         Assert.False(AbSwapDemoOptions.Parse(["clip.mp4"]).IsEnabled);
 
-        AbSwapDemoOptions options = AbSwapDemoOptions.Parse(
+        var options = AbSwapDemoOptions.Parse(
             ["--ab-demo=\"D:\\- Testing Files\"", "--ab-demo=C:\\media\\a.mp4", "--ab-swaps=5000", "--ab-interval=1.5", "--ab-mode=Native", "--ab-collapsed", "--ab-exit"]);
         Assert.True(options.IsEnabled);
         Assert.Equal(["D:\\- Testing Files", "C:\\media\\a.mp4"], options.Sources);
@@ -334,14 +334,14 @@ public sealed class PlayerPresentationHelperTests
         Assert.True(options.Collapsed);
         Assert.True(options.ExitWhenDone);
 
-        AbSwapDemoOptions defaults = AbSwapDemoOptions.Parse(["--ab-demo=x", "--ab-swaps=bad", "--ab-interval=0"]);
+        var defaults = AbSwapDemoOptions.Parse(["--ab-demo=x", "--ab-swaps=bad", "--ab-interval=0"]);
         Assert.Equal(AbSwapDemoOptions.DefaultSwaps, defaults.Swaps);
         Assert.Equal(TimeSpan.FromSeconds(0.5), defaults.Interval);
         Assert.False(defaults.Native);
         Assert.False(defaults.Collapsed);
         Assert.False(defaults.ExitWhenDone);
 
-        IReadOnlyList<string> clips = options.ResolveClips(
+        var clips = options.ResolveClips(
             static source => source.EndsWith("Files", StringComparison.Ordinal),
             static _ => ["D:\\- Testing Files\\b.MKV", "D:\\- Testing Files\\notes.txt", "D:\\- Testing Files\\A.mp4"]);
         Assert.Equal(["D:\\- Testing Files\\A.mp4", "D:\\- Testing Files\\b.MKV", "C:\\media\\a.mp4"], clips);
@@ -365,7 +365,7 @@ public sealed class PlayerPresentationHelperTests
         Assert.Null(meter.Sample(TimeSpan.FromMilliseconds(5), 3));
 
         now += Stopwatch.Frequency * 2;
-        (double MillisecondsPerSecond, double MillisecondsPerFrame)? cost = meter.Sample(TimeSpan.FromMilliseconds(5 + 240), 3 + 120);
+        var cost = meter.Sample(TimeSpan.FromMilliseconds(5 + 240), 3 + 120);
         Assert.NotNull(cost);
         Assert.Equal(120, cost.Value.MillisecondsPerSecond, 3);
         Assert.Equal(2, cost.Value.MillisecondsPerFrame, 3);
@@ -399,7 +399,7 @@ public sealed class PlayerPresentationHelperTests
     public void ProcessSampler_Reads()
     {
         using var sampler = new ProcessSampler();
-        ProcessSample sample = sampler.Sample();
+        var sample = sampler.Sample();
 
         Assert.True(sample.CpuPercent >= 0);
         Assert.True(sample.WorkingSetMegabytes > 0);

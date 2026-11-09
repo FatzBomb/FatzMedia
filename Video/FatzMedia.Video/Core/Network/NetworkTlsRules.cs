@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace FatzMedia.Video.Core.Network;
 
 /// <summary>The TLS library FFmpeg's <c>https</c> protocol is built on.</summary>
-internal enum FfmpegTlsBackend
+enum FfmpegTlsBackend
 {
     /// <summary>The build configuration could not be read.</summary>
     Unknown,
@@ -29,14 +29,14 @@ internal enum FfmpegTlsBackend
 /// <see cref="NetworkTlsPolicy"/>, the TLS backend of an FFmpeg build, the setup warning for a
 /// build that cannot verify with the policy as given, and the classification of a failed open.
 /// </summary>
-internal static partial class NetworkTlsRules
+static partial class NetworkTlsRules
 {
     /// <summary>The start of every certificate failure reported as a network open error.</summary>
     public const string CertificateFailurePrefix = "certificate verification failed for ";
 
     // Schannel reports a failed handshake as "Creating security context failed (0x%lx)". These are
     // the statuses of a certificate the client rejected (trust, name, validity, revocation).
-    private static readonly HashSet<uint> SchannelCertificateStatuses =
+    static readonly HashSet<uint> SchannelCertificateStatuses =
     [
         0x80090322, // SEC_E_WRONG_PRINCIPAL
         0x80090325, // SEC_E_UNTRUSTED_ROOT
@@ -145,7 +145,7 @@ internal static partial class NetworkTlsRules
             || line.Contains("verify", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        Match status = SchannelStatus().Match(line);
+        var status = SchannelStatus().Match(line);
         return status.Success
             && uint.TryParse(status.Groups[1].Value, System.Globalization.NumberStyles.HexNumber, null, out var code)
             && SchannelCertificateStatuses.Contains(code);

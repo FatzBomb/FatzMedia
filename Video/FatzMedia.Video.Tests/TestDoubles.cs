@@ -4,13 +4,13 @@ using FatzMedia.Video.Core.Abstractions;
 namespace FatzMedia.Video.Tests;
 
 /// <summary>Archive service for tests that never open archives.</summary>
-internal sealed class NotSupportedArchiveService : IArchiveService
+sealed class NotSupportedArchiveService : IArchiveService
 {
     public IArchiveHandle Open(string path) => throw new NotSupportedException();
 }
 
 /// <summary>Presentation coordinator that accepts every call and attaches nothing.</summary>
-internal sealed class NullPresentationCoordinator : IMediaPresentationCoordinator
+sealed class NullPresentationCoordinator : IMediaPresentationCoordinator
 {
     public event EventHandler? FramePresented { add { } remove { } }
 
@@ -29,9 +29,9 @@ internal sealed class NullPresentationCoordinator : IMediaPresentationCoordinato
 }
 
 /// <summary>Service provider that resolves a <see cref="TestMediaEngine"/> and a not-supported archive service.</summary>
-internal sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
+sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
 {
-    private readonly IArchiveService _archiveService = new NotSupportedArchiveService();
+    readonly IArchiveService _archiveService = new NotSupportedArchiveService();
 
     public object? GetService(Type serviceType) => serviceType == typeof(IMediaEngine)
         ? engine

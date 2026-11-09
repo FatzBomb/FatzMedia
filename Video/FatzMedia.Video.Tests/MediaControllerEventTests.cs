@@ -29,18 +29,18 @@ public sealed class MediaControllerEventTests
         effects.Normalize = false;
         effects.Normalize = false;
 
-        MediaValueChangedEventArgs<double> volume = Assert.Single(volumeEvents);
+        var volume = Assert.Single(volumeEvents);
         Assert.Equal(1, volume.PreviousValue);
         Assert.Equal(0.5, volume.CurrentValue);
-        MediaValueChangedEventArgs<int> pitch = Assert.Single(pitchEvents);
+        var pitch = Assert.Single(pitchEvents);
         Assert.Equal(0, pitch.PreviousValue);
         Assert.Equal(3, pitch.CurrentValue);
         Assert.Equal(MediaChangeReason.User, pitch.Reason);
-        MediaValueChangedEventArgs<int> tempo = Assert.Single(tempoEvents);
+        var tempo = Assert.Single(tempoEvents);
         Assert.Equal(100, tempo.PreviousValue);
         Assert.Equal(125, tempo.CurrentValue);
         Assert.Equal(MediaChangeReason.User, tempo.Reason);
-        MediaNormalizeChangedEventArgs normalize = Assert.Single(normalizeEvents);
+        var normalize = Assert.Single(normalizeEvents);
         Assert.True(normalize.PreviousValue);
         Assert.False(normalize.CurrentValue);
         Assert.Equal(1, normalize.NormalizationGain);
@@ -117,7 +117,7 @@ public sealed class MediaControllerEventTests
         controls.LoopMedia = true;
         controls.LoopMedia = true;
 
-        MediaValueChangedEventArgs<bool> change = Assert.Single(changes);
+        var change = Assert.Single(changes);
         Assert.False(change.PreviousValue);
         Assert.True(change.CurrentValue);
         Assert.True(engine.LoopPlayback);
@@ -173,7 +173,7 @@ public sealed class MediaControllerEventTests
             typeof(MediaValueChangedEventArgs<int>)
         ];
 
-        foreach (Type payloadType in payloadTypes)
+        foreach (var payloadType in payloadTypes)
             Assert.All(payloadType.GetProperties(), property => Assert.Null(property.SetMethod));
     }
 
@@ -195,11 +195,11 @@ public sealed class MediaControllerEventTests
         effects.ApplyLoadReset(resetPitch: true, resetTempo: true);
         effects.ApplyLoadReset(resetPitch: true, resetTempo: true);
 
-        MediaValueChangedEventArgs<int> pitch = Assert.Single(pitchEvents);
+        var pitch = Assert.Single(pitchEvents);
         Assert.Equal(5, pitch.PreviousValue);
         Assert.Equal(0, pitch.CurrentValue);
         Assert.Equal(MediaChangeReason.LoadReset, pitch.Reason);
-        MediaValueChangedEventArgs<int> tempo = Assert.Single(tempoEvents);
+        var tempo = Assert.Single(tempoEvents);
         Assert.Equal(125, tempo.PreviousValue);
         Assert.Equal(100, tempo.CurrentValue);
         Assert.Equal(MediaChangeReason.LoadReset, tempo.Reason);

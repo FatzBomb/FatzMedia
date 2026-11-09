@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// <c>--players=</c>, <c>--second-screen=</c>, ...); since Stage 046A slice 3 this player has none
 /// of its own.
 /// </summary>
-internal static class StartupOptions
+static class StartupOptions
 {
     public static PlayerStartupOptions Current { get; set; } = new();
 }

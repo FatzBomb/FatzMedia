@@ -10,9 +10,9 @@ namespace FatzMedia.Video.Tests;
 /// A test UI thread: posted work waits in a queue until <see cref="RunPending"/> runs it on the
 /// test's thread, and timers tick only when told to.
 /// </summary>
-internal sealed class TestPlayerDispatcher : IPlayerDispatcher
+sealed class TestPlayerDispatcher : IPlayerDispatcher
 {
-    private readonly ConcurrentQueue<Action> _pending = new();
+    readonly ConcurrentQueue<Action> _pending = new();
 
     public List<TestPlayerTimer> Timers { get; } = [];
 
@@ -30,7 +30,7 @@ internal sealed class TestPlayerDispatcher : IPlayerDispatcher
     public int RunPending()
     {
         var count = 0;
-        while (_pending.TryDequeue(out Action? action))
+        while (_pending.TryDequeue(out var action))
         {
             action();
             count++;
@@ -55,7 +55,7 @@ internal sealed class TestPlayerDispatcher : IPlayerDispatcher
     }
 }
 
-internal sealed class TestPlayerTimer(TimeSpan interval, Action tick) : IPlayerTimer
+sealed class TestPlayerTimer(TimeSpan interval, Action tick) : IPlayerTimer
 {
     public TimeSpan Interval { get; } = interval;
 
@@ -72,7 +72,7 @@ internal sealed class TestPlayerTimer(TimeSpan interval, Action tick) : IPlayerT
     public void Tick() => tick();
 }
 
-internal sealed class TestPlayerClipboard : IPlayerClipboard
+sealed class TestPlayerClipboard : IPlayerClipboard
 {
     public string? Text { get; private set; }
 
@@ -83,7 +83,7 @@ internal sealed class TestPlayerClipboard : IPlayerClipboard
     }
 }
 
-internal sealed class TestPlayerFilePicker : IPlayerFilePicker
+sealed class TestPlayerFilePicker : IPlayerFilePicker
 {
     public string? Result { get; set; }
 
@@ -97,9 +97,9 @@ internal sealed class TestPlayerFilePicker : IPlayerFilePicker
 }
 
 /// <summary>An engine factory whose creation waits for <paramref name="gate"/> (a slow native load).</summary>
-internal sealed class GatedEngineFactory(Task gate) : IPlayerEngineFactory
+sealed class GatedEngineFactory(Task gate) : IPlayerEngineFactory
 {
-    private readonly TestPlayerEngineFactory _inner = new();
+    readonly TestPlayerEngineFactory _inner = new();
 
     public TestMediaEngine Engine => _inner.Engine;
 
@@ -117,7 +117,7 @@ internal sealed class GatedEngineFactory(Task gate) : IPlayerEngineFactory
 }
 
 /// <summary>Creates real <see cref="PlayerCore"/>s over <see cref="TestMediaEngine"/>s.</summary>
-internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
+sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 {
     public TestPlayerEngineFactory()
     {
@@ -131,7 +131,7 @@ internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
         };
     }
 
-    private int _failNextServiceProvider;
+    int _failNextServiceProvider;
 
     public PlayerModeSwitchTests.SwitchTestPlatformFactory Platform { get; }
 
@@ -175,7 +175,7 @@ internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 }
 
 /// <summary>One view model over the test doubles.</summary>
-internal sealed class PlayerViewModelHarness : IAsyncDisposable
+sealed class PlayerViewModelHarness : IAsyncDisposable
 {
     public PlayerViewModelHarness(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null, bool withShell = true)
         : this(options, (IPlayerEngineFactory?)engine, withShell)
@@ -184,7 +184,7 @@ internal sealed class PlayerViewModelHarness : IAsyncDisposable
 
     public PlayerViewModelHarness(PlayerStartupOptions? options, IPlayerEngineFactory? engine, bool withShell = true)
     {
-        IPlayerEngineFactory factory = engine ?? new TestPlayerEngineFactory();
+        var factory = engine ?? new TestPlayerEngineFactory();
         Engine = factory as TestPlayerEngineFactory ?? new TestPlayerEngineFactory();
         ViewModel = new PlayerViewModel(
             options ?? new PlayerStartupOptions(),

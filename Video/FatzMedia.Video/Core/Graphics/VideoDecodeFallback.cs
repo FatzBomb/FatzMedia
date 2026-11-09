@@ -9,8 +9,8 @@ namespace FatzMedia.Video.Core.Graphics;
 /// </summary>
 public sealed class VideoDecodeFallback
 {
-    private readonly Action<string>? _onRequested;
-    private string? _reason;
+    readonly Action<string>? _onRequested;
+    string? _reason;
 
     public VideoDecodeFallback()
     {

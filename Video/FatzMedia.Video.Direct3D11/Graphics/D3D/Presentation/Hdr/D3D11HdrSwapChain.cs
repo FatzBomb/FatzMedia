@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Video.Hdr;
-using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -11,7 +10,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
 /// (<c>R16G16B16A16_FLOAT</c>, <c>RGB_FULL_G10_NONE_P709</c>) output and sets its HDR10 metadata
 /// (Stage 042A slice 2). The caller releases every back-buffer reference first.
 /// </summary>
-internal static class D3D11HdrSwapChain
+static class D3D11HdrSwapChain
 {
     public const Format ScRgbFormat = Format.R16G16B16A16_Float;
     public const Format SdrFormat = Format.B8G8R8A8_UNorm;
@@ -32,7 +31,7 @@ internal static class D3D11HdrSwapChain
     {
         try
         {
-            using IDXGISwapChain3? swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
+            using var swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
             if (swapChain3 == null)
             {
                 failure = "the swap chain has no color-space control (IDXGISwapChain3; Windows 10 or later)";
@@ -46,15 +45,15 @@ internal static class D3D11HdrSwapChain
                 return false;
             }
 
-            Format format = mode == HdrOutputMode.ScRgb ? ScRgbFormat : SdrFormat;
-            Result resize = swapChain.ResizeBuffers(0, (uint)Math.Max(1, width), (uint)Math.Max(1, height), format, SwapChainFlags.None);
+            var format = mode == HdrOutputMode.ScRgb ? ScRgbFormat : SdrFormat;
+            var resize = swapChain.ResizeBuffers(0, (uint)Math.Max(1, width), (uint)Math.Max(1, height), format, SwapChainFlags.None);
             if (resize.Failure)
             {
                 failure = $"ResizeBuffers to {format} failed: {resize}";
                 return false;
             }
 
-            ColorSpaceType colorSpace = mode == HdrOutputMode.ScRgb ? ScRgbColorSpace : SdrColorSpace;
+            var colorSpace = mode == HdrOutputMode.ScRgb ? ScRgbColorSpace : SdrColorSpace;
             if (!SupportsPresent(swapChain3, colorSpace))
             {
                 failure = $"the swap chain cannot present {colorSpace} with {format}";
@@ -75,7 +74,7 @@ internal static class D3D11HdrSwapChain
             {
                 try
                 {
-                    using IDXGISwapChain3? swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
+                    using var swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
                     if (swapChain3 != null)
                         RevertToSdr(swapChain, swapChain3, width, height);
                 }
@@ -97,7 +96,7 @@ internal static class D3D11HdrSwapChain
     {
         try
         {
-            using IDXGISwapChain3? swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
+            using var swapChain3 = swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
             swapChain3?.SetColorSpace1(ScRgbColorSpace);
         }
         catch (Exception)
@@ -115,7 +114,7 @@ internal static class D3D11HdrSwapChain
     {
         try
         {
-            using IDXGISwapChain4? swapChain4 = swapChain.QueryInterfaceOrNull<IDXGISwapChain4>();
+            using var swapChain4 = swapChain.QueryInterfaceOrNull<IDXGISwapChain4>();
             if (swapChain4 == null)
                 return;
 
@@ -125,7 +124,7 @@ internal static class D3D11HdrSwapChain
                 return;
             }
 
-            DxgiHdrMetadataHdr10 native = ToNative(values);
+            var native = ToNative(values);
             swapChain4.SetHDRMetaData(HdrMetadataType.Hdr10, (uint)sizeof(DxgiHdrMetadataHdr10), (IntPtr)(&native));
         }
         catch (Exception)
@@ -150,13 +149,13 @@ internal static class D3D11HdrSwapChain
         MaxFrameAverageLightLevel = values.MaxFrameAverageLightLevel,
     };
 
-    private static bool IsFlipModel(SwapEffect swapEffect) =>
+    static bool IsFlipModel(SwapEffect swapEffect) =>
         swapEffect is SwapEffect.FlipSequential or SwapEffect.FlipDiscard;
 
-    private static bool SupportsPresent(IDXGISwapChain3 swapChain3, ColorSpaceType colorSpace) =>
+    static bool SupportsPresent(IDXGISwapChain3 swapChain3, ColorSpaceType colorSpace) =>
         (swapChain3.CheckColorSpaceSupport(colorSpace) & SwapChainColorSpaceSupportFlags.Present) != 0;
 
-    private static void RevertToSdr(IDXGISwapChain swapChain, IDXGISwapChain3 swapChain3, int width, int height)
+    static void RevertToSdr(IDXGISwapChain swapChain, IDXGISwapChain3 swapChain3, int width, int height)
     {
         if (swapChain.ResizeBuffers(0, (uint)Math.Max(1, width), (uint)Math.Max(1, height), SdrFormat, SwapChainFlags.None).Success)
         {

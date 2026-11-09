@@ -6,25 +6,25 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// follows the blanks with a small gain, so its phase and period are stable, and resynchronizes
 /// when blanks were missed or the timing moved (mode change, a different monitor).
 /// </summary>
-internal sealed class VblankGrid(long stopwatchFrequency)
+sealed class VblankGrid(long stopwatchFrequency)
 {
-    private const double PhaseGain = 0.1;
-    private const double PeriodGain = 0.01;
-    private const int SamplesBeforeValid = 3;
-    private const int OutliersBeforeRestart = 3;
-    private const int MismatchedIntervalsBeforeRestart = 4;
+    const double PhaseGain = 0.1;
+    const double PeriodGain = 0.01;
+    const int SamplesBeforeValid = 3;
+    const int OutliersBeforeRestart = 3;
+    const int MismatchedIntervalsBeforeRestart = 4;
 
-    private readonly long _frequency = stopwatchFrequency > 0
+    readonly long _frequency = stopwatchFrequency > 0
         ? stopwatchFrequency
         : throw new ArgumentOutOfRangeException(nameof(stopwatchFrequency));
 
-    private double _gridTimestamp;
-    private double _periodTicks;
-    private double _nominalPeriodTicks;
-    private long _lastObserved;
-    private int _samples;
-    private int _outliers;
-    private int _mismatchedIntervals;
+    double _gridTimestamp;
+    double _periodTicks;
+    double _nominalPeriodTicks;
+    long _lastObserved;
+    int _samples;
+    int _outliers;
+    int _mismatchedIntervals;
 
     /// <summary>Gets whether the grid has enough blanks to predict from.</summary>
     public bool IsValid => _samples >= SamplesBeforeValid && _periodTicks > 0;
@@ -129,15 +129,15 @@ internal sealed class VblankGrid(long stopwatchFrequency)
         _samples++;
     }
 
-    private void NoteRestart(string reason)
+    void NoteRestart(string reason)
     {
         Restarts++;
         LastRestartReason = reason;
     }
 
-    private double Milliseconds(double ticks) => ticks * 1000.0 / _frequency;
+    double Milliseconds(double ticks) => ticks * 1000.0 / _frequency;
 
-    private void Restart(long timestamp)
+    void Restart(long timestamp)
     {
         _gridTimestamp = timestamp;
         _lastObserved = timestamp;

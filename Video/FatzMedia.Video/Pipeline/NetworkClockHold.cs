@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Pipeline;
 /// not, so an outage longer than the buffer skipped what played meanwhile (and could run the
 /// clock to the end). Pure, so the decision is tested without a pipeline.
 /// </summary>
-internal static class NetworkClockHold
+static class NetworkClockHold
 {
     /// <summary>How long the picture's packet queue must have been empty before the clock is held.</summary>
     public static readonly TimeSpan StarvedFor = TimeSpan.FromMilliseconds(250);
@@ -41,10 +41,10 @@ internal static class NetworkClockHold
 /// transport change (start, pause, stop, seek) goes through here and ends a hold, so a hold never
 /// outlives the playback it was taken for. Reads and the tempo pass straight through.
 /// </summary>
-internal sealed class HoldableClock(IClockSource inner) : IClockSource
+sealed class HoldableClock(IClockSource inner) : IClockSource
 {
-    private readonly IClockSource _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-    private volatile bool _held;
+    readonly IClockSource _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+    volatile bool _held;
 
     /// <summary>Whether the presentation loop holds the clock.</summary>
     public bool IsHeld => _held;

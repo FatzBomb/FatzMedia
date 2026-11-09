@@ -32,7 +32,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Progressive_WithLengthAndRanges_IsASeekableNetworkFile()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, true, 10));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, true, 10));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.True(row.IsSeekable);
@@ -49,7 +49,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Progressive_WithoutRanges_IsAFileThatCannotSeekOrLoop()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, false, 10));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, false, 10));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.False(row.IsSeekable);
@@ -59,7 +59,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Progressive_WithLengthButNoDuration_HasUnknownDuration()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, true, 0));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, 4_600_000, true, 0));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.False(row.IsDurationKnown);
@@ -68,7 +68,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Progressive_WithoutLength_IsLive()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, null, true, 0));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(false, null, true, 0));
 
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.False(row.IsSeekable);
@@ -80,7 +80,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void HlsVod_IsASeekableNetworkFile_RegardlessOfThePlaylistLength()
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(true, null, false, 10));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(true, null, false, 10));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.True(row.IsSeekable);
@@ -94,7 +94,7 @@ public sealed class NetworkVideoPolicyTests
     [InlineData(-1)]
     public void HlsLive_IsNotSeekable_AndHasNoDuration(double duration)
     {
-        MediaSourceCapabilities row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(true, 253, true, duration));
+        var row = NetworkVideoPolicy.Resolve(new NetworkVideoProbe(true, 253, true, duration));
 
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.False(row.IsSeekable);
@@ -115,7 +115,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void FfmpegOptions_DefaultPolicy_DisablesReconnectAndBoundsReads()
     {
-        Dictionary<string, string> options = NetworkVideoPolicy.CreateFfmpegOptions(NetworkRetryPolicy.Default).ToDictionary();
+        var options = NetworkVideoPolicy.CreateFfmpegOptions(NetworkRetryPolicy.Default).ToDictionary();
 
         Assert.Equal("15000000", options["rw_timeout"]);
         Assert.Equal("0", options["reconnect"]);
@@ -128,7 +128,7 @@ public sealed class NetworkVideoPolicyTests
     public void FfmpegOptions_WithRetries_MapThePolicy()
     {
         var policy = new NetworkRetryPolicy { MaxRetries = 4, MaxDelay = TimeSpan.FromSeconds(7.5), ConnectTimeout = TimeSpan.FromSeconds(5) };
-        Dictionary<string, string> options = NetworkVideoPolicy.CreateFfmpegOptions(policy).ToDictionary();
+        var options = NetworkVideoPolicy.CreateFfmpegOptions(policy).ToDictionary();
 
         Assert.Equal("5000000", options["rw_timeout"]);
         Assert.Equal("1", options["reconnect"]);
@@ -144,7 +144,7 @@ public sealed class NetworkVideoPolicyTests
         var policy = new NetworkRetryPolicy { MaxRetries = 5, InitialDelay = TimeSpan.FromSeconds(1) };
         List<TimeSpan> delays = [];
 
-        NetworkOpenOutcome outcome = NetworkOpenRetry.Run(
+        var outcome = NetworkOpenRetry.Run(
             policy, CancellationToken.None, number => number == 3 ? NetworkAttemptResult.Opened : NetworkAttemptResult.Failed,
             (_, delay) => delays.Add(delay), out var attempts, wait: (_, _) => false);
 
@@ -156,7 +156,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Retry_DefaultPolicy_MakesOneAttempt()
     {
-        NetworkOpenOutcome outcome = NetworkOpenRetry.Run(
+        var outcome = NetworkOpenRetry.Run(
             NetworkRetryPolicy.Default, CancellationToken.None, _ => NetworkAttemptResult.Failed, null, out var attempts, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Failed, outcome);
@@ -166,7 +166,7 @@ public sealed class NetworkVideoPolicyTests
     [Fact]
     public void Retry_UnusableContent_IsNotRetried()
     {
-        NetworkOpenOutcome outcome = NetworkOpenRetry.Run(
+        var outcome = NetworkOpenRetry.Run(
             new NetworkRetryPolicy { MaxRetries = 3 }, CancellationToken.None, _ => NetworkAttemptResult.Unusable, null, out var attempts, wait: (_, _) => false);
 
         Assert.Equal(NetworkOpenOutcome.Failed, outcome);
@@ -179,7 +179,7 @@ public sealed class NetworkVideoPolicyTests
         using var cancellation = new CancellationTokenSource();
         var calls = 0;
 
-        NetworkOpenOutcome outcome = NetworkOpenRetry.Run(
+        var outcome = NetworkOpenRetry.Run(
             new NetworkRetryPolicy { MaxRetries = 3 }, cancellation.Token,
             _ =>
             {
@@ -203,7 +203,7 @@ public sealed class NetworkVideoPolicyTests
     {
         using var cancellation = new CancellationTokenSource();
 
-        NetworkOpenOutcome outcome = NetworkOpenRetry.Run(
+        var outcome = NetworkOpenRetry.Run(
             new NetworkRetryPolicy { MaxRetries = 3 }, cancellation.Token,
             _ =>
             {

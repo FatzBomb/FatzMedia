@@ -4,7 +4,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// Engine support for subtitle tracks that arrive after the open (ENG-039 P5-1): the embedded text
 /// tracks of a local video are decoded on a background task.
 /// </summary>
-internal interface ISubtitleTrackSource
+interface ISubtitleTrackSource
 {
     /// <summary>
     /// Raised on a background thread when <see cref="IMediaEngine.SubtitleTracks"/> or the selected

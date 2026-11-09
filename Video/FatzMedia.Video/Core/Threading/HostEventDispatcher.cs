@@ -9,14 +9,14 @@ namespace FatzMedia.Video.Core.Threading;
 /// Inside a control operation each handler runs in its own handler scope (see
 /// <see cref="PlayerOperationQueue.EnterHandlerScope"/>).
 /// </summary>
-internal static class HostEventDispatcher
+static class HostEventDispatcher
 {
     public static void Raise(object sender, EventHandler? handlers, string eventName, bool reportFailures = true)
     {
         if (handlers == null)
             return;
 
-        using PlayerOperationQueue.HandlerScope scope = PlayerOperationQueue.EnterHandlerScope();
+        using var scope = PlayerOperationQueue.EnterHandlerScope();
         if (handlers.HasSingleTarget)
         {
             Invoke(handlers, sender, EventArgs.Empty, eventName, reportFailures);
@@ -24,7 +24,7 @@ internal static class HostEventDispatcher
         }
 
         // Walks the invocation list in place (ENG-039): GetInvocationList copied it per raise.
-        foreach (EventHandler handler in Delegate.EnumerateInvocationList(handlers))
+        foreach (var handler in Delegate.EnumerateInvocationList(handlers))
             Invoke(handler, sender, EventArgs.Empty, eventName, reportFailures);
     }
 
@@ -39,18 +39,18 @@ internal static class HostEventDispatcher
         if (handlers == null)
             return;
 
-        using PlayerOperationQueue.HandlerScope scope = PlayerOperationQueue.EnterHandlerScope();
+        using var scope = PlayerOperationQueue.EnterHandlerScope();
         if (handlers.HasSingleTarget)
         {
             Invoke(handlers, sender, args, eventName, reportFailures);
             return;
         }
 
-        foreach (EventHandler<TEventArgs> handler in Delegate.EnumerateInvocationList(handlers))
+        foreach (var handler in Delegate.EnumerateInvocationList(handlers))
             Invoke(handler, sender, args, eventName, reportFailures);
     }
 
-    private static void Invoke(EventHandler handler, object sender, EventArgs args, string eventName, bool reportFailures)
+    static void Invoke(EventHandler handler, object sender, EventArgs args, string eventName, bool reportFailures)
     {
         try
         {
@@ -62,7 +62,7 @@ internal static class HostEventDispatcher
         }
     }
 
-    private static void Invoke<TEventArgs>(EventHandler<TEventArgs> handler, object sender, TEventArgs args, string eventName, bool reportFailures)
+    static void Invoke<TEventArgs>(EventHandler<TEventArgs> handler, object sender, TEventArgs args, string eventName, bool reportFailures)
         where TEventArgs : EventArgs
     {
         try
@@ -79,7 +79,7 @@ internal static class HostEventDispatcher
     /// <see langword="false"/> for the diagnostic event itself: reporting its failure as a
     /// diagnostic would raise it again.
     /// </param>
-    private static void ReportFailure(string eventName, Exception exception, bool report)
+    static void ReportFailure(string eventName, Exception exception, bool report)
     {
         if (!report)
         {

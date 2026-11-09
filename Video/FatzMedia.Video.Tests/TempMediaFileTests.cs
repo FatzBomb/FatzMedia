@@ -65,13 +65,13 @@ public class TempMediaFileTests
         TempMediaFile.TryDelete(string.Empty);
     }
 
-    private static string[] ScratchFiles()
+    static string[] ScratchFiles()
     {
         var directory = Path.GetDirectoryName(TempMediaFile.NewPath(TempMediaFile.MediaExtension))!;
         return Directory.GetFiles(directory, "*" + TempMediaFile.MediaExtension);
     }
 
-    private sealed class Entry(byte[] data, bool fail = false) : IArchiveEntryInfo
+    sealed class Entry(byte[] data, bool fail = false) : IArchiveEntryInfo
     {
         public string Key => "entry.mp4";
         public long? Size => data.Length;

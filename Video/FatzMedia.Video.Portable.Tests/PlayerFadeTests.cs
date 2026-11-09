@@ -6,9 +6,9 @@ namespace FatzMedia.Video.Tests;
 
 public sealed class PlayerFadeTests : IDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan ShortFade = TimeSpan.FromMilliseconds(40);
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-fade-" + Guid.NewGuid().ToString("N"));
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    static readonly TimeSpan ShortFade = TimeSpan.FromMilliseconds(40);
+    readonly string _directory = Path.Combine(Path.GetTempPath(), "fbm-fade-" + Guid.NewGuid().ToString("N"));
 
     public PlayerFadeTests() => Directory.CreateDirectory(_directory);
 
@@ -21,7 +21,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task FadeOut_RampsFadeStageFromFullToMuted()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
 
         Assert.True(await player.FadeOutAsync(ShortFade).WaitAsync(Timeout));
 
@@ -33,8 +33,8 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task FadeIn_StartsAtAudibleStartGain()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateIncoming([new(0.5, 0)]);
+        using var player = CreatePlayer(engine);
+        var envelope = AudioFadeEnvelope.CreateIncoming([new(0.5, 0)]);
 
         Assert.True(await player.FadeInAsync(ShortFade, envelope).WaitAsync(Timeout));
 
@@ -46,7 +46,7 @@ public sealed class PlayerFadeTests : IDisposable
     {
         var engine = new TestMediaEngine();
         engine.TestAudio.FadeAvailable = false;
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
 
         Assert.False(await player.FadeOutAsync(ShortFade).WaitAsync(Timeout));
         Assert.Empty(engine.TestAudio.FadeCalls);
@@ -56,7 +56,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task Fade_ZeroDuration_ReturnsFalse()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
 
         Assert.False(await player.FadeOutAsync(TimeSpan.Zero).WaitAsync(Timeout));
     }
@@ -65,7 +65,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task FadedTransition_FadesOutPrimesIncomingAndFadesIn()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = ShortFade };
         Assert.True(player.Load("current.mp3"));
         Assert.True(player.Play());
@@ -88,7 +88,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task FadedTransition_IgnoresPlayOnLoadAndStartsOnce()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
         player.PlayOnLoad = true;
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = ShortFade };
         Assert.True(await player.PrepareNextAsync(CreateFile("next.mp3")).WaitAsync(Timeout));
@@ -103,7 +103,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task AutomaticFadedTransition_AppliesOnlyIncomingFade()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = ShortFade };
         player.AutoTransitionToPreparedNext = true;
         Assert.True(player.Load("current.mp3"));
@@ -123,7 +123,7 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task AutomaticFadedTransition_MutedLeadDelaysLoadAndHostStopCancels()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = CreatePlayer(engine);
+        using var player = CreatePlayer(engine);
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions
         {
             Duration = TimeSpan.FromMilliseconds(400),
@@ -152,8 +152,8 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task ManualFadedTransition_SlotClearedDuringFade_RestoresOutgoingGain()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = await StartFadedTransitionAsync(engine);
-        Task<bool> transition = player.TransitionToPreparedNextAsync();
+        using var player = await StartFadedTransitionAsync(engine);
+        var transition = player.TransitionToPreparedNextAsync();
         await WaitForAsync(() => engine.TestAudio.FadeCalls.Count >= 2);
 
         Assert.True(player.ClearPreparedNext());
@@ -167,8 +167,8 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task ManualFadedTransition_PauseDuringFade_AbandonsAndRestoresGain()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = await StartFadedTransitionAsync(engine);
-        Task<bool> transition = player.TransitionToPreparedNextAsync();
+        using var player = await StartFadedTransitionAsync(engine);
+        var transition = player.TransitionToPreparedNextAsync();
         await WaitForAsync(() => engine.TestAudio.FadeCalls.Count >= 2);
 
         Assert.True(await player.PauseAsync().WaitAsync(Timeout));
@@ -183,8 +183,8 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task ManualFadedTransition_SlotReplacedDuringFade_DoesNotLoadTheNewItem()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = await StartFadedTransitionAsync(engine);
-        Task<bool> transition = player.TransitionToPreparedNextAsync();
+        using var player = await StartFadedTransitionAsync(engine);
+        var transition = player.TransitionToPreparedNextAsync();
         await WaitForAsync(() => engine.TestAudio.FadeCalls.Count >= 2);
         var replacement = CreateFile("replacement.mp3");
 
@@ -200,8 +200,8 @@ public sealed class PlayerFadeTests : IDisposable
     public async Task ManualFadedTransition_CancelFadeDuringOutgoing_AbandonsTransition()
     {
         var engine = new TestMediaEngine();
-        using PlayerCore player = await StartFadedTransitionAsync(engine);
-        Task<bool> transition = player.TransitionToPreparedNextAsync();
+        using var player = await StartFadedTransitionAsync(engine);
+        var transition = player.TransitionToPreparedNextAsync();
         await WaitForAsync(() => engine.TestAudio.FadeCalls.Count >= 2);
 
         player.CancelFade();
@@ -215,7 +215,7 @@ public sealed class PlayerFadeTests : IDisposable
     [Fact]
     public void CrossfadeOptions_NullAssignmentFallsBackToDisabled()
     {
-        using PlayerCore player = CreatePlayer(new TestMediaEngine());
+        using var player = CreatePlayer(new TestMediaEngine());
 
         player.PreparedNextTransitionFade = null!;
 
@@ -223,9 +223,9 @@ public sealed class PlayerFadeTests : IDisposable
     }
 
     /// <summary>Plays current media with a prepared next item and a fade long enough to interrupt.</summary>
-    private async Task<PlayerCore> StartFadedTransitionAsync(TestMediaEngine engine)
+    async Task<PlayerCore> StartFadedTransitionAsync(TestMediaEngine engine)
     {
-        PlayerCore player = CreatePlayer(engine);
+        var player = CreatePlayer(engine);
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = TimeSpan.FromSeconds(5) };
         Assert.True(player.Load("current.mp3"));
         Assert.True(player.Play());
@@ -233,24 +233,24 @@ public sealed class PlayerFadeTests : IDisposable
         return player;
     }
 
-    private static async Task WaitForAsync(Func<bool> condition)
+    static async Task WaitForAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + Timeout;
         while (!condition() && DateTime.UtcNow < deadline)
             await Task.Delay(10);
     }
 
-    private string CreateFile(string name)
+    string CreateFile(string name)
     {
         var path = Path.Combine(_directory, name);
         File.WriteAllBytes(path, [1, 2, 3]);
         return path;
     }
 
-    private static PlayerCore CreatePlayer(TestMediaEngine engine) =>
+    static PlayerCore CreatePlayer(TestMediaEngine engine) =>
         new(new FadeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
-    private sealed class FadeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class FadeTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

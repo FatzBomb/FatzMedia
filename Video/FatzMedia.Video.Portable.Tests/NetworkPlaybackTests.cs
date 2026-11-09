@@ -13,7 +13,7 @@ namespace FatzMedia.Video.Tests;
 [Collection("File type registry")]
 public sealed class NetworkPipelineTests
 {
-    private static readonly Uri RadioUri = new("http://radio.example/live");
+    static readonly Uri RadioUri = new("http://radio.example/live");
 
     [Fact]
     public void OpenNetworkAudio_RoutesToNetworkAudioSourceAndReportsProbedCapabilities()
@@ -22,7 +22,7 @@ public sealed class NetworkPipelineTests
         {
             NetworkCapabilities = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(null, false, true)),
         };
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
 
         Assert.True(engine.Open(MediaInputSource.FromUri(RadioUri, MediaNetworkContent.Audio)));
 
@@ -35,7 +35,7 @@ public sealed class NetworkPipelineTests
     public void AutoHint_UnknownExtensionOpensAsAudio()
     {
         var audio = new TestAudioEngine();
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
 
         Assert.True(engine.Open(MediaInputSource.FromUri(RadioUri)));
         Assert.NotNull(audio.LastNetworkUrl);
@@ -45,7 +45,7 @@ public sealed class NetworkPipelineTests
     public void UnprobedCapabilitiesFallBackToConservativeLiveRow()
     {
         var audio = new TestAudioEngine { NetworkCapabilities = null };
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
 
         Assert.True(engine.Open(MediaInputSource.FromUri(RadioUri)));
         Assert.Same(MediaSourceCapabilityMatrix.NetworkUnprobed, engine.CurrentCapabilities);
@@ -60,7 +60,7 @@ public sealed class NetworkPipelineTests
         try
         {
             var audio = new TestAudioEngine();
-            using PipelineMediaEngine engine = CreateEngine(audio);
+            using var engine = CreateEngine(audio);
             MediaErrorInfo? error = null;
             ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
@@ -84,7 +84,7 @@ public sealed class NetworkPipelineTests
         // network path into the soundtrack engine. The portable tests load no FFmpeg, so the open
         // itself cannot succeed here (Linux native tests cover it); what matters is the route.
         var audio = new TestAudioEngine();
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
 
         try
         {
@@ -126,7 +126,7 @@ public sealed class NetworkPipelineTests
     public void ConnectFailure_RaisesOpenFailed()
     {
         var audio = new TestAudioEngine { NetworkOpenSucceeds = false };
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
         MediaErrorInfo? error = null;
         ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
 
@@ -139,7 +139,7 @@ public sealed class NetworkPipelineTests
     public void Seek_IsRejectedForNonSeekableNetworkSources()
     {
         var audio = new TestAudioEngine { NetworkCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
         Assert.True(engine.Open(MediaInputSource.FromUri(RadioUri)));
 
         Assert.False(engine.Seek(10));
@@ -149,7 +149,7 @@ public sealed class NetworkPipelineTests
     public void Close_ClearsCapabilities()
     {
         var audio = new TestAudioEngine();
-        using PipelineMediaEngine engine = CreateEngine(audio);
+        using var engine = CreateEngine(audio);
         Assert.True(engine.Open(MediaInputSource.FromUri(RadioUri)));
 
         engine.Close();
@@ -178,13 +178,13 @@ public sealed class NetworkPipelineTests
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             MediaPlayerConfiguration.Auto);
 
-    private sealed class ClosedVideoFactory : IVideoEngineFactory
+    sealed class ClosedVideoFactory : IVideoEngineFactory
     {
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) =>
             new TestVideoEngine { IsOpen = false };
     }
 
-    private sealed class NoMidiLyrics : IMidiLyricProvider
+    sealed class NoMidiLyrics : IMidiLyricProvider
     {
         public bool IsMidiFile(string path) => false;
 
@@ -194,7 +194,7 @@ public sealed class NetworkPipelineTests
 
 public sealed class PlayerNetworkEventTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
     [Fact]
     public async Task BufferingAndMetadata_AreForwardedToHost()
@@ -210,8 +210,8 @@ public sealed class PlayerNetworkEventTests
         engine.TestAudio.RaiseBuffering(true, 0.3);
         engine.TestAudio.RaiseStreamMetadata("One More Time", "Daft Punk");
 
-        MediaBufferingChangedEventArgs bufferingArgs = await buffering.Task.WaitAsync(Timeout);
-        MediaStreamMetadataChangedEventArgs metadataArgs = await metadata.Task.WaitAsync(Timeout);
+        var bufferingArgs = await buffering.Task.WaitAsync(Timeout);
+        var metadataArgs = await metadata.Task.WaitAsync(Timeout);
         Assert.True(bufferingArgs.IsBuffering);
         Assert.Equal(0.3, bufferingArgs.BufferFill);
         Assert.Equal("Daft Punk", metadataArgs.Artist);
@@ -229,7 +229,7 @@ public sealed class PlayerNetworkEventTests
 
         engine.RaiseNetworkStreamMetadata("Around the World", "Daft Punk", "Daft Punk - Around the World");
 
-        MediaStreamMetadataChangedEventArgs args = await metadata.Task.WaitAsync(Timeout);
+        var args = await metadata.Task.WaitAsync(Timeout);
         Assert.Equal("Around the World", args.Title);
         Assert.Equal("Daft Punk", args.Artist);
     }
@@ -245,7 +245,7 @@ public sealed class PlayerNetworkEventTests
 
         engine.RaiseNetworkBuffering(true, 0.1);
 
-        MediaBufferingChangedEventArgs args = await buffering.Task.WaitAsync(Timeout);
+        var args = await buffering.Task.WaitAsync(Timeout);
         Assert.True(args.IsBuffering);
         Assert.Equal(0.1, args.BufferFill);
     }
@@ -352,7 +352,7 @@ public sealed class PlayerNetworkEventTests
         Assert.Null(player.CurrentSourceCapabilities);
     }
 
-    private sealed class NetworkTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class NetworkTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 
@@ -365,9 +365,9 @@ public sealed class PlayerNetworkEventTests
             new Provider(engine);
     }
 
-    private sealed class Provider(TestMediaEngine engine) : IServiceProvider
+    sealed class Provider(TestMediaEngine engine) : IServiceProvider
     {
-        private readonly IArchiveService _archives = new NotSupportedArchiveService();
+        readonly IArchiveService _archives = new NotSupportedArchiveService();
 
         public object? GetService(Type serviceType) =>
             serviceType == typeof(IMediaEngine) ? engine

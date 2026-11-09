@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Configuration;
@@ -8,113 +11,110 @@ using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Pipeline;
-using System.Buffers;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace FatzMedia.Video.Controllers;
 
 public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoordinator
 {
-    private enum CompositionPresentResult
+    enum CompositionPresentResult
     {
         Failed,
         Presented,
         Deferred
     }
 
-    private const int CdgPacketsPerSector = 4;
-    private const int CdgPresentationCadenceHz = CdgConstants.PacketsPerSecond / CdgPacketsPerSector;
-    private const int SubtitleCanvasWidth = 1920;
-    private const int SubtitleCanvasHeight = 1080;
-    private static readonly TimeSpan CdgPresentationInterval = TimeSpan.FromSeconds(1.0 / CdgPresentationCadenceHz);
+    const int CdgPacketsPerSector = 4;
+    const int CdgPresentationCadenceHz = CdgConstants.PacketsPerSecond / CdgPacketsPerSector;
+    const int SubtitleCanvasWidth = 1920;
+    const int SubtitleCanvasHeight = 1080;
+    static readonly TimeSpan CdgPresentationInterval = TimeSpan.FromSeconds(1.0 / CdgPresentationCadenceHz);
 
-    private static readonly ArrayPool<byte> CompositionBackgroundPool =
+    static readonly ArrayPool<byte> CompositionBackgroundPool =
         ArrayPool<byte>.Create(maxArrayLength: 64 * 1024 * 1024, maxArraysPerBucket: 4);
     // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame.
-    private static readonly ArrayPool<byte> SubtitleOverlayPool =
+    static readonly ArrayPool<byte> SubtitleOverlayPool =
         ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
 
-    private readonly IMediaEngine _mediaEngine;
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly RenderPipeline _renderPipeline;
-    private readonly IMediaRendererBackend _rendererBackend;
-    private readonly ISubtitleRasterizer _subtitleRasterizer;
-    private readonly TimeSpan _wipeTransitionDuration;
-    private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
-    private bool _isRenderLoopRunning;
+    readonly IMediaEngine _mediaEngine;
+    readonly MediaPlayerConfiguration _configuration;
+    readonly RenderPipeline _renderPipeline;
+    readonly IMediaRendererBackend _rendererBackend;
+    readonly ISubtitleRasterizer _subtitleRasterizer;
+    readonly TimeSpan _wipeTransitionDuration;
+    readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
+    bool _isRenderLoopRunning;
     // Guards _isRenderLoopRunning with its scheduler start/stop: seek refreshes, StartRendering and
     // StopRendering run on different threads. PlaybackScheduler.Start/Stop never wait.
-    private readonly Lock _renderLoopGate = new();
+    readonly Lock _renderLoopGate = new();
     // Orders every present (ENG-023, ENG-039): taken before _lock and held from building a
     // composition to the renderer call, so an older composition is never presented after a newer
     // one. _lock guards the frame state only and is never held across a present, so a surface call
     // from the UI thread never waits for a present that is stuck in the renderer. Nothing may take
     // this gate while holding _lock, and nothing may render video or CD+G while holding it (their
     // engines raise frames that take it, on threads that hold the engines' own locks).
-    private readonly Lock _presentGate = new();
-    private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
-    private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
+    readonly Lock _presentGate = new();
+    readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
     // A refused present is reported once per episode: a target going away (a surface unloading
     // while the engine still stops or clears) refuses every present until one succeeds again.
-    private readonly RendererDiagnosticLatch _presentFailure = new();
-    private readonly Lock _lock = new();
-    private readonly Lock _cdgSnapshotGate = new();
-    private readonly Lock _subtitleGate = new();
-    private readonly CdgPresentationRequestQueue _cdgPresentationQueue = new();
+    readonly RendererDiagnosticLatch _presentFailure = new();
+    readonly Lock _lock = new();
+    readonly Lock _cdgSnapshotGate = new();
+    readonly Lock _subtitleGate = new();
+    readonly CdgPresentationRequestQueue _cdgPresentationQueue = new();
 
-    private IVideoEngine? _attachedVideo;
+    IVideoEngine? _attachedVideo;
     // Read from the video presentation thread through _primaryRefreshRateSource.
-    private MediaPresentationSurfaceDescriptor? _primarySurface;
+    MediaPresentationSurfaceDescriptor? _primarySurface;
     // Attached non-primary surfaces (secondary/projector windows); guarded by _lock.
-    private int _secondarySurfaceCount;
-    private readonly Func<double?> _primaryRefreshRateSource;
-    private readonly PresentationTimingSource _presentationTimingSource;
+    int _secondarySurfaceCount;
+    readonly Func<double?> _primaryRefreshRateSource;
+    readonly PresentationTimingSource _presentationTimingSource;
     // Attached surfaces, republished on attach/resize/detach, for the timing source: it runs
     // on the video presentation thread once per display refresh and must not take _lock.
-    private MediaPresentationSurfaceDescriptor[] _surfaceSnapshot = [];
+    MediaPresentationSurfaceDescriptor[] _surfaceSnapshot = [];
     // How surfaces group by display; rebuilt only when the surfaces or their displays change.
     // Presentation thread only.
-    private TimingLayout? _timingLayout;
-    private PresentationVsyncTiming[] _scratchSurfaceTimings = [];
+    TimingLayout? _timingLayout;
+    PresentationVsyncTiming[] _scratchSurfaceTimings = [];
     // The targets of the video frame being presented on this thread (Stage 017A slice 5).
     [ThreadStatic]
-    private static MediaCompositionTargetFilter? t_videoFrameTargets;
-    private ICdgEngine? _attachedCdg;
-    private bool _isRenderingActive;
-    private bool _disposed;
-    private int _recoveryInProgress;
-    private ReadOnlyMemory<byte> _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-    private RetainedFrameBuffer? _compositionBackgroundBuffer;
-    private int _compositionBackgroundWidth;
-    private int _compositionBackgroundHeight;
-    private int _compositionBackgroundStride;
-    private MediaCompositionStretchMode _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+static MediaCompositionTargetFilter? t_videoFrameTargets;
+    ICdgEngine? _attachedCdg;
+    bool _isRenderingActive;
+    bool _disposed;
+    int _recoveryInProgress;
+    ReadOnlyMemory<byte> _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
+    RetainedFrameBuffer? _compositionBackgroundBuffer;
+    int _compositionBackgroundWidth;
+    int _compositionBackgroundHeight;
+    int _compositionBackgroundStride;
+    MediaCompositionStretchMode _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
     // A hardware (GPU) background frame: pending once handed to the renderer, presented once a
     // present carrying it succeeded. Only a presented one is held by the renderer, so only it may
     // be reused by a retained refresh (ENG-039).
-    private GpuBackground? _pendingGpuBackground;
-    private GpuBackground? _presentedGpuBackground;
-    private long _compositionBackgroundRevision;
-    private MediaCompositionStretchMode _primaryStretchMode = MediaCompositionStretchMode.UniformFit;
+    GpuBackground? _pendingGpuBackground;
+    GpuBackground? _presentedGpuBackground;
+    long _compositionBackgroundRevision;
+    MediaCompositionStretchMode _primaryStretchMode = MediaCompositionStretchMode.UniformFit;
     // Replaced whole, read without a lock (surface calls and frame builders).
-    private volatile StrongBox<BaseVisualTransform> _baseVisualTransform = new(default);
-    private CdgRenderSnapshot? _lastCdgSnapshot;
-    private SubtitleRasterResult? _subtitleOverlay;
+    volatile StrongBox<BaseVisualTransform> _baseVisualTransform = new(default);
+    CdgRenderSnapshot? _lastCdgSnapshot;
+    SubtitleRasterResult? _subtitleOverlay;
     // The pooled buffer the rasterizer writes into, and the one _subtitleOverlay's pixels lie in
     // (null when the rasterizer returned its own memory). Compositions take a reference to it.
-    private RetainedFrameBuffer? _subtitleBuffer;
-    private RetainedFrameBuffer? _subtitleOverlayBuffer;
-    private readonly Func<int, Memory<byte>> _rentSubtitlePixels;
-    private bool _subtitleBufferRented;
-    private SubtitleCue[] _subtitleCues = [];
-    private string? _subtitleText;
-    private int _subtitleProgressRevision = int.MinValue;
-    private long _subtitleRevision;
-    private double _lastSubtitleOffsetSeconds = double.NaN;
+    RetainedFrameBuffer? _subtitleBuffer;
+    RetainedFrameBuffer? _subtitleOverlayBuffer;
+    readonly Func<int, Memory<byte>> _rentSubtitlePixels;
+    bool _subtitleBufferRented;
+    SubtitleCue[] _subtitleCues = [];
+    string? _subtitleText;
+    int _subtitleProgressRevision = int.MinValue;
+    long _subtitleRevision;
+    double _lastSubtitleOffsetSeconds = double.NaN;
     // The player that built this coordinator (DiagnosticRouter.Owner at construction).
-    private readonly object? _diagnosticOwner;
+    readonly object? _diagnosticOwner;
 
     public MediaPresentationCoordinator(
         IMediaRendererBackend rendererBackend,
@@ -249,7 +249,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         bool presentAfterResize;
         lock (_lock)
         {
-            if (!_surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
                 return false;
 
             if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
@@ -291,7 +291,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         bool shouldRefreshAfterResize;
         lock (_lock)
         {
-            if (!_surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+            if (!_surfaces.TryGetValue(surfaceId, out var surface))
                 return false;
 
             if (surface.Role != MediaPresentationSurfaceRole.Primary)
@@ -320,7 +320,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
         lock (_lock)
         {
-            if (!_surfaces.Remove(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+            if (!_surfaces.Remove(surfaceId, out var surface))
                 return false;
 
             UpdateSecondarySurfaceCountNoLock();
@@ -391,9 +391,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     internal bool IsRenderLoopRunning => _isRenderLoopRunning;
 
-    private bool NeedsRenderLoop => _attachedCdg != null || (HasSubtitleContent && _attachedVideo == null);
+    bool NeedsRenderLoop => _attachedCdg != null || (HasSubtitleContent && _attachedVideo == null);
 
-    private void SyncRenderLoop()
+    void SyncRenderLoop()
     {
         if (!_isRenderingActive)
             return;
@@ -452,7 +452,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             StartRendering();
     }
 
-    private void RenderLoop(CancellationToken cancellationToken)
+    void RenderLoop(CancellationToken cancellationToken)
     {
         using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
         while (!cancellationToken.IsCancellationRequested)
@@ -481,7 +481,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface)
+    bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface)
     {
         bool attached;
         using (BeginRendererCall(_surfaceCalls, "AttachSurface"))
@@ -494,7 +494,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         // it, also when the attach is a deferred one (device re-creation, a graph rebuilt by a
         // mode switch) that its adapter never sees fail. Renderers that understand the surface
         // kind report a specific reason first; consumers keep the first one.
-        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out var consumer))
         {
             consumer!.OnUnavailable(
                 $"the {_rendererBackend.BackendName} renderer did not accept the shared GPU image surface '{surface.Id}'");
@@ -508,7 +508,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// waits to retry. A present may not: it would re-create the device on the side, every frame
     /// (ENG-039).
     /// </param>
-    private bool EnsureBackendInitialized(bool surfaceCall = false)
+    bool EnsureBackendInitialized(bool surfaceCall = false)
     {
         if (_rendererBackend.IsInitialized)
             return true;
@@ -530,7 +530,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     // Caller holds _presentGate, not _lock: adopting the decoder's device is a renderer call.
-    private bool EnsureNativeFrameDevice(VideoFrameEventArgs frame)
+    bool EnsureNativeFrameDevice(VideoFrameEventArgs frame)
     {
         bool ensured;
         bool deviceAdopted;
@@ -559,7 +559,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// would stay black. Unless the device is lost (recovery reopens the video) or nothing is
     /// shown, the decoder is asked to continue in software; it switches on its own worker.
     /// </summary>
-    private void RequestSoftwareDecodeFallback(VideoFrameEventArgs frame)
+    void RequestSoftwareDecodeFallback(VideoFrameEventArgs frame)
     {
         if (_disposed
             || IsRecoveringDevice
@@ -572,15 +572,15 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         fallback.RequestSoftwareDecoding($"the {_rendererBackend.BackendName} renderer cannot draw frames from the decoder's device");
     }
 
-    private void RecreateAttachedSurfacesNoLock()
+    void RecreateAttachedSurfacesNoLock()
     {
-        foreach (MediaPresentationSurfaceDescriptor surface in _surfaces.Values)
+        foreach (var surface in _surfaces.Values)
             _ = AttachSurfaceNoLock(surface);
     }
 
     // The category match stays as a backup trigger for renderers that only raise their device
     // loss as a diagnostic (ENG-039); ProbeDeviceLost is the primary path.
-    private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
+    void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
         // Only this coordinator's own device loss (another player's renderer has its own device).
         if (_disposed
@@ -592,7 +592,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         RequestDeviceLostRecovery(info.Message);
     }
 
-    private void AttachVideoIfAvailable()
+    void AttachVideoIfAvailable()
     {
         if (_attachedVideo != null)
         {
@@ -618,10 +618,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(_presentationTimingSource);
     }
 
-    private void UpdateSecondarySurfaceCountNoLock() =>
+    void UpdateSecondarySurfaceCountNoLock() =>
         _secondarySurfaceCount = _surfaces.Values.Count(static surface => surface.Role != MediaPresentationSurfaceRole.Primary);
 
-    private void TrackPrimarySurface(MediaPresentationSurfaceDescriptor surface)
+    void TrackPrimarySurface(MediaPresentationSurfaceDescriptor surface)
     {
         if (surface.Role == MediaPresentationSurfaceRole.Primary)
             Volatile.Write(ref _primarySurface, surface);
@@ -631,7 +631,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// Refresh rate of the monitor showing the primary surface, as the renderer reports it
     /// (Stage 017A slice 3). Called from the video presentation thread; renderers cache it.
     /// </summary>
-    private double? GetPrimaryRefreshRateHz()
+    double? GetPrimaryRefreshRateHz()
     {
         if (_disposed || Volatile.Read(ref _primarySurface) is not { } surface)
             return null;
@@ -648,7 +648,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void PublishSurfaceSnapshotNoLock() => Volatile.Write(ref _surfaceSnapshot, [.. _surfaces.Values]);
+    void PublishSurfaceSnapshotNoLock() => Volatile.Write(ref _surfaceSnapshot, [.. _surfaces.Values]);
 
     /// <summary>
     /// The displays showing the attached surfaces and their vertical-blank timing, for
@@ -657,16 +657,16 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// reported while the primary has no timing. Called from the video presentation thread once
     /// per display refresh; renderers return cached timing.
     /// </summary>
-    private void FillPresentationTimingGroups(List<PresentationTimingGroup> destination)
+    void FillPresentationTimingGroups(List<PresentationTimingGroup> destination)
     {
         if (_disposed || Volatile.Read(ref _primarySurface) is not { } primary)
             return;
 
-        MediaPresentationSurfaceDescriptor[] surfaces = Volatile.Read(ref _surfaceSnapshot);
+        var surfaces = Volatile.Read(ref _surfaceSnapshot);
         if (_scratchSurfaceTimings.Length < surfaces.Length)
             _scratchSurfaceTimings = new PresentationVsyncTiming[surfaces.Length];
 
-        PresentationVsyncTiming[] timings = _scratchSurfaceTimings;
+        var timings = _scratchSurfaceTimings;
         var primaryIndex = -1;
         try
         {
@@ -689,14 +689,14 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         if (primaryIndex < 0 || !timings[primaryIndex].IsValid)
             return;
 
-        TimingLayout layout = GetTimingLayout(surfaces, timings, primaryIndex);
-        foreach (TimingLayout.Group group in layout.Groups)
+        var layout = GetTimingLayout(surfaces, timings, primaryIndex);
+        foreach (var group in layout.Groups)
             destination.Add(new PresentationTimingGroup(timings[group.TimingSurfaceIndex], group.IncludesPrimary, group.SurfaceIds, group.Targets));
     }
 
-    private TimingLayout GetTimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, PresentationVsyncTiming[] timings, int primaryIndex)
+    TimingLayout GetTimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, PresentationVsyncTiming[] timings, int primaryIndex)
     {
-        TimingLayout? layout = _timingLayout;
+        var layout = _timingLayout;
         if (layout is not null && layout.Matches(surfaces, timings, primaryIndex))
             return layout;
 
@@ -706,13 +706,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     /// <summary>The attached surfaces grouped by the display showing them.</summary>
-    private sealed class TimingLayout
+    sealed class TimingLayout
     {
-        private readonly MediaPresentationSurfaceDescriptor[] _surfaces;
-        private readonly long[] _displayKeys;
-        private readonly int _primaryIndex;
+        readonly MediaPresentationSurfaceDescriptor[] _surfaces;
+        readonly long[] _displayKeys;
+        readonly int _primaryIndex;
 
-        private TimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, long[] displayKeys, int primaryIndex, Group[] groups)
+        TimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, long[] displayKeys, int primaryIndex, Group[] groups)
         {
             _surfaces = surfaces;
             _displayKeys = displayKeys;
@@ -755,7 +755,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
                     .Where(index => keys[index] == key || (key == primaryKey && keys[index] == 0))
                     .ToArray();
                 var includesPrimary = members.Contains(primaryIndex);
-                MediaCompositionTargetFilter? targets = order.Count == 1
+                var targets = order.Count == 1
                     ? null
                     : new MediaCompositionTargetFilter(
                         includesPrimary,
@@ -772,10 +772,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     // During a frame raised for some displays only, every composition built on this thread goes
     // to those displays' targets.
-    private static MediaCompositionFrame ForVideoFrameTargets(MediaCompositionFrame frame) =>
+    static MediaCompositionFrame ForVideoFrameTargets(MediaCompositionFrame frame) =>
         t_videoFrameTargets is { } targets && frame.Targets is null ? frame with { Targets = targets } : frame;
 
-    private void AttachCdgIfAvailable()
+    void AttachCdgIfAvailable()
     {
         if (_attachedCdg != null)
         {
@@ -809,18 +809,18 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             PresentRetainedCdgFrame();
     }
 
-    private void AttachImageIfAvailable()
+    void AttachImageIfAvailable()
     {
         if (!_mediaEngine.Content.HasFlag(MediaContent.Image))
             return;
 
-        if (_mediaEngine.TryGetCurrentImageFrame(out VideoFrameEventArgs? frame) && frame != null)
+        if (_mediaEngine.TryGetCurrentImageFrame(out var frame) && frame != null)
             PresentCoreImageFrame(frame);
     }
 
-    private void OnCoreImageFrameReady(object? sender, VideoFrameEventArgs e) => PresentCoreImageFrame(e);
+    void OnCoreImageFrameReady(object? sender, VideoFrameEventArgs e) => PresentCoreImageFrame(e);
 
-    private void PresentCoreImageFrame(VideoFrameEventArgs e)
+    void PresentCoreImageFrame(VideoFrameEventArgs e)
     {
         if (!IsValidBgraFrame(e))
             return;
@@ -829,7 +829,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "core image frame");
     }
 
-    private void OnCoreBackgroundFrameReady(object? sender, VideoFrameEventArgs e)
+    void OnCoreBackgroundFrameReady(object? sender, VideoFrameEventArgs e)
     {
         if (IsValidBgraFrame(e))
         {
@@ -879,7 +879,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         ClearCompositionLayer0Frame();
     }
 
-    private void OnCoreBackgroundCleared(object? sender, EventArgs e)
+    void OnCoreBackgroundCleared(object? sender, EventArgs e)
     {
         ClearCompositionLayer0Frame();
         if (!ShouldPresentVisualLayers)
@@ -900,7 +900,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             "core background cleared"));
     }
 
-    private void OnVideoFrameReady(object? sender, VideoFrameEventArgs e)
+    void OnVideoFrameReady(object? sender, VideoFrameEventArgs e)
     {
         // A hardware frame still refers to the lost device (ENG-039).
         if (IsRecoveringDevice && IsHardwareFrame(e))
@@ -927,7 +927,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void PresentPrimaryVideoFrame(VideoFrameEventArgs e)
+    void PresentPrimaryVideoFrame(VideoFrameEventArgs e)
     {
         if (IsValidBgraFrame(e))
         {
@@ -979,7 +979,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + secondary target");
     }
 
-    private void PresentVideoFrameAsCdgBackground(VideoFrameEventArgs e)
+    void PresentVideoFrameAsCdgBackground(VideoFrameEventArgs e)
     {
         if (IsValidBgraFrame(e))
         {
@@ -1007,19 +1007,19 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void OnCdgBackgroundWashChanged(object? sender, EventArgs e) =>
+    void OnCdgBackgroundWashChanged(object? sender, EventArgs e) =>
         RequestCdgPresentationIfVisible(consumeDirtyRegions: false, retainedRefresh: true, "cdg wash changed");
 
-    private void OnCdgFrameInvalidated(object? sender, EventArgs e) =>
+    void OnCdgFrameInvalidated(object? sender, EventArgs e) =>
         RequestCdgPresentationIfVisible(consumeDirtyRegions: true, retainedRefresh: false, "cdg invalidated");
 
-    private void PresentRetainedCdgFrame()
+    void PresentRetainedCdgFrame()
     {
         _ = _cdgPresentationQueue.TryDequeue(out var consumeDirtyRegions, out _, out _);
         _ = RenderCurrentCdgFrame(consumeDirtyRegions, retainedRefresh: true, "retained cdg refresh");
     }
 
-    private void RequestCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
+    void RequestCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
     {
         _cdgPresentationQueue.Enqueue(consumeDirtyRegions, retainedRefresh, reason);
 
@@ -1027,7 +1027,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             _ = PresentPendingCdgFrame(deferIfCompositionBusy: false);
     }
 
-    private void RequestCdgPresentationIfVisible(bool consumeDirtyRegions, bool retainedRefresh, string reason)
+    void RequestCdgPresentationIfVisible(bool consumeDirtyRegions, bool retainedRefresh, string reason)
     {
         if (!ShouldPresentVisualLayers)
         {
@@ -1038,19 +1038,19 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         RequestCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
     }
 
-    private bool PresentPendingCdgFrame(bool deferIfCompositionBusy)
+    bool PresentPendingCdgFrame(bool deferIfCompositionBusy)
     {
         if (!_cdgPresentationQueue.TryDequeue(out var consumeDirtyRegions, out var retainedRefresh, out var reason))
             return false;
 
-        CompositionPresentResult result = RenderCurrentCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
+        var result = RenderCurrentCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
         if (result == CompositionPresentResult.Deferred)
             _cdgPresentationQueue.Enqueue(consumeDirtyRegions, retainedRefresh, reason);
 
         return result == CompositionPresentResult.Presented;
     }
 
-    private CompositionPresentResult RenderCurrentCdgFrame(
+    CompositionPresentResult RenderCurrentCdgFrame(
         bool consumeDirtyRegions,
         bool retainedRefresh,
         string reason,
@@ -1088,7 +1088,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private CompositionPresentResult TryBuildCdgCompositionFrameNoLock(
+    CompositionPresentResult TryBuildCdgCompositionFrameNoLock(
         bool consumeDirtyRegions,
         bool retainedRefresh,
         string reason,
@@ -1100,7 +1100,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         rentedBackground = null;
         rentedSubtitle = null;
 
-        if (!TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null)
+        if (!TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out var snapshot) || snapshot == null)
             return CompositionPresentResult.Failed;
 
         if (HasCompositionBackgroundNoLock() && !IsCdgSnapshotReadyForBackgroundPresentation(snapshot))
@@ -1113,12 +1113,12 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         return CompositionPresentResult.Presented;
     }
 
-    private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
+    void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
         _ = UpdateSubtitleOverlay();
         CdgRenderSnapshot? snapshot = null;
         uint washArgb = 0;
-        if (TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? cdgSnapshot) && cdgSnapshot != null)
+        if (TryGetCdgSnapshotForVideoComposition(out var cdgSnapshot) && cdgSnapshot != null)
         {
             snapshot = cdgSnapshot;
             washArgb = cdgSnapshot.BackgroundWashArgb;
@@ -1137,7 +1137,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
                 if (!EnsureBackendInitialized())
                     return;
 
-                MediaCompositionStretchMode stretch = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : _primaryStretchMode;
+                var stretch = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : _primaryStretchMode;
                 backgroundRevision = SetPendingGpuBackgroundNoLock(frame, stretch);
                 compositionFrame = BuildHardwareCompositionFrameNoLock(frame, stretch, backgroundRevision, snapshot, washArgb, reason, out rentedSubtitle);
             }
@@ -1151,7 +1151,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private MediaCompositionFrame BuildHardwareCompositionFrameNoLock(
+    MediaCompositionFrame BuildHardwareCompositionFrameNoLock(
         VideoFrameEventArgs frame,
         MediaCompositionStretchMode stretch,
         long backgroundRevision,
@@ -1160,9 +1160,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         string reason,
         out RetainedFrameBuffer? rentedSubtitle)
     {
-        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
+        var subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
 
-        (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
+        (var clearMode, var clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
         {
             ClearMode = clearMode,
@@ -1193,7 +1193,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         };
     }
 
-    private void StoreRetainedHardwareBackgroundFrame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
+    void StoreRetainedHardwareBackgroundFrame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
     {
         if (!IsHardwareFrame(frame))
             return;
@@ -1215,7 +1215,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// after <see cref="CommitGpuBackgroundNoLock"/>: until a present carrying it succeeded the
     /// renderer does not hold it.
     /// </summary>
-    private long SetPendingGpuBackgroundNoLock(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
+    long SetPendingGpuBackgroundNoLock(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
     {
         _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
         _compositionBackgroundBuffer?.Release();
@@ -1229,13 +1229,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     /// <summary>A present carrying the pending hardware background of <paramref name="revision"/> succeeded.</summary>
-    private void CommitGpuBackgroundNoLock(long revision)
+    void CommitGpuBackgroundNoLock(long revision)
     {
         if (_pendingGpuBackground is { } pending && pending.Revision == revision)
             _presentedGpuBackground = pending;
     }
 
-    private bool TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? snapshot)
+    bool TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? snapshot)
     {
         snapshot = null;
         if (!HasCdgContent)
@@ -1265,13 +1265,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         return false;
     }
 
-    private bool HasReadyCdgSnapshotForBackgroundPresentation()
+    bool HasReadyCdgSnapshotForBackgroundPresentation()
     {
         lock (_cdgSnapshotGate)
             return _lastCdgSnapshot != null && IsCdgSnapshotReadyForBackgroundPresentation(_lastCdgSnapshot);
     }
 
-    private bool HasCompositionBackgroundNoLock()
+    bool HasCompositionBackgroundNoLock()
     {
         var hasBgra = !_compositionBackgroundBgra.IsEmpty
             && _compositionBackgroundWidth > 0
@@ -1282,18 +1282,18 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         return hasBgra || _presentedGpuBackground is not null || _pendingGpuBackground is not null;
     }
 
-    private bool HasCompositionBackground()
+    bool HasCompositionBackground()
     {
         lock (_lock)
             return HasCompositionBackgroundNoLock();
     }
 
-    private string DescribeBackendPresentFailure() =>
+    string DescribeBackendPresentFailure() =>
         _rendererBackend.LastPresentFailureReason is { Length: > 0 } reason ? $" ({reason})" : string.Empty;
 
     // Refused presents repeat every frame: build the message only for the first of an episode.
     // Before any surface is attached "no target" is the expected answer, not a failure (ENG-012).
-    private void ReportPresentFailure(MediaCompositionFrame frame)
+    void ReportPresentFailure(MediaCompositionFrame frame)
     {
         if (!HasAttachedSurfaces)
             return;
@@ -1305,7 +1305,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     // Caller holds _presentGate. ENG-039: its result was ignored before.
-    private void PresentNativeFrame(VideoFrameEventArgs frame)
+    void PresentNativeFrame(VideoFrameEventArgs frame)
     {
         bool presented;
         using (BeginRendererCall(_renderCalls, "PresentNativeFrame"))
@@ -1326,23 +1326,23 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         KickDeviceProbe();
     }
 
-    private bool HasCurrentVisualContent() =>
+    bool HasCurrentVisualContent() =>
         _mediaEngine.Content.HasFlag(MediaContent.Image)
         || _mediaEngine.Content.HasFlag(MediaContent.Video)
         || HasCdgContent
         || HasSubtitleContent
         || HasCompositionBackground();
 
-    private static bool IsCdgSnapshotReadyForBackgroundPresentation(CdgRenderSnapshot snapshot) =>
+    static bool IsCdgSnapshotReadyForBackgroundPresentation(CdgRenderSnapshot snapshot) =>
         snapshot.BackgroundColorIndex >= 0
         || ((snapshot.BackgroundWashArgb >> 24) & 0xFF) != 0;
 
-    private bool TryCreateAndCacheCdgSnapshot(bool consumeDirtyRegions, out CdgRenderSnapshot? snapshot)
+    bool TryCreateAndCacheCdgSnapshot(bool consumeDirtyRegions, out CdgRenderSnapshot? snapshot)
     {
         snapshot = null;
         if (_attachedCdg is not ICdgSnapshotSource snapshotSource
             || !_mediaEngine.Content.HasFlag(MediaContent.Cdg)
-            || !snapshotSource.TryCreateCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? createdSnapshot))
+            || !snapshotSource.TryCreateCdgSnapshot(consumeDirtyRegions, out var createdSnapshot))
             return false;
 
         snapshot = createdSnapshot;
@@ -1353,13 +1353,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     /// <summary>Whether <see cref="PresentCurrentComposition"/> presents through its video branch.</summary>
-    private bool IsPlainVideoComposition() =>
+    bool IsPlainVideoComposition() =>
         !HasCdgContent
         && !_mediaEngine.Content.HasFlag(MediaContent.Image)
         && _mediaEngine.Content.HasFlag(MediaContent.Video)
         && !(_attachedVideo == null && _attachedCdg == null && HasSubtitleContent);
 
-    private void PresentCurrentComposition(string reason)
+    void PresentCurrentComposition(string reason)
     {
         if (HasCdgContent)
         {
@@ -1374,7 +1374,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
 
         if (_mediaEngine.Content.HasFlag(MediaContent.Image)
-            && _mediaEngine.TryGetCurrentImageFrame(out VideoFrameEventArgs? frame)
+            && _mediaEngine.TryGetCurrentImageFrame(out var frame)
             && frame != null)
         {
             PresentCoreImageFrame(frame);
@@ -1399,7 +1399,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             reason));
     }
 
-    private CompositionPresentResult PresentMediaComposition(MediaCompositionFrame frame)
+    CompositionPresentResult PresentMediaComposition(MediaCompositionFrame frame)
     {
         lock (_presentGate)
         {
@@ -1413,7 +1413,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private CompositionPresentResult BuildAndPresentSoftwareComposition(
+    CompositionPresentResult BuildAndPresentSoftwareComposition(
         uint washArgb,
         bool retainedRefresh,
         string reason,
@@ -1441,7 +1441,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     // Caller holds _presentGate and not _lock: the renderer call, its failure report and the
     // device probe a failure kicks.
-    private CompositionPresentResult PresentToRenderer(
+    CompositionPresentResult PresentToRenderer(
         MediaCompositionFrame frame,
         RetainedFrameBuffer? rentedBackground,
         RetainedFrameBuffer? rentedSubtitle = null)
@@ -1468,7 +1468,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private MediaCompositionFrame BuildCompositionFrameNoLock(
+    MediaCompositionFrame BuildCompositionFrameNoLock(
         CdgRenderSnapshot? cdgOverlay,
         uint washArgb,
         bool retainedRefresh,
@@ -1511,7 +1511,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
         // The composition shares the retained pixels through a reference instead of copying
         // them; SetCompositionLayer0Frame never overwrites a buffer a composition still holds.
-        ReadOnlyMemory<byte> ownedBackgroundBgra = ReadOnlyMemory<byte>.Empty;
+        var ownedBackgroundBgra = ReadOnlyMemory<byte>.Empty;
         if (hasBackground && _compositionBackgroundBuffer is { } retainedBuffer)
         {
             rentedBackground = retainedBuffer.AddReference();
@@ -1522,9 +1522,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             hasBackground = false;
         }
 
-        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
+        var subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
 
-        (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
+        (var clearMode, var clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
         {
             ClearMode = clearMode,
@@ -1567,8 +1567,8 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
 
-            IReadOnlyList<SubtitleCue> activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
-            KaraokeCueTiming? karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
+            var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
+            var karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
             var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
             var progressRevision = karaokeTiming?.GetProgressRevision(subtitleTime, _wipeTransitionDuration) ?? int.MinValue;
             // The same cues at the same progress draw the same raster: skip it without rebuilding
@@ -1594,7 +1594,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             try
             {
-                SubtitleRasterResult overlay = karaokeTiming == null
+                var overlay = karaokeTiming == null
                     ? _subtitleRasterizer.Render(text, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels)
                     : _subtitleRasterizer.RenderKaraoke(karaokeTiming, subtitleTime, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels);
                 _subtitleOverlay = overlay;
@@ -1620,9 +1620,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     // Caller holds _subtitleGate.
-    private bool IsSameSubtitleCues(IReadOnlyList<SubtitleCue> activeCues)
+    bool IsSameSubtitleCues(IReadOnlyList<SubtitleCue> activeCues)
     {
-        SubtitleCue[] previous = _subtitleCues;
+        var previous = _subtitleCues;
         if (previous.Length != activeCues.Count)
             return false;
 
@@ -1635,7 +1635,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         return true;
     }
 
-    private static string? JoinCueText(IReadOnlyList<SubtitleCue> activeCues) => activeCues.Count switch
+    static string? JoinCueText(IReadOnlyList<SubtitleCue> activeCues) => activeCues.Count switch
     {
         0 => null,
         1 => activeCues[0].Text,
@@ -1644,9 +1644,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     // The rasterizer's buffer request, made under _subtitleGate during UpdateSubtitleOverlay. The
     // buffer is overwritten in place only when no composition holds it (as the background is).
-    private Memory<byte> RentSubtitlePixels(int length)
+    Memory<byte> RentSubtitlePixels(int length)
     {
-        RetainedFrameBuffer? buffer = _subtitleBuffer;
+        var buffer = _subtitleBuffer;
         // A karaoke raster's bounds change from frame to frame: any buffer large enough is reused.
         if (buffer is null || !buffer.IsExclusive || buffer.Length < length)
         {
@@ -1659,18 +1659,18 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         return buffer.Memory[..length];
     }
 
-    private bool HasCachedSubtitleOverlay()
+    bool HasCachedSubtitleOverlay()
     {
         lock (_subtitleGate)
             return _subtitleOverlay is { Pixels.IsEmpty: false };
     }
 
-    private static bool IsHardwareFrame(VideoFrameEventArgs frame) =>
+    static bool IsHardwareFrame(VideoFrameEventArgs frame) =>
         frame.NativeResource is { IsValid: true };
 
     // A pooled overlay comes with a reference the caller releases once the present is over
     // (PresentToRenderer does), so a raster on another thread never overwrites pixels in flight.
-    private SubtitleRasterResult? GetCachedSubtitleOverlay(out long revision, out RetainedFrameBuffer? rentedSubtitle)
+    SubtitleRasterResult? GetCachedSubtitleOverlay(out long revision, out RetainedFrameBuffer? rentedSubtitle)
     {
         lock (_subtitleGate)
         {
@@ -1687,7 +1687,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void SetCompositionLayer0Frame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretchMode)
+    void SetCompositionLayer0Frame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretchMode)
     {
         if (_disposed || !IsValidBgraFrame(frame))
         {
@@ -1706,7 +1706,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         {
             // Reuse the retained buffer in place only when no in-flight composition references it;
             // otherwise retain into a fresh pooled buffer and let the last reader return the old one.
-            RetainedFrameBuffer? buffer = _compositionBackgroundBuffer;
+            var buffer = _compositionBackgroundBuffer;
             if (buffer is null || !buffer.IsExclusive || buffer.Length != required)
             {
                 buffer?.Release();
@@ -1727,7 +1727,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void ClearCompositionLayer0Frame()
+    void ClearCompositionLayer0Frame()
     {
         lock (_presentGate)
         {
@@ -1739,13 +1739,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     }
 
     // Caller holds _presentGate.
-    private void ClearRendererBackgroundFrame()
+    void ClearRendererBackgroundFrame()
     {
         using (BeginRendererCall(_renderCalls, "ClearCompositionBackgroundFrame"))
             _rendererBackend.ClearCompositionBackgroundFrame();
     }
 
-    private void ClearCompositionLayer0FrameNoLock()
+    void ClearCompositionLayer0FrameNoLock()
     {
         _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
         _compositionBackgroundBuffer?.Release();
@@ -1759,9 +1759,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _compositionBackgroundRevision++;
     }
 
-    private void ClearAllContent() => ClearVisibleComposition("all content cleared");
+    void ClearAllContent() => ClearVisibleComposition("all content cleared");
 
-    private void ClearVisibleComposition(string reason, bool preserveBackground = false)
+    void ClearVisibleComposition(string reason, bool preserveBackground = false)
     {
         _cdgPresentationQueue.Clear();
         lock (_cdgSnapshotGate)
@@ -1790,7 +1790,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void InvalidateSubtitleOverlayCache()
+    void InvalidateSubtitleOverlayCache()
     {
         lock (_subtitleGate)
         {
@@ -1805,7 +1805,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
-    private void DetachAllEngines()
+    void DetachAllEngines()
     {
         if (_attachedVideo != null)
         {
@@ -1843,29 +1843,29 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _renderPipeline.Clear();
     }
 
-    private bool HasCdgContent => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
+    bool HasCdgContent => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
 
-    private bool HasSubtitleContent => _mediaEngine.Content.HasFlag(MediaContent.Subtitle);
+    bool HasSubtitleContent => _mediaEngine.Content.HasFlag(MediaContent.Subtitle);
 
-    private bool ShouldPresentVisualLayers =>
+    bool ShouldPresentVisualLayers =>
         _isRenderingActive
         || _mediaEngine.State is MediaPlayerState.Playing or MediaPlayerState.Paused
         || HasStoppedStandaloneVisualContent;
 
-    private bool HasStoppedStandaloneVisualContent =>
+    bool HasStoppedStandaloneVisualContent =>
         _mediaEngine.State == MediaPlayerState.Stopped
         && !_mediaEngine.Content.HasFlag(MediaContent.Audio)
         && (_mediaEngine.Content.HasFlag(MediaContent.Video)
             || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
 
-    private bool ShouldPresentImmediatelyAfterPrimaryResize() =>
+    bool ShouldPresentImmediatelyAfterPrimaryResize() =>
         !_isRenderingActive
         || (!HasCdgContent && !_mediaEngine.Content.HasFlag(MediaContent.Video));
 
-    private static bool IsValidBgraFrame(VideoFrameEventArgs e) =>
+    static bool IsValidBgraFrame(VideoFrameEventArgs e) =>
         !e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0 && e.Stride >= e.Width * 4;
 
-    private static MediaCompositionStretchMode ToCompositionStretchMode(VideoDisplayMode mode) => mode switch
+    static MediaCompositionStretchMode ToCompositionStretchMode(VideoDisplayMode mode) => mode switch
     {
         VideoDisplayMode.Original => MediaCompositionStretchMode.Original,
         VideoDisplayMode.Stretch => MediaCompositionStretchMode.Fill,
@@ -1873,7 +1873,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _ => MediaCompositionStretchMode.UniformFit
     };
 
-    private void OnFramePresented(object? sender, EventArgs e) => FramePresented?.Invoke(this, EventArgs.Empty);
+    void OnFramePresented(object? sender, EventArgs e) => FramePresented?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {

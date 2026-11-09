@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// Audio-engine capability (037A slice 2): the engine follows the output device itself and reports
 /// each move. An engine created by an <see cref="IAudioEngineFactory"/> implements it when it can.
 /// </summary>
-internal interface IAudioDeviceChangeSource
+interface IAudioDeviceChangeSource
 {
     /// <summary>Raised on the engine's own thread when its output moved to another device.</summary>
     event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
@@ -17,11 +17,11 @@ internal interface IAudioDeviceChangeSource
 /// the engine's own device moves (<see cref="IAudioDeviceChangeSource"/>) plus the platform's
 /// monitor, which still watches BASS for video audio. Either may be missing.
 /// </summary>
-internal sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDeviceMonitor? platform) : IAudioDeviceMonitor
+sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDeviceMonitor? platform) : IAudioDeviceMonitor
 {
-    private readonly Lock _gate = new();
-    private bool _running;
-    private bool _disposed;
+    readonly Lock _gate = new();
+    bool _running;
+    bool _disposed;
 
     public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
 
@@ -78,5 +78,5 @@ internal sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine,
         platform?.Dispose();
     }
 
-    private void OnDeviceChanged(object? sender, AudioDeviceChangeInfo info) => DeviceChanged?.Invoke(this, info);
+    void OnDeviceChanged(object? sender, AudioDeviceChangeInfo info) => DeviceChanged?.Invoke(this, info);
 }

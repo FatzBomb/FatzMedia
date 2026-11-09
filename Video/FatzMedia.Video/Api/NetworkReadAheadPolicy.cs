@@ -53,6 +53,6 @@ public sealed record NetworkReadAheadPolicy
         init => field = ClampTime(value, TimeSpan.Zero, TimeSpan.FromMinutes(5));
     } = TimeSpan.FromSeconds(30);
 
-    private static TimeSpan ClampTime(TimeSpan value, TimeSpan min, TimeSpan max) =>
+    static TimeSpan ClampTime(TimeSpan value, TimeSpan min, TimeSpan max) =>
         value < min ? min : value > max ? max : value;
 }

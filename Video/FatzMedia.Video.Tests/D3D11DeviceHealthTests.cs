@@ -18,16 +18,16 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11DeviceHealthTests
 {
-    private const int Width = 16;
-    private const int Height = 8;
+    const int Width = 16;
+    const int Height = 8;
 
     // ConfiguredColor 0xFF336699 composes to BGRA (0x99, 0x66, 0x33, 0xFF).
-    private static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
+    static readonly MediaCompositionFrame BlueGrey = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF336699);
 
     [Fact]
     public void ProbeDeviceLost_HealthyWarpDevice_IsNotLost()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
 
         Assert.False(bridge.ProbeDeviceLost(out var reason));
         Assert.Null(reason);
@@ -75,7 +75,7 @@ public sealed class D3D11DeviceHealthTests
     [Fact]
     public void EnsureNativeFrameDevice_RefusesADeviceWithoutVideoSupport_WithoutCleaningUp()
     {
-        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        using var bridge = D3D11MultiTargetTests.CreateWarpBridge();
         var sink = new D3D11MultiTargetTests.CopyingFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
         Assert.True(bridge.AttachSurface(new MediaPresentationSurfaceDescriptor(
@@ -88,14 +88,14 @@ public sealed class D3D11DeviceHealthTests
 
         // A WARP device created without video support stands in for a decoder device the renderer
         // cannot draw from. Where WARP offers the video device anyway, there is nothing to refuse.
-        SharpGen.Runtime.Result created = D3D11.D3D11CreateDevice(
+        var created = D3D11.D3D11CreateDevice(
             adapter: null,
             DriverType.Warp,
             DeviceCreationFlags.BgraSupport,
             [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1],
-            out ID3D11Device? device,
+            out var device,
             out _,
-            out ID3D11DeviceContext? context);
+            out var context);
         Assert.True(created.Success);
         using (device)
         using (context)
@@ -103,7 +103,7 @@ public sealed class D3D11DeviceHealthTests
             if (D3D11DeviceResources.HasVideoSupport(device!.NativePointer, context!.NativePointer))
                 return;
 
-            using ID3D11Texture2D texture = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, Width, Height, 1, 1));
+            using var texture = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, Width, Height, 1, 1));
             var frame = new VideoFrameEventArgs
             {
                 Width = Width,

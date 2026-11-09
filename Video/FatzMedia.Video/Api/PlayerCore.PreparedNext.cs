@@ -14,8 +14,8 @@ namespace FatzMedia.Video;
 /// </summary>
 public partial class PlayerCore
 {
-    private readonly PreparedNextSlot _preparedNext = new();
-    private volatile bool _autoTransitionToPreparedNext;
+    readonly PreparedNextSlot _preparedNext = new();
+    volatile bool _autoTransitionToPreparedNext;
 
     public event EventHandler<PreparedNextChangedEventArgs>? PreparedNextChanged;
 
@@ -35,7 +35,7 @@ public partial class PlayerCore
     public async Task<MediaAnalysisResult?> AnalyzeAsync(MediaInputSource source, CancellationToken cancellationToken = default)
     {
         // Called from the host's thread: the analysis and its diagnostics belong to this player.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         ArgumentNullException.ThrowIfNull(source);
         ThrowIfResetting();
         if (!source.IsFile)
@@ -49,13 +49,13 @@ public partial class PlayerCore
 
     public async Task<bool> PrepareNextAsync(MediaInputSource source, CancellationToken cancellationToken = default)
     {
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         ArgumentNullException.ThrowIfNull(source);
         ThrowIfResetting();
         if (source.IsFile ? !System.IO.File.Exists(source.FilePath) : !source.IsBgraImage)
             return false;
 
-        PreparedNextTicket ticket = _preparedNext.Begin(source, cancellationToken, out PreparedNextChange accepted);
+        var ticket = _preparedNext.Begin(source, cancellationToken, out var accepted);
         PublishPreparedNextChange(accepted);
 
         MediaAnalysisResult? analysis = null;
@@ -66,7 +66,7 @@ public partial class PlayerCore
         }
         catch (OperationCanceledException)
         {
-            if (_preparedNext.TryFail(ticket.Generation, out PreparedNextChange cancelled))
+            if (_preparedNext.TryFail(ticket.Generation, out var cancelled))
                 PublishPreparedNextChange(cancelled);
             return false;
         }
@@ -77,7 +77,7 @@ public partial class PlayerCore
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PreparedNext", $"Analysis failed: {ex.Message}", source.FilePath, ex);
         }
 
-        if (!_preparedNext.TryComplete(ticket.Generation, analysis, out PreparedNextChange ready))
+        if (!_preparedNext.TryComplete(ticket.Generation, analysis, out var ready))
             return false;
 
         PublishPreparedNextChange(ready);
@@ -86,7 +86,7 @@ public partial class PlayerCore
 
     public bool ClearPreparedNext()
     {
-        if (!_preparedNext.Clear(out PreparedNextChange change))
+        if (!_preparedNext.Clear(out var change))
             return false;
 
         PublishPreparedNextChange(change);
@@ -96,7 +96,7 @@ public partial class PlayerCore
     public Task<bool> TransitionToPreparedNextAsync()
     {
         ThrowIfResetting();
-        AudioCrossfadeOptions fade = PreparedNextTransitionFade;
+        var fade = PreparedNextTransitionFade;
         if (!fade.IsEnabled)
             return EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false, fade: null));
 
@@ -112,13 +112,13 @@ public partial class PlayerCore
             && File.LoadGeneration == loadGeneration;
 
         // The transition runs off the queue in the flow started here.
-        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         return RunFadedPreparedNextTransitionAsync(slotGeneration, isAutomatic: false, fade, fadeOutgoing: true, StillValid);
     }
 
-    private async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic, AudioCrossfadeOptions? fade)
+    async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic, AudioCrossfadeOptions? fade)
     {
-        if (!_preparedNext.TryBeginTransition(expectedGeneration, out PreparedNextTransition? transition, out PreparedNextChange? claimed))
+        if (!_preparedNext.TryBeginTransition(expectedGeneration, out var transition, out var claimed))
         {
             if (claimed is { } stale)
                 PublishPreparedNextChange(stale);
@@ -128,7 +128,7 @@ public partial class PlayerCore
         PublishPreparedNextChange(claimed!.Value);
         var success = false;
         // A Reset or Dispose meanwhile cancels the load (ENG-024).
-        CancellationToken lifetime = _loadLifetime.Token;
+        var lifetime = _loadLifetime.Token;
         try
         {
             if (fade is null)
@@ -156,7 +156,7 @@ public partial class PlayerCore
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "PreparedNext", $"Transition failed: {ex.Message}", transition!.Source.FilePath, ex);
         }
 
-        if (_preparedNext.TryCompleteTransition(transition!.Generation, out PreparedNextChange completed))
+        if (_preparedNext.TryCompleteTransition(transition!.Generation, out var completed))
             PublishPreparedNextChange(completed);
 
         if (success)
@@ -177,7 +177,7 @@ public partial class PlayerCore
     /// it is skipped when the host changed transport, loaded other media, enabled looping, disabled
     /// auto transition, or replaced/cleared the prepared item in the meantime.
     /// </summary>
-    private void ScheduleAutomaticPreparedNextTransition()
+    void ScheduleAutomaticPreparedNextTransition()
     {
         if (!_autoTransitionToPreparedNext || Controls.LoopMedia || !_preparedNext.IsReady())
             return;
@@ -185,7 +185,7 @@ public partial class PlayerCore
         var slotGeneration = _preparedNext.Generation;
         var transportGeneration = Controls.TransportGeneration;
         var loadGeneration = File.LoadGeneration;
-        PlayerOperationQueue queue = _controlOperations;
+        var queue = _controlOperations;
 
         bool StillValid() =>
             !_disposed
@@ -204,7 +204,7 @@ public partial class PlayerCore
                 if (!StillValid())
                     return Task.FromResult(false);
 
-                AudioCrossfadeOptions fade = PreparedNextTransitionFade;
+                var fade = PreparedNextTransitionFade;
                 if (!fade.IsEnabled)
                     return TransitionToPreparedNextCoreAsync(slotGeneration, isAutomatic: true, fade: null);
 
@@ -215,7 +215,7 @@ public partial class PlayerCore
                     _ = Task.Run(() =>
                     {
                         // Suppressing the flow also dropped the diagnostic owner: restore it.
-                        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+                        using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
                         return RunFadedPreparedNextTransitionAsync(
                             slotGeneration,
                             isAutomatic: true,
@@ -237,7 +237,7 @@ public partial class PlayerCore
         await _diagnosticEvents.FlushAsync().ConfigureAwait(false);
     }
 
-    private IMediaFileAnalyzer ResolveMediaFileAnalyzer() =>
+    IMediaFileAnalyzer ResolveMediaFileAnalyzer() =>
         _serviceProvider.GetService<IMediaFileAnalyzer>() ?? UnavailableMediaFileAnalyzer.Instance;
 
     /// <summary>
@@ -245,12 +245,12 @@ public partial class PlayerCore
     /// synchronous work a UI thread must not do). Video, archives, images, and CDG files are not
     /// plain audio and are not analyzed.
     /// </summary>
-    private Task<MediaAnalysisResult?> AnalyzeFileAsync(string path, CancellationToken cancellationToken)
+    Task<MediaAnalysisResult?> AnalyzeFileAsync(string path, CancellationToken cancellationToken)
     {
         if (!IsAnalyzableAudioFile(path))
             return Task.FromResult<MediaAnalysisResult?>(null);
 
-        IMediaFileAnalyzer analyzer = ResolveMediaFileAnalyzer();
+        var analyzer = ResolveMediaFileAnalyzer();
         return Task.Run(() => analyzer.AnalyzeAsync(path, cancellationToken), cancellationToken);
     }
 
@@ -260,7 +260,7 @@ public partial class PlayerCore
         && !FileTypes.IsImage(path)
         && !FileTypes.IsCdg(path);
 
-    private void PublishPreparedNextChange(PreparedNextChange change)
+    void PublishPreparedNextChange(PreparedNextChange change)
     {
         if (change.Previous == change.Current)
             return;
@@ -279,12 +279,12 @@ public partial class PlayerCore
     /// Raises inline when already on the control queue so slot events stay ordered with the load
     /// and transport events of the same operation; otherwise queues delivery.
     /// </summary>
-    private void RaiseOnControlQueue(Action raise)
+    void RaiseOnControlQueue(Action raise)
     {
         if (_disposed)
             return;
 
-        PlayerOperationQueue queue = _controlOperations;
+        var queue = _controlOperations;
         if (queue.IsExecutingOperation)
         {
             raise();
@@ -305,9 +305,9 @@ public partial class PlayerCore
         }
     }
 
-    private void ClearPreparedNextForLifecycle()
+    void ClearPreparedNextForLifecycle()
     {
-        if (_preparedNext.Clear(out PreparedNextChange change))
+        if (_preparedNext.Clear(out var change))
             PublishPreparedNextChange(change);
     }
 }

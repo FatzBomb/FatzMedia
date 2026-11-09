@@ -126,9 +126,9 @@ public sealed class MediaLoopPacerTests
         Assert.Throws<ObjectDisposedException>(pacer.Reset);
     }
 
-    private sealed class ManualTimeProvider : TimeProvider
+    sealed class ManualTimeProvider : TimeProvider
     {
-        private long _timestamp;
+        long _timestamp;
 
         public override long TimestampFrequency => 1_000;
         public override long GetTimestamp() => _timestamp;
@@ -137,7 +137,7 @@ public sealed class MediaLoopPacerTests
             _timestamp += (long)Math.Round(duration.TotalSeconds * TimestampFrequency);
     }
 
-    private sealed class AdvancingWaiterFactory(
+    sealed class AdvancingWaiterFactory(
         ManualTimeProvider timeProvider,
         bool isHighResolution = false) : IPrecisionWaiterFactory
     {
@@ -145,7 +145,7 @@ public sealed class MediaLoopPacerTests
 
         public IPrecisionWaiter Create() => new AdvancingWaiter(this, timeProvider, isHighResolution);
 
-        private sealed class AdvancingWaiter(
+        sealed class AdvancingWaiter(
             AdvancingWaiterFactory owner,
             ManualTimeProvider timeProvider,
             bool isHighResolution) : IPrecisionWaiter

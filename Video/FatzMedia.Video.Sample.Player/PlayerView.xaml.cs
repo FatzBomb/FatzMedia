@@ -23,27 +23,27 @@ namespace FatzMedia.Video.Sample.Player;
 /// </summary>
 public partial class PlayerView : UserControl, IPlayerSlot
 {
-    private const double SeekKeyStepSeconds = 5;
-    private const double SeekKeyPageSeconds = 10;
+    const double SeekKeyStepSeconds = 5;
+    const double SeekKeyPageSeconds = 10;
 
-    private readonly int _index;
-    private readonly bool _atStartup;
-    private readonly FullScreenChromeController _chrome;
-    private readonly Thickness _standardMediaMargin;
-    private readonly Thickness _standardMediaBorderThickness;
-    private readonly Thickness _standardMediaPadding;
-    private readonly CornerRadius _standardMediaCornerRadius;
-    private readonly Thickness _standardBottomChromeMargin;
-    private readonly VerticalAlignment _standardBottomChromeVerticalAlignment;
-    private readonly Panel _bottomChromeWindowedParent;
-    private readonly int _bottomChromeWindowedIndex;
-    private Grid? _fullScreenOverlayRoot;
-    private SecondaryPresentationWindow? _secondScreen;
+    readonly int _index;
+    readonly bool _atStartup;
+    readonly FullScreenChromeController _chrome;
+    readonly Thickness _standardMediaMargin;
+    readonly Thickness _standardMediaBorderThickness;
+    readonly Thickness _standardMediaPadding;
+    readonly CornerRadius _standardMediaCornerRadius;
+    readonly Thickness _standardBottomChromeMargin;
+    readonly VerticalAlignment _standardBottomChromeVerticalAlignment;
+    readonly Panel _bottomChromeWindowedParent;
+    readonly int _bottomChromeWindowedIndex;
+    Grid? _fullScreenOverlayRoot;
+    SecondaryPresentationWindow? _secondScreen;
     // Composited bitmap writes on the UI thread (Stage 051A, 047A's before numbers).
-    private readonly UiThreadCostMeter _surfaceCost = new();
-    private readonly UiThreadCostMeter _secondScreenCost = new();
-    private bool _isSeekBarDragging;
-    private bool _disposed;
+    readonly UiThreadCostMeter _surfaceCost = new();
+    readonly UiThreadCostMeter _secondScreenCost = new();
+    bool _isSeekBarDragging;
+    bool _disposed;
 
     /// <param name="owner">The window that owns this player's dialogs.</param>
     /// <param name="index">The player's number (1-based).</param>
@@ -148,9 +148,9 @@ public partial class PlayerView : UserControl, IPlayerSlot
         return true;
     }
 
-    private static string DescribeSurface(MediaSurface surface, UiThreadCostMeter cost)
+    static string DescribeSurface(MediaSurface surface, UiThreadCostMeter cost)
     {
-        DpiScale dpi = VisualTreeHelper.GetDpi(surface);
+        var dpi = VisualTreeHelper.GetDpi(surface);
         var description = PlayerStatsLine.DescribeSurface(
             (int)Math.Round(surface.ActualWidth * dpi.DpiScaleX),
             (int)Math.Round(surface.ActualHeight * dpi.DpiScaleY),
@@ -162,13 +162,13 @@ public partial class PlayerView : UserControl, IPlayerSlot
             : description;
     }
 
-    private void Panel_DragOver(object sender, DragEventArgs e)
+    void Panel_DragOver(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) && ViewModel.CanOpen ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
-    private async void Panel_Drop(object sender, DragEventArgs e)
+    async void Panel_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
         // LoadMediaAsync reports a failure in the status line and never throws.
@@ -176,7 +176,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
             await ViewModel.LoadMediaAsync(files[0]);
     }
 
-    private void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _ = Focus();
         if (e.ClickCount == 1)
@@ -188,7 +188,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private void FullScreenButton_Click(object sender, RoutedEventArgs e)
+    void FullScreenButton_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.CloseFlyout();
         FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
@@ -197,7 +197,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     // --- seek bar ---
 
-    private void SeekBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    void SeekBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _ = SeekBar.Focus();
         if (!ViewModel.CanSeek) return;
@@ -209,7 +209,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private void SeekBar_MouseMove(object sender, MouseEventArgs e)
+    void SeekBar_MouseMove(object sender, MouseEventArgs e)
     {
         if (!_isSeekBarDragging || !ViewModel.CanSeek) return;
 
@@ -217,7 +217,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private void SeekBar_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    void SeekBar_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (!_isSeekBarDragging) return;
 
@@ -227,7 +227,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private void SeekBar_LostMouseCapture(object sender, MouseEventArgs e)
+    void SeekBar_LostMouseCapture(object sender, MouseEventArgs e)
     {
         if (!_isSeekBarDragging) return;
 
@@ -239,7 +239,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
     /// Stage 046A slice 3, as the Avalonia and WinForms seek bars: once focused (a click), the arrow
     /// keys step 5 s, Page Up / Page Down 10 s, Home / End go to the start / end. One seek per key.
     /// </summary>
-    private void SeekBar_KeyDown(object sender, KeyEventArgs e)
+    void SeekBar_KeyDown(object sender, KeyEventArgs e)
     {
         if (!ViewModel.CanSeek || _isSeekBarDragging)
             return;
@@ -262,13 +262,13 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private void SeekBar_SizeChanged(object sender, SizeChangedEventArgs e)
+    void SeekBar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         SeekCanvas.Width = SeekBar.ActualWidth;
         UpdateSeekBarVisual();
     }
 
-    private void SetSeekPreviewFromPoint(double x)
+    void SetSeekPreviewFromPoint(double x)
     {
         var width = SeekBar.ActualWidth;
         if (width <= 0 || ViewModel.DurationSeconds <= 0) return;
@@ -278,7 +278,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         UpdateSeekBarVisual();
     }
 
-    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
@@ -299,7 +299,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         }
     }
 
-    private void UpdateSeekBarVisual()
+    void UpdateSeekBarVisual()
     {
         var width = SeekBar.ActualWidth;
         if (width <= 0 || ViewModel.DurationSeconds <= 0)
@@ -318,15 +318,15 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     // --- full screen ---
 
-    private void Panel_MouseMove(object sender, MouseEventArgs e) => ReportPointer(this, e);
+    void Panel_MouseMove(object sender, MouseEventArgs e) => ReportPointer(this, e);
 
-    private void ReportPointer(Visual relativeTo, MouseEventArgs e)
+    void ReportPointer(Visual relativeTo, MouseEventArgs e)
     {
         if (PresentationSource.FromVisual(relativeTo) is null)
             return;
 
         // Screen coordinates: the same for this view and the full-screen overlay window.
-        Point screen = relativeTo.PointToScreen(e.GetPosition((IInputElement)relativeTo));
+        var screen = relativeTo.PointToScreen(e.GetPosition((IInputElement)relativeTo));
         _chrome.PointerMoved(screen.X, screen.Y);
     }
 
@@ -344,7 +344,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
             ExitFullScreenLayout();
     }
 
-    private void EnterFullScreenLayout()
+    void EnterFullScreenLayout()
     {
         Grid.SetRow(MediaViewportBorder, 0);
         Grid.SetRowSpan(MediaViewportBorder, 2);
@@ -365,7 +365,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         QueueMediaSurfaceLayoutRefresh();
     }
 
-    private void ExitFullScreenLayout()
+    void ExitFullScreenLayout()
     {
         _chrome.Exit();
         DetachBottomChromeFromFullScreenOverlay();
@@ -387,7 +387,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         QueueMediaSurfaceLayoutRefresh();
     }
 
-    private void AttachBottomChromeToFullScreenOverlay()
+    void AttachBottomChromeToFullScreenOverlay()
     {
         // Native HWND presentation is above the normal WPF visual tree. In full screen, the
         // controls must move into MediaSurface's owned transparent overlay window;
@@ -405,7 +405,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         MediaSurface.OverlayHitTestVisible = true;
     }
 
-    private void DetachBottomChromeFromFullScreenOverlay()
+    void DetachBottomChromeFromFullScreenOverlay()
     {
         MediaSurface.OverlayContent = null;
         MediaSurface.OverlayHitTestVisible = false;
@@ -420,7 +420,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         }
     }
 
-    private Grid CreateFullScreenOverlayRoot()
+    Grid CreateFullScreenOverlayRoot()
     {
         var root = new Grid
         {
@@ -438,7 +438,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     // The overlay is its own window and takes the keyboard once its controls are clicked (the seek
     // bar focuses itself), so MainWindow no longer sees Escape or F11: handle them here the same way.
-    private void FullScreenOverlayRoot_KeyDown(object sender, KeyEventArgs e)
+    void FullScreenOverlayRoot_KeyDown(object sender, KeyEventArgs e)
     {
         if (!_chrome.IsFullScreen)
             return;
@@ -454,7 +454,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         }
     }
 
-    private void FullScreenOverlayRoot_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    void FullScreenOverlayRoot_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!_chrome.IsFullScreen) return;
 
@@ -468,7 +468,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         e.Handled = true;
     }
 
-    private static bool IsDescendantOf(DependencyObject? current, DependencyObject ancestor)
+    static bool IsDescendantOf(DependencyObject? current, DependencyObject ancestor)
     {
         while (current is not null)
         {
@@ -479,14 +479,14 @@ public partial class PlayerView : UserControl, IPlayerSlot
         return false;
     }
 
-    private void QueueMediaSurfaceLayoutRefresh()
+    void QueueMediaSurfaceLayoutRefresh()
     {
         _ = Dispatcher.BeginInvoke(new Action(MediaSurface.RefreshPresentationLayout), DispatcherPriority.Render);
         _ = Dispatcher.BeginInvoke(new Action(MediaSurface.RefreshPresentationLayout), DispatcherPriority.ApplicationIdle);
     }
 
     // Called by the shared chrome controller, only on a change.
-    private void ShowChrome(bool visible)
+    void ShowChrome(bool visible)
     {
         BottomChrome.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         BottomChrome.Opacity = visible ? 1 : 0;
@@ -498,7 +498,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     // --- second screen ---
 
-    private void FlyoutPanel_SecondaryWindowToggleRequested(object? sender, EventArgs e)
+    void FlyoutPanel_SecondaryWindowToggleRequested(object? sender, EventArgs e)
     {
         if (_secondScreen is not null)
             CloseSecondScreen();
@@ -506,13 +506,13 @@ public partial class PlayerView : UserControl, IPlayerSlot
             OpenSecondScreen();
     }
 
-    private void UpdateSecondaryWindowCheckBox() => FlyoutPanel.IsSecondaryOutputOpen = _secondScreen is not null;
+    void UpdateSecondaryWindowCheckBox() => FlyoutPanel.IsSecondaryOutputOpen = _secondScreen is not null;
 
     /// <summary>
     /// Opens this player's second screen (the same session, projector role) where the shared rule
     /// puts it (<see cref="PlayerScreenChooser"/>), in the main surface's presentation mode.
     /// </summary>
-    private void OpenSecondScreen()
+    void OpenSecondScreen()
     {
         if (ViewModel.Player is not { } player || _secondScreen is not null || Window.GetWindow(this) is not { } owner)
         {
@@ -520,9 +520,9 @@ public partial class PlayerView : UserControl, IPlayerSlot
             return;
         }
 
-        IReadOnlyList<PresentationScreen> screens = PresentationScreen.All;
-        PresentationScreen? current = PresentationScreen.FromWindow(owner);
-        PlayerScreenChoice choice = PlayerScreenChooser.Choose(
+        var screens = PresentationScreen.All;
+        var current = PresentationScreen.FromWindow(owner);
+        var choice = PlayerScreenChooser.Choose(
             [.. screens.Select(static screen => new PlayerScreen(screen.DeviceName, ToBounds(screen.Bounds), screen.IsPrimary))],
             current is null ? null : ToBounds(current.Bounds),
             App.StartupOptions.SecondScreen);
@@ -544,9 +544,9 @@ public partial class PlayerView : UserControl, IPlayerSlot
         UpdateSecondaryWindowCheckBox();
     }
 
-    private static PlayerScreenBounds ToBounds(Int32Rect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+    static PlayerScreenBounds ToBounds(Int32Rect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
-    private void CloseSecondScreen()
+    void CloseSecondScreen()
     {
         if (_secondScreen is not { } window)
             return;
@@ -558,7 +558,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
     }
 
     // The user closed the window.
-    private void SecondScreen_Closed(object? sender, EventArgs e)
+    void SecondScreen_Closed(object? sender, EventArgs e)
     {
         if (_secondScreen is not { } window || !ReferenceEquals(sender, window))
             return;

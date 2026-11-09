@@ -4,7 +4,7 @@ namespace FatzMedia.Video.Tests;
 
 public class PollingLoopTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
     public void Start_RunsTickRepeatedlyUntilStopped()

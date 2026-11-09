@@ -21,6 +21,6 @@ public static class ColorMath
             | ((uint)alpha << 24);
     }
 
-    private static byte MultiplyByAlpha(byte value, byte alpha) =>
+    static byte MultiplyByAlpha(byte value, byte alpha) =>
         (byte)(((value * alpha) + 127) / 255);
 }

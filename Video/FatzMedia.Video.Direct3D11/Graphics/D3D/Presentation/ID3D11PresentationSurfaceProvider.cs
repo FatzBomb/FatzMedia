@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// surface is obtained; the core presentation helpers own how frames are blitted
 /// and cleaned up against the surface exposed here.
 /// </summary>
-internal interface ID3D11PresentationSurfaceProvider
+interface ID3D11PresentationSurfaceProvider
 {
     ID3D11Texture2D? TargetTexture { get; }
 

@@ -30,7 +30,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11PresentationBackendStateTests
 {
-    private static D3D11PresentationBackendSet CreateInactiveBackendSet()
+    static D3D11PresentationBackendSet CreateInactiveBackendSet()
     {
         var configuration = new MediaPlayerConfiguration();
         var diagnostics = new D3D11PresentationDiagnostics(configuration);
@@ -52,7 +52,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void Active_IsNull_WhenNoBackendIsActive()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
 
         Assert.Null(backends.Active);
         Assert.Equal(D3D11PresentationBackendKind.None, backends.ActiveKind);
@@ -64,7 +64,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void NotifyFramePresented_ReturnsFalse_AndDoesNotRaise_WhenNoBackendIsActive()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
         var framePresented = false;
 
         var presented = backends.NotifyFramePresented(0, syncImmediate: false, () => false, () => framePresented = true);
@@ -76,7 +76,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void NotifyTargetsPresented_WithEmptyTargets_ReturnsFalseAndDoesNotPresent()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
         var framePresented = false;
 
         var allPresented = backends.NotifyTargetsPresented([], 0, syncImmediate: false, () => false, _ => framePresented = true);
@@ -88,7 +88,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void OwnsTexture_ReturnsFalse_ForNullTexture()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
 
         Assert.False(backends.OwnsTexture(null));
     }
@@ -96,7 +96,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void RemoveSecondaryTarget_ReturnsFalse_WhenTargetDoesNotExist()
     {
-        using D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        using var backends = CreateInactiveBackendSet();
 
         Assert.False(backends.RemoveSecondaryTarget("missing-secondary-target"));
     }
@@ -104,7 +104,7 @@ public sealed class D3D11PresentationBackendStateTests
     [Fact]
     public void CleanupPrimary_Then_FullCleanup_AreSafe_OnInactiveBackends()
     {
-        D3D11PresentationBackendSet backends = CreateInactiveBackendSet();
+        var backends = CreateInactiveBackendSet();
 
         backends.CleanupPrimary();
         backends.Cleanup();

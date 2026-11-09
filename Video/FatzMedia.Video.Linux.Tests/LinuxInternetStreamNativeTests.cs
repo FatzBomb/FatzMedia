@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Configuration;
 using System.Collections.Concurrent;
+using FatzMedia.Video.Core.Configuration;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -16,8 +16,8 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxInternetStreamNativeTests(ITestOutputHelper output)
 {
-    private static readonly Uri Radio = new("https://stream.radioparadise.com/mp3-128");
-    private static readonly Uri Hls = new("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
+    static readonly Uri Radio = new("https://stream.radioparadise.com/mp3-128");
+    static readonly Uri Hls = new("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
 
     [Fact]
     public void HttpsRadio_PlaysLive_AndReportsTitles()
@@ -55,7 +55,7 @@ public sealed class LinuxInternetStreamNativeTests(ITestOutputHelper output)
         output.WriteLine($"HLS: {session.Sink.Frames} frames, position {session.Player.Position}");
     }
 
-    private static bool TryGet(out string bass, out string ffmpeg, out NetworkTlsPolicy? tls)
+    static bool TryGet(out string bass, out string ffmpeg, out NetworkTlsPolicy? tls)
     {
         tls = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_NETWORK_CA_FILE") is { Length: > 0 } ca
             ? new NetworkTlsPolicy { CertificateAuthorityFile = ca }
@@ -64,5 +64,5 @@ public sealed class LinuxInternetStreamNativeTests(ITestOutputHelper output)
             && Environment.GetEnvironmentVariable("FATZBOMB_LINUX_NETWORK") == "1";
     }
 
-    private static string Dump(LinuxNativeTestPlayer session) => string.Join(" | ", session.Errors.Concat(session.Diagnostics.TakeLast(6)));
+    static string Dump(LinuxNativeTestPlayer session) => string.Join(" | ", session.Errors.Concat(session.Diagnostics.TakeLast(6)));
 }

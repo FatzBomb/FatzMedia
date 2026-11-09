@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Video.Hdr;
-using SharpGen.Runtime;
 using Vortice.DXGI;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
@@ -14,11 +13,11 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
 /// factory, so the factory is created again when it is no longer current (HDR toggled, a
 /// monitor added or removed).
 /// </summary>
-internal static unsafe class Win32MonitorHdr
+static unsafe class Win32MonitorHdr
 {
-    private const uint DisplayConfigDeviceInfoGetSdrWhiteLevel = 11;
-    private static readonly Lock FactoryGate = new();
-    private static IDXGIFactory1? s_factory;
+    const uint DisplayConfigDeviceInfoGetSdrWhiteLevel = 11;
+    static readonly Lock FactoryGate = new();
+    static IDXGIFactory1? s_factory;
 
     /// <summary>The HDR state of the monitor showing <paramref name="hwnd"/>, or null when Windows cannot tell.</summary>
     public static HdrDisplayInfo? TryGet(nint hwnd)
@@ -27,7 +26,7 @@ internal static unsafe class Win32MonitorHdr
             return null;
 
         var monitor = Win32MonitorRefreshRate.MonitorFromWindow(hwnd, Win32MonitorRefreshRate.MonitorDefaultToNearest);
-        if (monitor == 0 || !TryGetOutputDescription(monitor, out OutputDescription1 description))
+        if (monitor == 0 || !TryGetOutputDescription(monitor, out var description))
             return null;
 
         var sdrWhiteNits = TryGetSdrWhiteNits(hwnd) ?? 0;
@@ -37,7 +36,7 @@ internal static unsafe class Win32MonitorHdr
             sdrWhiteNits);
     }
 
-    private static bool TryGetOutputDescription(nint monitor, out OutputDescription1 description)
+    static bool TryGetOutputDescription(nint monitor, out OutputDescription1 description)
     {
         description = default;
         lock (FactoryGate)
@@ -48,19 +47,19 @@ internal static unsafe class Win32MonitorHdr
                 s_factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
             }
 
-            for (uint adapterIndex = 0; s_factory.EnumAdapters1(adapterIndex, out IDXGIAdapter1? adapter).Success; adapterIndex++)
+            for (uint adapterIndex = 0; s_factory.EnumAdapters1(adapterIndex, out var adapter).Success; adapterIndex++)
             {
                 using (adapter)
                 {
-                    for (uint outputIndex = 0; adapter!.EnumOutputs(outputIndex, out IDXGIOutput? output).Success; outputIndex++)
+                    for (uint outputIndex = 0; adapter!.EnumOutputs(outputIndex, out var output).Success; outputIndex++)
                     {
                         using (output)
                         {
-                            using IDXGIOutput6? output6 = output!.QueryInterfaceOrNull<IDXGIOutput6>();
+                            using var output6 = output!.QueryInterfaceOrNull<IDXGIOutput6>();
                             if (output6 == null)
                                 continue;
 
-                            OutputDescription1 candidate = output6.Description1;
+                            var candidate = output6.Description1;
                             if (candidate.Monitor != monitor)
                                 continue;
 
@@ -79,17 +78,17 @@ internal static unsafe class Win32MonitorHdr
     /// Nits of Windows' SDR white level for the monitor showing <paramref name="hwnd"/> (Settings
     /// &gt; Display &gt; HDR &gt; SDR content brightness), or null when Windows cannot tell.
     /// </summary>
-    private static double? TryGetSdrWhiteNits(nint hwnd)
+    static double? TryGetSdrWhiteNits(nint hwnd)
     {
         if (!Win32MonitorRefreshRate.TryGetMonitorDeviceName(hwnd, out var deviceName)
-            || !Win32MonitorRefreshRate.TryQueryActivePaths(out Win32MonitorRefreshRate.DisplayConfigPathInfo[] paths))
+            || !Win32MonitorRefreshRate.TryQueryActivePaths(out var paths))
         {
             return null;
         }
 
         for (var index = 0; index < paths.Length; index++)
         {
-            ref Win32MonitorRefreshRate.DisplayConfigPathInfo path = ref paths[index];
+            ref var path = ref paths[index];
             if (!Win32MonitorRefreshRate.TryGetSourceDeviceName(path.SourceInfo.AdapterId, path.SourceInfo.Id, out var sourceName)
                 || !string.Equals(sourceName, deviceName, StringComparison.OrdinalIgnoreCase))
             {

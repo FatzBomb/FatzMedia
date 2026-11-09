@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// The channel volume attribute (user volume, and the scrub mute applied over it). It acts at
 /// playback, after the playback buffer, so a change is heard at once, unlike an FX stage.
 /// </summary>
-internal static class BassChannelVolume
+static class BassChannelVolume
 {
     /// <summary>Sets the volume now, ending any slide still running toward an older level.</summary>
     public static bool Set(int playHandle, double volume01)

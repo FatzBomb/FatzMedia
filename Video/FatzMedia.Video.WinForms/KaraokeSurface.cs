@@ -20,11 +20,11 @@ public class KaraokeSurface : Control
     /// <summary>The diagnostic category of this control's own notices.</summary>
     public const string DiagnosticCategory = "WinForms.KaraokeSurface";
 
-    private readonly MediaSurface _surface = new();
-    private readonly LightweightSurfaceHost _host;
+    readonly MediaSurface _surface = new();
+    readonly LightweightSurfaceHost _host;
     // The player holds a song the Source loaded (not one LoadAsync loaded directly).
-    private bool _sourceLoaded;
-    private string? _source;
+    bool _sourceLoaded;
+    string? _source;
 
     public KaraokeSurface()
     {
@@ -141,9 +141,9 @@ public class KaraokeSurface : Control
 
     public Task<bool> StopAsync() => _host.Controller.StopAsync();
 
-    private bool ShouldSerializeCanvasColor() => BackColor != Color.Black;
+    bool ShouldSerializeCanvasColor() => BackColor != Color.Black;
 
-    private void ResetCanvasColor() => CanvasColor = Color.Black;
+    void ResetCanvasColor() => CanvasColor = Color.Black;
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -166,7 +166,7 @@ public class KaraokeSurface : Control
     protected override void OnLayout(LayoutEventArgs levent)
     {
         base.OnLayout(levent);
-        (double x, double y, double width, double height) = KaraokeLayout.Fit(ClientSize.Width, ClientSize.Height);
+        (var x, var y, var width, var height) = KaraokeLayout.Fit(ClientSize.Width, ClientSize.Height);
         _surface.Bounds = new Rectangle((int)x, (int)y, (int)width, (int)height);
     }
 
@@ -186,7 +186,7 @@ public class KaraokeSurface : Control
 
     // Clearing the source releases the player, so the previous song does not keep playing; a
     // reload without one (attaching) leaves a song LoadAsync loaded directly alone.
-    private Task ReloadSourceAsync()
+    Task ReloadSourceAsync()
     {
         if (!string.IsNullOrWhiteSpace(_source))
         {

@@ -2,7 +2,6 @@ using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Configuration;
-using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Pipeline;
 
@@ -15,7 +14,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class AudioEngineSeamTests : IDisposable
 {
-    private readonly string _karPath = Path.Combine(Path.GetTempPath(), $"fatzbomb-seam-{Guid.NewGuid():N}.kar");
+    readonly string _karPath = Path.Combine(Path.GetTempPath(), $"fatzbomb-seam-{Guid.NewGuid():N}.kar");
 
     public AudioEngineSeamTests() => File.WriteAllBytes(_karPath, []);
 
@@ -28,7 +27,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         Assert.Null(PlaybackCoordinator.GetMidiEventReader(new TestAudioEngine()));
         Assert.Null(PlaybackCoordinator.GetMidiEventReader(null));
 
-        using PlaybackCoordinator coordinator = CreateCoordinator(new TestAudioEngine(), new BassMidiLyricProvider());
+        using var coordinator = CreateCoordinator(new TestAudioEngine(), new BassMidiLyricProvider());
         Assert.True(coordinator.OpenAudio(_karPath));
         Assert.Empty(coordinator.SubtitleTracks);
     }
@@ -38,7 +37,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     {
         var reader = new RecordingMidiReader(new KaraokeMidiReader());
         var engine = new HandlelessReaderAudioEngine(reader);
-        using PlaybackCoordinator coordinator = CreateCoordinator(engine, new BassMidiLyricProvider());
+        using var coordinator = CreateCoordinator(engine, new BassMidiLyricProvider());
 
         // No such file: the cues can only come from the engine's reader.
         Assert.True(coordinator.OpenAudio("missing/song.kar"));
@@ -51,7 +50,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     public void HostSuppliedProvider_StillGetsTheSourceHandle()
     {
         var provider = new RecordingHandleProvider();
-        using PlaybackCoordinator coordinator = CreateCoordinator(new TestAudioEngine(), provider);
+        using var coordinator = CreateCoordinator(new TestAudioEngine(), provider);
 
         Assert.True(coordinator.OpenAudio(_karPath));
 
@@ -72,7 +71,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     [Fact]
     public void BassEngines_ImplementTheEffectAndTrimSeams()
     {
-        foreach (Type engine in new[] { typeof(AudioEngine), typeof(VideoAudioEngine), typeof(SoundtrackAudioEngine) })
+        foreach (var engine in new[] { typeof(AudioEngine), typeof(VideoAudioEngine), typeof(SoundtrackAudioEngine) })
         {
             Assert.True(typeof(IAudioFadeGainTarget).IsAssignableFrom(engine), engine.Name);
             Assert.True(typeof(IAudioFilterHost).IsAssignableFrom(engine), engine.Name);
@@ -103,7 +102,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     [Fact]
     public void CueBuilder_WithNoReader_ReturnsNull_AsHandleZeroDid()
     {
-        Assert.Null(MidiLyricCueBuilder.ExtractLyrics((IMidiEventReader?)null, "song.kar"));
+        Assert.Null(MidiLyricCueBuilder.ExtractLyrics(null, "song.kar"));
         Assert.Null(MidiLyricCueBuilder.ExtractLyrics(0, "song.kar"));
     }
 
@@ -127,7 +126,7 @@ public sealed class AudioEngineSeamTests : IDisposable
             ActiveTrimWindow = new MediaAnalysisResult(100, 5, 95, 90, [new SilenceRegion(0, 5), new SilenceRegion(95, 100)], 1),
         };
         using var pipeline = new AudioPipeline(engine);
-        AudioEqualizerSettings settings = AudioEqualizerSettings.Disabled;
+        var settings = AudioEqualizerSettings.Disabled;
 
         Assert.True(pipeline.Open("song.mp3"));
         Assert.True(((IAudioFilterHost)engine).SetEqualizer(settings));
@@ -137,7 +136,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         Assert.Same(settings, engine.Equalizer);
     }
 
-    private static PlaybackCoordinator CreateCoordinator(IAudioEngine engine, IMidiLyricProvider provider) =>
+    static PlaybackCoordinator CreateCoordinator(IAudioEngine engine, IMidiLyricProvider provider) =>
         new(
             engine,
             new TestCdgEngine(),
@@ -148,9 +147,9 @@ public sealed class AudioEngineSeamTests : IDisposable
             audioAvailable: false);
 
     /// <summary>An engine with no BASS handles: reading either throws.</summary>
-    private class HandlelessAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IAudioFadeGainTarget, IAudioFilterHost
+    class HandlelessAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IAudioFadeGainTarget, IAudioFilterHost
     {
-        private int _fadeSession;
+        int _fadeSession;
 
         public List<(double Gain, TimeSpan Ramp)> FadeCalls { get; } = [];
         public bool AnalyzeSilenceRequested { get; private set; }
@@ -211,7 +210,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     }
 
     /// <summary>The handleless engine with its own MIDI reader, as a second audio engine would have.</summary>
-    private sealed class HandlelessReaderAudioEngine(IMidiEventReader reader) : HandlelessAudioEngine, IMidiEventReaderSource
+    sealed class HandlelessReaderAudioEngine(IMidiEventReader reader) : HandlelessAudioEngine, IMidiEventReaderSource
     {
         public IMidiEventReader? GetMidiEventReader() => reader;
     }
@@ -221,7 +220,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     /// A small .kar as a MIDI reader would report it: 480 ticks per quarter note, 120 bpm until tick
     /// 1920 then 240 bpm, positions in ticks.
     /// </summary>
-    private sealed class KaraokeMidiReader : IMidiEventReader
+    sealed class KaraokeMidiReader : IMidiEventReader
     {
         public IReadOnlyList<MidiMark> GetMarks(MidiMarkKind kind) => kind switch
         {
@@ -245,7 +244,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         public double PositionToSeconds(long position) => position <= 1920 ? position / 960.0 : 2.0 + ((position - 1920) / 1920.0);
     }
 
-    private sealed class RecordingMidiReader(IMidiEventReader inner) : IMidiEventReader
+    sealed class RecordingMidiReader(IMidiEventReader inner) : IMidiEventReader
     {
         public List<string> Calls { get; } = [];
 
@@ -274,7 +273,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         }
     }
 
-    private sealed class RecordingHandleProvider : IMidiLyricProvider
+    sealed class RecordingHandleProvider : IMidiLyricProvider
     {
         public List<(int Handle, string Path)> Calls { get; } = [];
 
@@ -287,7 +286,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         }
     }
 
-    private sealed class NoVideoFactory : IVideoEngineFactory
+    sealed class NoVideoFactory : IVideoEngineFactory
     {
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) =>
             new TestVideoEngine { IsOpen = false };

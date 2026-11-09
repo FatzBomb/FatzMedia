@@ -1,7 +1,7 @@
-using FatzMedia.Video.Core.Graphics.Cadence;
-using FatzMedia.Video.Core.Graphics.Composition;
 using System.Diagnostics;
 using System.Globalization;
+using FatzMedia.Video.Core.Graphics.Cadence;
+using FatzMedia.Video.Core.Graphics.Composition;
 
 namespace FatzMedia.Video.Pipeline;
 
@@ -19,33 +19,33 @@ namespace FatzMedia.Video.Pipeline;
 /// time. Without current timing for the primary display, the source-cadence path is kept,
 /// unchanged.
 /// </remarks>
-internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresentationTimingSink
+sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresentationTimingSink
 {
-    private const string FrameTimingDiagnosticCategory = "VideoFrameTiming";
-    private static readonly long DisplayLockedReportIntervalTicks = Stopwatch.Frequency * 60;
-    private static readonly long DisplayLockedStateSettleTicks = Stopwatch.Frequency / 2;
+    const string FrameTimingDiagnosticCategory = "VideoFrameTiming";
+    static readonly long DisplayLockedReportIntervalTicks = Stopwatch.Frequency * 60;
+    static readonly long DisplayLockedStateSettleTicks = Stopwatch.Frequency / 2;
     // Timing gaps this short (a vblank grid restarting, a monitor change) keep each display's
     // clock and statistics, so they cause neither a cadence restart nor a burst of reports.
-    private static readonly long DisplayLockedGapToleranceTicks = Stopwatch.Frequency;
+    static readonly long DisplayLockedGapToleranceTicks = Stopwatch.Frequency;
 
     // The targets of the frame being raised on this thread (null: every target).
     [ThreadStatic]
-    private static MediaCompositionTargetFilter? t_frameReadyTargets;
+static MediaCompositionTargetFilter? t_frameReadyTargets;
 
-    private readonly List<PresentationTimingGroup> _timingGroups = [];
-    private readonly Dictionary<long, DisplayLockedTarget> _displayLockedTargets = [];
+    readonly List<PresentationTimingGroup> _timingGroups = [];
+    readonly Dictionary<long, DisplayLockedTarget> _displayLockedTargets = [];
     // The displays one pass presents for, earliest refresh first (presentation thread only).
-    private readonly List<BatchMember> _displayLockedBatch = [];
-    private int _displayLockedDisplayCount;
-    private PresentationTimingSource? _presentationTimingSource;
-    private volatile VideoFrameTiming _frameTiming = VideoFrameTiming.SourceCadence;
-    private int _displayLockedResetRequested;
-    private string? _displayLockedReportedState;
-    private string? _displayLockedPendingState;
-    private long _displayLockedPendingSince;
-    private string? _displayLockedOnState;
-    private long[] _displayLockedOnStateKey = [];
-    private long _displayLockedUnavailableSince;
+    readonly List<BatchMember> _displayLockedBatch = [];
+    int _displayLockedDisplayCount;
+    PresentationTimingSource? _presentationTimingSource;
+    volatile VideoFrameTiming _frameTiming = VideoFrameTiming.SourceCadence;
+    int _displayLockedResetRequested;
+    string? _displayLockedReportedState;
+    string? _displayLockedPendingState;
+    long _displayLockedPendingSince;
+    string? _displayLockedOnState;
+    long[] _displayLockedOnStateKey = [];
+    long _displayLockedUnavailableSince;
 
     /// <inheritdoc cref="IVideoFrameTimingControl.FrameTiming"/>
     public VideoFrameTiming FrameTiming
@@ -58,14 +58,14 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         Volatile.Write(ref _presentationTimingSource, source);
 
     /// <summary>Restarts the filtered clocks on the next refresh (open, close, seek).</summary>
-    private void RequestDisplayLockedReset() => Volatile.Write(ref _displayLockedResetRequested, 1);
+    void RequestDisplayLockedReset() => Volatile.Write(ref _displayLockedResetRequested, 1);
 
     /// <summary>
     /// The next refresh to present for, across the displays showing the video, when display-locked
     /// timing applies: the mode is on, the video's frame rate is known, and the renderer reports
     /// current vertical-blank timing for the primary surface's display. Presentation thread only.
     /// </summary>
-    private bool TryGetDisplayLockedSlot(out DisplayLockedSlot slot, out DisplayLockedTarget? target)
+    bool TryGetDisplayLockedSlot(out DisplayLockedSlot slot, out DisplayLockedTarget? target)
     {
         slot = default;
         target = null;
@@ -86,15 +86,15 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         var primaryCurrent = false;
         _displayLockedBatch.Clear();
         _displayLockedDisplayCount = 0;
-        foreach (PresentationTimingGroup group in _timingGroups)
+        foreach (var group in _timingGroups)
         {
             if (!group.Timing.IsValid)
                 continue;
 
             _displayLockedDisplayCount++;
-            DisplayLockedTarget display = GetDisplayLockedTarget(group);
+            var display = GetDisplayLockedTarget(group);
             var budget = DisplayLockedTiming.GetBudgetTicks(display.WorkSeconds, group.Timing.PeriodTicks);
-            if (!DisplayLockedTiming.TryGetNextSlot(group.Timing, now, budget, display.LastVsync, out DisplayLockedSlot candidate))
+            if (!DisplayLockedTiming.TryGetNextSlot(group.Timing, now, budget, display.LastVsync, out var candidate))
                 continue;
 
             primaryCurrent |= group.IncludesPrimary;
@@ -131,12 +131,12 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     }
 
     // RemoveAll without its capturing lambda: this runs once per refresh (ENG-039 P5-6).
-    private void RemoveBatchMembersWakingAfter(long batchUntil)
+    void RemoveBatchMembersWakingAfter(long batchUntil)
     {
         var kept = 0;
         for (var index = 0; index < _displayLockedBatch.Count; index++)
         {
-            BatchMember member = _displayLockedBatch[index];
+            var member = _displayLockedBatch[index];
             if (member.Slot.WakeTimestamp <= batchUntil)
                 _displayLockedBatch[kept++] = member;
         }
@@ -144,9 +144,9 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         _displayLockedBatch.RemoveRange(kept, _displayLockedBatch.Count - kept);
     }
 
-    private bool QueryTimingGroups()
+    bool QueryTimingGroups()
     {
-        PresentationTimingSource? source = Volatile.Read(ref _presentationTimingSource);
+        var source = Volatile.Read(ref _presentationTimingSource);
         _timingGroups.Clear();
         if (source is null)
             return false;
@@ -163,16 +163,16 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             return false;
         }
 
-        foreach (PresentationTimingGroup group in _timingGroups)
+        foreach (var group in _timingGroups)
             if (group.IncludesPrimary && group.Timing.IsValid)
                 return true;
 
         return false;
     }
 
-    private DisplayLockedTarget GetDisplayLockedTarget(PresentationTimingGroup group)
+    DisplayLockedTarget GetDisplayLockedTarget(PresentationTimingGroup group)
     {
-        if (!_displayLockedTargets.TryGetValue(group.Timing.DisplayKey, out DisplayLockedTarget? display))
+        if (!_displayLockedTargets.TryGetValue(group.Timing.DisplayKey, out var display))
         {
             display = new DisplayLockedTarget();
             _displayLockedTargets.Add(group.Timing.DisplayKey, display);
@@ -183,10 +183,10 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         return display;
     }
 
-    private void ForgetDisplaysNotShowingTheVideo(long now)
+    void ForgetDisplaysNotShowingTheVideo(long now)
     {
         List<long>? gone = null;
-        foreach ((var key, DisplayLockedTarget display) in _displayLockedTargets)
+        foreach ((var key, var display) in _displayLockedTargets)
         {
             if (now - display.LastSeen > DisplayLockedGapToleranceTicks)
             {
@@ -202,7 +202,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
     // Built only when the displays or their periods change: this runs once per refresh, so the
     // check compares the periods in place instead of building a key (ENG-039 P5-6).
-    private string GetDisplayLockedOnState()
+    string GetDisplayLockedOnState()
     {
         if (_displayLockedOnState is null || !DisplayLockedOnStateKeyMatches())
         {
@@ -219,13 +219,13 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         return _displayLockedOnState;
     }
 
-    private bool DisplayLockedOnStateKeyMatches()
+    bool DisplayLockedOnStateKeyMatches()
     {
         if (_displayLockedOnStateKey.Length != _displayLockedTargets.Count)
             return false;
 
         var index = 0;
-        foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+        foreach (var display in _displayLockedTargets.Values)
             if (_displayLockedOnStateKey[index++] != display.Group.Timing.PeriodTicks / 1000)
                 return false;
 
@@ -239,12 +239,12 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     /// media time of its own refresh; the frame for the earliest refresh is presented once to all
     /// of their surfaces. Runs under the presentation lock.
     /// </summary>
-    private double PresentFrameForDisplayLockedSlot(DisplayLockedSlot slot, DisplayLockedTarget display)
+    double PresentFrameForDisplayLockedSlot(DisplayLockedSlot slot, DisplayLockedTarget display)
     {
         var workStart = Stopwatch.GetTimestamp();
         if (Interlocked.Exchange(ref _displayLockedResetRequested, 0) != 0)
         {
-            foreach (DisplayLockedTarget each in _displayLockedTargets.Values)
+            foreach (var each in _displayLockedTargets.Values)
                 each.Clock.Reset();
         }
 
@@ -255,7 +255,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         var now = Stopwatch.GetTimestamp();
         for (var index = 0; index < _displayLockedBatch.Count; index++)
         {
-            BatchMember member = _displayLockedBatch[index];
+            var member = _displayLockedBatch[index];
             _displayLockedBatch[index] = member with { Selection = GetDisplayLockedSelection(member, clockPosition, now) };
         }
 
@@ -288,24 +288,24 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         var workEnd = Stopwatch.GetTimestamp();
         var workSeconds = Stopwatch.GetElapsedTime(workStart, workEnd).TotalSeconds;
-        foreach (BatchMember member in _displayLockedBatch)
+        foreach (var member in _displayLockedBatch)
             FinishDisplayLockedRefresh(member, shownToAll ?? member.ReissuedTime, workEnd, workSeconds);
 
         _displayLockedBatch.Clear();
         return clockPosition;
     }
 
-    private double GetDisplayLockedSelection(BatchMember member, double clockPosition, long now)
+    double GetDisplayLockedSelection(BatchMember member, double clockPosition, long now)
     {
-        DisplayLockedTarget display = member.Display;
-        VsyncMediaClock clock = display.Clock;
+        var display = member.Display;
+        var clock = display.Clock;
         var secondsToVsync = (member.Slot.VsyncTimestamp - now) / (double)Stopwatch.Frequency;
         var mediaAtVsync = clock.Update(member.Slot.VsyncTimestamp, clockPosition + (secondsToVsync * clock.Rate));
         var periodSeconds = member.Slot.PeriodTicks / (double)Stopwatch.Frequency;
 
         // A restarted clock (seek, loop, jump) starts the cadence afresh: the phase lock forgets
         // its offset. It also clears itself when the refresh period or frame rate changes.
-        CadencePhaseLock phaseLock = display.PhaseLock;
+        var phaseLock = display.PhaseLock;
         phaseLock.Configure(periodSeconds, FramesPerSecond);
         if (clock.Restarts != display.ClockRestarts)
         {
@@ -316,12 +316,12 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         return ApplyAudioVideoOffset(DisplayLockedTiming.GetSelectionTime(mediaAtVsync, periodSeconds) + phaseLock.Offset);
     }
 
-    private void ReissueToLaggingDisplays(double currentTime)
+    void ReissueToLaggingDisplays(double currentTime)
     {
         var lagging = 0;
         for (var index = 0; index < _displayLockedBatch.Count; index++)
         {
-            BatchMember member = _displayLockedBatch[index];
+            var member = _displayLockedBatch[index];
             if (currentTime != member.Display.LastShown && currentTime <= member.Selection + DisplayLockedPtsToleranceSeconds)
             {
                 _displayLockedBatch[index] = member with { ReissuedTime = currentTime };
@@ -334,12 +334,12 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         t_frameReadyTargets = lagging == _displayLockedBatch.Count
             ? MergeTargets(_displayLockedBatch, _displayLockedBatch.Count >= _displayLockedDisplayCount)
-            : MergeTargets(_displayLockedBatch.Where(static member => member.ReissuedTime is not null).ToList(), coversEveryDisplay: false);
+            : MergeTargets([.. _displayLockedBatch.Where(static member => member.ReissuedTime is not null)], coversEveryDisplay: false);
         ReissueCurrentFrame();
     }
 
     // The targets of several displays as one filter: none when they are every display.
-    private static MediaCompositionTargetFilter? MergeTargets(List<BatchMember> members, bool coversEveryDisplay)
+    static MediaCompositionTargetFilter? MergeTargets(List<BatchMember> members, bool coversEveryDisplay)
     {
         if (coversEveryDisplay || members.Count == 0)
             return null;
@@ -349,7 +349,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         var includesPrimary = false;
         var secondaries = new List<string>();
-        foreach (BatchMember member in members)
+        foreach (var member in members)
         {
             if (member.Display.Group.Targets is not { } targets)
                 return null;
@@ -361,9 +361,9 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         return new MediaCompositionTargetFilter(includesPrimary, secondaries);
     }
 
-    private void FinishDisplayLockedRefresh(BatchMember member, double? shown, long workEnd, double workSeconds)
+    void FinishDisplayLockedRefresh(BatchMember member, double? shown, long workEnd, double workSeconds)
     {
-        DisplayLockedTarget display = member.Display;
+        var display = member.Display;
         var newFrame = shown is not null && shown != display.LastShown;
         if (shown is { } shownTime)
         {
@@ -395,25 +395,25 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     }
 
     /// <summary>One display served by a pass: its refresh, its selection, and a re-raised frame.</summary>
-    private readonly record struct BatchMember(DisplayLockedSlot Slot, DisplayLockedTarget Display, double Selection = 0, double? ReissuedTime = null);
+    readonly record struct BatchMember(DisplayLockedSlot Slot, DisplayLockedTarget Display, double Selection = 0, double? ReissuedTime = null);
 
     /// <summary>The loop is not presenting (paused, stopped): report what the last run did.</summary>
-    private void OnDisplayLockedIdle()
+    void OnDisplayLockedIdle()
     {
-        foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+        foreach (var display in _displayLockedTargets.Values)
         {
             ReportDisplayLockedStatisticsIfDue(display, force: true);
             display.LastShown = null;
         }
     }
 
-    private bool NoDisplayLockedSlot(string state)
+    bool NoDisplayLockedSlot(string state)
     {
         // A pass on the source-cadence path while display-locked timing is on: counted on the
         // primary display's report (switching paths shows as uneven motion).
         if (_frameTiming == VideoFrameTiming.DisplayLocked)
         {
-            foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+            foreach (var display in _displayLockedTargets.Values)
                 if (display.IncludesPrimary)
                     display.Statistics.RecordFallbackPass();
         }
@@ -425,7 +425,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         if (_displayLockedTargets.Count > 0
             && (_frameTiming != VideoFrameTiming.DisplayLocked || now - _displayLockedUnavailableSince > DisplayLockedGapToleranceTicks))
         {
-            foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+            foreach (var display in _displayLockedTargets.Values)
                 ReportDisplayLockedStatisticsIfDue(display, force: true);
 
             _displayLockedTargets.Clear();
@@ -440,7 +440,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     /// refresh after starting playback (timing not measured yet) does not log a false alarm.
     /// "Off" is only reported after display-locked timing was on.
     /// </summary>
-    private void NoteDisplayLockedState(string state)
+    void NoteDisplayLockedState(string state)
     {
         if (state == _displayLockedReportedState)
         {
@@ -468,9 +468,9 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, FrameTimingDiagnosticCategory, $"Display-locked video timing {state}.", _currentVideoPath);
     }
 
-    private void ReportDisplayLockedStatisticsIfDue(DisplayLockedTarget display, bool force)
+    void ReportDisplayLockedStatisticsIfDue(DisplayLockedTarget display, bool force)
     {
-        DisplayLockedStatistics statistics = display.Statistics;
+        var statistics = display.Statistics;
         if (!statistics.HasData
             || (!force && Stopwatch.GetTimestamp() - statistics.StartTimestamp < DisplayLockedReportIntervalTicks))
         {
@@ -485,7 +485,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     }
 
     /// <summary>The display-locked state of one display showing the video.</summary>
-    private sealed class DisplayLockedTarget
+    sealed class DisplayLockedTarget
     {
         public VsyncMediaClock Clock { get; } = new(Stopwatch.Frequency);
 
@@ -514,29 +514,29 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     /// and how many refreshes each stayed, presents that finished after their refresh, drift steps
     /// and clock restarts.
     /// </summary>
-    private sealed class DisplayLockedStatistics
+    sealed class DisplayLockedStatistics
     {
-        private readonly long[] _holds = new long[6];
-        private long _firstVsync;
-        private long _lastVsync;
-        private long _frameStartVsync;
-        private long _periodTicks;
-        private long _refreshes;
-        private long _frames;
-        private long _late;
-        private long _restartsAtStart;
-        private long _restarts;
-        private long _wrapsAtStart;
-        private long _wraps;
-        private long _resyncsAtStart;
-        private long _resyncs;
-        private long _missedRefreshes;
-        private long _gaps;
-        private double _longestGapMs;
-        private long _slowPasses;
-        private double _longestWorkMs;
-        private long _starvedRefreshes;
-        private long _fallbackPasses;
+        readonly long[] _holds = new long[6];
+        long _firstVsync;
+        long _lastVsync;
+        long _frameStartVsync;
+        long _periodTicks;
+        long _refreshes;
+        long _frames;
+        long _late;
+        long _restartsAtStart;
+        long _restarts;
+        long _wrapsAtStart;
+        long _wraps;
+        long _resyncsAtStart;
+        long _resyncs;
+        long _missedRefreshes;
+        long _gaps;
+        double _longestGapMs;
+        long _slowPasses;
+        double _longestWorkMs;
+        long _starvedRefreshes;
+        long _fallbackPasses;
 
         public bool HasData => _refreshes > 0;
 

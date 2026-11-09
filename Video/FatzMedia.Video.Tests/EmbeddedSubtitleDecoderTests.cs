@@ -24,7 +24,7 @@ public class EmbeddedSubtitleDecoderTests
             new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), "First")
         ];
 
-        IReadOnlyList<SubtitleCue> resolved = EmbeddedSubtitleDecoder.ResolveCueEnds(cues);
+        var resolved = EmbeddedSubtitleDecoder.ResolveCueEnds(cues);
 
         Assert.Collection(
             resolved,

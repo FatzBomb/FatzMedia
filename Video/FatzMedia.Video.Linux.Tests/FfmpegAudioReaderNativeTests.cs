@@ -26,7 +26,7 @@ public sealed class FfmpegAudioReaderNativeTests
             // deep pass (which samples the whole file) can see.
             WriteStereoTone(wav, sampleRate: 44100, seconds: 20, amplitude: 0.5, burstAtSeconds: 15, burstAmplitude: 0.9);
 
-            using FfmpegAudioReader? reader = FfmpegAudioReader.Open(wav);
+            using var reader = FfmpegAudioReader.Open(wav);
             Assert.NotNull(reader);
             Assert.Equal(44100, reader.SampleRate);
             Assert.Equal(2, reader.Channels);
@@ -83,7 +83,7 @@ public sealed class FfmpegAudioReaderNativeTests
         {
             WriteStereoTone(source, sampleRate: 48000, seconds: 3, amplitude: 0.5, burstAtSeconds: 2, burstAmplitude: 0.75);
 
-            using (ConvertedAudio? inMemory = FfmpegAudioFallback.Take(source, CancellationToken.None))
+            using (var inMemory = FfmpegAudioFallback.Take(source, CancellationToken.None))
             {
                 Assert.NotNull(inMemory);
                 Assert.True(inMemory.IsInMemory);
@@ -97,7 +97,7 @@ public sealed class FfmpegAudioReaderNativeTests
             try
             {
                 string tempPath;
-                using (ConvertedAudio? spilled = FfmpegAudioFallback.Take(source, CancellationToken.None))
+                using (var spilled = FfmpegAudioFallback.Take(source, CancellationToken.None))
                 {
                     Assert.NotNull(spilled);
                     Assert.False(spilled.IsInMemory);
@@ -109,12 +109,12 @@ public sealed class FfmpegAudioReaderNativeTests
                 Assert.False(File.Exists(tempPath), "the temp WAV is deleted on dispose");
 
                 // A prepared conversion is kept for the transition until released.
-                ConvertedAudio? prepared = FfmpegAudioFallback.Prepare(source, CancellationToken.None);
+                var prepared = FfmpegAudioFallback.Prepare(source, CancellationToken.None);
                 Assert.NotNull(prepared);
                 Assert.True(File.Exists(prepared.TempPath));
                 FfmpegAudioFallback.Release(source);
                 Assert.False(File.Exists(prepared.TempPath), "a released prepared conversion is deleted");
-                using ConvertedAudio? reconverted = FfmpegAudioFallback.Take(source, CancellationToken.None);
+                using var reconverted = FfmpegAudioFallback.Take(source, CancellationToken.None);
                 Assert.NotSame(prepared, reconverted);
             }
             finally
@@ -130,7 +130,7 @@ public sealed class FfmpegAudioReaderNativeTests
 
         static void AssertReadsBack(string path)
         {
-            using FfmpegAudioReader? reader = FfmpegAudioReader.Open(path);
+            using var reader = FfmpegAudioReader.Open(path);
             Assert.NotNull(reader);
             Assert.Equal(48000, reader.SampleRate);
             Assert.Equal(2, reader.Channels);
@@ -152,7 +152,7 @@ public sealed class FfmpegAudioReaderNativeTests
         Assert.True(operations.TryActivateFfmpeg(directory));
     }
 
-    private static void WriteStereoTone(string path, int sampleRate, int seconds, double amplitude, int burstAtSeconds, double burstAmplitude)
+    static void WriteStereoTone(string path, int sampleRate, int seconds, double amplitude, int burstAtSeconds, double burstAmplitude)
     {
         const short channels = 2;
         const short bitsPerSample = 16;

@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Vulkan.Tests;
 /// </summary>
 public sealed class VulkanDeviceLossTests
 {
-    private static readonly MediaCompositionFrame Wash = MediaCompositionFrame.Empty() with { WashArgb = 0x80FF8000 };
+    static readonly MediaCompositionFrame Wash = MediaCompositionFrame.Empty() with { WashArgb = 0x80FF8000 };
 
     [Fact]
     public void DeviceLost_RefusesFramesAndInitializeUntilCleanup_ThenRecreatesOnce()
@@ -19,7 +19,7 @@ public sealed class VulkanDeviceLossTests
         List<VulkanOffscreenCompositor> created = [];
         using var backend = new VulkanRendererBackend(() =>
         {
-            VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+            var compositor = VulkanOffscreenCompositor.TryCreate(out _);
             if (compositor is not null)
                 created.Add(compositor);
             return compositor;
@@ -56,7 +56,7 @@ public sealed class VulkanDeviceLossTests
     [Fact]
     public void Heartbeat_HealthyDevice_IsNotLost()
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
@@ -72,7 +72,7 @@ public sealed class VulkanDeviceLossTests
     [Fact]
     public void Probe_AfterDispose_IsNotLost()
     {
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
@@ -85,7 +85,7 @@ public sealed class VulkanDeviceLossTests
     public void DecoderLossCheck_ReadsTheMarkAndTreatsAReleasedDeviceAsLost()
     {
         using var backend = new VulkanRendererBackend(() => null);
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
@@ -102,13 +102,13 @@ public sealed class VulkanDeviceLossTests
     {
         // A slow GPU that misses the 2 s fence timeout is treated as lost, but its objects are still
         // waited for before they are destroyed: only a driver-confirmed loss skips that wait.
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
         using (compositor)
         {
-            VulkanSharedDevice shared = compositor.SharedDevice!;
+            var shared = compositor.SharedDevice!;
             shared.MarkLost("frame did not complete within 2 s", confirmed: false);
             Assert.True(shared.IsLost);
             Assert.False(shared.IsLossConfirmed);
@@ -123,7 +123,7 @@ public sealed class VulkanDeviceLossTests
     {
         // ENG-050: vkDeviceWaitIdle blocked recovery for 14 s after an NVIDIA GPU reset. A device
         // marked lost by a timeout waits only for the compositor's own submission, bounded.
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out _);
         if (compositor is null)
             return;
 
@@ -223,7 +223,7 @@ public sealed class VulkanDeviceLossTests
         Assert.Equal(2, consumer.Sets.Count);
 
         // Once the compositor gives an image back, a later stall may replace the set again.
-        MediaSharedGpuImageSet second = consumer.Sets.Last();
+        var second = consumer.Sets.Last();
         second.ReleaseFrame(consumer.Frames.Last(), consumed: true);
         Assert.True(backend.PresentComposition(Wash));
         Assert.True(backend.PresentComposition(Wash));
@@ -254,14 +254,14 @@ public sealed class VulkanDeviceLossTests
         CloseHandles(consumer);
     }
 
-    private static MediaPresentationSurfaceDescriptor SinkSurface(MediaPresentationFrameSinkHandle handle) => new(
+    static MediaPresentationSurfaceDescriptor SinkSurface(MediaPresentationFrameSinkHandle handle) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
         MediaPresentationSurfaceRole.Primary,
         handle.CreateSurfaceDescriptor(),
         8,
         6);
 
-    private static MediaPresentationSurfaceDescriptor SharedSurface(MediaSharedGpuImageConsumerHandle handle, int width, int height) => new(
+    static MediaPresentationSurfaceDescriptor SharedSurface(MediaSharedGpuImageConsumerHandle handle, int width, int height) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
         MediaPresentationSurfaceRole.Primary,
         handle.CreateSurfaceDescriptor(),
@@ -269,20 +269,20 @@ public sealed class VulkanDeviceLossTests
         height);
 
     /// <summary>Nothing imported the descriptors: the producer closes them once the sets are retired.</summary>
-    private static void CloseHandles(RecordingConsumer consumer)
+    static void CloseHandles(RecordingConsumer consumer)
     {
-        foreach (MediaSharedGpuImageSet set in consumer.Sets)
+        foreach (var set in consumer.Sets)
             set.CompleteImport(handlesConsumed: false);
     }
 
-    private sealed class CountingSink : IMediaPresentationFrameSink
+    sealed class CountingSink : IMediaPresentationFrameSink
     {
         public int Frames { get; private set; }
 
         public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride) => Frames++;
     }
 
-    private sealed class RecordingConsumer : IMediaSharedGpuImageConsumer
+    sealed class RecordingConsumer : IMediaSharedGpuImageConsumer
     {
         public ConcurrentQueue<MediaSharedGpuImageSet> Sets { get; } = new();
         public ConcurrentQueue<MediaSharedGpuImageFrame> Frames { get; } = new();

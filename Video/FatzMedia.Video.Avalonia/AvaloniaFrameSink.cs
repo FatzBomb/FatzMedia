@@ -12,11 +12,11 @@ namespace FatzMedia.Video.Avalonia;
 /// alternating, so steady playback does not allocate per frame); this sink only marshals the
 /// publish to the UI thread and owns the bitmap.
 /// </summary>
-internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
+sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
 {
-    private readonly LatestFrameMailbox _mailbox = new();
-    private readonly Action _frameUpdated;
-    private readonly MediaPresentationFrameSinkHandle _handle;
+    readonly LatestFrameMailbox _mailbox = new();
+    readonly Action _frameUpdated;
+    readonly MediaPresentationFrameSinkHandle _handle;
 
     public AvaloniaFrameSink(Action frameUpdated)
     {
@@ -59,7 +59,7 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
         Bitmap = null;
     }
 
-    private void PublishScheduled()
+    void PublishScheduled()
     {
         if (PublishPending())
             _frameUpdated();
@@ -81,7 +81,7 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
             Bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
         }
 
-        using (ILockedFramebuffer framebuffer = Bitmap.Lock())
+        using (var framebuffer = Bitmap.Lock())
         {
             var rowBytes = width * 4;
             var destination = new Span<byte>((void*)framebuffer.Address, framebuffer.RowBytes * height);

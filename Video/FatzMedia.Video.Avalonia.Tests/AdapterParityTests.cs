@@ -14,9 +14,9 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void ProjectorSurface_NeverForwardsItsVideoDisplayMode()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session, VideoDisplayMode = VideoDisplayMode.Stretch };
-        Window main = Show(primary, 320, 180);
+        var main = Show(primary, 320, 180);
         Assert.Equal(VideoDisplayMode.Stretch, recorder.LastDisplayMode);
 
         // Opening the singer screen used to reset the session to Zoom.
@@ -37,13 +37,13 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void AutoHide_ShowsFramesFromTheFirstPresentedFrameUntilStop()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         recorder.IsOpen = false;
         recorder.HasVisualContent = false;
         var surface = new MediaSurface { Player = session };
         var visibilityChanges = 0;
         surface.ContentVisibilityChanged += (_, _) => visibilityChanges++;
-        Window window = Show(surface, 64, 32);
+        var window = Show(surface, 64, 32);
         Assert.False(surface.IsContentVisible);
 
         // Load and first frame arrive on background threads, as from the session.
@@ -68,13 +68,16 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void AutoHide_HidesTheSharedImageVisualWhileNothingIsShown_AndOffShowsIt()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         recorder.IsOpen = false;
-        var surface = new MediaSurface { GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
-        surface.Player = session;
-        Window window = Show(surface, 320, 180);
+        var surface = new MediaSurface
+        {
+            GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
+            Player = session
+        };
+        var window = Show(surface, 320, 180);
         Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
-        global::Avalonia.Rendering.Composition.CompositionVisual visual = global::Avalonia.Rendering.Composition.ElementComposition.GetElementChildVisual(surface)!;
+        var visual = global::Avalonia.Rendering.Composition.ElementComposition.GetElementChildVisual(surface)!;
         Assert.False(visual.Visible);
 
         surface.AutoHide = false;
@@ -86,7 +89,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void Escape_LeavesFullScreen_AndClosesAWindowedSecondScreen()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var window = new KeyWindow(session) { Width = 320, Height = 180 };
         var closed = false;
         window.Closed += (_, _) => closed = true;
@@ -104,7 +107,7 @@ public sealed class AdapterParityTests
         Assert.Contains($"detach {MediaSurface.DefaultSecondarySurfaceId}", recorder.SurfaceCalls);
     }
 
-    private sealed class KeyWindow(IPlayerSession session) : SecondaryPresentationWindow(session)
+    sealed class KeyWindow(IPlayerSession session) : SecondaryPresentationWindow(session)
     {
         public void Press(global::Avalonia.Input.Key key) =>
             OnKeyDown(new global::Avalonia.Input.KeyEventArgs { Key = key, RoutedEvent = KeyDownEvent });
@@ -113,7 +116,7 @@ public sealed class AdapterParityTests
     [AvaloniaFact]
     public void RefusedAttach_RaisesOneWarningOwnedByTheSession()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         recorder.AttachResult = static _ => false;
         var warnings = new System.Collections.Concurrent.ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
@@ -126,13 +129,13 @@ public sealed class AdapterParityTests
         try
         {
             var surface = new MediaSurface { Player = session, PreferGpuSharedSurface = false };
-            Window window = Show(surface, 64, 32);
+            var window = Show(surface, 64, 32);
             window.Width = 80;
             Dispatcher.UIThread.RunJobs();
 
             Assert.False(surface.IsSurfaceAttached);
             Assert.Equal(MediaSurfacePresentationPath.None, surface.PresentationPath);
-            MediaDiagnosticInfo warning = Assert.Single(warnings);
+            var warning = Assert.Single(warnings);
             Assert.Contains("did not accept the surface", warning.Message, StringComparison.Ordinal);
             window.Close();
         }
@@ -142,9 +145,9 @@ public sealed class AdapterParityTests
         }
     }
 
-    private static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
+    static readonly MediaSourceInfo Source = new(MediaInputSource.FromFile("clip.mp4"), MediaContent.Video);
 
-    private static Window Show(MediaSurface surface, double width, double height)
+    static Window Show(MediaSurface surface, double width, double height)
     {
         var window = new Window { Width = width, Height = height, Content = surface };
         window.Show();

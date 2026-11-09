@@ -8,10 +8,10 @@ namespace FatzMedia.Video.Sample.Player.Shared.Hosting;
 /// </summary>
 public sealed class PlayerDebugLog : IDisposable
 {
-    private TextWriterTraceListener? _listener;
-    private StreamWriter? _writer;
+    TextWriterTraceListener? _listener;
+    StreamWriter? _writer;
 
-    private PlayerDebugLog(string path) => FilePath = path;
+    PlayerDebugLog(string path) => FilePath = path;
 
     /// <summary>Gets the log file's path.</summary>
     public string FilePath { get; }

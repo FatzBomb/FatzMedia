@@ -4,16 +4,16 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 
 public partial class PlayerViewModel
 {
-    private bool _includeOverlays;
-    private bool _resetPitchOnMediaLoad;
-    private bool _resetTempoOnMediaLoad;
-    private double _redGain = 1d;
-    private double _greenGain = 1d;
-    private double _blueGain = 1d;
-    private double _hueDegrees;
-    private double _brightness;
-    private double _contrast = 1d;
-    private double _saturation = 1d;
+    bool _includeOverlays;
+    bool _resetPitchOnMediaLoad;
+    bool _resetTempoOnMediaLoad;
+    double _redGain = 1d;
+    double _greenGain = 1d;
+    double _blueGain = 1d;
+    double _hueDegrees;
+    double _brightness;
+    double _contrast = 1d;
+    double _saturation = 1d;
 
     public string BaseVisualTransformState => CreateBaseVisualTransform().IsIdentity ? "IDENTITY" : "ACTIVE";
 
@@ -103,7 +103,7 @@ public partial class PlayerViewModel
         set => SetTransformValue(ref _saturation, value, 0d, 2d, 1d, nameof(Saturation));
     }
 
-    private void InitializeValidationControls()
+    void InitializeValidationControls()
     {
         _resetPitchOnMediaLoad = Options.ResetPitchOnLoad;
         _resetTempoOnMediaLoad = Options.ResetTempoOnLoad;
@@ -122,14 +122,14 @@ public partial class PlayerViewModel
         _saturation = 1.2d;
     }
 
-    private void ApplyValidationControls(PlayerCore player)
+    void ApplyValidationControls(PlayerCore player)
     {
         player.ResetPitchOnMediaLoad = ResetPitchOnMediaLoad;
         player.ResetTempoOnMediaLoad = ResetTempoOnMediaLoad;
         player.BaseVisualTransform = CreateBaseVisualTransform();
     }
 
-    private void SetTransformValue(
+    void SetTransformValue(
         ref double field,
         double value,
         double minimum,
@@ -146,7 +146,7 @@ public partial class PlayerViewModel
         ApplyBaseVisualTransform();
     }
 
-    private void ApplyBaseVisualTransform()
+    void ApplyBaseVisualTransform()
     {
         OnPropertyChanged(nameof(BaseVisualTransformState));
         if (Player is { } player)
@@ -155,7 +155,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private BaseVisualTransform CreateBaseVisualTransform() => new()
+    BaseVisualTransform CreateBaseVisualTransform() => new()
     {
         RedGain = (float)RedGain,
         GreenGain = (float)GreenGain,
@@ -168,7 +168,7 @@ public partial class PlayerViewModel
     };
 
     [RelayCommand]
-    private void ResetBaseVisualTransform()
+void ResetBaseVisualTransform()
     {
         _includeOverlays = false;
         _redGain = 1d;

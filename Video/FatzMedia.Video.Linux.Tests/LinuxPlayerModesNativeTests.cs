@@ -15,11 +15,11 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
 {
-    private static readonly string Formats = Path.Combine(LinuxNativeTestPlayer.MediaDir, "formats");
-    private static readonly string MusicVideo = Path.Combine(Formats, "video-aac.mp4");
-    private static readonly string SilentVideo = Path.Combine(Formats, "silent-video.mp4");
-    private static readonly string Song = Path.Combine(Formats, "tone.mp3");
-    private static readonly string Picture = Path.Combine(Formats, "picture.jpg");
+    static readonly string Formats = Path.Combine(LinuxNativeTestPlayer.MediaDir, "formats");
+    static readonly string MusicVideo = Path.Combine(Formats, "video-aac.mp4");
+    static readonly string SilentVideo = Path.Combine(Formats, "silent-video.mp4");
+    static readonly string Song = Path.Combine(Formats, "tone.mp3");
+    static readonly string Picture = Path.Combine(Formats, "picture.jpg");
 
     [Fact]
     public void Background_RefusesAudio_ShowsAPicture_AndLoopsAVideoSilently()
@@ -125,7 +125,7 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
         output.WriteLine(string.Join(Environment.NewLine, session.Diagnostics.Where(static l => l.Contains("mode", StringComparison.OrdinalIgnoreCase))));
     }
 
-    private static void AssertKept(LinuxNativeTestPlayer session, TimeSpan before, MediaPlayerState state, string step)
+    static void AssertKept(LinuxNativeTestPlayer session, TimeSpan before, MediaPlayerState state, string step)
     {
         var player = session.Player;
         Assert.True(SpinWait.SpinUntil(() => player.State == state, TimeSpan.FromSeconds(5)), $"{step}: state {player.State}");
@@ -136,12 +136,12 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
         Assert.Equal(2, player.Effects.Pitch);
     }
 
-    private static bool TryGet(out string bass, out string ffmpeg) =>
+    static bool TryGet(out string bass, out string ffmpeg) =>
         LinuxNativeTestPlayer.TryGetFolders(out bass, out ffmpeg)
         && File.Exists(MusicVideo) && File.Exists(SilentVideo) && File.Exists(Song) && File.Exists(Picture);
 
-    private static LinuxNativeTestPlayer Create(string bass, string ffmpeg, MediaPlayerMode mode) =>
+    static LinuxNativeTestPlayer Create(string bass, string ffmpeg, MediaPlayerMode mode) =>
         LinuxNativeTestPlayer.Create([bass, ffmpeg], new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode });
 
-    private static string Dump(LinuxNativeTestPlayer session) => string.Join(" | ", session.Errors.Concat(session.Diagnostics.TakeLast(6)));
+    static string Dump(LinuxNativeTestPlayer session) => string.Join(" | ", session.Errors.Concat(session.Diagnostics.TakeLast(6)));
 }

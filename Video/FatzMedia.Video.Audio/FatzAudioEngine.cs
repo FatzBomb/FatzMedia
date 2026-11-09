@@ -26,38 +26,38 @@ namespace FatzMedia.Video.Audio;
 /// it natively.</para>
 /// <para>Events arrive on FatzAudio's event thread; handlers re-enter the player's diagnostic owner.</para>
 /// </remarks>
-internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
+sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
     IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource
 {
-    private const string Category = "FatzAudioEngine";
+    const string Category = "FatzAudioEngine";
 
-    private static readonly Fa.StreamOptions PlaybackOptions = new() { NoCdg = true };
+    static readonly Fa.StreamOptions PlaybackOptions = new() { NoCdg = true };
 
-    private readonly Fa.AudioEngine _engine;
-    private readonly Fa.OutputDevice _output;
-    private readonly Fa.MixBus _bus;
-    private readonly Fa.SoundFont? _soundFont;
-    private readonly SilenceTrimOptions _silenceTrim;
-    private readonly NormalizationOptions _normalization;
-    private readonly object? _diagnosticOwner;
+    readonly Fa.AudioEngine _engine;
+    readonly Fa.OutputDevice _output;
+    readonly Fa.MixBus _bus;
+    readonly Fa.SoundFont? _soundFont;
+    readonly SilenceTrimOptions _silenceTrim;
+    readonly NormalizationOptions _normalization;
+    readonly object? _diagnosticOwner;
 
     // Guards the open stream and everything bound to it; never held while raising events.
-    private readonly Lock _gate = new();
-    private Fa.AudioStream? _stream;
-    private CancellationTokenSource? _streamLifetime;
-    private ConvertedAudio? _converted;
-    private int _sampleRate;
-    private double _duration;
-    private MediaAnalysisResult? _activeTrimWindow;
-    private AudioEqualizerSettings _equalizer = AudioEqualizerSettings.Disabled;
-    private bool _loopPlayback;
-    private double _userVolume = 1;
-    private int _fadeSession;
-    private bool _loudnessReported;
-    private bool _disposed;
+    readonly Lock _gate = new();
+    Fa.AudioStream? _stream;
+    CancellationTokenSource? _streamLifetime;
+    ConvertedAudio? _converted;
+    int _sampleRate;
+    double _duration;
+    MediaAnalysisResult? _activeTrimWindow;
+    AudioEqualizerSettings _equalizer = AudioEqualizerSettings.Disabled;
+    bool _loopPlayback;
+    double _userVolume = 1;
+    int _fadeSession;
+    bool _loudnessReported;
+    bool _disposed;
 
-    private readonly Lock _stateGate = new();
-    private AudioEngineState _state = AudioEngineState.Stopped;
+    readonly Lock _stateGate = new();
+    AudioEngineState _state = AudioEngineState.Stopped;
 
     /// <summary>Creates the engine and opens the default output device.</summary>
     /// <param name="configuration">The player's configuration: soundfont, silence trim, normalization, device.</param>
@@ -158,7 +158,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
 
                 try
                 {
-                    Fa.Loudness loudness = stream.GetLoudness();
+                    var loudness = stream.GetLoudness();
                     return FatzAudioMappings.GainFromDecibels(Normalize
                         ? loudness.GainDb
                         : FatzAudioMappings.TrackGainDecibels(loudness.IntegratedLufs, loudness.IsFinal, _normalization.TargetLufs));
@@ -282,7 +282,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
 
     bool IAudioAnalysisOpenControl.Open(string filePath, bool analyzeSilence) => Open(filePath, analyzeSilence);
 
-    private bool Open(string filePath, bool analyzeSilence)
+    bool Open(string filePath, bool analyzeSilence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         return OpenCore(
@@ -317,7 +317,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             archiveEntry);
     }
 
-    private bool OpenCore(OpenedSource source, string label, bool detectSilence, IArchiveEntryInfo? archiveEntry = null)
+    bool OpenCore(OpenedSource source, string label, bool detectSilence, IArchiveEntryInfo? archiveEntry = null)
     {
         if (_disposed)
             return false;
@@ -347,9 +347,9 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"FatzAudio cannot decode '{Path.GetFileName(path)}'; playing an FFmpeg conversion.", sourcePath: path);
             }
 
-            Fa.StreamInfo info = stream.Info;
+            var info = stream.Info;
             var duration = info.Duration?.TotalSeconds ?? 0;
-            MediaAnalysisResult? trimWindow = detectSilence ? DetectTrimWindow(stream, info, duration, label) : null;
+            var trimWindow = detectSilence ? DetectTrimWindow(stream, info, duration, label) : null;
 
             stream.Ended += OnStreamEnded;
             stream.Looped += OnStreamLooped;
@@ -359,7 +359,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             {
                 // From here CloseStream owns the stream and a temp-file conversion. FatzAudio copies
                 // memory it opens, so archive bytes and in-memory conversions are not kept.
-                Fa.AudioStream opened = stream;
+                var opened = stream;
                 _stream = stream;
                 _streamLifetime = new CancellationTokenSource();
                 _converted = converted is { IsInMemory: false } ? converted : null;
@@ -436,7 +436,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    private static ConvertedAudio? TakeArchiveConversion(IArchiveEntryInfo archiveEntry)
+    static ConvertedAudio? TakeArchiveConversion(IArchiveEntryInfo archiveEntry)
     {
         var tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
         try
@@ -453,17 +453,17 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     /// Finds the leading and trailing silence with FatzAudio (it decodes only the edges, so it is
     /// ready before the first play) and applies our padding and edge switches.
     /// </summary>
-    private MediaAnalysisResult? DetectTrimWindow(Fa.AudioStream stream, Fa.StreamInfo info, double duration, string label)
+    MediaAnalysisResult? DetectTrimWindow(Fa.AudioStream stream, Fa.StreamInfo info, double duration, string label)
     {
         if (!double.IsFinite(duration) || duration <= 0)
             return null;
 
         try
         {
-            Fa.SilenceInfo silence = stream.DetectSilence(FatzAudioMappings.ToSilenceOptions(_silenceTrim));
+            var silence = stream.DetectSilence(FatzAudioMappings.ToSilenceOptions(_silenceTrim));
             var sampleRate = silence.SampleRate > 0 ? silence.SampleRate : info.Format.SampleRate;
-            IReadOnlyList<SilenceRegion> edges = FatzAudioMappings.ToEdgeRegions(silence.FirstAudible, silence.LastAudible, silence.Length, sampleRate, duration);
-            MediaAnalysisResult result = SilenceTrimCalculator.Calculate(duration, edges, 1.0, _silenceTrim);
+            var edges = FatzAudioMappings.ToEdgeRegions(silence.FirstAudible, silence.LastAudible, silence.Length, sampleRate, duration);
+            var result = SilenceTrimCalculator.Calculate(duration, edges, 1.0, _silenceTrim);
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
                 Category,
@@ -652,7 +652,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     /// loudness is final (from tags, the cache or a scan; tags give the tagged sample peak). 0 with
     /// no song, for digital silence, when no peak is known, or when the song closes first.
     /// </summary>
-    private async Task<double> TruePeakAsync(CancellationToken cancellationToken)
+    async Task<double> TruePeakAsync(CancellationToken cancellationToken)
     {
         Fa.AudioStream? stream;
         CancellationToken lifetime;
@@ -701,7 +701,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     /// <c>%LOCALAPPDATA%\FatzMedia.Video\AudioCache</c> was never written on a machine without the
     /// parent folder (owner smoke 2026-11-05). Null (no cache) when it cannot be created.
     /// </summary>
-    private static string? EnsureCacheDirectory(string? directory)
+    static string? EnsureCacheDirectory(string? directory)
     {
         if (directory is null)
             return null;
@@ -719,7 +719,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     }
 
     /// <summary>FatzAudio's normalization for every stream of this engine: on at the target, or off.</summary>
-    private void ApplyNormalizationMode()
+    void ApplyNormalizationMode()
     {
         if (_disposed)
             return;
@@ -735,7 +735,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     }
 
     /// <summary>The user volume, on the player's bus (normalization is FatzAudio's, on top of it).</summary>
-    private void ApplyOutputVolume(TimeSpan ramp)
+    void ApplyOutputVolume(TimeSpan ramp)
     {
         if (_disposed)
             return;
@@ -754,10 +754,10 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    private bool ApplyEqualizerLocked() =>
+    bool ApplyEqualizerLocked() =>
         TryLocked(stream => stream.SetEqualizer(FatzAudioMappings.ToEqualizerBands(_equalizer)), "Equalizer");
 
-    private void CloseStream()
+    void CloseStream()
     {
         Fa.AudioStream? stream;
         ConvertedAudio? converted;
@@ -790,14 +790,14 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         converted?.Dispose();
     }
 
-    private void EndFadeSessionLocked(bool restoreGain)
+    void EndFadeSessionLocked(bool restoreGain)
     {
         _fadeSession = NextSession(_fadeSession);
         if (restoreGain)
             _ = TryLocked(static stream => stream.Volume = 1f, "Fade reset");
     }
 
-    private double ReadClockLocked()
+    double ReadClockLocked()
     {
         if (_stream is not { } stream)
             return 0;
@@ -812,7 +812,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    private bool TryLocked(Action<Fa.AudioStream> action, string operation)
+    bool TryLocked(Action<Fa.AudioStream> action, string operation)
     {
         if (_stream is not { } stream)
             return false;
@@ -829,7 +829,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    private void SetState(AudioEngineState state)
+    void SetState(AudioEngineState state)
     {
         lock (_stateGate)
         {
@@ -842,7 +842,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         StateChanged?.Invoke(this, state);
     }
 
-    private bool IsCurrent(object? sender)
+    bool IsCurrent(object? sender)
     {
         lock (_gate)
             return sender is not null && ReferenceEquals(sender, _stream);
@@ -850,7 +850,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
 
     // FatzAudio's event thread: re-enter the player's diagnostics, and never let a subscriber's
     // exception reach the native side.
-    private void OnStreamEnded(object? sender, EventArgs e) => OnStreamEvent(sender, "End", () =>
+    void OnStreamEnded(object? sender, EventArgs e) => OnStreamEvent(sender, "End", () =>
     {
         double end;
         lock (_gate)
@@ -870,7 +870,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     });
 
     // One event per wrap, raised as the BASS engine does: PlaybackEnded while still Playing.
-    private void OnStreamLooped(object? sender, Fa.StreamEventArgs e) => OnStreamEvent(sender, "Loop", () =>
+    void OnStreamLooped(object? sender, Fa.StreamEventArgs e) => OnStreamEvent(sender, "Loop", () =>
     {
         double start;
         lock (_gate)
@@ -884,7 +884,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     });
 
-    private void OnStreamDeviceChanged(object? sender, Fa.StreamEventArgs e) => OnStreamEvent(sender, "Device change", () =>
+    void OnStreamDeviceChanged(object? sender, Fa.StreamEventArgs e) => OnStreamEvent(sender, "Device change", () =>
     {
         string? deviceName = null;
         try
@@ -905,14 +905,14 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         DeviceChanged?.Invoke(this, new AudioDeviceChangeInfo(FatzAudioMappings.ToDeviceChangeKind(e.Value), null, deviceName, null, 0));
     });
 
-    private void OnStreamLoudnessFinal(object? sender, EventArgs e) => OnStreamEvent(sender, "Loudness", () =>
+    void OnStreamLoudnessFinal(object? sender, EventArgs e) => OnStreamEvent(sender, "Loudness", () =>
     {
         if (sender is Fa.AudioStream stream)
             ReportLoudness(stream);
     });
 
     /// <summary>Logs the song's measured loudness and raises <see cref="NormalizationGainChanged"/>, once per open.</summary>
-    private void ReportLoudness(Fa.AudioStream stream)
+    void ReportLoudness(Fa.AudioStream stream)
     {
         lock (_gate)
         {
@@ -922,7 +922,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             _loudnessReported = true;
         }
 
-        Fa.Loudness loudness = stream.GetLoudness();
+        var loudness = stream.GetLoudness();
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Info,
             Category,
@@ -930,9 +930,9 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         NormalizationGainChanged?.Invoke(this, NormalizationGain);
     }
 
-    private void OnStreamEvent(object? sender, string what, Action handle)
+    void OnStreamEvent(object? sender, string what, Action handle)
     {
-        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         try
         {
             if (!_disposed && IsCurrent(sender))
@@ -944,14 +944,14 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    private static int NextSession(int session) => session == int.MaxValue ? 1 : session + 1;
+    static int NextSession(int session) => session == int.MaxValue ? 1 : session + 1;
 
     /// <summary>Where the open media comes from, so a second (decode-only) stream can be opened for analysis.</summary>
-    private sealed class OpenedSource
+    sealed class OpenedSource
     {
-        private readonly ReadOnlyMemory<byte> _data;
+        readonly ReadOnlyMemory<byte> _data;
 
-        private OpenedSource(string? path, ReadOnlyMemory<byte> data, string label)
+        OpenedSource(string? path, ReadOnlyMemory<byte> data, string label)
         {
             Path = path;
             _data = data;

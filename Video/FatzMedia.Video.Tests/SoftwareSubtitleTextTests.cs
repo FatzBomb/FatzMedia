@@ -1,4 +1,3 @@
-using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Subtitle;
@@ -26,7 +25,7 @@ public sealed class SoftwareSubtitleTextTests
         {
             SubtitleStyle = new SubtitleTextStyle { FontSize = 44, TextArgb = 0xFF00FF00 },
         };
-        using IMediaPresentationCoordinator coordinator = new SoftwarePresentationCoordinatorFactory().Create(engine, configuration);
+        using var coordinator = new SoftwarePresentationCoordinatorFactory().Create(engine, configuration);
 
         Assert.True(coordinator.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             "primary",
@@ -59,7 +58,7 @@ public sealed class SoftwareSubtitleTextTests
         Assert.Equal(new byte[] { 0, 0, 0, 255 }, sink.Pixels.AsSpan(0, 4).ToArray());
     }
 
-    private sealed class RecordingFrameSink : IMediaPresentationFrameSink
+    sealed class RecordingFrameSink : IMediaPresentationFrameSink
     {
         public byte[] Pixels { get; private set; } = [];
         public int Width { get; private set; }

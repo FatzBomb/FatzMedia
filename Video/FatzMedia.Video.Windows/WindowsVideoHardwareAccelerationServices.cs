@@ -6,9 +6,9 @@ using FFmpeg.AutoGen;
 namespace FatzMedia.Video;
 
 /// <summary>Windows FFmpeg hardware-device policy and D3D11 native-frame extraction.</summary>
-internal sealed unsafe class WindowsVideoHardwareAccelerationServices : IVideoHardwareAccelerationServices
+sealed unsafe class WindowsVideoHardwareAccelerationServices : IVideoHardwareAccelerationServices
 {
-    private static readonly string[] PreferredDeviceTypes = ["d3d11va", "d3d12va", "dxva2"];
+    static readonly string[] PreferredDeviceTypes = ["d3d11va", "d3d12va", "dxva2"];
 
     public IReadOnlyList<string> PreferredDeviceTypeNames => PreferredDeviceTypes;
 

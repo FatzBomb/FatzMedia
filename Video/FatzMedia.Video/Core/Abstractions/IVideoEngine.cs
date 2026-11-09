@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Core.Graphics;
+using FatzMedia.Video.Core.Video;
 
 namespace FatzMedia.Video.Core.Abstractions;
 

@@ -6,13 +6,13 @@ namespace FatzMedia.Video;
 /// </summary>
 public readonly record struct BaseVisualTransform
 {
-    private readonly float _redGainOffset;
-    private readonly float _greenGainOffset;
-    private readonly float _blueGainOffset;
-    private readonly float _hueDegrees;
-    private readonly float _brightness;
-    private readonly float _contrastOffset;
-    private readonly float _saturationOffset;
+    readonly float _redGainOffset;
+    readonly float _greenGainOffset;
+    readonly float _blueGainOffset;
+    readonly float _hueDegrees;
+    readonly float _brightness;
+    readonly float _contrastOffset;
+    readonly float _saturationOffset;
 
     public static BaseVisualTransform Identity => default;
 
@@ -68,6 +68,6 @@ public readonly record struct BaseVisualTransform
         && _greenGainOffset == 0f
         && _blueGainOffset == 0f;
 
-    private static float Normalize(float value, float minimum, float maximum, float fallback)
+    static float Normalize(float value, float minimum, float maximum, float fallback)
         => float.IsNaN(value) ? fallback : Math.Clamp(value, minimum, maximum);
 }

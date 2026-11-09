@@ -6,7 +6,7 @@ public sealed class CompositionLayerUpdatePlan(
     bool deactivatedLayers,
     IEnumerable<CompositionLayerUpdate> updates)
 {
-    private readonly CompositionLayerUpdate[] _updates = [.. updates];
+    readonly CompositionLayerUpdate[] _updates = [.. updates];
 
     public long CaptureSequence { get; } = captureSequence;
     public bool IsClearOnly { get; } = isClearOnly;

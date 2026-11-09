@@ -1,13 +1,13 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal readonly record struct SilenceLevelSample(
+readonly record struct SilenceLevelSample(
     double StartSeconds,
     double EndSeconds,
     double PeakLevel);
 
-internal static class SilenceRegionDetector
+static class SilenceRegionDetector
 {
-    private const double MergeToleranceSeconds = 0.000001;
+    const double MergeToleranceSeconds = 0.000001;
 
     public static SilenceRegion[] Detect(
         IEnumerable<SilenceLevelSample>? samples,
@@ -60,14 +60,14 @@ internal static class SilenceRegionDetector
         return Math.Pow(10, normalizedThreshold / 20);
     }
 
-    private static bool IsValid(SilenceLevelSample sample) => double.IsFinite(sample.StartSeconds)
+    static bool IsValid(SilenceLevelSample sample) => double.IsFinite(sample.StartSeconds)
         && double.IsFinite(sample.EndSeconds)
         && double.IsFinite(sample.PeakLevel)
         && sample.StartSeconds >= 0
         && sample.EndSeconds > sample.StartSeconds
         && sample.PeakLevel >= 0;
 
-    private static void CompleteRegion(
+    static void CompleteRegion(
         List<SilenceRegion> regions,
         ref double? regionStart,
         ref double regionEnd)

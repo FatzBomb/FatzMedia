@@ -5,15 +5,15 @@ using FatzMedia.Video.Core.Media;
 
 namespace FatzMedia.Video.Pipeline;
 
-internal sealed class AudioPipeline : IDisposable
+sealed class AudioPipeline : IDisposable
 {
-    private readonly bool _ownsAudioEngine;
-    private string? _sourcePath;
-    private string? _pendingOpenPath;
-    private bool _disposed;
-    private bool _ownStateForCurrentOpen = true;
-    private bool _analyzeSilenceForCurrentOpen;
-    private MediaAnalysisResult? _trimWindow;
+    readonly bool _ownsAudioEngine;
+    string? _sourcePath;
+    string? _pendingOpenPath;
+    bool _disposed;
+    bool _ownStateForCurrentOpen = true;
+    bool _analyzeSilenceForCurrentOpen;
+    MediaAnalysisResult? _trimWindow;
 
     public AudioPipeline(IAudioEngine audioEngine, MediaState? state = null, bool ownsAudioEngine = false)
     {
@@ -103,7 +103,7 @@ internal sealed class AudioPipeline : IDisposable
     internal bool OpenNetworkSoundtrack(string url, FfmpegNetworkOptions options, bool audioSource = false) =>
         Engine is SoundtrackAudioEngine soundtrack && OpenNetwork(url, () => soundtrack.OpenNetwork(url, options, audioSource));
 
-    private bool OpenNetwork(string url, Func<bool> open)
+    bool OpenNetwork(string url, Func<bool> open)
     {
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(url))
@@ -259,9 +259,9 @@ internal sealed class AudioPipeline : IDisposable
         _disposed = true;
     }
 
-    private void OnAudioStateChanged(object? sender, AudioEngineState state) => State.SetPlaybackState(MapState(state));
+    void OnAudioStateChanged(object? sender, AudioEngineState state) => State.SetPlaybackState(MapState(state));
 
-    private void OnAudioOpened(object? sender, EventArgs e)
+    void OnAudioOpened(object? sender, EventArgs e)
     {
         _sourcePath = _pendingOpenPath ?? _sourcePath ?? State.SourcePath;
         IsOpen = true;
@@ -272,7 +272,7 @@ internal sealed class AudioPipeline : IDisposable
         }
     }
 
-    private void OnAudioClosed(object? sender, EventArgs e)
+    void OnAudioClosed(object? sender, EventArgs e)
     {
         _sourcePath = null;
         IsOpen = false;
@@ -280,10 +280,10 @@ internal sealed class AudioPipeline : IDisposable
         State.Reset();
     }
 
-    private void OnAudioPositionChanged(object? sender, double positionSeconds) =>
+    void OnAudioPositionChanged(object? sender, double positionSeconds) =>
         State.SetPosition(SourceToEffective(positionSeconds));
 
-    private void OnAudioPlaybackEnded(object? sender, EventArgs e)
+    void OnAudioPlaybackEnded(object? sender, EventArgs e)
     {
         if (!IsOpen)
             return;
@@ -302,7 +302,7 @@ internal sealed class AudioPipeline : IDisposable
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private static MediaPlayerState MapState(AudioEngineState state) => state switch
+    static MediaPlayerState MapState(AudioEngineState state) => state switch
     {
         AudioEngineState.Playing => MediaPlayerState.Playing,
         AudioEngineState.Paused => MediaPlayerState.Paused,
@@ -311,7 +311,7 @@ internal sealed class AudioPipeline : IDisposable
         _ => MediaPlayerState.Null
     };
 
-    private void RefreshTrimWindow()
+    void RefreshTrimWindow()
     {
         _trimWindow = _analyzeSilenceForCurrentOpen
             && Engine is IAudioTrimWindowProvider { ActiveTrimWindow: { } activeWindow }
@@ -320,13 +320,13 @@ internal sealed class AudioPipeline : IDisposable
                 : null;
     }
 
-    private void ResetTrimWindow()
+    void ResetTrimWindow()
     {
         _trimWindow = null;
         _analyzeSilenceForCurrentOpen = false;
     }
 
-    private double SourceToEffective(double sourcePosition)
+    double SourceToEffective(double sourcePosition)
     {
         if (_trimWindow is not { } trimWindow)
         {
@@ -339,7 +339,7 @@ internal sealed class AudioPipeline : IDisposable
             trimWindow.EffectiveDuration);
     }
 
-    private double EffectiveToSource(double effectivePosition)
+    double EffectiveToSource(double effectivePosition)
     {
         if (_trimWindow is not { } trimWindow)
         {
@@ -352,5 +352,5 @@ internal sealed class AudioPipeline : IDisposable
             trimWindow.PlayableEnd);
     }
 
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+    void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

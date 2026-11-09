@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Pipeline;
 /// restart and drained-at-end decisions. Values and rules are unchanged from the original inline
 /// code.
 /// </summary>
-internal static class VideoLoopBoundary
+static class VideoLoopBoundary
 {
     /// <summary>How close to the end counts as the end: one frame, kept between 20 and 120 ms (50 ms without a frame rate).</summary>
     public static double EndToleranceSeconds(double framesPerSecond) => framesPerSecond > 0

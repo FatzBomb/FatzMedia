@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Core.Audio.Fade;
 /// session and restores unity gain, so ramps from an older session are rejected and an
 /// interrupted fade never leaves the next playback muted.
 /// </remarks>
-internal interface IAudioFadeGainTarget
+interface IAudioFadeGainTarget
 {
     /// <summary>
     /// Starts a new fade session, superseding the previous one. Returns <c>0</c> when the fade
@@ -25,7 +25,7 @@ internal interface IAudioFadeGainTarget
 }
 
 /// <summary>How a fade run ended.</summary>
-internal enum AudioFadeOutcome
+enum AudioFadeOutcome
 {
     /// <summary>The whole envelope was applied.</summary>
     Completed,
@@ -41,11 +41,11 @@ internal enum AudioFadeOutcome
 /// Runs one fade envelope as chained native ramps. Latest wins: starting a fade cancels the
 /// previous one, which leaves the gain where its last ramp had reached.
 /// </summary>
-internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? delay = null)
+sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? delay = null)
 {
-    private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
-    private readonly Lock _gate = new();
-    private CancellationTokenSource? _current;
+    readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
+    readonly Lock _gate = new();
+    CancellationTokenSource? _current;
 
     /// <summary>
     /// Runs the envelope from <paramref name="startPosition"/>. Returns <see langword="true"/> when
@@ -71,7 +71,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(envelope);
-        CancellationTokenSource cts = Replace(cancellationToken, out var superseded);
+        var cts = Replace(cancellationToken, out var superseded);
         try
         {
             var session = target.BeginFadeSession();
@@ -81,14 +81,14 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
             // A fade that interrupts a running one continues from the gain that fade reached:
             // jumping to this envelope's start would be an audible step. Otherwise the envelope
             // starts exactly at its own start gain.
-            IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(envelope, duration, startPosition);
+            var segments = AudioFadeSchedule.Build(envelope, duration, startPosition);
             if ((!superseded || segments.Count == 0)
                 && !target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
             {
                 return AudioFadeOutcome.Interrupted;
             }
 
-            foreach (AudioFadeSegment segment in segments)
+            foreach (var segment in segments)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 if (!target.SetFadeGain(session, segment.ToGain, segment.Duration))
@@ -140,7 +140,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         }
     }
 
-    private CancellationTokenSource Replace(CancellationToken cancellationToken, out bool superseded)
+    CancellationTokenSource Replace(CancellationToken cancellationToken, out bool superseded)
     {
         var next = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationTokenSource? previous;
@@ -159,7 +159,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
     /// A detached source may already be disposed by its finishing run; that fade is over, so
     /// there is nothing left to cancel.
     /// </summary>
-    private static void CancelQuietly(CancellationTokenSource? source)
+    static void CancelQuietly(CancellationTokenSource? source)
     {
         try
         {
@@ -170,7 +170,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         }
     }
 
-    private void Release(CancellationTokenSource cts)
+    void Release(CancellationTokenSource cts)
     {
         lock (_gate)
         {

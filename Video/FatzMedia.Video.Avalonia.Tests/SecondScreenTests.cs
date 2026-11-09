@@ -18,8 +18,8 @@ public sealed class SecondScreenTests
     {
         // ENG-036: with several players in one process, a surface's diagnostics reach only the
         // player it is attached to (an unowned one reaches every player's log).
-        (IPlayerSession first, RecordingSession firstRecorder) = RecordingSession.Create();
-        (IPlayerSession second, _) = RecordingSession.Create();
+        (var first, var firstRecorder) = RecordingSession.Create();
+        (var second, _) = RecordingSession.Create();
         var raised = new System.Collections.Concurrent.ConcurrentQueue<MediaDiagnosticInfo>();
         void Record(MediaDiagnosticInfo info)
         {
@@ -46,14 +46,14 @@ public sealed class SecondScreenTests
             MediaDiagnosticInfo[] all = [.. raised];
             Assert.Equal(6, all.Length);
             Assert.All(all, static info => Assert.NotNull(info.Owner));
-            foreach (MediaDiagnosticInfo info in all)
+            foreach (var info in all)
                 Assert.Same(info.Message.Contains("-1'", StringComparison.Ordinal) ? first : second, info.Owner);
             Assert.Equal(2, all.Count(static info => info.Message.Contains("Audio mode", StringComparison.Ordinal)));
         }
         finally
         {
             // Close even when an assertion failed, so no window outlives the test.
-            foreach (Window window in windows)
+            foreach (var window in windows)
                 window.Close();
             DiagnosticRouter.DiagnosticOccurred -= Record;
         }
@@ -62,9 +62,9 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void TwoSurfacesOnOneSession_AttachWithTheirOwnIdsRolesAndSizes()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session };
-        Window main = Show(primary, 320, 180);
+        var main = Show(primary, 320, 180);
         var second = new SecondaryPresentationWindow(session) { Width = 640, Height = 360 };
         second.Show();
         Dispatcher.UIThread.RunJobs();
@@ -95,14 +95,14 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void TwoSurfaces_ShowTheFramesOfTheirOwnSinks()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var primary = new MediaSurface { Player = session };
         var singer = new MediaSurface { Player = session, Role = MediaPresentationSurfaceRole.Projector, SurfaceId = "singer" };
-        Window main = Show(primary, 320, 180);
-        Window second = Show(singer, 200, 100);
+        var main = Show(primary, 320, 180);
+        var second = Show(singer, 200, 100);
         MediaPresentationSurfaceDescriptor[] attached = [.. recorder.Attached];
-        IMediaPresentationFrameSink primarySink = ResolveSink(attached.Single(static d => d.Role == MediaPresentationSurfaceRole.Primary));
-        IMediaPresentationFrameSink singerSink = ResolveSink(attached.Single(static d => d.Id == "singer"));
+        var primarySink = ResolveSink(attached.Single(static d => d.Role == MediaPresentationSurfaceRole.Primary));
+        var singerSink = ResolveSink(attached.Single(static d => d.Id == "singer"));
         Assert.NotSame(primarySink, singerSink);
 
         // The renderer presents each target at its own size, on its presentation thread.
@@ -122,9 +122,9 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void ChangingRoleOrSurfaceId_ReattachesUnderTheNewId()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 100, 50);
+        var window = Show(surface, 100, 50);
 
         surface.Role = MediaPresentationSurfaceRole.Projector;
         surface.SurfaceId = "stage";
@@ -141,13 +141,13 @@ public sealed class SecondScreenTests
     {
         // A renderer that exports shared images for the primary only (or for neither): each
         // surface decides its path, so only the secondary falls back.
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         recorder.AttachResult = descriptor =>
         {
             if (descriptor.Role == MediaPresentationSurfaceRole.Primary || descriptor.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.SharedGpuImage)
                 return true;
 
-            _ = MediaSharedGpuImageConsumerHandle.TryResolve(descriptor, out IMediaSharedGpuImageConsumer? consumer);
+            _ = MediaSharedGpuImageConsumerHandle.TryResolve(descriptor, out var consumer);
             consumer!.OnUnavailable("creating the shared textures failed: out of memory");
             return false;
         };
@@ -159,13 +159,13 @@ public sealed class SecondScreenTests
         };
         primary.Player = session;
         singer.Player = session;
-        Window main = Show(primary, 320, 180);
-        Window second = Show(singer, 640, 360);
+        var main = Show(primary, 320, 180);
+        var second = Show(singer, 640, 360);
 
         Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, primary.PresentationPath);
         Assert.Equal(MediaSurfacePresentationPath.FrameSink, singer.PresentationPath);
         Assert.Equal("creating the shared textures failed: out of memory", singer.PresentationPathReason);
-        MediaPresentationSurfaceDescriptor last = recorder.LastAttached!;
+        var last = recorder.LastAttached!;
         Assert.Equal((MediaSurface.DefaultSecondarySurfaceId, MediaNativeSurfaceTypeIds.ManagedBgraFrameSink), (last.Id, last.NativeSurface.SurfaceTypeId));
         second.Close();
         main.Close();
@@ -174,11 +174,11 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void AudioMode_ClearsTheLastFrameUntilTheSessionLeavesIt()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 64, 32);
+        var window = Show(surface, 64, 32);
         Assert.Equal(1, recorder.ModeChangedSubscribers);
-        IMediaPresentationFrameSink sink = ResolveSink(recorder.LastAttached!);
+        var sink = ResolveSink(recorder.LastAttached!);
         sink.PresentFrame(new byte[64 * 32 * 4], 64, 32, 64 * 4);
         Dispatcher.UIThread.RunJobs();
         Assert.NotNull(surface.FrameSink!.Bitmap);
@@ -214,12 +214,15 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void AudioMode_HidesTheSharedImageVisual()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
-        var surface = new MediaSurface { GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
-        surface.Player = session;
-        Window window = Show(surface, 320, 180);
+        (var session, var recorder) = RecordingSession.Create();
+        var surface = new MediaSurface
+        {
+            GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
+            Player = session
+        };
+        var window = Show(surface, 320, 180);
         Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
-        CompositionVisual visual = ElementComposition.GetElementChildVisual(surface)!;
+        var visual = ElementComposition.GetElementChildVisual(surface)!;
         Assert.True(visual.Visible);
 
         recorder.SwitchMode(MediaPlayerMode.Audio);
@@ -236,10 +239,10 @@ public sealed class SecondScreenTests
     [AvaloniaFact]
     public void ASessionAlreadyInAudioMode_ShowsOnlyTheBackground()
     {
-        (IPlayerSession session, RecordingSession recorder) = RecordingSession.Create();
+        (var session, var recorder) = RecordingSession.Create();
         recorder.Mode = MediaPlayerMode.Audio;
         var surface = new MediaSurface { Player = session };
-        Window window = Show(surface, 64, 32);
+        var window = Show(surface, 64, 32);
 
         Assert.True(surface.IsPresentationSuspended);
         Assert.True(surface.IsPrimarySurfaceAttached);
@@ -259,17 +262,17 @@ public sealed class SecondScreenTests
             new PixelPoint(expectedX, expectedY),
             SecondaryPresentationWindow.CenteredPosition(new PixelRect(x, y, width, height), scaling, new Size(windowWidth, windowHeight)));
 
-    private static (string, MediaPresentationSurfaceRole, int, int) Describe(MediaPresentationSurfaceDescriptor descriptor) =>
+    static (string, MediaPresentationSurfaceRole, int, int) Describe(MediaPresentationSurfaceDescriptor descriptor) =>
         (descriptor.Id, descriptor.Role, descriptor.PixelWidth, descriptor.PixelHeight);
 
-    private static IMediaPresentationFrameSink ResolveSink(MediaPresentationSurfaceDescriptor descriptor)
+    static IMediaPresentationFrameSink ResolveSink(MediaPresentationSurfaceDescriptor descriptor)
     {
-        Assert.True(descriptor.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint token));
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(token, out IMediaPresentationFrameSink? sink));
+        Assert.True(descriptor.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var token));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(token, out var sink));
         return sink!;
     }
 
-    private static Window Show(MediaSurface surface, double width, double height)
+    static Window Show(MediaSurface surface, double width, double height)
     {
         var window = new Window { Width = width, Height = height, Content = surface };
         window.Show();

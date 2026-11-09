@@ -11,7 +11,7 @@ public enum MediaBackgroundKind
 
 public sealed class MediaBackgroundCandidate
 {
-    private MediaBackgroundCandidate(
+    MediaBackgroundCandidate(
         MediaBackgroundKind kind,
         string displayName,
         string? path,
@@ -47,7 +47,7 @@ public sealed class MediaBackgroundCandidate
 
     public static MediaBackgroundCandidate FromArchiveEntry(MediaBackgroundKind kind, IArchiveEntryInfo entry)
     {
-        using MemoryStream stream = entry.Size is > 0 and <= int.MaxValue
+        using var stream = entry.Size is > 0 and <= int.MaxValue
             ? new MemoryStream((int)entry.Size.Value)
             : new MemoryStream();
 

@@ -7,22 +7,22 @@ using System.Windows.Threading;
 
 namespace FatzMedia.Video.Wpf;
 
-internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSink, IDisposable
+sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSink, IDisposable
 {
-    private readonly Image _image = new()
+    readonly Image _image = new()
     {
         Stretch = Stretch.Fill,
         SnapsToDevicePixels = true
     };
-    private readonly MediaPresentationFrameSinkHandle _sinkHandle;
+    readonly MediaPresentationFrameSinkHandle _sinkHandle;
     // Core's latest-frame hand-off: the array the UI thread last published goes back for the
     // next frame, so presenting does not allocate a surface-sized array per frame (Stage 022A:
     // about 55 MB/s in software mode at normal window size, several hundred when maximized).
-    private readonly LatestFrameMailbox _mailbox = new();
-    private readonly Action? _framePublished;
-    private bool _disposed;
-    private WriteableBitmap? _bitmap;
-    private long _publishTicks;
+    readonly LatestFrameMailbox _mailbox = new();
+    readonly Action? _framePublished;
+    bool _disposed;
+    WriteableBitmap? _bitmap;
+    long _publishTicks;
 
     /// <param name="framePublished">Called on the UI thread after a scheduled publish wrote a frame (Stage 051A).</param>
     public WpfCompositedSurfaceHost(Action? framePublished = null)
@@ -73,7 +73,7 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
     /// <summary>Gets whether a frame is shown (tests).</summary>
     internal bool HasFrame => _image.Source != null;
 
-    private void PublishScheduledFrame()
+    void PublishScheduledFrame()
     {
         if (PublishPendingFrame())
             _framePublished?.Invoke();

@@ -19,7 +19,7 @@ public sealed class VideoColorSpaceTests
     [InlineData(640, 360, VideoColorMatrix.Bt601)]
     public void AnUnspecifiedMatrix_FollowsTheFrameSize(int width, int height, VideoColorMatrix expected)
     {
-        VideoColorSpace resolved = default(VideoColorSpace).Resolve(width, height);
+        var resolved = default(VideoColorSpace).Resolve(width, height);
 
         Assert.Equal(expected, resolved.Matrix);
         Assert.Equal(VideoColorRange.Limited, resolved.Range);

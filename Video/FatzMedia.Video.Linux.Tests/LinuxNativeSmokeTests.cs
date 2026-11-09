@@ -29,9 +29,9 @@ public sealed class LinuxNativeSmokeTests
         }
 
         Assert.True(operations.TryActivateFfmpeg(directory));
-        VideoDecodeCapabilities capabilities = LinuxVideoDecodeCapabilities.GetOrScan(ffmpegLoaded: true);
+        var capabilities = LinuxVideoDecodeCapabilities.GetOrScan(ffmpegLoaded: true);
 
-        Assert.True(capabilities.Codecs.TryGetValue("h264", out CodecCapability? h264), "h264 decoder missing");
+        Assert.True(capabilities.Codecs.TryGetValue("h264", out var h264), "h264 decoder missing");
         Assert.False(h264!.HardwareDecodeAvailable);
         Assert.True(capabilities.Containers.ContainsKey(".mp4"));
     }
@@ -58,7 +58,7 @@ public sealed class LinuxNativeSmokeTests
 
         Assert.True(operations.TryActivateFfmpeg(directory));
         var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software);
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
+        using var decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(sample), "Core VideoDecoder could not open the sample");
 
         VideoFrameData? frame = null;
@@ -109,9 +109,9 @@ public sealed class LinuxNativeSmokeTests
         Assert.Equal(CountFrames(configuration, sample, keepQueueFull: false), CountFrames(configuration, sample, keepQueueFull: true));
     }
 
-    private static int CountFrames(MediaPlayerConfiguration configuration, string sample, bool keepQueueFull)
+    static int CountFrames(MediaPlayerConfiguration configuration, string sample, bool keepQueueFull)
     {
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
+        using var decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(sample));
 
         var frames = 0;

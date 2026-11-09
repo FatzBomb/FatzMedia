@@ -7,7 +7,7 @@ using FatzMedia.Video.Core.Graphics.Rendering;
 namespace FatzMedia.Video.Vulkan;
 
 /// <summary>What a Vulkan device can share with a UI compositor (Stage 027A slice 2; Windows: Stage 045A slice 3).</summary>
-internal readonly record struct VulkanExportSupport(bool MemoryFd, bool SemaphoreFd, bool MemoryWin32, bool SemaphoreWin32, bool D3D11KeyedMutex);
+readonly record struct VulkanExportSupport(bool MemoryFd, bool SemaphoreFd, bool MemoryWin32, bool SemaphoreWin32, bool D3D11KeyedMutex);
 
 /// <summary>
 /// Vulkan renderer backend, preview slices 1-2: managed BGRA frame-sink surfaces, GPU clear,
@@ -24,35 +24,35 @@ internal readonly record struct VulkanExportSupport(bool MemoryFd, bool Semaphor
 /// swapchains and base-visual transforms are later slices; frames that need them are rejected with
 /// a diagnostic instead of being drawn incorrectly.
 /// </summary>
-internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
+sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
 {
-    private readonly Lock _sync = new();
-    private bool _initializationFailed;
+    readonly Lock _sync = new();
+    bool _initializationFailed;
 
     // Held for the whole render + sink hand-off so cleanup and dispose cannot tear the compositor
     // down mid-frame. Lock order: _renderGate, then _sync.
-    private readonly Lock _renderGate = new();
-    private VulkanOffscreenCompositor? _compositor;
+    readonly Lock _renderGate = new();
+    VulkanOffscreenCompositor? _compositor;
 
     // Attached surfaces by id (guarded by _sync): the primary plus any secondary screens.
-    private readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
-    private long _sharedGeneration;
-    private VulkanFrameSupport _lastReportedUnsupported = VulkanFrameSupport.Supported;
-    private MediaCompositionStretchMode _stretchMode = MediaCompositionStretchMode.UniformFit;
-    private bool _foreignFrameReported;
-    private bool _disposed;
+    readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
+    long _sharedGeneration;
+    VulkanFrameSupport _lastReportedUnsupported = VulkanFrameSupport.Supported;
+    MediaCompositionStretchMode _stretchMode = MediaCompositionStretchMode.UniformFit;
+    bool _foreignFrameReported;
+    bool _disposed;
 
     // ENG-039: a lost device stays in place (refusing frames and device requests) until Core's
     // recovery calls CleanupResources, so one loss re-creates the device exactly once.
-    private bool _deviceLost;
-    private string? _deviceLostReason;
+    bool _deviceLost;
+    string? _deviceLostReason;
 
     // Allocation failures in a row (guarded by _renderGate): after a GPU reset NVIDIA reported
     // VK_ERROR_OUT_OF_DEVICE_MEMORY, not a lost device.
-    private int _allocationFailures;
+    int _allocationFailures;
 
     // When a consumer last reported its graphics context lost (Stopwatch timestamp, 0 = never).
-    private long _consumerLostTimestamp;
+    long _consumerLostTimestamp;
 
     public event EventHandler? FramePresented;
 
@@ -136,7 +136,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                if (_disposed || !_targets.Remove(surface.Id, out Target? target))
+                if (_disposed || !_targets.Remove(surface.Id, out var target))
                     return false;
 
                 RetireSharedNoLock(target);
@@ -205,7 +205,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             targets = [.. _targets.Values];
         }
 
-        VulkanFrameSupport support = VulkanCompositionPlanner.Classify(frame);
+        var support = VulkanCompositionPlanner.Classify(frame);
         if (support != VulkanFrameSupport.Supported)
         {
             ReportUnsupported(support);
@@ -216,7 +216,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         // primary's present, so a secondary that presented never hides a failed primary frame.
         var outcome = new CompositionPresentOutcome();
         var anyIncluded = false;
-        foreach (Target target in targets)
+        foreach (var target in targets)
         {
             var isPrimary = target.Surface.Role == MediaPresentationSurfaceRole.Primary;
             // A composition for some targets only (display-locked video on several monitors).
@@ -224,7 +224,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 continue;
 
             anyIncluded = true;
-            PresentResult result = target.Consumer is not null
+            var result = target.Consumer is not null
                 ? PresentShared(frame, compositor!, target)
                 : PresentSink(frame, compositor!, target);
             // Core's recovery re-creates the device (ProbeDeviceLost now reports it).
@@ -251,7 +251,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         return succeeded;
     }
 
-    private readonly RendererDiagnosticLatch _renderFailureLatch = new();
+    readonly RendererDiagnosticLatch _renderFailureLatch = new();
 
     internal enum PresentResult
     {
@@ -262,7 +262,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     }
 
     /// <summary>Renders at the target's size and reads the frame back into its sink.</summary>
-    private PresentResult PresentSink(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
+    PresentResult PresentSink(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
     {
         lock (_renderGate)
         {
@@ -341,7 +341,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// the loss is also raised in <see cref="DeviceLostDiagnosticCategory"/>, which Core still
     /// accepts as a recovery trigger; otherwise Core's probe reports it.
     /// </summary>
-    private void EnterDeviceLost(VulkanOffscreenCompositor compositor, string reason, bool raise, Exception? exception = null)
+    void EnterDeviceLost(VulkanOffscreenCompositor compositor, string reason, bool raise, Exception? exception = null)
     {
         lock (_sync)
         {
@@ -390,7 +390,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// A consumer's compositor lost its graphics context (a GPU reset): note it for the
     /// allocation-failure rule and probe this device off the caller's thread (ENG-039).
     /// </summary>
-    private void OnConsumerDeviceLost(string consumerReason)
+    void OnConsumerDeviceLost(string consumerReason)
     {
         Volatile.Write(ref _consumerLostTimestamp, Stopwatch.GetTimestamp());
         VulkanOffscreenCompositor? compositor;
@@ -422,7 +422,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 // is detached here; its Dispose destroys the retired images with it.
                 var deviceLost = _deviceLost || _compositor?.SharedDevice?.IsLost == true;
                 // Surfaces stay attached: their shared images are exported again on the next frame.
-                foreach (Target target in _targets.Values)
+                foreach (var target in _targets.Values)
                     RetireSharedNoLock(target, destroyImages: !deviceLost);
                 if (deviceLost)
                     lostCompositor = _compositor;
@@ -442,7 +442,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     }
 
     /// <summary>Disposes a lost device's compositor on its own thread, timing it (ENG-050).</summary>
-    private static void DisposeLostCompositor(VulkanOffscreenCompositor compositor)
+    static void DisposeLostCompositor(VulkanOffscreenCompositor compositor)
     {
         // The player's diagnostics owner flows with the execution context.
         _ = Task.Run(() =>
@@ -580,7 +580,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                     return;
 
                 _disposed = true;
-                foreach (Target target in _targets.Values)
+                foreach (var target in _targets.Values)
                     RetireSharedNoLock(target);
                 _targets.Clear();
                 _compositor?.Dispose();
@@ -590,7 +590,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
-    private void ReportUnsupported(VulkanFrameSupport support)
+    void ReportUnsupported(VulkanFrameSupport support)
     {
         lock (_sync)
         {
@@ -605,15 +605,15 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA and Vulkan-decoded backgrounds, wash, CDG overlays and subtitles are supported.");
     }
 
-    private bool IsCurrentNoLock(Target target) =>
-        _targets.TryGetValue(target.Surface.Id, out Target? current) && ReferenceEquals(current, target);
+    bool IsCurrentNoLock(Target target) =>
+        _targets.TryGetValue(target.Surface.Id, out var current) && ReferenceEquals(current, target);
 
-    private bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)
+    bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)
     {
-        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out var consumer))
             return SetSharedSurface(surface, consumer!, requireExisting);
 
-        if (!MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
+        if (!MediaPresentationFrameSinkHandle.TryResolve(surface, out var sink))
             return false;
 
         lock (_renderGate)
@@ -623,7 +623,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 if (_disposed || (requireExisting && !_targets.ContainsKey(surface.Id)))
                     return false;
 
-                Target target = GetOrAddTargetNoLock(surface);
+                var target = GetOrAddTargetNoLock(surface);
                 RetireSharedNoLock(target);
                 target.Consumer = null;
                 target.Sink = sink;
@@ -632,9 +632,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
-    private Target GetOrAddTargetNoLock(MediaPresentationSurfaceDescriptor surface)
+    Target GetOrAddTargetNoLock(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_targets.TryGetValue(surface.Id, out Target? target))
+        if (_targets.TryGetValue(surface.Id, out var target))
         {
             target.Surface = surface;
             return target;
@@ -650,7 +650,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// exports a new double-buffered image set at the surface size, and hands it over. Declines,
     /// with the reason told to the consumer, when this device cannot export what it imports.
     /// </summary>
-    private bool SetSharedSurface(MediaPresentationSurfaceDescriptor surface, IMediaSharedGpuImageConsumer consumer, bool requireExisting)
+    bool SetSharedSurface(MediaPresentationSurfaceDescriptor surface, IMediaSharedGpuImageConsumer consumer, bool requireExisting)
     {
         // The device must exist to know what it can export; Core initializes before attaching.
         if (!Initialize())
@@ -663,7 +663,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                var existed = _targets.TryGetValue(surface.Id, out Target? target);
+                var existed = _targets.TryGetValue(surface.Id, out var target);
                 if (_disposed || (requireExisting && !existed))
                     return false;
 
@@ -728,10 +728,10 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         ? new MediaSharedGpuImageBuffer(image.MemoryFd, image.MemorySize, 0, image.RenderCompleteFd, image.ConsumerReleaseFd)
         : new MediaSharedGpuImageBuffer(image.MemoryNtHandle, image.MemorySize, 0, image.RenderCompleteNtHandle, image.ConsumerReleaseNtHandle);
 
-    private bool TryCreateSharedNoLock(Target target, int width, int height, out string? reason)
+    bool TryCreateSharedNoLock(Target target, int width, int height, out string? reason)
     {
         RetireSharedNoLock(target);
-        IMediaSharedGpuImageConsumer consumer = target.Consumer!;
+        var consumer = target.Consumer!;
         if (_compositor is not { } compositor)
         {
             reason = "no usable Vulkan device";
@@ -744,14 +744,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             return false;
         }
 
-        MediaSharedGpuImageRequest request = consumer.Request;
-        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) = GetExportCapabilities(new VulkanExportSupport(
+        var request = consumer.Request;
+        (var images, var semaphores) = GetExportCapabilities(new VulkanExportSupport(
             compositor.CanExportMemoryFd,
             compositor.CanExportSemaphoreFd,
             compositor.CanExportMemoryWin32,
             compositor.CanExportSemaphoreWin32,
             compositor.CanShareD3D11Textures));
-        if (!request.TrySelect(images, semaphores, out MediaSharedGpuImageSelection selection, out reason)
+        if (!request.TrySelect(images, semaphores, out var selection, out reason)
             || !request.MatchesDevice(compositor.DeviceLuid, compositor.DeviceUuid, out reason))
         {
             return false;
@@ -794,7 +794,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             {
                 for (var index = 0; index < exported.Images.Count; index++)
                 {
-                    VulkanExportedImage image = exported.Images[index];
+                    var image = exported.Images[index];
                     // NT handles stay with the producer (importers open their own references);
                     // descriptors belong to the importer once it was handed them (ENG-039: only
                     // the buffers before the count, when an import failed part way).
@@ -837,7 +837,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     }
 
     /// <summary>Renders into the target's next free exported image and announces it; drops the frame when the compositor holds both.</summary>
-    private PresentResult PresentShared(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
+    PresentResult PresentShared(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
     {
         lock (_renderGate)
         {
@@ -869,7 +869,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 consumer = target.Consumer;
             }
 
-            if (!shared.Ring.TryBeginWrite(SharedImageWaitTimeout, out MediaSharedGpuImageWrite write))
+            if (!shared.Ring.TryBeginWrite(SharedImageWaitTimeout, out var write))
                 return OnSharedImagesHeld(target, compositor);
 
             // Any exception before the frame is announced gives the image back (ENG-039: a stuck
@@ -878,7 +878,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             try
             {
                 compositor.RenderToExport(VulkanCompositionPlanner.Plan(frame, width, height), shared.Images, write.BufferIndex, write.WaitForConsumerRelease, write.AcquireKey);
-                MediaSharedGpuImageFrame ready = shared.Ring.CompleteWrite(write.BufferIndex);
+                var ready = shared.Ring.CompleteWrite(write.BufferIndex);
                 completed = true;
                 target.StarvedSince = 0;
                 target.StallReported = false;
@@ -908,7 +908,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// <see cref="SharedImageStallTimeout"/> it is not coming back for them (ENG-039: after a GPU
     /// reset frames were dropped silently for good): the images are replaced.
     /// </summary>
-    private PresentResult OnSharedImagesHeld(Target target, VulkanOffscreenCompositor compositor)
+    PresentResult OnSharedImagesHeld(Target target, VulkanOffscreenCompositor compositor)
     {
         var now = Stopwatch.GetTimestamp();
         if (target.StarvedSince == 0)
@@ -933,7 +933,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// a lost device is recovered; otherwise the set is retired and the next frame exports a new
     /// one, which a compositor that recreated its context can import again.
     /// </summary>
-    private PresentResult ReplaceStalledImages(Target target, VulkanOffscreenCompositor compositor, string why)
+    PresentResult ReplaceStalledImages(Target target, VulkanOffscreenCompositor compositor, string why)
     {
         // Once per release: a compositor that is only paused (and gives nothing back) must not
         // make a new set every second; its frames fail, and Core's probe keeps watching the device.
@@ -965,9 +965,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         return PresentResult.Failed;
     }
 
-    private void RetireSharedNoLock(Target target, bool destroyImages = true)
+    void RetireSharedNoLock(Target target, bool destroyImages = true)
     {
-        SharedTarget? shared = target.Shared;
+        var shared = target.Shared;
         target.Shared = null;
         if (shared is null)
             return;
@@ -983,7 +983,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// Mutable fields are guarded by the backend's locks (the release callback only sets
     /// <see cref="RecreateShared"/>).
     /// </summary>
-    private sealed class Target(MediaPresentationSurfaceDescriptor surface)
+    sealed class Target(MediaPresentationSurfaceDescriptor surface)
     {
         public int RecreateShared;
 
@@ -1008,7 +1008,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         public MediaSharedGpuImageSelection? LoggedSelection { get; set; }
     }
 
-    private sealed class SharedTarget(VulkanExportedImageSet images, MediaSharedGpuImageSet set, MediaSharedGpuImageRing ring)
+    sealed class SharedTarget(VulkanExportedImageSet images, MediaSharedGpuImageSet set, MediaSharedGpuImageRing ring)
     {
         public const int BufferCount = 2;
 

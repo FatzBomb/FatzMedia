@@ -3,7 +3,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Shared.Presentation;
 using FatzMedia.Video.Wpf;
@@ -17,21 +16,21 @@ namespace FatzMedia.Video.Sample.Player;
 /// hides the other and changes the panel above them in the same UI-thread turn. Every swap is traced
 /// (<c>[ABDemo] swap i/N ready after x ms</c>) for <c>scripts/smoke-051A.ps1</c>.
 /// </summary>
-internal sealed class AbSwapDemoWindow : Window
+sealed class AbSwapDemoWindow : Window
 {
-    private static readonly TimeSpan FirstFrameTimeout = TimeSpan.FromSeconds(10);
-    private static readonly Brush[] PanelColours = [Brushes.Crimson, Brushes.RoyalBlue];
+    static readonly TimeSpan FirstFrameTimeout = TimeSpan.FromSeconds(10);
+    static readonly Brush[] PanelColours = [Brushes.Crimson, Brushes.RoyalBlue];
 
-    private readonly Func<IPlatformFactory> _createPlatformFactory;
-    private readonly IReadOnlyList<string> _nativeLibraryPaths;
-    private readonly AbSwapDemoOptions _options;
-    private readonly IReadOnlyList<string> _clips;
-    private readonly WpfPresentationMode _mode;
-    private readonly MediaSurface[] _surfaces = new MediaSurface[2];
-    private readonly WpfPlayer?[] _players = new WpfPlayer?[2];
-    private readonly Border _panel = new() { Padding = new Thickness(16, 8, 16, 8), Background = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top };
-    private readonly TextBlock _panelText = new() { Foreground = Brushes.White, FontSize = 28, Text = "A/B swap demo: starting..." };
-    private bool _closed;
+    readonly Func<IPlatformFactory> _createPlatformFactory;
+    readonly IReadOnlyList<string> _nativeLibraryPaths;
+    readonly AbSwapDemoOptions _options;
+    readonly IReadOnlyList<string> _clips;
+    readonly WpfPresentationMode _mode;
+    readonly MediaSurface[] _surfaces = new MediaSurface[2];
+    readonly WpfPlayer?[] _players = new WpfPlayer?[2];
+    readonly Border _panel = new() { Padding = new Thickness(16, 8, 16, 8), Background = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top };
+    readonly TextBlock _panelText = new() { Foreground = Brushes.White, FontSize = 28, Text = "A/B swap demo: starting..." };
+    bool _closed;
 
     public AbSwapDemoWindow(
         Func<IPlatformFactory> createPlatformFactory,
@@ -70,11 +69,11 @@ internal sealed class AbSwapDemoWindow : Window
         Closed += (_, _) => Shutdown();
     }
 
-    private Visibility WaitingVisibility => _options.Collapsed ? Visibility.Collapsed : Visibility.Hidden;
+    Visibility WaitingVisibility => _options.Collapsed ? Visibility.Collapsed : Visibility.Hidden;
 
-    private static void Log(string message) => Trace.WriteLine($"[ABDemo] {message}");
+    static void Log(string message) => Trace.WriteLine($"[ABDemo] {message}");
 
-    private async Task RunAsync()
+    async Task RunAsync()
     {
         Log($"start: {_clips.Count} clips, {_options.Swaps} swaps every {_options.Interval.TotalSeconds:0.#} s, {_mode}, waiting surface {WaitingVisibility}");
         if (_clips.Count == 0)
@@ -88,7 +87,7 @@ internal sealed class AbSwapDemoWindow : Window
         {
             for (var i = 0; i < _players.Length; i++)
             {
-                WpfPlayer player = await WpfPlayer.CreateAsync(MediaPlayerConfiguration.Auto, _nativeLibraryPaths, _createPlatformFactory());
+                var player = await WpfPlayer.CreateAsync(MediaPlayerConfiguration.Auto, _nativeLibraryPaths, _createPlatformFactory());
                 player.PlayOnLoad = true;
                 player.LoopMedia = true;
                 player.MediaDiagnostic += OnDiagnostic;
@@ -138,15 +137,15 @@ internal sealed class AbSwapDemoWindow : Window
         _panelText.Text = $"Done: {summary}";
         // The main window's normal close path disposes its players and ends the process.
         if (_options.ExitWhenDone)
-            (Owner ?? (Window)this).Close();
+            (Owner ?? this).Close();
     }
 
     // Loads the clip into the hidden player; its first frame swaps the surfaces and the panel in one
     // UI-thread turn. Returns the load-to-ready time and the surface's pixel size then, or null when
     // no first frame came in time.
-    private async Task<(double Milliseconds, string Size)?> SwapToAsync(int next, int shown, string clip, int swap)
+    async Task<(double Milliseconds, string Size)?> SwapToAsync(int next, int shown, string clip, int swap)
     {
-        MediaSurface incoming = _surfaces[next];
+        var incoming = _surfaces[next];
         var stopwatch = Stopwatch.StartNew();
         var swapped = new TaskCompletionSource<(double, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -155,7 +154,7 @@ internal sealed class AbSwapDemoWindow : Window
             incoming.FirstFrameReady -= OnFirstFrameReady;
             var elapsed = stopwatch.Elapsed.TotalMilliseconds;
             // The size the first frame was rendered for: a Collapsed surface has none (0x0, so 1x1).
-            DpiScale dpi = VisualTreeHelper.GetDpi(incoming);
+            var dpi = VisualTreeHelper.GetDpi(incoming);
             var size = $"{Math.Round(incoming.ActualWidth * dpi.DpiScaleX)}x{Math.Round(incoming.ActualHeight * dpi.DpiScaleY)}";
             incoming.Visibility = Visibility.Visible;
             if (shown >= 0)
@@ -174,7 +173,7 @@ internal sealed class AbSwapDemoWindow : Window
             return null;
         }
 
-        Task finished = await Task.WhenAny(swapped.Task, Task.Delay(FirstFrameTimeout));
+        var finished = await Task.WhenAny(swapped.Task, Task.Delay(FirstFrameTimeout));
         if (finished == swapped.Task)
             return await swapped.Task;
 
@@ -182,13 +181,13 @@ internal sealed class AbSwapDemoWindow : Window
         return null;
     }
 
-    private void OnDiagnostic(object? sender, MediaDiagnosticEventArgs e)
+    void OnDiagnostic(object? sender, MediaDiagnosticEventArgs e)
     {
         if (e.Level is MediaDiagnosticLevel.Warning or MediaDiagnosticLevel.Error)
             Log($"diagnostic [{e.Level}] {e.Category}: {e.Message}");
     }
 
-    private void Shutdown()
+    void Shutdown()
     {
         _closed = true;
         for (var i = 0; i < _players.Length; i++)

@@ -8,13 +8,13 @@ public sealed class SharpArchiveAdapter : IArchiveService
 {
     public IArchiveHandle Open(string path) => new SharpArchiveHandle(ArchiveFactory.OpenArchive(path, new ReaderOptions()));
 
-    private sealed class SharpArchiveHandle(IArchive archive) : IArchiveHandle
+    sealed class SharpArchiveHandle(IArchive archive) : IArchiveHandle
     {
         public IEnumerable<IArchiveEntryInfo> Entries => archive.Entries.Where(e => e.Key != null && !e.IsDirectory).Select(e => new SharpArchiveEntryInfo(e));
         public void Dispose() => archive.Dispose();
     }
 
-    private sealed class SharpArchiveEntryInfo(IArchiveEntry entry) : IArchiveEntryInfo
+    sealed class SharpArchiveEntryInfo(IArchiveEntry entry) : IArchiveEntryInfo
     {
         public string Key => entry.Key!;
         public long? Size => entry.Size;

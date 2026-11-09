@@ -1,16 +1,16 @@
+using System.Runtime.ExceptionServices;
+using System.Windows.Threading;
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Wpf;
-using System.Runtime.ExceptionServices;
-using System.Windows.Threading;
 
 namespace FatzMedia.Video.Tests;
 
 public sealed class MediaSurfacePresentationModeTests
 {
     // Last step the STA thread reached, named in the timeout message.
-    private static volatile string s_step = "not started";
+    static volatile string s_step = "not started";
 
     [Fact]
     public void PresentationMode_StaysDeferredAcrossReplacementAndAppliesAfterClose()
@@ -40,7 +40,7 @@ public sealed class MediaSurfacePresentationModeTests
             ExceptionDispatchInfo.Capture(threadException).Throw();
     }
 
-    private static void RunDeferredPresentationModeScenario()
+    static void RunDeferredPresentationModeScenario()
     {
         s_step = "create player";
         var engine = new TestMediaEngine();
@@ -73,7 +73,7 @@ public sealed class MediaSurfacePresentationModeTests
         s_step = "dispose player";
     }
 
-    private static void DrainDispatcher()
+    static void DrainDispatcher()
     {
         var frame = new DispatcherFrame();
         _ = Dispatcher.CurrentDispatcher.BeginInvoke(
@@ -82,9 +82,9 @@ public sealed class MediaSurfacePresentationModeTests
         Dispatcher.PushFrame(frame);
     }
 
-    private sealed class TestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class TestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
-        private readonly NullPresentationCoordinator _coordinator = new();
+        readonly NullPresentationCoordinator _coordinator = new();
 
         public string LastNativeLoadMessage => string.Empty;
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);

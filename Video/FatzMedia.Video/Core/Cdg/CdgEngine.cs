@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Abstractions;
 using System.Buffers;
+using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Core.Cdg;
 
@@ -10,8 +10,8 @@ namespace FatzMedia.Video.Core.Cdg;
 /// </summary>
 public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 {
-    private readonly CdgStateMachine _cdgState = new();
-    private readonly Lock _renderLock = new();
+    readonly CdgStateMachine _cdgState = new();
+    readonly Lock _renderLock = new();
 
     /// <summary>
     /// Replay checkpoint spacing: 10 s of packets. Stage 022A slice 4: a seek used to replay every
@@ -21,13 +21,13 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
     /// </summary>
     internal const int CheckpointIntervalPackets = 10 * CdgConstants.PacketsPerSecond;
 
-    private CdgPacket[] _packets = [];
+    CdgPacket[] _packets = [];
     // Slot n holds the state after packets [0, n * CheckpointIntervalPackets), built at load; slot
     // 0 is the reset state and stays null. About 65 KB each: 1.6 MB for a 4-minute song.
-    private CdgReplayCheckpoint?[] _checkpoints = [null];
-    private int _startPacketIndex;
-    private uint _backgroundWashArgb;
-    private bool _disposed;
+    CdgReplayCheckpoint?[] _checkpoints = [null];
+    int _startPacketIndex;
+    uint _backgroundWashArgb;
+    bool _disposed;
 
     public CdgEngine() => _backgroundWashArgb = _cdgState.BackgroundWashArgb;
 
@@ -124,7 +124,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 
     public void Load(string filePath)
     {
-        using FileStream fs = File.OpenRead(filePath);
+        using var fs = File.OpenRead(filePath);
         using var ms = new MemoryStream();
         fs.CopyTo(ms);
         ms.Position = 0;
@@ -236,9 +236,9 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         return ((nanoseconds * CdgConstants.PacketsPerSecond) + (CdgConstants.PacketsPerSecond / 2)) / 1_000_000_000L;
     }
 
-    private const double MaxPositionSeconds = 1e7; // keeps nanoseconds x 300 inside long
+    const double MaxPositionSeconds = 1e7; // keeps nanoseconds x 300 inside long
 
-    private void ResetInternal()
+    void ResetInternal()
     {
         bool washChanged;
         lock (_renderLock)
@@ -251,13 +251,13 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         NotifyBackgroundWashChangedIfNeeded(washChanged);
     }
 
-    private void ResetPacketStateForReplay()
+    void ResetPacketStateForReplay()
     {
         _cdgState.Reset();
         _startPacketIndex = 0;
     }
 
-    private void RestoreCheckpointUnsafe(int slot)
+    void RestoreCheckpointUnsafe(int slot)
     {
         if (_checkpoints[slot] is { } checkpoint)
         {
@@ -274,7 +274,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
     /// Replays the whole song once on a scratch state machine, outside the render lock, keeping a
     /// copy every <see cref="CheckpointIntervalPackets"/> (about 50 ms for a 4-minute song).
     /// </summary>
-    private static CdgReplayCheckpoint?[] BuildCheckpoints(CdgPacket[] packets)
+    static CdgReplayCheckpoint?[] BuildCheckpoints(CdgPacket[] packets)
     {
         var checkpoints = new CdgReplayCheckpoint?[(packets.Length / CheckpointIntervalPackets) + 1];
         var replay = new CdgStateMachine();
@@ -296,9 +296,9 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
     /// Swaps in a song's packets and checkpoints and resets the replay state in one lock, so no
     /// render ever runs the new packets over the old song's state.
     /// </summary>
-    private void SetPackets(CdgPacket[] packets)
+    void SetPackets(CdgPacket[] packets)
     {
-        CdgReplayCheckpoint?[] checkpoints = BuildCheckpoints(packets);
+        var checkpoints = BuildCheckpoints(packets);
         lock (_renderLock)
         {
             _packets = packets;
@@ -307,9 +307,9 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         }
     }
 
-    private void InvalidateFrame() => FrameInvalidated?.Invoke(this, EventArgs.Empty);
+    void InvalidateFrame() => FrameInvalidated?.Invoke(this, EventArgs.Empty);
 
-    private bool RefreshBackgroundWashUnsafe()
+    bool RefreshBackgroundWashUnsafe()
     {
         var washArgb = _cdgState.BackgroundWashArgb;
         if (washArgb == _backgroundWashArgb)
@@ -321,7 +321,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         return true;
     }
 
-    private void NotifyBackgroundWashChangedIfNeeded(bool changed)
+    void NotifyBackgroundWashChangedIfNeeded(bool changed)
     {
         if (changed)
         {
@@ -329,7 +329,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         }
     }
 
-    private static IEnumerable<CdgPacket> InitializeCdgStream(Stream cdgStream)
+    static IEnumerable<CdgPacket> InitializeCdgStream(Stream cdgStream)
     {
         if (cdgStream == null) yield break;
         if (cdgStream.CanSeek && cdgStream.Length < CdgConstants.PacketSize) yield break;

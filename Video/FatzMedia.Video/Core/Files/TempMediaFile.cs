@@ -7,15 +7,15 @@ namespace FatzMedia.Video.Core.Files;
 /// Shared helpers for transient media scratch files (archive-extracted media and converted
 /// audio): unique paths, stale-file sweeping and best-effort deletion.
 /// </summary>
-internal static class TempMediaFile
+static class TempMediaFile
 {
-    private const string TempSubfolderName = "FatzMediaVideo";
+    const string TempSubfolderName = "FatzMediaVideo";
 
     /// <summary>The extension of media scratch files.</summary>
     public const string MediaExtension = ".media";
 
-    private static readonly TimeSpan StaleAge = TimeSpan.FromDays(1);
-    private static readonly ConcurrentDictionary<string, byte> SweptExtensions = new(StringComparer.OrdinalIgnoreCase);
+    static readonly TimeSpan StaleAge = TimeSpan.FromDays(1);
+    static readonly ConcurrentDictionary<string, byte> SweptExtensions = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns a new unique scratch-file path under the shared media temp subfolder, creating the
@@ -66,7 +66,7 @@ internal static class TempMediaFile
             if (!Directory.Exists(tempDir))
                 return;
 
-            DateTime cutoff = DateTime.UtcNow - age;
+            var cutoff = DateTime.UtcNow - age;
             foreach (var path in Directory.EnumerateFiles(tempDir, "*" + extension))
             {
                 if (File.GetLastWriteTimeUtc(path) < cutoff)

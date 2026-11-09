@@ -21,11 +21,11 @@ public sealed class MediaNativeSurfaceDescriptorTests
     [Fact]
     public void Win32Hwnd_CreatesValidBorrowedWindowHandle()
     {
-        MediaNativeSurfaceDescriptor surface = MediaNativeSurfaceDescriptor.Win32Hwnd(123);
+        var surface = MediaNativeSurfaceDescriptor.Win32Hwnd(123);
 
         Assert.True(surface.IsValid);
         Assert.Equal(MediaNativeSurfaceTypeIds.Win32Hwnd, surface.SurfaceTypeId);
-        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Window, out nint hwnd));
+        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Window, out var hwnd));
         Assert.Equal(123, hwnd);
     }
 
@@ -40,8 +40,8 @@ public sealed class MediaNativeSurfaceDescriptorTests
             ]);
 
         Assert.True(surface.IsValid);
-        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Display, out nint display));
-        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Window, out nint window));
+        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Display, out var display));
+        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.Window, out var window));
         Assert.Equal(10, display);
         Assert.Equal(20, window);
     }
@@ -72,7 +72,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
     [Fact]
     public void PresentationSurface_WithSize_PreservesNativePayload()
     {
-        MediaNativeSurfaceDescriptor nativeSurface = MediaNativeSurfaceDescriptor.Win32Hwnd(123);
+        var nativeSurface = MediaNativeSurfaceDescriptor.Win32Hwnd(123);
         var surface = new MediaPresentationSurfaceDescriptor(
             MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
             MediaPresentationSurfaceRole.Primary,
@@ -80,7 +80,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
             PixelWidth: 1280,
             PixelHeight: 720);
 
-        MediaPresentationSurfaceDescriptor resized = surface.WithSize(1920, 1080);
+        var resized = surface.WithSize(1920, 1080);
 
         Assert.True(surface.IsValid);
         Assert.Same(nativeSurface, resized.NativeSurface);
@@ -101,12 +101,12 @@ public sealed class MediaNativeSurfaceDescriptorTests
         var sink = new TestFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
 
-        MediaNativeSurfaceDescriptor surface = handle.CreateSurfaceDescriptor();
+        var surface = handle.CreateSurfaceDescriptor();
 
         Assert.True(surface.IsValid);
         Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, surface.SurfaceTypeId);
-        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint value));
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(value, out IMediaPresentationFrameSink? resolved));
+        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var value));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(value, out var resolved));
         Assert.Same(sink, resolved);
     }
 
@@ -118,11 +118,11 @@ public sealed class MediaNativeSurfaceDescriptorTests
         var surface = new MediaPresentationSurfaceDescriptor("sink", MediaPresentationSurfaceRole.Primary, handle.CreateSurfaceDescriptor(), 4, 4);
         var wrongKind = new MediaPresentationSurfaceDescriptor("hwnd", MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd(handle.Value), 4, 4);
 
-        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? resolved));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(surface, out var resolved));
         Assert.Same(sink, resolved);
         Assert.False(MediaPresentationFrameSinkHandle.TryResolve(wrongKind, out resolved));
         Assert.Null(resolved);
-        Assert.False(MediaPresentationFrameSinkHandle.TryResolve((MediaPresentationSurfaceDescriptor?)null, out resolved));
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve(null, out resolved));
 
         handle.Dispose();
 
@@ -146,7 +146,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
     {
         var sink = new TestFrameSink();
         var handle = new MediaPresentationFrameSinkHandle(sink);
-        nint token = handle.Value;
+        var token = handle.Value;
         Assert.NotEqual(0, token);
 
         handle.Dispose();
@@ -175,7 +175,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
     {
         var sinkA = new TestFrameSink();
         var handleA = new MediaPresentationFrameSinkHandle(sinkA);
-        nint tokenA = handleA.Value;
+        var tokenA = handleA.Value;
         Assert.NotEqual(0, tokenA);
 
         handleA.Dispose();
@@ -183,7 +183,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
         // Create a second handle for a different sink.
         var sinkB = new TestFrameSink();
         using var handleB = new MediaPresentationFrameSinkHandle(sinkB);
-        nint tokenB = handleB.Value;
+        var tokenB = handleB.Value;
         Assert.NotEqual(0, tokenB);
         Assert.NotEqual(tokenA, tokenB);
 
@@ -196,7 +196,7 @@ public sealed class MediaNativeSurfaceDescriptorTests
         Assert.Same(sinkB, resolvedB);
     }
 
-    private sealed class TestFrameSink : IMediaPresentationFrameSink
+    sealed class TestFrameSink : IMediaPresentationFrameSink
     {
         public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
         {

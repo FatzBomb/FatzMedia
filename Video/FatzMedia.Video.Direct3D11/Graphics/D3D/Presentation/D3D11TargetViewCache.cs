@@ -9,11 +9,11 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// owns it: the view holds a reference that <c>ResizeBuffers</c> requires to be gone. A swap
 /// chain's buffer 0 keeps its view across presents (Direct3D 11 renames the buffers itself).
 /// </summary>
-internal sealed class D3D11TargetViewCache : IDisposable
+sealed class D3D11TargetViewCache : IDisposable
 {
-    private ID3D11Device? _device;
-    private ID3D11Texture2D? _texture;
-    private ID3D11RenderTargetView? _view;
+    ID3D11Device? _device;
+    ID3D11Texture2D? _texture;
+    ID3D11RenderTargetView? _view;
 
     /// <summary>Gets the cached view, or null (tests).</summary>
     internal ID3D11RenderTargetView? CurrentView => _view;
@@ -25,7 +25,7 @@ internal sealed class D3D11TargetViewCache : IDisposable
             return _view;
 
         Release();
-        ID3D11RenderTargetView view = device.CreateRenderTargetView(texture);
+        var view = device.CreateRenderTargetView(texture);
         _view = view;
         _texture = texture;
         _device = device;

@@ -8,8 +8,8 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class CdgEngineCheckpointTests : IDisposable
 {
-    private const int PacketCount = 25_000; // about 83 s: eight checkpoints
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"cdg-checkpoints-{Guid.NewGuid():N}.cdg");
+    const int PacketCount = 25_000; // about 83 s: eight checkpoints
+    readonly string _path = Path.Combine(Path.GetTempPath(), $"cdg-checkpoints-{Guid.NewGuid():N}.cdg");
 
     public CdgEngineCheckpointTests() => File.WriteAllBytes(_path, CreateRandomStream(PacketCount, seed: 7));
 
@@ -112,7 +112,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
         var bytes = CreateRandomStream(interval * 2, seed: 3);
         void Put(int index, byte color, byte repeat)
         {
-            Span<byte> packet = bytes.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize);
+            var packet = bytes.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize);
             packet.Clear();
             packet[0] = (byte)CdgConstants.Command.Graphic;
             packet[1] = (byte)CdgConstants.Instruction.MemoryPreset;
@@ -137,7 +137,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
             }
 
             engine.RenderAtSeconds((interval + 501) / 300.0);
-            Assert.True(engine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out CdgRenderSnapshot cleared));
+            Assert.True(engine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var cleared));
             Assert.All(cleared.ColorIndices.ToArray(), b => Assert.Equal(9, b));
         }
         finally
@@ -146,7 +146,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
         }
     }
 
-    private CdgEngine Open(byte backgroundOpacity)
+    CdgEngine Open(byte backgroundOpacity)
     {
         var engine = new CdgEngine();
         engine.Load(_path);
@@ -158,7 +158,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
     /// The expected state: every packet from the first one replayed on a bare state machine,
     /// independent of CdgEngine and its checkpoints.
     /// </summary>
-    private CdgRenderSnapshot Reference(double seconds, byte backgroundOpacity = 40, uint? backgroundOverride = null, string? path = null)
+    CdgRenderSnapshot Reference(double seconds, byte backgroundOpacity = 40, uint? backgroundOverride = null, string? path = null)
     {
         var bytes = File.ReadAllBytes(path ?? _path);
         var packetCount = bytes.Length / CdgConstants.PacketSize;
@@ -169,16 +169,16 @@ public sealed class CdgEngineCheckpointTests : IDisposable
         return replay.CreateSnapshot();
     }
 
-    private static void AssertSameState(CdgRenderSnapshot expected, CdgEngine engine, double seconds)
+    static void AssertSameState(CdgRenderSnapshot expected, CdgEngine engine, double seconds)
     {
-        Assert.True(engine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out CdgRenderSnapshot actual));
+        Assert.True(engine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var actual));
         Assert.True(expected.ColorIndices.Span.SequenceEqual(actual.ColorIndices.Span), $"pixels differ at {seconds:F3} s");
         Assert.True(expected.PaletteArgb.Span.SequenceEqual(actual.PaletteArgb.Span), $"palette differs at {seconds:F3} s");
         Assert.Equal(expected.BackgroundColorIndex, actual.BackgroundColorIndex);
         Assert.Equal(expected.BackgroundWashArgb, actual.BackgroundWashArgb);
     }
 
-    private static byte[] CreateRandomStream(int packets, int seed)
+    static byte[] CreateRandomStream(int packets, int seed)
     {
         // Shaped like a real disc: mostly tile blocks, with screen clears (memory presets) and
         // palette loads rare, so state from long ago still shows and a wrong checkpoint is caught.
@@ -186,7 +186,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
         var stream = new byte[packets * CdgConstants.PacketSize];
         for (var index = 0; index < packets; index++)
         {
-            Span<byte> packet = stream.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize);
+            var packet = stream.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize);
             var kind = random.Next(100_000);
             if (kind < 10_000)
                 continue; // an empty (non-graphic) packet, as real streams have

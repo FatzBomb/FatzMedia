@@ -29,7 +29,7 @@ public sealed class AudioEqualizerSettingsTests
     [Fact]
     public void Graphic10Band_UsesIsoCentresAndDefaultsMissingGains()
     {
-        AudioEqualizerSettings settings = AudioEqualizerSettings.CreateGraphic10Band(3, -2);
+        var settings = AudioEqualizerSettings.CreateGraphic10Band(3, -2);
 
         Assert.True(settings.Enabled);
         Assert.Equal(AudioEqualizerSettings.Graphic10BandCentersHz, settings.Bands.Select(static b => b.CenterHz));
@@ -77,7 +77,7 @@ public sealed class EqualizerUpdatePlannerTests
     [Fact]
     public void Effective_CreatesUpdatesOrRebuilds()
     {
-        AudioEqualizerSettings ten = AudioEqualizerSettings.CreateGraphic10Band(4);
+        var ten = AudioEqualizerSettings.CreateGraphic10Band(4);
 
         Assert.Equal(EqualizerUpdateAction.Create, EqualizerUpdatePlanner.Plan(0, false, ten));
         Assert.Equal(EqualizerUpdateAction.Update, EqualizerUpdatePlanner.Plan(10, true, ten));
@@ -94,7 +94,7 @@ public sealed class EqualizerUpdatePlannerTests
     {
         var band = new AudioEqualizerBand(center, 6, 1);
 
-        (double centerHz, double gainDb) = EqualizerUpdatePlanner.ForSampleRate(band, sampleRate);
+        (var centerHz, var gainDb) = EqualizerUpdatePlanner.ForSampleRate(band, sampleRate);
 
         Assert.Equal(expectedCenter, centerHz, 3);
         Assert.Equal(expectedGain, gainDb);
@@ -115,7 +115,7 @@ public sealed class PlayerEqualizerTests
         Assert.True(player.Load("song.mp3"));
         MediaValueChangedEventArgs<AudioEqualizerSettings>? raised = null;
         player.EqualizerChanged += (_, e) => raised = e;
-        AudioEqualizerSettings settings = AudioEqualizerSettings.CreateGraphic10Band(6, 3);
+        var settings = AudioEqualizerSettings.CreateGraphic10Band(6, 3);
 
         player.Equalizer = settings;
 
@@ -149,7 +149,7 @@ public sealed class PlayerEqualizerTests
         Assert.True(player.Load("a.mp3"));
         player.Close();
         engine.Content = MediaContent.None;
-        AudioEqualizerSettings settings = AudioEqualizerSettings.CreateGraphic10Band(5);
+        var settings = AudioEqualizerSettings.CreateGraphic10Band(5);
 
         player.Equalizer = settings;
         player.Effects.Volume = 0.4;
@@ -171,7 +171,7 @@ public sealed class PlayerEqualizerTests
         Assert.Same(AudioEqualizerSettings.Disabled, player.Equalizer);
     }
 
-    private sealed class EqualizerTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
+    sealed class EqualizerTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory
     {
         public string LastNativeLoadMessage => string.Empty;
 

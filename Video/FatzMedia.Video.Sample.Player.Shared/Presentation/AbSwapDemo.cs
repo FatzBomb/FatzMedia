@@ -79,7 +79,7 @@ public sealed record AbSwapDemoOptions
         return clips;
     }
 
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi", ".ts", ".wmv",
     };

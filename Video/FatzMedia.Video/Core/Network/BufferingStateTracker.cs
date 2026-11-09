@@ -4,11 +4,11 @@ namespace FatzMedia.Video.Core.Network;
 /// Turns sampled network buffer fill into buffering transitions with hysteresis so playback
 /// near the threshold does not flap.
 /// </summary>
-internal sealed class BufferingStateTracker(double enterThreshold = 0.05, double exitThreshold = 0.25)
+sealed class BufferingStateTracker(double enterThreshold = 0.05, double exitThreshold = 0.25)
 {
-    private readonly double _enterThreshold = Math.Clamp(enterThreshold, 0, 1);
-    private readonly double _exitThreshold = Math.Clamp(Math.Max(enterThreshold, exitThreshold), 0, 1);
-    private double _lastReportedFill = -1;
+    readonly double _enterThreshold = Math.Clamp(enterThreshold, 0, 1);
+    readonly double _exitThreshold = Math.Clamp(Math.Max(enterThreshold, exitThreshold), 0, 1);
+    double _lastReportedFill = -1;
 
     public bool IsBuffering { get; private set; }
 

@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Threading;
 using System.Collections.Concurrent;
+using FatzMedia.Video.Core.Threading;
 
 namespace FatzMedia.Video.Tests;
 
@@ -41,7 +41,7 @@ public sealed class SerialEventDispatcherTests
         await entered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.True(dispatcher.Post(static () => { }));
-        Task flushed = dispatcher.FlushAsync();
+        var flushed = dispatcher.FlushAsync();
         Assert.False(flushed.IsCompleted);
 
         release.Set();

@@ -31,7 +31,7 @@ public sealed class D3D11SharedTextureBackendTests
             new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex)
         ]);
 
-        Assert.True(request.TrySelect(D3D11SharedTextureBackend.ProducerCapabilities, [], out MediaSharedGpuImageSelection selection, out _));
+        Assert.True(request.TrySelect(D3D11SharedTextureBackend.ProducerCapabilities, [], out var selection, out _));
         Assert.Equal(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, selection.HandleKind);
         Assert.Equal(MediaSharedGpuImageSyncKinds.KeyedMutex, selection.SyncKind);
     }
@@ -51,7 +51,7 @@ public sealed class D3D11SharedTextureBackendTests
     public void InactiveSharedTextureBackend_IsNeitherActiveNorEnumerated()
     {
         using var shared = new D3D11SharedTextureBackend();
-        using D3D11PresentationBackendSet backends = CreateBackendSet(shared);
+        using var backends = CreateBackendSet(shared);
 
         Assert.False(shared.IsActive);
         Assert.Equal(D3D11PresentationBackendKind.SharedTexture, shared.Kind);
@@ -62,7 +62,7 @@ public sealed class D3D11SharedTextureBackendTests
         Assert.Empty(backends.EnumerateActiveTargetBackends());
     }
 
-    private static D3D11PresentationBackendSet CreateBackendSet(D3D11SharedTextureBackend shared)
+    static D3D11PresentationBackendSet CreateBackendSet(D3D11SharedTextureBackend shared)
     {
         var configuration = new MediaPlayerConfiguration();
         var diagnostics = new D3D11PresentationDiagnostics(configuration);

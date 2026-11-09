@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Threading;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Threading;
 
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
@@ -11,7 +11,7 @@ namespace FatzMedia.Video;
 public partial class PlayerCore
 {
     /// <summary>Reads the settings Reset returns to defaults; <see langword="null"/> if the graph cannot say.</summary>
-    private ResetChanges? TryCaptureResetChanges()
+    ResetChanges? TryCaptureResetChanges()
     {
         try
         {
@@ -35,7 +35,7 @@ public partial class PlayerCore
     /// Queues the change events for the settings Reset changed, on the new control queue after
     /// Reset returned (handlers may call the player again).
     /// </summary>
-    private void RaiseResetChanges(ResetChanges? before)
+    void RaiseResetChanges(ResetChanges? before)
     {
         if (before is null || _disposed)
             return;
@@ -64,7 +64,7 @@ public partial class PlayerCore
         });
     }
 
-    private sealed record ResetChanges(
+    sealed record ResetChanges(
         double Volume,
         int Pitch,
         int Tempo,

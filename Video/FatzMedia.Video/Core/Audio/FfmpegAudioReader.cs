@@ -9,22 +9,22 @@ namespace FatzMedia.Video.Core.Audio;
 /// pushes to BASS. It owns its demuxer and decoder, so it can run on a background thread while
 /// the same file plays.
 /// </summary>
-internal sealed unsafe class FfmpegAudioReader : IDisposable
+sealed unsafe class FfmpegAudioReader : IDisposable
 {
-    private const int AvErrorAgain = -11;
+    const int AvErrorAgain = -11;
 
-    private readonly MediaDemuxer _demuxer = new();
-    private AVStream* _stream;
-    private AVCodecContext* _codecContext;
-    private SwrContext* _resampler;
-    private AVFrame* _frame;
-    private AVPacket* _packet;
-    private int _streamIndex = -1;
-    private double _streamStartSeconds;
-    private float[] _samples = [];
-    private bool _draining;
+    readonly MediaDemuxer _demuxer = new();
+    AVStream* _stream;
+    AVCodecContext* _codecContext;
+    SwrContext* _resampler;
+    AVFrame* _frame;
+    AVPacket* _packet;
+    int _streamIndex = -1;
+    double _streamStartSeconds;
+    float[] _samples = [];
+    bool _draining;
 
-    private FfmpegAudioReader()
+    FfmpegAudioReader()
     {
     }
 
@@ -60,7 +60,7 @@ internal sealed unsafe class FfmpegAudioReader : IDisposable
             var received = ffmpeg.avcodec_receive_frame(_codecContext, _frame);
             if (received == 0)
             {
-                ReadOnlySpan<float> samples = ConvertFrame();
+                var samples = ConvertFrame();
                 if (!samples.IsEmpty)
                     return samples;
 
@@ -121,7 +121,7 @@ internal sealed unsafe class FfmpegAudioReader : IDisposable
         _demuxer.Dispose();
     }
 
-    private bool OpenCore(string path)
+    bool OpenCore(string path)
     {
         if (!_demuxer.Open(path))
             return false;
@@ -152,7 +152,7 @@ internal sealed unsafe class FfmpegAudioReader : IDisposable
         return true;
     }
 
-    private bool SendNextPacket()
+    bool SendNextPacket()
     {
         while (true)
         {
@@ -173,7 +173,7 @@ internal sealed unsafe class FfmpegAudioReader : IDisposable
         }
     }
 
-    private ReadOnlySpan<float> ConvertFrame()
+    ReadOnlySpan<float> ConvertFrame()
     {
         var capacity = ffmpeg.swr_get_out_samples(_resampler, _frame->nb_samples);
         if (capacity <= 0)

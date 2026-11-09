@@ -1,16 +1,16 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal sealed class MediaAnalysisCache
+sealed class MediaAnalysisCache
 {
     public const int DefaultCapacity = 256;
 
     public static MediaAnalysisCache Shared { get; } = new();
 
-    private readonly int _analyzerVersion;
-    private readonly int _capacity;
-    private readonly Lock _gate = new();
-    private readonly Dictionary<MediaAnalysisCacheKey, CacheEntry> _entries = [];
-    private readonly LinkedList<MediaAnalysisCacheKey> _usageOrder = [];
+    readonly int _analyzerVersion;
+    readonly int _capacity;
+    readonly Lock _gate = new();
+    readonly Dictionary<MediaAnalysisCacheKey, CacheEntry> _entries = [];
+    readonly LinkedList<MediaAnalysisCacheKey> _usageOrder = [];
 
     public MediaAnalysisCache(int capacity = DefaultCapacity, int analyzerVersion = MediaAnalysisVersions.Current)
     {
@@ -90,13 +90,13 @@ internal sealed class MediaAnalysisCache
         }
     }
 
-    private void RemoveEntry(MediaAnalysisCacheKey key, CacheEntry entry)
+    void RemoveEntry(MediaAnalysisCacheKey key, CacheEntry entry)
     {
         _usageOrder.Remove(entry.UsageNode);
         _entries.Remove(key);
     }
 
-    private sealed class CacheEntry(MediaAnalysisResult result, LinkedListNode<MediaAnalysisCacheKey> usageNode)
+    sealed class CacheEntry(MediaAnalysisResult result, LinkedListNode<MediaAnalysisCacheKey> usageNode)
     {
         public MediaAnalysisResult Result { get; set; } = result;
 

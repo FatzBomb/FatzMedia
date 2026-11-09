@@ -9,7 +9,7 @@ public static class BassAudioOutputDevices
     {
         List<AudioOutputDeviceInfo> devices = [AudioOutputDeviceInfo.Primary];
 
-        for (var deviceIndex = 1; MBass.GetDeviceInfo(deviceIndex, out DeviceInfo deviceInfo); deviceIndex++)
+        for (var deviceIndex = 1; MBass.GetDeviceInfo(deviceIndex, out var deviceInfo); deviceIndex++)
         {
             if (IsDefaultDeviceListEntry(deviceInfo))
                 continue;
@@ -55,11 +55,11 @@ public static class BassAudioOutputDevices
         return defaultEntry > 0 ? defaultEntry : MBass.CurrentDevice;
     }
 
-    private static int FindDefaultDeviceListEntry()
+    static int FindDefaultDeviceListEntry()
     {
         var firstDefaultDevice = -1;
 
-        for (var deviceIndex = 1; MBass.GetDeviceInfo(deviceIndex, out DeviceInfo deviceInfo); deviceIndex++)
+        for (var deviceIndex = 1; MBass.GetDeviceInfo(deviceIndex, out var deviceInfo); deviceIndex++)
         {
             if (IsDefaultDeviceListEntry(deviceInfo))
                 return deviceIndex;
@@ -71,6 +71,6 @@ public static class BassAudioOutputDevices
         return firstDefaultDevice;
     }
 
-    private static bool IsDefaultDeviceListEntry(DeviceInfo deviceInfo) =>
+    static bool IsDefaultDeviceListEntry(DeviceInfo deviceInfo) =>
         deviceInfo.IsDefault && string.Equals(deviceInfo.Name, "Default", StringComparison.OrdinalIgnoreCase);
 }

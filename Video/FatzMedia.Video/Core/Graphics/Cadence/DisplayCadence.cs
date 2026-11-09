@@ -3,7 +3,7 @@ using System.Globalization;
 namespace FatzMedia.Video.Core.Graphics.Cadence;
 
 /// <summary>Frame-rate expressed exactly as a rational (e.g. 24000/1001 for 23.976).</summary>
-internal readonly record struct FrameRate(long Numerator, long Denominator)
+readonly record struct FrameRate(long Numerator, long Denominator)
 {
     public static FrameRate Fps23_976 { get; } = new(24000, 1001);
     public static FrameRate Fps29_97 { get; } = new(30000, 1001);
@@ -19,10 +19,10 @@ internal readonly record struct FrameRate(long Numerator, long Denominator)
 }
 
 /// <summary>What one display refresh shows.</summary>
-internal readonly record struct CadenceSlot(long VsyncIndex, long SourceFrame, bool IsRepeat, int SkippedFrames);
+readonly record struct CadenceSlot(long VsyncIndex, long SourceFrame, bool IsRepeat, int SkippedFrames);
 
 /// <summary>Summary of a simulated cadence window.</summary>
-internal sealed record CadenceReport(
+sealed record CadenceReport(
     FrameRate Source,
     FrameRate Display,
     long Vsyncs,
@@ -46,7 +46,7 @@ internal sealed record CadenceReport(
 /// and 24 Hz, 29.97 and 30 Hz) free of floating-point error. Each presentation target gets
 /// its own cadence; the media clock stays authoritative.
 /// </summary>
-internal static class DisplayCadence
+static class DisplayCadence
 {
     /// <summary>
     /// Simulates <paramref name="vsyncs"/> display refreshes. <paramref name="phaseNumerator"/>
@@ -76,7 +76,7 @@ internal static class DisplayCadence
         long dropped = 0;
         long distinct = 0;
         var currentHold = 0;
-        foreach (CadenceSlot slot in Simulate(source, display, vsyncs, phaseNumerator, phaseDenominator))
+        foreach (var slot in Simulate(source, display, vsyncs, phaseNumerator, phaseDenominator))
         {
             dropped += slot.SkippedFrames;
             if (slot.IsRepeat)
@@ -93,7 +93,7 @@ internal static class DisplayCadence
         }
 
         // The last frame's hold is truncated by the window; it is not part of the pattern.
-        var inner = holds.Count > 1 ? holds.Skip(1).ToArray() : holds.ToArray();
+        var inner = holds.Count > 1 ? holds.Skip(1).ToArray() : [.. holds];
         return new CadenceReport(
             source,
             display,
@@ -110,15 +110,15 @@ internal static class DisplayCadence
     public static long FrameAt(FrameRate source, FrameRate display, long vsync, long phaseNumerator = 0, long phaseDenominator = 1)
     {
         // t = vsync * dD/dN + pN/pD ; frame = floor(t * sN/sD)
-        Int128 numerator = ((Int128)vsync * display.Denominator * phaseDenominator + (Int128)phaseNumerator * display.Numerator) * source.Numerator;
-        Int128 denominator = (Int128)display.Numerator * phaseDenominator * source.Denominator;
-        Int128 quotient = Int128.DivRem(numerator, denominator).Quotient;
+        var numerator = ((Int128)vsync * display.Denominator * phaseDenominator + (Int128)phaseNumerator * display.Numerator) * source.Numerator;
+        var denominator = (Int128)display.Numerator * phaseDenominator * source.Denominator;
+        var quotient = Int128.DivRem(numerator, denominator).Quotient;
         if (numerator < 0 && quotient * denominator != numerator)
             quotient--;
         return (long)quotient;
     }
 
-    private static void Validate(FrameRate source, FrameRate display)
+    static void Validate(FrameRate source, FrameRate display)
     {
         if (source.Numerator <= 0 || source.Denominator <= 0)
             throw new ArgumentOutOfRangeException(nameof(source));

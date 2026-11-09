@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Graphics.D3D.Presentation;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Graphics.D3D.Presentation;
 
 namespace FatzMedia.Video.Tests;
 
@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class D3D11MonitorRefreshRateTests
 {
-    private static readonly nint Window = 0x1234;
+    static readonly nint Window = 0x1234;
 
     [Fact]
     public void Get_BeforePrime_ReturnsNullWithoutQuerying()
@@ -103,7 +103,7 @@ public sealed class D3D11MonitorRefreshRateTests
     [Fact]
     public void TryGet_InvalidWindow_ReturnsNull() => Assert.Null(Win32MonitorRefreshRate.TryGet(0));
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    static async Task WaitUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (!condition())

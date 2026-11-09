@@ -3,18 +3,18 @@ namespace FatzMedia.Video.Core.Prepared;
 /// <summary>
 /// A slot state change that the owner publishes outside the slot lock.
 /// </summary>
-internal readonly record struct PreparedNextChange(PreparedNextInfo Previous, PreparedNextInfo Current);
+readonly record struct PreparedNextChange(PreparedNextInfo Previous, PreparedNextInfo Current);
 
 /// <summary>
 /// Accepted preparation work. <see cref="Token"/> is cancelled when the candidate is cleared,
 /// replaced, or the caller's token is cancelled.
 /// </summary>
-internal sealed record PreparedNextTicket(long Generation, MediaInputSource Source, CancellationToken Token);
+sealed record PreparedNextTicket(long Generation, MediaInputSource Source, CancellationToken Token);
 
 /// <summary>
 /// A claimed transition of the prepared item into the current media.
 /// </summary>
-internal sealed record PreparedNextTransition(long Generation, MediaInputSource Source, MediaAnalysisResult? Analysis);
+sealed record PreparedNextTransition(long Generation, MediaInputSource Source, MediaAnalysisResult? Analysis);
 
 /// <summary>
 /// Depth-one prepared-next state machine.
@@ -26,15 +26,15 @@ internal sealed record PreparedNextTransition(long Generation, MediaInputSource 
 /// preparation can never resurrect the slot. The slot owns no media resources: replacing or
 /// clearing it only cancels analysis and drops references.
 /// </remarks>
-internal sealed class PreparedNextSlot : IDisposable
+sealed class PreparedNextSlot : IDisposable
 {
-    private readonly Lock _gate = new();
-    private readonly Func<MediaInputSource, string?> _identityProvider;
-    private PreparedNextInfo _info = PreparedNextInfo.Empty;
-    private CancellationTokenSource? _cts;
-    private string? _identity;
-    private long _generation;
-    private bool _disposed;
+    readonly Lock _gate = new();
+    readonly Func<MediaInputSource, string?> _identityProvider;
+    PreparedNextInfo _info = PreparedNextInfo.Empty;
+    CancellationTokenSource? _cts;
+    string? _identity;
+    long _generation;
+    bool _disposed;
 
     public PreparedNextSlot(Func<MediaInputSource, string?>? identityProvider = null)
     {
@@ -280,14 +280,14 @@ internal sealed class PreparedNextSlot : IDisposable
         }
     }
 
-    private PreparedNextChange SetInfo(PreparedNextInfo next)
+    PreparedNextChange SetInfo(PreparedNextInfo next)
     {
-        PreparedNextInfo previous = _info;
+        var previous = _info;
         _info = next;
         return new PreparedNextChange(previous, next);
     }
 
-    private static void CancelAndDispose(CancellationTokenSource? cts)
+    static void CancelAndDispose(CancellationTokenSource? cts)
     {
         if (cts is null)
             return;

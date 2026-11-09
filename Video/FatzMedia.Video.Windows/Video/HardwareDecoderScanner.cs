@@ -4,31 +4,31 @@ using FFmpeg.AutoGen;
 
 namespace FatzMedia.Video.Windows.Video;
 
-internal static unsafe class HardwareDecoderScanner
+static unsafe class HardwareDecoderScanner
 {
     internal static VideoDecodeCapabilities Scan()
     {
-        HashSet<Guid> supportedDxvaProfiles = D3D11ProfileEnumerator.EnumerateProfiles();
+        var supportedDxvaProfiles = D3D11ProfileEnumerator.EnumerateProfiles();
         Debug.WriteLine($"[HardwareDecoderScanner] DXVA profiles enumerated: {supportedDxvaProfiles.Count}");
-        foreach (Guid profile in supportedDxvaProfiles)
+        foreach (var profile in supportedDxvaProfiles)
             Debug.WriteLine($"[HardwareDecoderScanner]   Profile: {profile:B}");
 
-        (List<CodecCapability>? capabilities, List<(AVCodecID codecId, CodecCapability capability)>? codecIds) = ScanDecoders(supportedDxvaProfiles);
+        (var capabilities, var codecIds) = ScanDecoders(supportedDxvaProfiles);
 
         var hwCodecs = capabilities.Where(c => c.HardwareDecodeAvailable).ToList();
         var swCodecs = capabilities.Where(c => !c.HardwareDecodeAvailable).ToList();
         Debug.WriteLine($"[HardwareDecoderScanner] Scan complete: {hwCodecs.Count} HW-accelerated, {swCodecs.Count} software-only");
-        foreach (CodecCapability? c in hwCodecs)
+        foreach (var c in hwCodecs)
             Debug.WriteLine($"[HardwareDecoderScanner]   HW: {c.CodecName} ({c.FriendlyName}) via {c.HardwareMethod}");
-        foreach (CodecCapability? c in swCodecs.Where(c => c.HardwareMethod != null))
+        foreach (var c in swCodecs.Where(c => c.HardwareMethod != null))
             Debug.WriteLine($"[HardwareDecoderScanner]   SW(HW-candidate): {c.CodecName} ({c.FriendlyName}) via {c.HardwareMethod}");
 
-        Dictionary<string, ContainerCapability> containerCapabilities = ScanDemuxers(codecIds);
+        var containerCapabilities = ScanDemuxers(codecIds);
 
         return VideoDecodeCapabilities.Create(capabilities, containerCapabilities.Values);
     }
 
-    private static (List<CodecCapability> capabilities, List<(AVCodecID codecId, CodecCapability capability)> codecIds)
+    static (List<CodecCapability> capabilities, List<(AVCodecID codecId, CodecCapability capability)> codecIds)
         ScanDecoders(HashSet<Guid> dxvaProfiles)
     {
         var capabilities = new List<CodecCapability>();
@@ -39,21 +39,21 @@ internal static unsafe class HardwareDecoderScanner
 
         while (true)
         {
-            AVCodec* codec = ffmpeg.av_codec_iterate(&opaque);
+            var codec = ffmpeg.av_codec_iterate(&opaque);
             if (codec == null)
                 break;
 
             if (ffmpeg.av_codec_is_decoder(codec) == 0)
                 continue;
 
-            AVCodecID codecId = codec->id;
+            var codecId = codec->id;
             var decoderName = Marshal.PtrToStringAnsi((IntPtr)codec->name) ?? "unknown";
             var hasD3D11HwConfig = HasD3D11HardwareConfig(codec);
             var hardwareDecodeAvailable = hasD3D11HwConfig && IsDxvaProfileAvailable(codecId, dxvaProfiles);
             var hardwareMethod = hardwareDecodeAvailable ? "d3d11va" :
                 hasD3D11HwConfig && HasD3D12HardwareConfig(codec) ? "d3d12va" : null;
 
-            if (capabilityByCodecId.TryGetValue(codecId, out CodecCapability? existing))
+            if (capabilityByCodecId.TryGetValue(codecId, out var existing))
             {
                 var needsUpgrade = false;
                 var newSwDecoder = existing.SoftwareDecoderName;
@@ -81,7 +81,7 @@ internal static unsafe class HardwareDecoderScanner
 
                 if (needsUpgrade)
                 {
-                    CodecCapability upgraded = existing with
+                    var upgraded = existing with
                     {
                         HardwareDecodeAvailable = newHwAvailable,
                         HardwareMethod = newHwMethod,
@@ -96,7 +96,7 @@ internal static unsafe class HardwareDecoderScanner
                 continue;
             }
 
-            AVCodecDescriptor* codecDescr = ffmpeg.avcodec_descriptor_get(codecId);
+            var codecDescr = ffmpeg.avcodec_descriptor_get(codecId);
             var canonicalName = codecDescr != null ? Marshal.PtrToStringAnsi((IntPtr)codecDescr->name) ?? decoderName : decoderName;
             var friendlyName = codecDescr != null ? Marshal.PtrToStringAnsi((IntPtr)codecDescr->long_name) ?? canonicalName : canonicalName;
 
@@ -119,11 +119,11 @@ internal static unsafe class HardwareDecoderScanner
         return (capabilities, codecIds);
     }
 
-    private static bool HasD3D11HardwareConfig(AVCodec* codec)
+    static bool HasD3D11HardwareConfig(AVCodec* codec)
     {
         for (var i = 0; ; i++)
         {
-            AVCodecHWConfig* config = ffmpeg.avcodec_get_hw_config(codec, i);
+            var config = ffmpeg.avcodec_get_hw_config(codec, i);
             if (config == null)
                 return false;
 
@@ -135,11 +135,11 @@ internal static unsafe class HardwareDecoderScanner
         }
     }
 
-    private static bool HasD3D12HardwareConfig(AVCodec* codec)
+    static bool HasD3D12HardwareConfig(AVCodec* codec)
     {
         for (var i = 0; ; i++)
         {
-            AVCodecHWConfig* config = ffmpeg.avcodec_get_hw_config(codec, i);
+            var config = ffmpeg.avcodec_get_hw_config(codec, i);
             if (config == null)
                 return false;
 
@@ -151,16 +151,16 @@ internal static unsafe class HardwareDecoderScanner
         }
     }
 
-    private static bool IsDxvaProfileAvailable(AVCodecID codecId, HashSet<Guid> dxvaProfiles)
+    static bool IsDxvaProfileAvailable(AVCodecID codecId, HashSet<Guid> dxvaProfiles)
     {
         if (dxvaProfiles.Count == 0)
             return false;
 
-        IReadOnlyList<Guid> expectedProfiles = DxvaProfileGuids.GetProfilesForCodec(codecId);
+        var expectedProfiles = DxvaProfileGuids.GetProfilesForCodec(codecId);
         if (expectedProfiles.Count == 0)
             return false;
 
-        foreach (Guid profile in expectedProfiles)
+        foreach (var profile in expectedProfiles)
         {
             if (dxvaProfiles.Contains(profile))
             {
@@ -173,7 +173,7 @@ internal static unsafe class HardwareDecoderScanner
         return false;
     }
 
-    private static Dictionary<string, ContainerCapability> ScanDemuxers(
+    static Dictionary<string, ContainerCapability> ScanDemuxers(
         List<(AVCodecID codecId, CodecCapability capability)> codecIds)
     {
         var containers = new Dictionary<string, ContainerCapability>(StringComparer.OrdinalIgnoreCase);
@@ -181,7 +181,7 @@ internal static unsafe class HardwareDecoderScanner
 
         while (true)
         {
-            AVInputFormat* fmt = ffmpeg.av_demuxer_iterate(&opaque);
+            var fmt = ffmpeg.av_demuxer_iterate(&opaque);
             if (fmt == null)
                 break;
 
@@ -198,13 +198,13 @@ internal static unsafe class HardwareDecoderScanner
                 if (extensions.Length == 0)
                     continue;
 
-                AVCodecTag** codecTags = fmt->codec_tag;
+                var codecTags = fmt->codec_tag;
                 var possibleCodecs = new List<CodecCapability>();
                 var seenCodecNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 if (codecTags != null)
                 {
-                    foreach ((AVCodecID cid, CodecCapability? cap) in codecIds)
+                    foreach ((var cid, var cap) in codecIds)
                     {
                         uint tag = 0;
                         var found = ffmpeg.av_codec_get_tag2(codecTags, cid, &tag) != 0;
@@ -221,7 +221,7 @@ internal static unsafe class HardwareDecoderScanner
 
                     var anyHw = possibleCodecs.Count > 0 && possibleCodecs.Any(c => c.HardwareDecodeAvailable);
 
-                    if (!containers.TryGetValue(normalized, out ContainerCapability? existing))
+                    if (!containers.TryGetValue(normalized, out var existing))
                         containers[normalized] = new ContainerCapability(normalized, formatName, friendlyName, possibleCodecs, anyHw);
                     else
                     {
@@ -246,7 +246,7 @@ internal static unsafe class HardwareDecoderScanner
         return containers;
     }
 
-    private static string NormalizeExtension(string extension)
+    static string NormalizeExtension(string extension)
     {
         var trimmed = extension.Trim();
         return trimmed.StartsWith('.') ? trimmed.ToLowerInvariant() : $".{trimmed.ToLowerInvariant()}";

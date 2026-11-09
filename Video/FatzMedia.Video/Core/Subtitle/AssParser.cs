@@ -7,9 +7,9 @@ namespace FatzMedia.Video.Core.Subtitle;
 /// Reads plain dialogue cues from ASS/SSA files. Styling and positioning tags are deliberately
 /// ignored for the text-subtitle MVP; DirectWrite applies the Core subtitle style at render time.
 /// </summary>
-internal static partial class AssParser
+static partial class AssParser
 {
-    private const string DialoguePrefix = "Dialogue:";
+    const string DialoguePrefix = "Dialogue:";
 
     public static IReadOnlyList<SubtitleCue> Parse(string content)
     {
@@ -24,8 +24,8 @@ internal static partial class AssParser
 
             var fields = line[DialoguePrefix.Length..].Split(',', 10, StringSplitOptions.None);
             if (fields.Length != 10
-                || !TryParseTimestamp(fields[1], out TimeSpan start)
-                || !TryParseTimestamp(fields[2], out TimeSpan end)
+                || !TryParseTimestamp(fields[1], out var start)
+                || !TryParseTimestamp(fields[2], out var end)
                 || end <= start)
             {
                 continue;
@@ -41,7 +41,7 @@ internal static partial class AssParser
         return cues;
     }
 
-    private static bool TryParseTimestamp(string value, out TimeSpan timestamp)
+    static bool TryParseTimestamp(string value, out TimeSpan timestamp)
     {
         timestamp = default;
         var parts = value.Trim().Split(':');

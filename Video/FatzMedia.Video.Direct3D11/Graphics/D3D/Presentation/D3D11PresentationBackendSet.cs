@@ -19,7 +19,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation;
 /// secondary targets (managed frame sinks and shared textures), one backend instance per
 /// secondary surface, so a composited UI (Avalonia) can show one player on several screens.
 /// </summary>
-internal sealed class D3D11PresentationBackendSet(
+sealed class D3D11PresentationBackendSet(
     D3D11NativeHwndSwapChainBackend nativeHwnd,
     D3D11DirectCompositionSingleTargetBackend directComposition,
     D3D11ManagedFrameSinkBackend managedFrameSink,
@@ -28,14 +28,14 @@ internal sealed class D3D11PresentationBackendSet(
 {
     // Secondary targets in ordinal id order, the order they are composed in. Sorted lists, so the
     // per-frame enumeration below is an index loop with no LINQ or iterator (ENG-026).
-    private readonly SortedList<string, D3D11NativeHwndSwapChainBackend> _secondaryNativeHwndTargets = new(StringComparer.Ordinal);
+    readonly SortedList<string, D3D11NativeHwndSwapChainBackend> _secondaryNativeHwndTargets = new(StringComparer.Ordinal);
     // Managed frame-sink or shared-texture backends of secondary surfaces, by prefixed target id.
-    private readonly SortedList<string, ID3D11PresentationBackend> _secondaryOffscreenTargets = new(StringComparer.Ordinal);
-    private readonly Func<D3D11NativeHwndSwapChainBackend>? _createSecondaryNativeHwndBackend = createSecondaryNativeHwndBackend;
+    readonly SortedList<string, ID3D11PresentationBackend> _secondaryOffscreenTargets = new(StringComparer.Ordinal);
+    readonly Func<D3D11NativeHwndSwapChainBackend>? _createSecondaryNativeHwndBackend = createSecondaryNativeHwndBackend;
     // The device the secondary native windows were created on: a queued resize that cannot be
     // applied re-creates the swap chain on it.
-    private D3D11DeviceResources? _secondaryDeviceResources;
-    private readonly RendererDiagnosticLatch _clearFailure = new();
+    D3D11DeviceResources? _secondaryDeviceResources;
+    readonly RendererDiagnosticLatch _clearFailure = new();
 
     public const string DirectCompositionTargetId = "directcomposition-final";
     public const string DirectCompositionOverlayTargetId = "directcomposition-overlay";
@@ -84,12 +84,12 @@ internal sealed class D3D11PresentationBackendSet(
             return true;
         }
 
-        IList<D3D11NativeHwndSwapChainBackend> natives = _secondaryNativeHwndTargets.Values;
+        var natives = _secondaryNativeHwndTargets.Values;
         for (var i = 0; i < natives.Count; i++)
             if (natives[i].IsActive && ReferenceEquals(texture, natives[i].TargetTexture))
                 return true;
 
-        IList<ID3D11PresentationBackend> offscreen = _secondaryOffscreenTargets.Values;
+        var offscreen = _secondaryOffscreenTargets.Values;
         for (var i = 0; i < offscreen.Count; i++)
             if (offscreen[i].IsActive && ReferenceEquals(texture, offscreen[i].TargetTexture))
                 return true;
@@ -118,7 +118,7 @@ internal sealed class D3D11PresentationBackendSet(
         var normalizedId = NormalizeSecondaryNativeHwndTargetId(targetId);
         // A surface id changes kind (an offscreen window reopened as a native one): one target per id.
         RemoveSecondaryOffscreenTarget(targetId);
-        if (!_secondaryNativeHwndTargets.TryGetValue(normalizedId, out D3D11NativeHwndSwapChainBackend? backend))
+        if (!_secondaryNativeHwndTargets.TryGetValue(normalizedId, out var backend))
         {
             backend = _createSecondaryNativeHwndBackend();
             _secondaryNativeHwndTargets.Add(normalizedId, backend);
@@ -148,7 +148,7 @@ internal sealed class D3D11PresentationBackendSet(
         if (_secondaryDeviceResources is not { } deviceResources)
             return;
 
-        IList<D3D11NativeHwndSwapChainBackend> natives = _secondaryNativeHwndTargets.Values;
+        var natives = _secondaryNativeHwndTargets.Values;
         for (var i = 0; i < natives.Count; i++)
             _ = natives[i].ApplyPendingResizeOrRecreate(deviceResources);
     }
@@ -167,7 +167,7 @@ internal sealed class D3D11PresentationBackendSet(
         if (string.IsNullOrWhiteSpace(targetId) || width <= 0 || height <= 0)
             return false;
 
-        D3D11ManagedFrameSinkBackend backend = GetOrAddSecondaryOffscreenTarget(targetId, static () => new D3D11ManagedFrameSinkBackend());
+        var backend = GetOrAddSecondaryOffscreenTarget(targetId, static () => new D3D11ManagedFrameSinkBackend());
         if (backend.Matches(sink, width, height) || backend.Create(deviceResources, sink, width, height))
             return true;
 
@@ -195,7 +195,7 @@ internal sealed class D3D11PresentationBackendSet(
             return false;
         }
 
-        D3D11SharedTextureBackend backend = GetOrAddSecondaryOffscreenTarget(targetId, static () => new D3D11SharedTextureBackend());
+        var backend = GetOrAddSecondaryOffscreenTarget(targetId, static () => new D3D11SharedTextureBackend());
         if (backend.Matches(consumer, width, height) || backend.Create(deviceResources, consumer, width, height, out reason))
             return true;
 
@@ -207,7 +207,7 @@ internal sealed class D3D11PresentationBackendSet(
     {
         var removedOffscreen = RemoveSecondaryOffscreenTarget(targetId);
         var normalizedId = NormalizeSecondaryNativeHwndTargetId(targetId);
-        if (!_secondaryNativeHwndTargets.TryGetValue(normalizedId, out D3D11NativeHwndSwapChainBackend? backend))
+        if (!_secondaryNativeHwndTargets.TryGetValue(normalizedId, out var backend))
             return removedOffscreen;
 
         _ = _secondaryNativeHwndTargets.Remove(normalizedId);
@@ -218,20 +218,20 @@ internal sealed class D3D11PresentationBackendSet(
     /// <summary>Gets the secondary offscreen backends by target id (tests and diagnostics).</summary>
     internal IReadOnlyDictionary<string, ID3D11PresentationBackend> SecondaryOffscreenTargets => _secondaryOffscreenTargets;
 
-    private TBackend GetOrAddSecondaryOffscreenTarget<TBackend>(string targetId, Func<TBackend> create)
+    TBackend GetOrAddSecondaryOffscreenTarget<TBackend>(string targetId, Func<TBackend> create)
         where TBackend : class, ID3D11PresentationBackend
     {
         // One target per surface id: a native window of the same id, or a target of the other
         // offscreen kind (the adapter fell back from shared textures to its frame sink), goes.
         var normalizedId = NormalizeSecondaryOffscreenTargetId(targetId);
         var nativeId = NormalizeSecondaryNativeHwndTargetId(targetId);
-        if (_secondaryNativeHwndTargets.TryGetValue(nativeId, out D3D11NativeHwndSwapChainBackend? native))
+        if (_secondaryNativeHwndTargets.TryGetValue(nativeId, out var native))
         {
             _ = _secondaryNativeHwndTargets.Remove(nativeId);
             native.Dispose();
         }
 
-        if (_secondaryOffscreenTargets.TryGetValue(normalizedId, out ID3D11PresentationBackend? existing))
+        if (_secondaryOffscreenTargets.TryGetValue(normalizedId, out var existing))
         {
             if (existing is TBackend matching)
                 return matching;
@@ -239,15 +239,15 @@ internal sealed class D3D11PresentationBackendSet(
             existing.Dispose();
         }
 
-        TBackend backend = create();
+        var backend = create();
         _secondaryOffscreenTargets[normalizedId] = backend;
         return backend;
     }
 
-    private bool RemoveSecondaryOffscreenTarget(string targetId)
+    bool RemoveSecondaryOffscreenTarget(string targetId)
     {
         var normalizedId = NormalizeSecondaryOffscreenTargetId(targetId);
-        if (!_secondaryOffscreenTargets.TryGetValue(normalizedId, out ID3D11PresentationBackend? backend))
+        if (!_secondaryOffscreenTargets.TryGetValue(normalizedId, out var backend))
             return false;
 
         _ = _secondaryOffscreenTargets.Remove(normalizedId);
@@ -296,8 +296,8 @@ internal sealed class D3D11PresentationBackendSet(
         if (NativeHwnd.IsActive)
             targets.Add(new D3D11PresentationBackendTarget(NativeHwndTargetId, NativeHwnd, NativeHwnd.Hwnd, "NativeHwndSwapChain"));
 
-        IList<string> nativeIds = _secondaryNativeHwndTargets.Keys;
-        IList<D3D11NativeHwndSwapChainBackend> natives = _secondaryNativeHwndTargets.Values;
+        var nativeIds = _secondaryNativeHwndTargets.Keys;
+        var natives = _secondaryNativeHwndTargets.Values;
         for (var i = 0; i < natives.Count; i++)
             if (natives[i].IsActive)
                 targets.Add(new D3D11PresentationBackendTarget(nativeIds[i], natives[i], natives[i].Hwnd, "NativeHwndSwapChain"));
@@ -306,10 +306,10 @@ internal sealed class D3D11PresentationBackendSet(
     }
 
     /// <summary>How many targets <see cref="CollectActiveTargetBackends"/> would list.</summary>
-    private int CountActiveTargetBackends()
+    int CountActiveTargetBackends()
     {
         var count = 0;
-        IList<ID3D11PresentationBackend> offscreen = _secondaryOffscreenTargets.Values;
+        var offscreen = _secondaryOffscreenTargets.Values;
         for (var i = 0; i < offscreen.Count; i++)
             if (offscreen[i].IsActive)
                 count++;
@@ -322,7 +322,7 @@ internal sealed class D3D11PresentationBackendSet(
         if (NativeHwnd.IsActive)
             count++;
 
-        IList<D3D11NativeHwndSwapChainBackend> natives = _secondaryNativeHwndTargets.Values;
+        var natives = _secondaryNativeHwndTargets.Values;
         for (var i = 0; i < natives.Count; i++)
             if (natives[i].IsActive)
                 count++;
@@ -330,13 +330,13 @@ internal sealed class D3D11PresentationBackendSet(
         return count;
     }
 
-    private void AddSecondaryOffscreenTargets(List<D3D11PresentationBackendTarget> targets)
+    void AddSecondaryOffscreenTargets(List<D3D11PresentationBackendTarget> targets)
     {
-        IList<string> ids = _secondaryOffscreenTargets.Keys;
-        IList<ID3D11PresentationBackend> backends = _secondaryOffscreenTargets.Values;
+        var ids = _secondaryOffscreenTargets.Keys;
+        var backends = _secondaryOffscreenTargets.Values;
         for (var i = 0; i < backends.Count; i++)
         {
-            ID3D11PresentationBackend backend = backends[i];
+            var backend = backends[i];
             if (backend.IsActive)
             {
                 targets.Add(new D3D11PresentationBackendTarget(
@@ -360,7 +360,7 @@ internal sealed class D3D11PresentationBackendSet(
         Func<bool> isDisposed,
         Action framePresented)
     {
-        ID3D11PresentationBackend? active = Active;
+        var active = Active;
         if (active == null || !PresentBackend(active, liveResizeFlag, syncImmediate, isDisposed))
             return false;
 
@@ -385,9 +385,9 @@ internal sealed class D3D11PresentationBackendSet(
         var outcome = new CompositionPresentOutcome();
         for (var i = 0; i < targets.Count; i++)
         {
-            D3D11PresentationTargetSnapshot target = targets[i];
+            var target = targets[i];
             var presented = target.IsValid
-                && TryGetBackend(target.TargetId, target.BackendKind, out ID3D11PresentationBackend? backend)
+                && TryGetBackend(target.TargetId, target.BackendKind, out var backend)
                 && backend is not null
                 && PresentBackend(backend, liveResizeFlag, syncImmediate, isDisposed);
             if (presented)
@@ -407,13 +407,13 @@ internal sealed class D3D11PresentationBackendSet(
     /// </summary>
     public bool ClearActiveTargetToBlack(D3D11DeviceResources deviceResources, bool flush = true)
     {
-        ID3D11Texture2D? target = ActiveTargetTexture;
+        var target = ActiveTargetTexture;
         return deviceResources.Device != null && deviceResources.Context != null && target != null && ClearTargetToBlack(deviceResources, target, flush);
     }
 
     public void Dispose() => Cleanup();
 
-    private bool TryGetBackend(string targetId, D3D11PresentationBackendKind kind, out ID3D11PresentationBackend? backend)
+    bool TryGetBackend(string targetId, D3D11PresentationBackendKind kind, out ID3D11PresentationBackend? backend)
     {
         backend = null;
         if (targetId == CompositionTargetDescriptor.PrimaryFinalTargetId)
@@ -424,7 +424,7 @@ internal sealed class D3D11PresentationBackendSet(
             backend = NativeHwnd;
         else if (kind == D3D11PresentationBackendKind.NativeHwndSwapChain)
         {
-            _ = _secondaryNativeHwndTargets.TryGetValue(NormalizeSecondaryNativeHwndTargetId(targetId), out D3D11NativeHwndSwapChainBackend? secondary);
+            _ = _secondaryNativeHwndTargets.TryGetValue(NormalizeSecondaryNativeHwndTargetId(targetId), out var secondary);
             backend = secondary;
         }
         else if (kind == D3D11PresentationBackendKind.ManagedFrameSink && targetId == ManagedFrameSinkTargetId)
@@ -432,7 +432,7 @@ internal sealed class D3D11PresentationBackendSet(
         else if (kind == D3D11PresentationBackendKind.SharedTexture && targetId == SharedTextureTargetId)
             backend = SharedTexture;
         else if (kind is D3D11PresentationBackendKind.ManagedFrameSink or D3D11PresentationBackendKind.SharedTexture
-            && _secondaryOffscreenTargets.TryGetValue(targetId, out ID3D11PresentationBackend? offscreen)
+            && _secondaryOffscreenTargets.TryGetValue(targetId, out var offscreen)
             && offscreen.Kind == kind)
         {
             backend = offscreen;
@@ -442,7 +442,7 @@ internal sealed class D3D11PresentationBackendSet(
     }
 
     /// <summary>Presents one backend; true when it presented and the owner is still alive.</summary>
-    private static bool PresentBackend(
+    static bool PresentBackend(
         ID3D11PresentationBackend backend,
         int liveResizeFlag,
         bool syncImmediate,
@@ -473,30 +473,30 @@ internal sealed class D3D11PresentationBackendSet(
         ManagedFrameSink.Dispose();
         _secondaryDeviceResources = null;
 
-        foreach (D3D11NativeHwndSwapChainBackend target in _secondaryNativeHwndTargets.Values)
+        foreach (var target in _secondaryNativeHwndTargets.Values)
         {
             target.Dispose();
         }
 
         _secondaryNativeHwndTargets.Clear();
 
-        foreach (ID3D11PresentationBackend target in _secondaryOffscreenTargets.Values)
+        foreach (var target in _secondaryOffscreenTargets.Values)
             target.Dispose();
 
         _secondaryOffscreenTargets.Clear();
     }
 
-    private bool ClearTargetToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, bool flush) =>
+    bool ClearTargetToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, bool flush) =>
         ClearTarget(deviceResources, target, new Color4(0f, 0f, 0f, 1f), flush);
 
-    private bool ClearTarget(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, Color4 color, bool flush)
+    bool ClearTarget(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, Color4 color, bool flush)
     {
         if (deviceResources.Device == null || deviceResources.Context == null || target == null)
             return false;
 
         try
         {
-            using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(target);
+            using var renderTargetView = deviceResources.Device.CreateRenderTargetView(target);
             deviceResources.Context.ClearRenderTargetView(renderTargetView, color);
             if (flush)
                 deviceResources.Context.Flush();
@@ -518,10 +518,10 @@ internal sealed class D3D11PresentationBackendSet(
                 ? targetId[SecondaryOffscreenTargetPrefix.Length..]
                 : targetId;
 
-    private static string NormalizeSecondaryOffscreenTargetId(string targetId) =>
+    static string NormalizeSecondaryOffscreenTargetId(string targetId) =>
         SecondaryOffscreenTargetPrefix + (string.IsNullOrWhiteSpace(targetId) ? "secondary" : targetId.Trim());
 
-    private static string NormalizeSecondaryNativeHwndTargetId(string targetId)
+    static string NormalizeSecondaryNativeHwndTargetId(string targetId)
     {
         var trimmed = string.IsNullOrWhiteSpace(targetId) ? "secondary" : targetId.Trim();
         return trimmed.StartsWith(SecondaryNativeHwndTargetPrefix, StringComparison.Ordinal)

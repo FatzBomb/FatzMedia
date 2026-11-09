@@ -9,27 +9,27 @@ namespace FatzMedia.Video.Core.Cdg;
 /// </summary>
 public sealed class CdgStateMachine
 {
-    private readonly byte[] _colorIndices = new byte[CdgConstants.TotalPixels];
-    private readonly byte[] _scratchColorIndices = new byte[CdgConstants.TotalPixels];
-    private readonly int[] _paletteArgb = new int[CdgConstants.ColorCount];
-    private readonly CdgColorManager _colorManager = new();
-    private readonly List<CdgDirtyRect> _dirtyRects = [];
-    private readonly Lock _lock = new();
+    readonly byte[] _colorIndices = new byte[CdgConstants.TotalPixels];
+    readonly byte[] _scratchColorIndices = new byte[CdgConstants.TotalPixels];
+    readonly int[] _paletteArgb = new int[CdgConstants.ColorCount];
+    readonly CdgColorManager _colorManager = new();
+    readonly List<CdgDirtyRect> _dirtyRects = [];
+    readonly Lock _lock = new();
 
-    private long _revision;
+    long _revision;
     // The revision of the last snapshot that consumed the dirty regions: pending regions are
     // the changes since it.
-    private long _dirtyBaseRevision = -1;
-    private long _paletteRevision;
-    private uint _backgroundWashArgb;
+    long _dirtyBaseRevision = -1;
+    long _paletteRevision;
+    uint _backgroundWashArgb;
     // Colour of the previous pack if it was a Memory Preset, else NoPreviousPreset. A repeat
     // pack (repeat != 0) only re-sends a clear, so it is skipped when it directly follows the
     // same preset; on its own it still clears (the original may have been lost). Part of the
     // checkpointed state so a seek replays identically.
-    private const int NoPreviousPreset = -1;
-    private int _previousMemoryPresetColor = NoPreviousPreset;
-    private CdgRenderSnapshot? _lastSnapshot;
-    private CdgSnapshotStatistics _snapshotStatistics;
+    const int NoPreviousPreset = -1;
+    int _previousMemoryPresetColor = NoPreviousPreset;
+    CdgRenderSnapshot? _lastSnapshot;
+    CdgSnapshotStatistics _snapshotStatistics;
 
     public CdgStateMachine() => Reset();
 
@@ -154,7 +154,7 @@ public sealed class CdgStateMachine
     internal CdgReplayCheckpoint CaptureReplayCheckpoint()
     {
         lock (_lock)
-            return new CdgReplayCheckpoint(_colorIndices.ToArray(), _colorManager.CaptureReplayState(), _previousMemoryPresetColor);
+            return new CdgReplayCheckpoint([.. _colorIndices], _colorManager.CaptureReplayState(), _previousMemoryPresetColor);
     }
 
     /// <summary>
@@ -203,7 +203,7 @@ public sealed class CdgStateMachine
         lock (_lock)
         {
             var backgroundColorIndex = _colorManager.BackgroundColorIndex;
-            CdgRenderSnapshot? previous = _lastSnapshot;
+            var previous = _lastSnapshot;
             var paletteUnchanged = previous != null && previous.PaletteArgb.Span.SequenceEqual(_paletteArgb);
             if (previous != null
                 && paletteUnchanged
@@ -288,9 +288,9 @@ public sealed class CdgStateMachine
         }
     }
 
-    private bool ProcessMemoryPresetUnsafe(CdgPacket packet, int previousPresetColor)
+    bool ProcessMemoryPresetUnsafe(CdgPacket packet, int previousPresetColor)
     {
-        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
+        var dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & CdgConstants.ColorMask);
         _previousMemoryPresetColor = color;
         var isRepeat = (dataSpan[1] & CdgConstants.ColorMask) != 0;
@@ -303,7 +303,7 @@ public sealed class CdgStateMachine
         RefreshColorStateUnsafe(addDirtyRect: false);
         var changed = true;
         {
-            Span<byte> span = _colorIndices.AsSpan();
+            var span = _colorIndices.AsSpan();
             for (var i = 0; i < span.Length; i++)
             {
                 if (span[i] == color)
@@ -325,9 +325,9 @@ public sealed class CdgStateMachine
         return changed;
     }
 
-    private bool ProcessBorderPresetUnsafe(CdgPacket packet)
+    bool ProcessBorderPresetUnsafe(CdgPacket packet)
     {
-        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
+        var dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & CdgConstants.ColorMask);
         var changed = false;
 
@@ -358,9 +358,9 @@ public sealed class CdgStateMachine
         return true;
     }
 
-    private bool ProcessTileBlockUnsafe(CdgPacket packet, bool xor)
+    bool ProcessTileBlockUnsafe(CdgPacket packet, bool xor)
     {
-        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
+        var dataSpan = packet.DataSpan;
         var color0 = (byte)(dataSpan[0] & CdgConstants.ColorMask);
         var color1 = (byte)(dataSpan[1] & CdgConstants.ColorMask);
         var columnIndex = (dataSpan[3] & CdgConstants.TileBlockXMask) * CdgConstants.TileWidth;
@@ -409,9 +409,9 @@ public sealed class CdgStateMachine
         return changed;
     }
 
-    private bool ScrollUnsafe(CdgPacket packet, bool copy)
+    bool ScrollUnsafe(CdgPacket packet, bool copy)
     {
-        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
+        var dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & CdgConstants.ColorMask);
         var h = dataSpan[1];
         var v = dataSpan[2];
@@ -459,7 +459,7 @@ public sealed class CdgStateMachine
         return true;
     }
 
-    private bool LoadColorTableUnsafe(CdgPacket packet, bool lower)
+    bool LoadColorTableUnsafe(CdgPacket packet, bool lower)
     {
         if (lower)
         {
@@ -474,7 +474,7 @@ public sealed class CdgStateMachine
         return true;
     }
 
-    private bool DefineTransparentColorUnsafe(CdgPacket packet)
+    bool DefineTransparentColorUnsafe(CdgPacket packet)
     {
         var colorIndex = packet.DataSpan[0] & CdgConstants.ColorMask;
         _colorManager.DefineTransparentColor(colorIndex);
@@ -482,9 +482,9 @@ public sealed class CdgStateMachine
         return true;
     }
 
-    private bool FillRangeIfChangedUnsafe(int start, int length, byte color)
+    bool FillRangeIfChangedUnsafe(int start, int length, byte color)
     {
-        Span<byte> span = _colorIndices.AsSpan(start, length);
+        var span = _colorIndices.AsSpan(start, length);
         var changed = false;
         for (var i = 0; i < span.Length; i++)
         {
@@ -500,7 +500,7 @@ public sealed class CdgStateMachine
         return changed;
     }
 
-    private void FillScrollExposedAreasUnsafe(byte color, int hPx, int vPx, int width, int height)
+    void FillScrollExposedAreasUnsafe(byte color, int hPx, int vPx, int width, int height)
     {
         if (vPx > 0)
         {
@@ -542,7 +542,7 @@ public sealed class CdgStateMachine
         }
     }
 
-    private void RefreshColorStateUnsafe(bool addDirtyRect)
+    void RefreshColorStateUnsafe(bool addDirtyRect)
     {
         if (_colorManager.UpdateLutIfNeeded())
         {
@@ -559,9 +559,9 @@ public sealed class CdgStateMachine
         }
     }
 
-    private void AddDirtyRectUnsafe(CdgDirtyRect rect)
+    void AddDirtyRectUnsafe(CdgDirtyRect rect)
     {
-        CdgDirtyRect clamped = rect.ClampToFrame();
+        var clamped = rect.ClampToFrame();
         if (clamped.IsEmpty)
         {
             return;
@@ -593,4 +593,4 @@ public sealed class CdgStateMachine
 }
 
 /// <summary>A copy of the packet-driven CDG state at one packet index (Stage 022A slice 4).</summary>
-internal sealed record CdgReplayCheckpoint(byte[] ColorIndices, CdgColorReplayState ColorState, int PreviousMemoryPresetColor);
+sealed record CdgReplayCheckpoint(byte[] ColorIndices, CdgColorReplayState ColorState, int PreviousMemoryPresetColor);

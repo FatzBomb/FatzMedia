@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using FatzMedia.Video.Core.Configuration;
-using Vortice.Direct3D11;
-using Vortice.DXGI;
 using FatzMedia.Video.Core.Graphics.D3D.Device;
 using FatzMedia.Video.Core.Graphics.D3D.Diagnostics;
 using FatzMedia.Video.Core.Graphics.D3D.Presentation.Hdr;
@@ -9,7 +7,8 @@ using FatzMedia.Video.Core.Graphics.D3D.SwapChain;
 using FatzMedia.Video.Core.Graphics.Rendering;
 using FatzMedia.Video.Core.Video.Hdr;
 using FatzMedia.Video.Direct3D11;
-using SharpGen.Runtime;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
 
 namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.NativeHwnd;
 
@@ -18,23 +17,23 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.NativeHwnd;
 /// back-buffer ownership, and Present policy.  This keeps native-HWND-specific state out of
 /// the renderer coordinator.
 /// </summary>
-internal sealed class D3D11NativeHwndSwapChainBackend(
+sealed class D3D11NativeHwndSwapChainBackend(
     MediaPlayerConfiguration configuration,
     NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState,
     Action resetOverlayTransientFailure) : ID3D11PresentationBackend, ID3D11HdrOutputBackend
 {
-    private IDXGISwapChain? _swapChain;
-    private int _pendingWidth;
-    private int _pendingHeight;
-    private bool _resizePending;
+    IDXGISwapChain? _swapChain;
+    int _pendingWidth;
+    int _pendingHeight;
+    bool _resizePending;
     // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
-    private long _resizeRetryNotBefore;
-    private bool _deviceLostReported;
+    long _resizeRetryNotBefore;
+    bool _deviceLostReported;
     // ResizeBuffers failures other than device loss repeat (retried every half second): one report.
-    private readonly RendererDiagnosticLatch _resizeFailure = new();
-    private readonly RendererDiagnosticLatch _presentFailure = new();
+    readonly RendererDiagnosticLatch _resizeFailure = new();
+    readonly RendererDiagnosticLatch _presentFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
     public bool IsActive => _swapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -50,10 +49,10 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     /// <inheritdoc />
     public string? HdrOutputFailure { get; private set; }
 
-    private Hdr10MetadataValues? _hdrMetadata;
+    Hdr10MetadataValues? _hdrMetadata;
     // Borrowed from the renderer (not owned): re-creates the swap chain in SDR when going back
     // from scRGB fails.
-    private D3D11DeviceResources? _deviceResources;
+    D3D11DeviceResources? _deviceResources;
 
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
@@ -69,9 +68,9 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
         try
         {
-            using IDXGIDevice dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
-            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
-            using IDXGIFactory factory = adapter.GetParent<IDXGIFactory>();
+            using var dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
+            using var adapter = dxgiDevice.GetAdapter();
+            using var factory = adapter.GetParent<IDXGIFactory>();
 
             _swapChain = D3D11SwapChainFactory.CreateBestNativeSwapChain(factory, deviceResources.Device, hwnd, width, height, configuration);
             if (_swapChain == null)
@@ -137,7 +136,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     /// </summary>
     public bool ApplyPendingResizeOrRecreate(D3D11DeviceResources deviceResources)
     {
-        IntPtr hwnd = Hwnd;
+        var hwnd = Hwnd;
         var pending = _resizePending;
         var width = Math.Max(1, _pendingWidth);
         var height = Math.Max(1, _pendingHeight);
@@ -195,13 +194,13 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         return applied;
     }
 
-    private bool RecreateInSdr(string? failure)
+    bool RecreateInSdr(string? failure)
     {
         if (_deviceResources is not { } deviceResources)
             return false;
 
-        (IntPtr hwnd, int width, int height) = (Hwnd, Width, Height);
-        (bool pending, int pendingWidth, int pendingHeight) = (_resizePending, _pendingWidth, _pendingHeight);
+        (var hwnd, var width, var height) = (Hwnd, Width, Height);
+        (var pending, var pendingWidth, var pendingHeight) = (_resizePending, _pendingWidth, _pendingHeight);
         if (!Create(deviceResources, hwnd, width, height))
             return false;
 
@@ -219,7 +218,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             ref _deviceLostReported,
             _presentFailure);
 
-    private bool ResizeCore(int width, int height)
+    bool ResizeCore(int width, int height)
     {
         if (!IsActive || _swapChain == null)
         {
@@ -244,7 +243,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             TargetTexture?.Dispose();
             TargetTexture = null;
 
-            Result resizeResult = _swapChain.ResizeBuffers(
+            var resizeResult = _swapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,

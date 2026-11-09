@@ -190,7 +190,7 @@ public sealed class AudioPipelineTrimTests
         Assert.Equal(12, pipeline.PositionSeconds);
     }
 
-    private static TestAudioEngine CreateEngineWithTrimWindow() => new()
+    static TestAudioEngine CreateEngineWithTrimWindow() => new()
     {
         Duration = 100,
         ActiveTrimWindow = new MediaAnalysisResult(
@@ -202,7 +202,7 @@ public sealed class AudioPipelineTrimTests
             1)
     };
 
-    private static double SetAndReadPosition(
+    static double SetAndReadPosition(
         AudioPipeline pipeline,
         TestAudioEngine engine,
         double sourcePosition)

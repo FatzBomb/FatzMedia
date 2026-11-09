@@ -10,7 +10,7 @@ using FatzMedia.Video.Sample.Player.Shared.Hosting;
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
 /// <summary>Avalonia's UI thread for the shared view model.</summary>
-internal sealed class AvaloniaPlayerDispatcher : IPlayerDispatcher
+sealed class AvaloniaPlayerDispatcher : IPlayerDispatcher
 {
     public static AvaloniaPlayerDispatcher Instance { get; } = new();
 
@@ -20,10 +20,10 @@ internal sealed class AvaloniaPlayerDispatcher : IPlayerDispatcher
 
     public IPlayerTimer CreateTimer(TimeSpan interval, Action tick) => new Timer(interval, tick);
 
-    private sealed class Timer : IPlayerTimer
+    sealed class Timer : IPlayerTimer
     {
-        private readonly DispatcherTimer _timer;
-        private readonly Action _tick;
+        readonly DispatcherTimer _timer;
+        readonly Action _tick;
 
         public Timer(TimeSpan interval, Action tick)
         {
@@ -42,12 +42,12 @@ internal sealed class AvaloniaPlayerDispatcher : IPlayerDispatcher
             _timer.Tick -= OnTick;
         }
 
-        private void OnTick(object? sender, EventArgs e) => _tick();
+        void OnTick(object? sender, EventArgs e) => _tick();
     }
 }
 
 /// <summary>The clipboard and the file picker of the window that holds <paramref name="owner"/>.</summary>
-internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPlayerFilePicker
+sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPlayerFilePicker
 {
     public async Task SetTextAsync(string text)
     {
@@ -62,7 +62,7 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
         if (TopLevel.GetTopLevel(owner) is not { } topLevel)
             return null;
 
-        IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = title,
             AllowMultiple = false,
@@ -73,7 +73,7 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
     }
 
     /// <summary>Converts the engine's "Name|*.a;*.b|Name2|*.c" dialog filter into picker file types.</summary>
-    private static List<FilePickerFileType> ToFileTypes(string filter)
+    static List<FilePickerFileType> ToFileTypes(string filter)
     {
         List<FilePickerFileType> types = [];
         var parts = filter.Split('|');
@@ -97,9 +97,9 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
 /// adapter's <see cref="FatzMedia.Video.Avalonia.Player"/> (Stage 046A slice 3).
 /// </summary>
 /// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
-internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label, IReadOnlyList<string> startupWarnings) : IPlayerEngineFactory
+sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label, IReadOnlyList<string> startupWarnings) : IPlayerEngineFactory
 {
-    private IPlatformFactory? _platformFactory;
+    IPlatformFactory? _platformFactory;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = nativePaths;
 
@@ -107,7 +107,7 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        (VideoDecodingMethod decoding, var forced) = StartupOptions.Current.ApplyDecoding(renderer.Decoding);
+        (var decoding, var forced) = StartupOptions.Current.ApplyDecoding(renderer.Decoding);
         List<(MediaDiagnosticLevel, string)> lines = [.. startupWarnings.Select(static warning => (MediaDiagnosticLevel.Warning, warning))];
         lines.Add((MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}, {forced ?? renderer.DecodingDetail}"));
         lines.Add((MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"));
@@ -121,7 +121,7 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {
-        IPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
+        var platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
         // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
         if (StartupOptions.Current.AudioEngine == PlayerAudioEngine.FatzAudio)

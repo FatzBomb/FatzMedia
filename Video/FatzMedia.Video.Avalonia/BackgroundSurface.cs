@@ -60,9 +60,9 @@ public class BackgroundSurface : Panel, IDisposable
     public static readonly DirectProperty<BackgroundSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<BackgroundSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
-    private readonly MediaSurface _surface = new() { Background = new SolidColorBrush(Colors.Black) };
-    private readonly ContentPresenter _overlayPresenter = new() { IsHitTestVisible = false, IsVisible = false };
-    private readonly LightweightSurfaceHost _host;
+    readonly MediaSurface _surface = new() { Background = new SolidColorBrush(Colors.Black) };
+    readonly ContentPresenter _overlayPresenter = new() { IsHitTestVisible = false, IsVisible = false };
+    readonly LightweightSurfaceHost _host;
 
     public BackgroundSurface()
     {
@@ -103,7 +103,7 @@ public class BackgroundSurface : Panel, IDisposable
         get => _host.PlatformFactory;
         set
         {
-            IPlatformFactory? old = _host.PlatformFactory;
+            var old = _host.PlatformFactory;
             _host.PlatformFactory = value;
             RaisePropertyChanged(PlatformFactoryProperty, old, value);
         }
@@ -242,7 +242,7 @@ public class BackgroundSurface : Panel, IDisposable
         base.OnDetachedFromVisualTree(e);
     }
 
-    private Task<bool> LoadMediaAsync(MediaInputSource source)
+    Task<bool> LoadMediaAsync(MediaInputSource source)
     {
         // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
         Dispatcher.UIThread.VerifyAccess();
@@ -252,7 +252,7 @@ public class BackgroundSurface : Panel, IDisposable
 
     // A newer Source abandons a load in progress: Core's controller checks after every await, and
     // a solid colour releases the player.
-    private Task ReloadSourceAsync() => Source switch
+    Task ReloadSourceAsync() => Source switch
     {
         null => ShowSolidColor(BackgroundColor),
         Color color => ShowSolidColor(color),
@@ -263,14 +263,14 @@ public class BackgroundSurface : Panel, IDisposable
         _ => throw new NotSupportedException($"Background source type {Source.GetType().Name} is not supported."),
     };
 
-    private Task ShowSolidColor(Color color)
+    Task ShowSolidColor(Color color)
     {
         SetCurrentValue(BackgroundColorProperty, Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
         _host.Controller.ReleasePlayer();
         return Task.CompletedTask;
     }
 
-    private void OnContentVisibilityChanged(object? sender, EventArgs e)
+    void OnContentVisibilityChanged(object? sender, EventArgs e)
     {
         Dispatcher.UIThread.VerifyAccess();
         var isVisible = _host.IsContentVisible;

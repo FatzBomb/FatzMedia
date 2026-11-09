@@ -14,10 +14,10 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Device;
 /// Owns the lifetime of the D3D11 device, immediate context, and optional video interfaces.
 /// Keep device creation and COM lifetime rules out of the presentation/coordinator renderer.
 /// </summary>
-internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection = Direct3D11DeviceSelection.Auto) : IDisposable
+sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection = Direct3D11DeviceSelection.Auto) : IDisposable
 {
-    private static readonly FeatureLevel[] FeatureLevels = [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1];
-    private static readonly DeviceCreationFlags[] CreationFlagOptions =
+    static readonly FeatureLevel[] FeatureLevels = [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1];
+    static readonly DeviceCreationFlags[] CreationFlagOptions =
     [
         DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport,
         DeviceCreationFlags.BgraSupport
@@ -25,11 +25,11 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
     // The adapter Windows uses when no display driver is installed: WARP behind a hardware
     // driver type, so a "hardware" device on it is still a software rasterizer.
-    private const uint MicrosoftVendorId = 0x1414;
-    private const uint BasicRenderDriverDeviceId = 0x8C;
+    const uint MicrosoftVendorId = 0x1414;
+    const uint BasicRenderDriverDeviceId = 0x8C;
 
-    private readonly Direct3D11DeviceSelection _selection = selection;
-    private bool _isSoftwareRasterizer;
+    readonly Direct3D11DeviceSelection _selection = selection;
+    bool _isSoftwareRasterizer;
 
     public ID3D11Device? Device { get; private set; }
     public ID3D11DeviceContext? Context { get; private set; }
@@ -40,13 +40,13 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
     public ID3D11VideoContext1? VideoContext1 { get; private set; }
     public IntPtr NativeDevicePointer { get; private set; }
 
-    private ID3D11Multithread? _multithreadProtection;
+    ID3D11Multithread? _multithreadProtection;
 
     // ENG-039: a reference of its own to the current device for ProbeDeviceRemoved, which runs on
     // Core's health timer without the presentation lock. Swapped and released under _probeGate
     // only, so a probe never reads a device the presentation thread is disposing.
-    private readonly Lock _probeGate = new();
-    private ID3D11Device? _probeDevice;
+    readonly Lock _probeGate = new();
+    ID3D11Device? _probeDevice;
 
     public bool HasDevice => Device != null && Context != null;
     public bool HasVideoProcessorSupport => VideoDevice != null && VideoContext != null;
@@ -57,7 +57,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         try
         {
-            if (!TryCreateDevice(_selection, out CreatedDevice? created, out var failure))
+            if (!TryCreateDevice(_selection, out var created, out var failure))
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to create D3D11 device ({_selection}): {failure}");
                 return false;
@@ -102,7 +102,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
     {
         try
         {
-            if (!TryCreateDevice(selection, out CreatedDevice? created, out var failure))
+            if (!TryCreateDevice(selection, out var created, out var failure))
                 return MediaPresentationAvailability.Unavailable($"no Direct3D11 device ({selection}): {failure}");
 
             try
@@ -134,7 +134,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
     /// without video support. <see cref="CreatedDevice.HardwareFailure"/> says why the GPU was
     /// skipped when WARP was used under Auto.
     /// </summary>
-    private static bool TryCreateDevice(
+    static bool TryCreateDevice(
         Direct3D11DeviceSelection selection,
         [NotNullWhen(true)] out CreatedDevice? created,
         out string failure)
@@ -148,19 +148,19 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         string? hardwareFailure = null;
         string? warpFailure = null;
-        foreach (DriverType driverType in driverTypes)
+        foreach (var driverType in driverTypes)
         {
             SharpGen.Runtime.Result result = default;
-            foreach (DeviceCreationFlags creationFlags in CreationFlagOptions)
+            foreach (var creationFlags in CreationFlagOptions)
             {
                 result = D3D11.D3D11CreateDevice(
                     adapter: null,
                     driverType: driverType,
                     flags: creationFlags,
                     featureLevels: FeatureLevels,
-                    device: out ID3D11Device? device,
-                    featureLevel: out FeatureLevel featureLevel,
-                    immediateContext: out ID3D11DeviceContext? context);
+                    device: out var device,
+                    featureLevel: out var featureLevel,
+                    immediateContext: out var context);
 
                 if (!result.Failure && device != null && context != null)
                 {
@@ -190,15 +190,15 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         return false;
     }
 
-    private static (string Description, bool IsSoftwareRasterizer) Describe(CreatedDevice created)
+    static (string Description, bool IsSoftwareRasterizer) Describe(CreatedDevice created)
     {
         var adapter = "unknown adapter";
         var basicRenderDriver = false;
         try
         {
-            using IDXGIDevice dxgiDevice = created.Device.QueryInterface<IDXGIDevice>();
-            using IDXGIAdapter dxgiAdapter = dxgiDevice.GetAdapter();
-            AdapterDescription description = dxgiAdapter.Description;
+            using var dxgiDevice = created.Device.QueryInterface<IDXGIDevice>();
+            using var dxgiAdapter = dxgiDevice.GetAdapter();
+            var description = dxgiAdapter.Description;
             adapter = description.Description.TrimEnd('\0');
             basicRenderDriver = description.VendorId == MicrosoftVendorId && description.DeviceId == BasicRenderDriverDeviceId;
         }
@@ -213,7 +213,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         return ($"{kind}, {adapter}, feature level {created.FeatureLevel}", created.DriverType == DriverType.Warp || basicRenderDriver);
     }
 
-    private sealed record CreatedDevice(
+    sealed record CreatedDevice(
         ID3D11Device Device,
         ID3D11DeviceContext Context,
         DriverType DriverType,
@@ -280,7 +280,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         try
         {
-            using ID3D11Device device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
+            using var device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
             return device.DeviceRemovedReason.Failure;
         }
         catch (SharpGen.Runtime.SharpGenException)
@@ -302,15 +302,15 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         try
         {
-            using ID3D11Device device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
-            using ID3D11VideoDevice? videoDevice = device.QueryInterfaceOrNull<ID3D11VideoDevice>();
+            using var device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
+            using var videoDevice = device.QueryInterfaceOrNull<ID3D11VideoDevice>();
             if (videoDevice == null)
                 return false;
 
-            using ID3D11DeviceContext context = deviceContextPointer != IntPtr.Zero
+            using var context = deviceContextPointer != IntPtr.Zero
                 ? AddRefAndWrap(deviceContextPointer, static pointer => new ID3D11DeviceContext(pointer))
                 : device.ImmediateContext;
-            using ID3D11VideoContext? videoContext = context.QueryInterfaceOrNull<ID3D11VideoContext>();
+            using var videoContext = context.QueryInterfaceOrNull<ID3D11VideoContext>();
             return videoContext != null;
         }
         catch (SharpGen.Runtime.SharpGenException)
@@ -346,7 +346,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         }
     }
 
-    private void SetProbeDevice(IntPtr devicePointer)
+    void SetProbeDevice(IntPtr devicePointer)
     {
         ID3D11Device? previous;
         lock (_probeGate)
@@ -360,7 +360,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         previous?.Dispose();
     }
 
-    private void InitializeVideoInterfaces(MediaPlayerConfiguration configuration)
+    void InitializeVideoInterfaces(MediaPlayerConfiguration configuration)
     {
         CleanupVideoInterfaces();
 
@@ -386,7 +386,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         }
     }
 
-    private void CleanupVideoInterfaces()
+    void CleanupVideoInterfaces()
     {
         _multithreadProtection?.Dispose();
         _multithreadProtection = null;
@@ -411,7 +411,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
     public void Dispose() => Cleanup();
 
-    private static T AddRefAndWrap<T>(IntPtr pointer, Func<IntPtr, T> factory)
+    static T AddRefAndWrap<T>(IntPtr pointer, Func<IntPtr, T> factory)
     {
         _ = Marshal.AddRef(pointer);
         return factory(pointer);

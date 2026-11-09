@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// same audio would get as a plain file: a quick pass over the first 24 x 0.25 s, then a deep
 /// pass of up to 240 half-second windows spread over the whole duration.
 /// </summary>
-internal static class FfmpegAudioPeakScanner
+static class FfmpegAudioPeakScanner
 {
     internal const double QuickSeconds = 24 * 0.25;
     internal const double DeepWindowSeconds = 0.5;
@@ -70,14 +70,14 @@ internal static class FfmpegAudioPeakScanner
         return float.IsFinite(peak) ? Math.Clamp(peak, 0, 1) : 0;
     }
 
-    private static double ReadPeak(FfmpegAudioReader reader, double seconds, CancellationToken cancellationToken)
+    static double ReadPeak(FfmpegAudioReader reader, double seconds, CancellationToken cancellationToken)
     {
         var remainingSamples = (long)Math.Ceiling(seconds * reader.SampleRate) * reader.Channels;
         var peak = 0.0;
         while (remainingSamples > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ReadOnlySpan<float> frame = reader.ReadFrame();
+            var frame = reader.ReadFrame();
             if (frame.IsEmpty)
                 break;
 

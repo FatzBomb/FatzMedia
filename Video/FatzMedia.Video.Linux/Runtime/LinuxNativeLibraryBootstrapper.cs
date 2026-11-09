@@ -1,11 +1,11 @@
-using FatzMedia.Video.Core.Files;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Files;
 
 namespace FatzMedia.Video.Linux.Runtime;
 
 /// <summary>Native operations used by the bootstrapper; replaced in tests.</summary>
-internal interface ILinuxNativeOperations
+interface ILinuxNativeOperations
 {
     /// <summary>Loads a shared library by absolute path (dlopen).</summary>
     bool TryLoad(string path, out IntPtr handle);
@@ -21,7 +21,7 @@ internal interface ILinuxNativeOperations
 }
 
 /// <summary>Outcome of one native-library initialization.</summary>
-internal sealed record LinuxNativeLoadResult(
+sealed record LinuxNativeLoadResult(
     bool IsBassLoaded,
     bool IsFfmpegLoaded,
     string? BassDirectory,
@@ -52,15 +52,15 @@ internal sealed record LinuxNativeLoadResult(
 /// BASS added to them later is found after a restart); what loaded is kept for the process
 /// (native libraries cannot be unloaded safely while in use), so FFmpeg is never activated twice.
 /// </summary>
-internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations operations, string baseDirectory, string runtimeIdentifier)
+sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations operations, string baseDirectory, string runtimeIdentifier)
 {
-    private readonly Lock _gate = new();
-    private readonly Dictionary<string, string> _loadedBassByFileName = new(StringComparer.Ordinal);
-    private LinuxNativeLoadResult? _success;
+    readonly Lock _gate = new();
+    readonly Dictionary<string, string> _loadedBassByFileName = new(StringComparer.Ordinal);
+    LinuxNativeLoadResult? _success;
     // The search paths of _success when it loaded without BASS: a later player with the same paths
     // takes that result instead of scanning them for BASS again (ENG-039 P5-8).
-    private IReadOnlyList<string>? _successSearchPaths;
-    private string? _loadedFfmpegDirectory;
+    IReadOnlyList<string>? _successSearchPaths;
+    string? _loadedFfmpegDirectory;
 
     public static LinuxNativeLibraryBootstrapper Default { get; } = new(
         new LinuxNativeOperations(),
@@ -78,7 +78,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
 
             List<string> messages = [];
             var rejected = new List<string>();
-            IReadOnlyList<string> searchPaths = LinuxNativeLibraryLocator.BuildSearchPaths(hostPaths, baseDirectory, runtimeIdentifier, rejected);
+            var searchPaths = LinuxNativeLibraryLocator.BuildSearchPaths(hostPaths, baseDirectory, runtimeIdentifier, rejected);
             if (_success is { } withoutBass && _successSearchPaths is { } scanned && scanned.SequenceEqual(searchPaths, StringComparer.Ordinal))
             {
                 LastResult = withoutBass;
@@ -96,8 +96,8 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             else if (!bassLoaded || !ffmpegLoaded)
                 messages.Add($"Search path(s): {string.Join("; ", searchPaths)}.");
 
-            NativeDependencyReport report = BuildReport(searchPaths, bassLoaded, ffmpegLoaded, ffmpegDirectory);
-            foreach (NativeLibraryCheck check in report.Libraries)
+            var report = BuildReport(searchPaths, bassLoaded, ffmpegLoaded, ffmpegDirectory);
+            foreach (var check in report.Libraries)
             {
                 if (check.Hint is not null)
                     messages.Add(check.Hint);
@@ -117,7 +117,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
     }
 
     // Raised for every player, also when it reuses a result: its diagnostics belong to it.
-    private static void RaiseResult(LinuxNativeLoadResult result) =>
+    static void RaiseResult(LinuxNativeLoadResult result) =>
         DiagnosticRouter.Raise(
             !result.IsInitialized ? MediaDiagnosticLevel.Error
                 : result.IsAudioAvailable ? MediaDiagnosticLevel.Info
@@ -125,15 +125,15 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             "LinuxBootstrap",
             result.Message);
 
-    private bool LoadBass(IReadOnlyList<string> searchPaths, List<string> messages, out string? bassDirectory)
+    bool LoadBass(IReadOnlyList<string> searchPaths, List<string> messages, out string? bassDirectory)
     {
         bassDirectory = null;
-        Dictionary<string, string> found = LinuxNativeLibraryLocator.Locate(
+        var found = LinuxNativeLibraryLocator.Locate(
             searchPaths,
             LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
 
         var coreOk = true;
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
+        foreach (var library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
         {
             if (_loadedBassByFileName.ContainsKey(library.FileName))
                 continue;
@@ -160,13 +160,13 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         if (!coreOk)
             return false;
 
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
+        foreach (var library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
             FileTypes.Audio.UnionWith(library.Extensions);
 
         operations.InstallBassResolver(ResolveBassPath);
         bassDirectory = Path.GetDirectoryName(_loadedBassByFileName["libbass.so"]);
 
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => !library.IsCore))
+        foreach (var library in LinuxNativeLibraryCatalog.Bass.Where(static library => !library.IsCore))
         {
             if (_loadedBassByFileName.ContainsKey(library.FileName))
                 continue;
@@ -195,7 +195,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         return true;
     }
 
-    private bool LoadFfmpeg(IReadOnlyList<string> searchPaths, List<string> messages, out string? ffmpegDirectory)
+    bool LoadFfmpeg(IReadOnlyList<string> searchPaths, List<string> messages, out string? ffmpegDirectory)
     {
         // A retry for BASS keeps the FFmpeg that is already active.
         if (_loadedFfmpegDirectory is not null)
@@ -240,28 +240,28 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         return true;
     }
 
-    private NativeDependencyReport BuildReport(IReadOnlyList<string> searchPaths, bool bassLoaded, bool ffmpegLoaded, string? ffmpegDirectory)
+    NativeDependencyReport BuildReport(IReadOnlyList<string> searchPaths, bool bassLoaded, bool ffmpegLoaded, string? ffmpegDirectory)
     {
         List<NativeLibraryCheck> checks = [];
         // Listing the search paths is only needed to explain a missing file.
         var presentNames = new Lazy<string[]>(() => [.. ListFileNames(searchPaths)]);
-        Dictionary<string, string> foundBass = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
+        var foundBass = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
         // BASS is never required (ENG-033): without its core the report says audio is unavailable.
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass)
+        foreach (var library in LinuxNativeLibraryCatalog.Bass)
         {
             if (_loadedBassByFileName.TryGetValue(library.FileName, out var loadedPath))
                 checks.Add(new NativeLibraryCheck("BASS", library.FileName, IsRequired: false, NativeLibraryStatus.Loaded, loadedPath));
             else if (foundBass.TryGetValue(library.FileName, out var foundPath))
             {
                 // Plugins are not attempted when a core library failed.
-                NativeLibraryStatus status = library.IsCore || bassLoaded ? NativeLibraryStatus.FailedToLoad : NativeLibraryStatus.NotLoaded;
+                var status = library.IsCore || bassLoaded ? NativeLibraryStatus.FailedToLoad : NativeLibraryStatus.NotLoaded;
                 checks.Add(new NativeLibraryCheck("BASS", library.FileName, IsRequired: false, status, foundPath));
             }
             else
                 checks.Add(Missing("BASS", library.FileName, isRequired: false, presentNames));
         }
 
-        IEnumerable<string> requiredFfmpeg = LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Where(LinuxNativeLibraryCatalog.RequiredFfmpeg.Contains);
+        var requiredFfmpeg = LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Where(LinuxNativeLibraryCatalog.RequiredFfmpeg.Contains);
         if (ffmpegLoaded && ffmpegDirectory is not null)
         {
             checks.AddRange(requiredFfmpeg.Select(fileName =>
@@ -273,7 +273,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         // which files exist somewhere and which do not.
         var completeDirectory = searchPaths.FirstOrDefault(path =>
             LinuxNativeLibraryCatalog.RequiredFfmpeg.All(fileName => File.Exists(Path.Combine(path, fileName))));
-        Dictionary<string, string> foundFfmpeg = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.RequiredFfmpeg);
+        var foundFfmpeg = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.RequiredFfmpeg);
         foreach (var fileName in requiredFfmpeg)
         {
             if (completeDirectory is not null)
@@ -287,10 +287,10 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         return new NativeDependencyReport(checks, searchPaths) { IsAudioAvailable = bassLoaded };
     }
 
-    private static NativeLibraryCheck Missing(string component, string fileName, bool isRequired, Lazy<string[]> presentNames) =>
+    static NativeLibraryCheck Missing(string component, string fileName, bool isRequired, Lazy<string[]> presentNames) =>
         new(component, fileName, isRequired, NativeLibraryStatus.Missing, Hint: NativeDependencyReport.FindVersionHint(fileName, presentNames.Value));
 
-    private static IEnumerable<string> ListFileNames(IReadOnlyList<string> searchPaths)
+    static IEnumerable<string> ListFileNames(IReadOnlyList<string> searchPaths)
     {
         foreach (var path in searchPaths)
         {
@@ -309,7 +309,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         }
     }
 
-    private string? ResolveBassPath(string libraryName)
+    string? ResolveBassPath(string libraryName)
     {
         var fileName = LinuxNativeLibraryCatalog.MapDllImportName(libraryName);
         lock (_gate)
@@ -320,11 +320,11 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
 }
 
 /// <summary>Real native operations.</summary>
-internal sealed class LinuxNativeOperations : ILinuxNativeOperations
+sealed class LinuxNativeOperations : ILinuxNativeOperations
 {
-    private static readonly Lock ResolverGate = new();
-    private static readonly HashSet<Assembly> ResolvedAssemblies = [];
-    private static Func<string, string?>? _resolvePath;
+    static readonly Lock ResolverGate = new();
+    static readonly HashSet<Assembly> ResolvedAssemblies = [];
+    static Func<string, string?>? _resolvePath;
 
     public bool TryLoad(string path, out IntPtr handle) => NativeLibrary.TryLoad(path, out handle);
 
@@ -353,7 +353,7 @@ internal sealed class LinuxNativeOperations : ILinuxNativeOperations
         lock (ResolverGate)
         {
             _resolvePath = resolvePath;
-            foreach (Assembly assembly in new[] { typeof(ManagedBass.Bass).Assembly, typeof(ManagedBass.Fx.BassFx).Assembly, typeof(ManagedBass.Midi.BassMidi).Assembly })
+            foreach (var assembly in new[] { typeof(ManagedBass.Bass).Assembly, typeof(ManagedBass.Fx.BassFx).Assembly, typeof(ManagedBass.Midi.BassMidi).Assembly })
             {
                 if (!ResolvedAssemblies.Add(assembly))
                     continue;
@@ -371,7 +371,7 @@ internal sealed class LinuxNativeOperations : ILinuxNativeOperations
         }
     }
 
-    private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
         Func<string, string?>? resolvePath;
         lock (ResolverGate)

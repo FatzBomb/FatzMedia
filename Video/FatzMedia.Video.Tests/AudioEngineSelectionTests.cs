@@ -22,7 +22,7 @@ public sealed class AudioEngineSelectionTests
     [Fact]
     public void ServiceProvider_WithoutAFactory_UsesTheBassEngineAndThePlatformMonitor()
     {
-        IServiceProvider services = Create(new MediaPlayerConfiguration(), out TestDeviceMonitor platformMonitor);
+        var services = Create(new MediaPlayerConfiguration(), out var platformMonitor);
 
         _ = Assert.IsType<AudioEngine>(services.GetRequiredService<IAudioEngine>());
         Assert.Same(platformMonitor, services.GetRequiredService<IAudioDeviceMonitor>());
@@ -32,10 +32,10 @@ public sealed class AudioEngineSelectionTests
     public void ServiceProvider_WithAFactory_UsesItsEngine_AndForwardsDeviceChangesOfBoth()
     {
         var engine = new DeviceReportingEngine();
-        IServiceProvider services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) }, out TestDeviceMonitor platformMonitor);
+        var services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) }, out var platformMonitor);
 
         Assert.Same(engine, services.GetRequiredService<IAudioEngine>());
-        IAudioDeviceMonitor monitor = services.GetRequiredService<IAudioDeviceMonitor>();
+        var monitor = services.GetRequiredService<IAudioDeviceMonitor>();
         _ = Assert.IsType<AudioEngineDeviceMonitor>(monitor);
         List<AudioDeviceChangeKind> kinds = [];
         monitor.DeviceChanged += (_, info) => kinds.Add(info.Kind);
@@ -60,7 +60,7 @@ public sealed class AudioEngineSelectionTests
         DiagnosticRouter.DiagnosticOccurred += Capture;
         try
         {
-            IServiceProvider services = Create(
+            var services = Create(
                 new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => throw new DllNotFoundException("no fatzaudio")) },
                 out _);
             _ = Assert.IsType<AudioEngine>(services.GetRequiredService<IAudioEngine>());
@@ -82,7 +82,7 @@ public sealed class AudioEngineSelectionTests
     [InlineData(new[] { "--audio=wasapi" }, PlayerAudioEngine.Bass, "wasapi")]
     public void PlayerOption_ParsesTheAudioEngine(string[] args, PlayerAudioEngine expected, string? unknown)
     {
-        PlayerStartupOptions options = PlayerStartupOptions.Parse(args);
+        var options = PlayerStartupOptions.Parse(args);
 
         Assert.Equal(expected, options.AudioEngine);
         Assert.Equal(unknown, options.UnknownAudioEngine);
@@ -92,22 +92,22 @@ public sealed class AudioEngineSelectionTests
             Assert.Contains(options.DescribeUnknownValues(), line => line == "Unknown --audio value 'wasapi' (use bass or fatz); using bass.");
     }
 
-    private static IServiceProvider Create(MediaPlayerConfiguration configuration, out TestDeviceMonitor platformMonitor)
+    static IServiceProvider Create(MediaPlayerConfiguration configuration, out TestDeviceMonitor platformMonitor)
     {
         var platform = new TestPlatformServices();
-        IServiceProvider services = PlayerServiceProvider.Create(configuration, [], platform);
+        var services = PlayerServiceProvider.Create(configuration, [], platform);
         platformMonitor = platform.Monitor;
         return services;
     }
 
-    private sealed class TestFactory(Func<IAudioEngine> create) : IAudioEngineFactory
+    sealed class TestFactory(Func<IAudioEngine> create) : IAudioEngineFactory
     {
         public string Name => "Test";
 
         public IAudioEngine Create(MediaPlayerConfiguration configuration) => create();
     }
 
-    private sealed class DeviceReportingEngine : IAudioEngine, IAudioDeviceChangeSource
+    sealed class DeviceReportingEngine : IAudioEngine, IAudioDeviceChangeSource
     {
 #pragma warning disable CS0067 // the engine events are not used here
         public event EventHandler<AudioEngineState>? StateChanged;
@@ -160,7 +160,7 @@ public sealed class AudioEngineSelectionTests
         }
     }
 
-    private sealed class TestDeviceMonitor : IAudioDeviceMonitor
+    sealed class TestDeviceMonitor : IAudioDeviceMonitor
     {
         public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
 
@@ -179,7 +179,7 @@ public sealed class AudioEngineSelectionTests
 
     // Audio is reported available; BASS itself is not loaded, so the BASS engine is created and
     // fails to initialize, as on a machine without the BASS libraries.
-    private sealed class TestPlatformServices : IPlatformServices
+    sealed class TestPlatformServices : IPlatformServices
     {
         public TestDeviceMonitor Monitor { get; } = new();
 

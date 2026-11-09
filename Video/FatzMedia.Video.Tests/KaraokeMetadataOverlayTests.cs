@@ -16,7 +16,7 @@ public sealed class KaraokeMetadataOverlayTests
     [Fact]
     public void IntroMetadata_LateLyrics_UsesCenteredCardTimeline()
     {
-        KaraokeCueTiming timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 12, durationSeconds: 20);
+        var timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 12, durationSeconds: 20);
 
         Assert.False(timing.UseSplitMetadataBands);
         Assert.Equal(0, timing.GetIntroMetadataOpacity(TimeSpan.FromMilliseconds(500)));
@@ -29,7 +29,7 @@ public sealed class KaraokeMetadataOverlayTests
     [Fact]
     public void IntroMetadata_EarlyLyrics_UsesBandsThroughEightSeconds()
     {
-        KaraokeCueTiming timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 5, durationSeconds: 20);
+        var timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 5, durationSeconds: 20);
 
         Assert.True(timing.UseSplitMetadataBands);
         Assert.Equal(1, timing.GetIntroMetadataOpacity(TimeSpan.FromSeconds(3)));
@@ -40,7 +40,7 @@ public sealed class KaraokeMetadataOverlayTests
     [Fact]
     public void EndMetadata_RequiresTimeAndEmbeddedMetadata()
     {
-        KaraokeCueTiming timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 12, durationSeconds: 15) with
+        var timing = CreateTiming(CreateMetadata(), firstPresentationSeconds: 12, durationSeconds: 15) with
         {
             EndLyricFadeEnd = TimeSpan.FromSeconds(10),
         };
@@ -51,13 +51,13 @@ public sealed class KaraokeMetadataOverlayTests
         Assert.Equal(0.5f, timing.GetEndMetadataOpacity(TimeSpan.FromMilliseconds(14625)), 3);
         Assert.Equal(0, timing.GetEndMetadataOpacity(TimeSpan.FromSeconds(15)));
 
-        KaraokeCueTiming fallback = timing with { Metadata = CreateMetadata(isFallback: true) };
+        var fallback = timing with { Metadata = CreateMetadata(isFallback: true) };
         Assert.Equal(0, fallback.GetEndMetadataOpacity(TimeSpan.FromSeconds(12)));
-        KaraokeCueTiming tooShort = timing with { MediaDuration = TimeSpan.FromSeconds(12) };
+        var tooShort = timing with { MediaDuration = TimeSpan.FromSeconds(12) };
         Assert.Equal(0, tooShort.GetEndMetadataOpacity(TimeSpan.FromSeconds(11)));
     }
 
-    private static KaraokeCueTiming CreateTiming(
+    static KaraokeCueTiming CreateTiming(
         KaraokeMetadata metadata,
         double firstPresentationSeconds,
         double durationSeconds)
@@ -74,7 +74,7 @@ public sealed class KaraokeMetadataOverlayTests
         };
     }
 
-    private static KaraokeMetadata CreateMetadata(bool isFallback = false) => new(
+    static KaraokeMetadata CreateMetadata(bool isFallback = false) => new(
         "Title",
         "Artist",
         "Writer",

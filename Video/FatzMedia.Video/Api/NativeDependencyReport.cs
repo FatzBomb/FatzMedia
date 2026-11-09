@@ -78,7 +78,7 @@ public sealed partial class NativeDependencyReport(IReadOnlyList<NativeLibraryCh
     public IReadOnlyList<string> Describe() =>
     [
         .. RequiredProblems.Select(DescribeLine),
-        .. (IsAudioAvailable ? Array.Empty<string>() : new[] { AudioUnavailableLine }),
+        .. (IsAudioAvailable ? Array.Empty<string>() : [AudioUnavailableLine]),
         .. OptionalProblems.Select(DescribeLine),
     ];
 
@@ -111,7 +111,7 @@ public sealed partial class NativeDependencyReport(IReadOnlyList<NativeLibraryCh
         return null;
     }
 
-    private static string DescribeLine(NativeLibraryCheck library)
+    static string DescribeLine(NativeLibraryCheck library)
     {
         var kind = library.IsRequired ? "required" : "optional";
         var what = library.Status switch

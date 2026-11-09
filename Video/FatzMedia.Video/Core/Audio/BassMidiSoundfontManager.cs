@@ -6,9 +6,9 @@ namespace FatzMedia.Video.Core.Audio;
 /// Manages the default MIDI soundfont for BASS MIDI synthesis. BASS MIDI only supports SF2/SFZ;
 /// DLS files (including Windows gm.dls) are converted to SF2 and cached.
 /// </summary>
-internal static class BassMidiSoundfontManager
+static class BassMidiSoundfontManager
 {
-    private static string? _currentSoundfontPath;
+    static string? _currentSoundfontPath;
 
     /// <summary>
     /// Initializes the default MIDI soundfont. If <paramref name="userPath"/> is set, that path
@@ -40,7 +40,7 @@ internal static class BassMidiSoundfontManager
         }
     }
 
-    private static string? ResolveSoundfontPath(string? userPath)
+    static string? ResolveSoundfontPath(string? userPath)
     {
         if (!string.IsNullOrWhiteSpace(userPath) && File.Exists(userPath))
             return ResolveSoundfontFile(userPath);
@@ -51,13 +51,13 @@ internal static class BassMidiSoundfontManager
         return AutoDetectSoundfont();
     }
 
-    private static string? ResolveSoundfontFile(string path)
+    static string? ResolveSoundfontFile(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         return ext is ".sf2" or ".sfz" ? path : ext == ".dls" ? DlsToSf2Converter.Convert(path) : path;
     }
 
-    private static string? AutoDetectSoundfont()
+    static string? AutoDetectSoundfont()
     {
         var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 

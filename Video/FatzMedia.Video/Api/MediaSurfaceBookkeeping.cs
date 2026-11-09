@@ -16,10 +16,10 @@ namespace FatzMedia.Video;
 /// </remarks>
 public sealed class MediaSurfaceBookkeeping
 {
-    private static int s_nextSurfaceNumber;
+    static int s_nextSurfaceNumber;
 
-    private readonly string _diagnosticCategory;
-    private bool _attachRefusalReported;
+    readonly string _diagnosticCategory;
+    bool _attachRefusalReported;
 
     /// <param name="diagnosticCategory">The category of the surface's diagnostics (for example <c>Wpf.MediaSurface</c>).</param>
     public MediaSurfaceBookkeeping(string diagnosticCategory)

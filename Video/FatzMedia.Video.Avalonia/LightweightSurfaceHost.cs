@@ -9,13 +9,13 @@ namespace FatzMedia.Video.Avalonia;
 /// visual tree stands for the WPF control's Loaded state: attached, the source loads; detached,
 /// the player is released.
 /// </summary>
-internal sealed class LightweightSurfaceHost : IDisposable
+sealed class LightweightSurfaceHost : IDisposable
 {
-    private readonly Func<Task> _reload;
-    private IPlatformFactory? _platformFactory;
-    private bool _isAttached;
-    private bool _isContentVisible;
-    private bool _disposed;
+    readonly Func<Task> _reload;
+    IPlatformFactory? _platformFactory;
+    bool _isAttached;
+    bool _isContentVisible;
+    bool _disposed;
 
     public LightweightSurfaceHost(MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
     {
@@ -87,15 +87,15 @@ internal sealed class LightweightSurfaceHost : IDisposable
         Surface.ContentVisibilityChanged -= OnSurfaceContentVisibilityChanged;
     }
 
-    private async void RunQueuedReload()
+    async void RunQueuedReload()
     {
         await Controller.RunQueuedReloadAsync(() => !_disposed && _isAttached, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.
-    private void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
+    void OnPlayerChanged(object? sender, EventArgs e) => Surface.Player = Controller.Session;
 
-    private void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
+    void OnSurfaceContentVisibilityChanged(object? sender, EventArgs e)
     {
         var isVisible = Surface.IsContentVisible;
         if (isVisible == _isContentVisible)

@@ -23,10 +23,10 @@ public class BackgroundSurface : Control
     /// <summary>The diagnostic category of this control's own notices.</summary>
     public const string DiagnosticCategory = "WinForms.BackgroundSurface";
 
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill };
-    private readonly LightweightSurfaceHost _host;
-    private object? _source;
-    private Color _backgroundColor = Color.Black;
+    readonly MediaSurface _surface = new() { Dock = DockStyle.Fill };
+    readonly LightweightSurfaceHost _host;
+    object? _source;
+    Color _backgroundColor = Color.Black;
 
     public BackgroundSurface()
     {
@@ -174,9 +174,9 @@ public class BackgroundSurface : Control
 
     public Task<bool> StopAsync() => _host.Controller.StopAsync();
 
-    private bool ShouldSerializeBackgroundColor() => _backgroundColor != Color.Black;
+    bool ShouldSerializeBackgroundColor() => _backgroundColor != Color.Black;
 
-    private void ResetBackgroundColor() => BackgroundColor = Color.Black;
+    void ResetBackgroundColor() => BackgroundColor = Color.Black;
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -198,7 +198,7 @@ public class BackgroundSurface : Control
         base.Dispose(disposing);
     }
 
-    private Task<bool> LoadMediaAsync(MediaInputSource source)
+    Task<bool> LoadMediaAsync(MediaInputSource source)
     {
         ObjectDisposedException.ThrowIf(_host.IsDisposed, this);
         return _host.Controller.LoadAsync(source, PlatformFactory);
@@ -206,7 +206,7 @@ public class BackgroundSurface : Control
 
     // A newer Source abandons a load in progress: Core's controller checks after every await, and
     // a solid colour releases the player.
-    private Task ReloadSourceAsync() => _source switch
+    Task ReloadSourceAsync() => _source switch
     {
         null => ShowSolidColor(_backgroundColor),
         Color color => ShowSolidColor(color),
@@ -216,7 +216,7 @@ public class BackgroundSurface : Control
         _ => throw new NotSupportedException($"Background source type {_source.GetType().Name} is not supported."),
     };
 
-    private Task ShowSolidColor(Color color)
+    Task ShowSolidColor(Color color)
     {
         BackgroundColor = color;
         _host.Controller.ReleasePlayer();

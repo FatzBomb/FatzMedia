@@ -9,21 +9,21 @@ namespace FatzMedia.Video.Pipeline;
 /// <param name="Targets">
 /// The group's surfaces as a composition filter; null when every surface is in this one group.
 /// </param>
-internal readonly record struct PresentationTimingGroup(
+readonly record struct PresentationTimingGroup(
     PresentationVsyncTiming Timing,
     bool IncludesPrimary,
     IReadOnlyList<string> SurfaceIds,
     MediaCompositionTargetFilter? Targets = null);
 
 /// <summary>Fills <paramref name="destination"/> (cleared by the caller) with the current groups.</summary>
-internal delegate void PresentationTimingSource(List<PresentationTimingGroup> destination);
+delegate void PresentationTimingSource(List<PresentationTimingGroup> destination);
 
 /// <summary>
 /// Lets the presentation coordinator hand the video pipeline the vertical-blank timing of the
 /// displays showing its surfaces, for <see cref="VideoFrameTiming.DisplayLocked"/> timing.
 /// Internal so the public engine contract does not change.
 /// </summary>
-internal interface IPresentationTimingSink
+interface IPresentationTimingSink
 {
     /// <summary>
     /// Sets the source of display timing groups, or clears it with null. Called from the video
@@ -33,7 +33,7 @@ internal interface IPresentationTimingSink
 }
 
 /// <summary>Selects how the video presentation loop times frames (Stage 017A slice 4).</summary>
-internal interface IVideoFrameTimingControl
+interface IVideoFrameTimingControl
 {
     VideoFrameTiming FrameTiming { get; set; }
 }

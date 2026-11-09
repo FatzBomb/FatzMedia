@@ -1,6 +1,5 @@
-using FatzMedia.Video.Core.Abstractions;
-using FatzMedia.Video.Core.Configuration;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Abstractions;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -17,7 +16,7 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxBassNativeTests(ITestOutputHelper output)
 {
-    private const string MediaDir = LinuxNativeTestPlayer.MediaDir;
+    const string MediaDir = LinuxNativeTestPlayer.MediaDir;
 
     [Fact]
     public void NativeLoad_ReportsBassAndFfmpeg()

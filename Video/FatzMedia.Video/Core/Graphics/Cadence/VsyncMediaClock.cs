@@ -19,7 +19,7 @@ namespace FatzMedia.Video.Core.Graphics.Cadence;
 /// position. Single-threaded: the presentation loop owns it.
 /// </para>
 /// </remarks>
-internal sealed class VsyncMediaClock(long stopwatchFrequency)
+sealed class VsyncMediaClock(long stopwatchFrequency)
 {
     /// <summary>An error this large is a jump, not jitter: the filter restarts there.</summary>
     internal const double JumpThresholdSeconds = 0.040;
@@ -33,20 +33,20 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
     /// </summary>
     internal const double MinRefreshGapSeconds = 0.002;
 
-    private const double PositionGain = 0.1;
-    private const double RateGain = 0.004;
-    private const double MinRate = 0.05;
-    private const double MaxRate = 8.0;
+    const double PositionGain = 0.1;
+    const double RateGain = 0.004;
+    const double MinRate = 0.05;
+    const double MaxRate = 8.0;
 
-    private readonly double _frequency = stopwatchFrequency > 0
+    readonly double _frequency = stopwatchFrequency > 0
         ? stopwatchFrequency
         : throw new ArgumentOutOfRangeException(nameof(stopwatchFrequency));
 
-    private bool _hasState;
-    private long _vsync;
-    private double _position;
-    private double _rate = 1.0;
-    private long _samples;
+    bool _hasState;
+    long _vsync;
+    double _position;
+    double _rate = 1.0;
+    long _samples;
 
     /// <summary>Gets the filtered playback rate (media seconds per wall second).</summary>
     public double Rate => _rate;
@@ -103,7 +103,7 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
         return _position;
     }
 
-    private double Restart(long vsyncTimestamp, double observedPosition)
+    double Restart(long vsyncTimestamp, double observedPosition)
     {
         if (_hasState)
             Restarts++;

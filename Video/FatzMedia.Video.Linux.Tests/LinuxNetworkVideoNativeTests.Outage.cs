@@ -1,6 +1,6 @@
-using FatzMedia.Video.Core.Configuration;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -15,7 +15,7 @@ namespace FatzMedia.Video.Linux.Tests;
 public sealed partial class LinuxNetworkVideoNativeTests
 {
     // Longer than what the player holds ahead (the 1 s read-ahead plus decoded frames, about 4 s).
-    private static readonly TimeSpan OutageLength = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan OutageLength = TimeSpan.FromSeconds(5);
 
     [Fact]
     public void Hls_OutageLongerThanTheBuffer_ResumesOnItsOwnAndPlaysToTheEnd()
@@ -124,11 +124,11 @@ public sealed partial class LinuxNetworkVideoNativeTests
         Assert.Empty(session.ErrorList);
     }
 
-    private void AssertResumesAfterOutage(string ffmpeg, string media, string path)
+    void AssertResumesAfterOutage(string ffmpeg, string media, string path)
     {
         using var server = new LocalHttpMediaServer(media);
         var clock = Stopwatch.StartNew();
-        long outageStart = long.MaxValue;
+        var outageStart = long.MaxValue;
         server.Plan = _ =>
         {
             var now = clock.ElapsedTicks;

@@ -3,13 +3,13 @@ namespace FatzMedia.Video.Core.Audio;
 /// <summary>
 /// Maps tracker order/row positions back to their first-pass media time after an authored loop.
 /// </summary>
-internal sealed class TrackerPositionTimeline
+sealed class TrackerPositionTimeline
 {
-    private readonly Lock _sync = new();
-    private readonly Dictionary<int, List<RowSample>> _samplesByOrder = [];
-    private int _lastOrder = -1;
-    private int _lastRow = -1;
-    private bool _loopDetected;
+    readonly Lock _sync = new();
+    readonly Dictionary<int, List<RowSample>> _samplesByOrder = [];
+    int _lastOrder = -1;
+    int _lastRow = -1;
+    bool _loopDetected;
 
     public double Resolve(int order, int row, double bytePositionSeconds)
     {
@@ -39,7 +39,7 @@ internal sealed class TrackerPositionTimeline
         }
     }
 
-    private void AddSample(int order, int row, double seconds)
+    void AddSample(int order, int row, double seconds)
     {
         if (!_samplesByOrder.TryGetValue(order, out var samples))
         {
@@ -53,32 +53,32 @@ internal sealed class TrackerPositionTimeline
         }
     }
 
-    private double ResolveMappedPosition(int order, int row, double fallbackSeconds)
+    double ResolveMappedPosition(int order, int row, double fallbackSeconds)
     {
         if (!_samplesByOrder.TryGetValue(order, out var samples) || samples.Count == 0)
         {
             return fallbackSeconds;
         }
 
-        int upperIndex = samples.FindIndex(sample => sample.Row >= row);
+        var upperIndex = samples.FindIndex(sample => sample.Row >= row);
         if (upperIndex < 0)
         {
             return samples[^1].Seconds;
         }
 
-        RowSample upper = samples[upperIndex];
+        var upper = samples[upperIndex];
         if (upper.Row == row || upperIndex == 0)
         {
             return upper.Seconds;
         }
 
-        RowSample lower = samples[upperIndex - 1];
+        var lower = samples[upperIndex - 1];
         double rowRange = upper.Row - lower.Row;
-        double progress = rowRange > 0 ? (row - lower.Row) / rowRange : 0;
+        var progress = rowRange > 0 ? (row - lower.Row) / rowRange : 0;
         return lower.Seconds + ((upper.Seconds - lower.Seconds) * progress);
     }
 
-    private void ResetCore()
+    void ResetCore()
     {
         _samplesByOrder.Clear();
         _lastOrder = -1;
@@ -86,8 +86,8 @@ internal sealed class TrackerPositionTimeline
         _loopDetected = false;
     }
 
-    private static bool IsBefore(int order, int row, int previousOrder, int previousRow) =>
+    static bool IsBefore(int order, int row, int previousOrder, int previousRow) =>
         order < previousOrder || (order == previousOrder && row < previousRow);
 
-    private readonly record struct RowSample(int Row, double Seconds);
+    readonly record struct RowSample(int Row, double Seconds);
 }

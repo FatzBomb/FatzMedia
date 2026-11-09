@@ -50,7 +50,7 @@ public static class FileTreeBuilder
                 return tree;
             }
 
-            IArchiveHandle handle = archiveService.Open(path);
+            var handle = archiveService.Open(path);
             tree.ArchiveHandle = handle;
 
             var firstAudio = (IArchiveEntryInfo?)null;
@@ -61,7 +61,7 @@ public static class FileTreeBuilder
             var audioByBase = new Dictionary<string, IArchiveEntryInfo>(StringComparer.OrdinalIgnoreCase);
             var cdgByBase = new Dictionary<string, IArchiveEntryInfo>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (IArchiveEntryInfo e in handle.Entries)
+            foreach (var e in handle.Entries)
             {
                 var key = e.Key;
                 if (string.IsNullOrEmpty(key)) continue;
@@ -78,7 +78,7 @@ public static class FileTreeBuilder
                 {
                     if (firstAudio == null || (bassAudio && !FileTypes.IsAudio(firstAudio.Key))) firstAudio = e;
                     var b = Path.GetFileNameWithoutExtension(key);
-                    if (!string.IsNullOrWhiteSpace(b) && (!audioByBase.TryGetValue(b, out IArchiveEntryInfo? earlier) || (bassAudio && !FileTypes.IsAudio(earlier.Key))))
+                    if (!string.IsNullOrWhiteSpace(b) && (!audioByBase.TryGetValue(b, out var earlier) || (bassAudio && !FileTypes.IsAudio(earlier.Key))))
                         audioByBase[b] = e;
                 }
                 else if (FileTypes.Cdg.Contains(eExt))
@@ -90,9 +90,9 @@ public static class FileTreeBuilder
             }
 
             IArchiveEntryInfo? pairedAudio = null, pairedCdg = null;
-            foreach ((var b, IArchiveEntryInfo? cdg) in cdgByBase)
+            foreach ((var b, var cdg) in cdgByBase)
             {
-                if (audioByBase.TryGetValue(b, out IArchiveEntryInfo? aud)) { pairedAudio = aud; pairedCdg = cdg; break; }
+                if (audioByBase.TryGetValue(b, out var aud)) { pairedAudio = aud; pairedCdg = cdg; break; }
             }
 
             if (pairedAudio != null && pairedCdg != null)

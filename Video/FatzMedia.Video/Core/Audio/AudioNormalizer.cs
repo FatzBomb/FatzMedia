@@ -1,7 +1,7 @@
-using ManagedBass;
-using ManagedBass.Fx;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using ManagedBass;
+using ManagedBass.Fx;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
@@ -10,24 +10,24 @@ namespace FatzMedia.Video.Core.Audio;
 /// Handles audio peak analysis and normalization gain calculation.
 /// Thread-safe implementation optimized for real-time audio processing.
 /// </summary>
-internal sealed class AudioNormalizer
+sealed class AudioNormalizer
 {
     #region Constants and Static Fields
 
     // Normalization target level (0.8 = industry standard, can be configured)
-    private const double NormalizationTarget = 0.8;
+    const double NormalizationTarget = 0.8;
 
     #endregion
 
     #region Private Fields
 
     // Thread-safe normalization gain using Volatile operations
-    private double _normalizationGain = 1.0;
+    double _normalizationGain = 1.0;
 
     // Guards the FX handle and the reused parameter object: the gain is applied from the
     // analysis thread and from the Normalize setter, and the handle is replaced on open.
-    private readonly Lock _gainFxLock = new();
-    private int _gainFxHandle = 0;
+    readonly Lock _gainFxLock = new();
+    int _gainFxHandle = 0;
 
     #endregion
 
@@ -124,7 +124,7 @@ internal sealed class AudioNormalizer
 
         try
         {
-            int fxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
+            var fxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
             lock (_gainFxLock)
                 _gainFxHandle = fxHandle;
 
@@ -146,7 +146,7 @@ internal sealed class AudioNormalizer
         }
     }
 
-    private readonly VolumeParameters _gainParam = new()
+    readonly VolumeParameters _gainParam = new()
     {
         fTarget = 1f,
         lChannel = FXChannelFlags.All,
@@ -159,13 +159,13 @@ internal sealed class AudioNormalizer
     /// Applies the current normalization gain to the FX handle.
     /// This is called when normalization is enabled/disabled or gain changes.
     /// </summary>
-    private void ApplyGainToFx(bool normalize)
+    void ApplyGainToFx(bool normalize)
     {
         lock (_gainFxLock)
             ApplyGainToFxCore(normalize);
     }
 
-    private void ApplyGainToFxCore(bool normalize)
+    void ApplyGainToFxCore(bool normalize)
     {
         if (_gainFxHandle == 0)
             return;
@@ -200,7 +200,7 @@ internal sealed class AudioNormalizer
 
     #region Private Methods
 
-    private double AnalyzePeakInternal(IAudioLevelSource source, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
+    double AnalyzePeakInternal(IAudioLevelSource source, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
     {
         var peak = 0.0;
 
@@ -225,7 +225,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
+    double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
     {
         const double blockSeconds = 0.5;
         const int maxWindows = 240;
@@ -242,7 +242,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakBySeek(IAudioLevelSource source, double duration, double blockSeconds, int maxWindows,
+    static double AnalyzePeakBySeek(IAudioLevelSource source, double duration, double blockSeconds, int maxWindows,
         CancellationToken cancellationToken)
     {
         var stride = Math.Max(1, (int)Math.Ceiling(duration / (blockSeconds * maxWindows)));
@@ -265,7 +265,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakSequential(IAudioLevelSource source, double blockSeconds, int maxWindows,
+    static double AnalyzePeakSequential(IAudioLevelSource source, double blockSeconds, int maxWindows,
         CancellationToken cancellationToken)
     {
         var peak = 0.0;

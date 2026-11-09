@@ -43,7 +43,7 @@ public sealed class NetworkSourceTests
     [Fact]
     public void Matrix_LocalFileRow()
     {
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.For(MediaInputSource.FromFile("song.mp3"));
+        var row = MediaSourceCapabilityMatrix.For(MediaInputSource.FromFile("song.mp3"));
 
         Assert.Same(MediaSourceCapabilityMatrix.LocalFile, row);
         Assert.True(row.IsSeekable);
@@ -56,7 +56,7 @@ public sealed class NetworkSourceTests
     [Fact]
     public void Matrix_ArchiveRow_IsLocalWithoutAnalysis()
     {
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.Archive;
+        var row = MediaSourceCapabilityMatrix.Archive;
 
         Assert.Equal(MediaSourceClass.Archive, row.SourceClass);
         Assert.True(row.IsSeekable);
@@ -71,7 +71,7 @@ public sealed class NetworkSourceTests
     [Fact]
     public void Matrix_UnprobedNetwork_IsConservativeLive()
     {
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.For(MediaInputSource.FromUri(new Uri("https://h/song.mp3")));
+        var row = MediaSourceCapabilityMatrix.For(MediaInputSource.FromUri(new Uri("https://h/song.mp3")));
 
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.False(row.IsSeekable);
@@ -82,7 +82,7 @@ public sealed class NetworkSourceTests
     [Fact]
     public void Matrix_NetworkFileWithRanges_IsSeekableFinite()
     {
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(1_000_000, true, false));
+        var row = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(1_000_000, true, false));
 
         Assert.Equal(MediaSourceClass.NetworkFile, row.SourceClass);
         Assert.True(row.IsSeekable);
@@ -104,7 +104,7 @@ public sealed class NetworkSourceTests
     [InlineData(-1L)]
     public void Matrix_UnknownLength_IsLive(long? length)
     {
-        MediaSourceCapabilities row = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(length, true, false));
+        var row = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(length, true, false));
 
         Assert.Equal(MediaSourceClass.NetworkLive, row.SourceClass);
         Assert.False(row.IsSeekable);
@@ -121,7 +121,7 @@ public sealed class NetworkSourceTests
     public void SourceInfo_CarriesUriAndCapabilities()
     {
         var source = MediaInputSource.FromUri(new Uri("https://h/a.mp3"));
-        MediaSourceCapabilities probed = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(10, true, false));
+        var probed = MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(10, true, false));
 
         var info = new MediaSourceInfo(source, Core.Abstractions.MediaContent.Audio, probed);
 
@@ -135,7 +135,7 @@ public sealed class NetworkRetryPolicyTests
     [Fact]
     public void Default_IsSingleAttemptNoRetry()
     {
-        NetworkRetryPolicy policy = NetworkRetryPolicy.Default;
+        var policy = NetworkRetryPolicy.Default;
 
         Assert.Equal(0, policy.MaxRetries);
         Assert.Equal(1, policy.MaxAttempts);
@@ -192,7 +192,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseIcy_SplitsArtistAndTitle()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseIcy("StreamTitle='Daft Punk - One More Time';StreamUrl='';");
+        var metadata = IcyMetadataParser.ParseIcy("StreamTitle='Daft Punk - One More Time';StreamUrl='';");
 
         Assert.Equal("Daft Punk", metadata.Artist);
         Assert.Equal("One More Time", metadata.Title);
@@ -202,7 +202,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseIcy_KeepsApostrophesInsideTitle()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseIcy("StreamTitle='Guns N' Roses - Sweet Child O' Mine';");
+        var metadata = IcyMetadataParser.ParseIcy("StreamTitle='Guns N' Roses - Sweet Child O' Mine';");
 
         Assert.Equal("Guns N' Roses", metadata.Artist);
         Assert.Equal("Sweet Child O' Mine", metadata.Title);
@@ -211,7 +211,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseIcy_TitleWithoutSeparator()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseIcy("StreamTitle='Station ID';");
+        var metadata = IcyMetadataParser.ParseIcy("StreamTitle='Station ID';");
 
         Assert.Null(metadata.Artist);
         Assert.Equal("Station ID", metadata.Title);
@@ -220,7 +220,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseIcy_WithoutTrailingSemicolon()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseIcy("StreamTitle='A - B'");
+        var metadata = IcyMetadataParser.ParseIcy("StreamTitle='A - B'");
 
         Assert.Equal("A", metadata.Artist);
         Assert.Equal("B", metadata.Title);
@@ -237,7 +237,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseOgg_ReadsTitleAndArtistCaseInsensitively()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseOggComments(["artist=Air", "TITLE=La Femme d'Argent", "ALBUM=Moon Safari"]);
+        var metadata = IcyMetadataParser.ParseOggComments(["artist=Air", "TITLE=La Femme d'Argent", "ALBUM=Moon Safari"]);
 
         Assert.Equal("Air", metadata.Artist);
         Assert.Equal("La Femme d'Argent", metadata.Title);
@@ -247,7 +247,7 @@ public sealed class IcyMetadataParserTests
     [Fact]
     public void ParseOgg_ArtistOnly_RawTitleIsArtistWithoutSeparator()
     {
-        StreamMetadata metadata = IcyMetadataParser.ParseOggComments(["ARTIST=Foo"]);
+        var metadata = IcyMetadataParser.ParseOggComments(["ARTIST=Foo"]);
 
         Assert.Equal("Foo", metadata.Artist);
         Assert.Null(metadata.Title);

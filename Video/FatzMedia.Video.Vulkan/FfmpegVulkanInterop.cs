@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Vulkan;
 /// libavutil 61) for 64-bit processes. FFmpeg.AutoGen does not bind them. Only the fields this
 /// renderer reads or writes matter; the layouts are pinned by tests.
 /// </summary>
-internal static class FfmpegVulkanInterop
+static class FfmpegVulkanInterop
 {
     /// <summary><c>AV_NUM_DATA_POINTERS</c>.</summary>
     public const int DataPointers = 8;
@@ -22,7 +22,7 @@ internal static class FfmpegVulkanInterop
 
 /// <summary><c>AVVulkanDeviceQueueFamily</c>: a queue family FFmpeg may use.</summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct AVVulkanDeviceQueueFamily
+struct AVVulkanDeviceQueueFamily
 {
     public int Index;
     public int Count;
@@ -32,7 +32,7 @@ internal struct AVVulkanDeviceQueueFamily
 
 /// <summary><c>AVVulkanDeviceContext</c> (<c>AVHWDeviceContext.hwctx</c> for <c>AV_HWDEVICE_TYPE_VULKAN</c>).</summary>
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct AVVulkanDeviceContext
+unsafe struct AVVulkanDeviceContext
 {
     public void* Allocator;
     public nint GetInstanceProcAddr;
@@ -57,13 +57,13 @@ internal unsafe struct AVVulkanDeviceContext
     [System.Runtime.CompilerServices.InlineArray(FfmpegVulkanInterop.MaxQueueFamilies)]
     public struct QueueFamilyArray
     {
-        private AVVulkanDeviceQueueFamily _element;
+        AVVulkanDeviceQueueFamily _element;
     }
 }
 
 /// <summary><c>AVVulkanFramesContext</c> (<c>AVHWFramesContext.hwctx</c>).</summary>
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct AVVulkanFramesContext
+unsafe struct AVVulkanFramesContext
 {
     public ImageTiling Tiling;
     public ImageUsageFlags Usage;
@@ -81,7 +81,7 @@ internal unsafe struct AVVulkanFramesContext
 
 /// <summary><c>AVVkFrame</c>: the images of one decoded frame and their synchronization state.</summary>
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct AVVkFrame
+unsafe struct AVVkFrame
 {
     public fixed ulong Image[FfmpegVulkanInterop.DataPointers];
     public ImageTiling Tiling;

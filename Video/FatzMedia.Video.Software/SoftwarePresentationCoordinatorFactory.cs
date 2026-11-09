@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Software;
 /// <summary>Creates a portable Core presentation coordinator backed by software composition.</summary>
 public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
 
     public SoftwarePresentationCoordinatorFactory()
         : this(new SystemPrecisionWaiterFactory())

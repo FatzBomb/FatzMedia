@@ -11,9 +11,9 @@ namespace FatzMedia.Video;
 /// </remarks>
 public sealed class AudioFadeEnvelope
 {
-    private readonly AudioFadePoint[] _points;
+    readonly AudioFadePoint[] _points;
 
-    private AudioFadeEnvelope(AudioFadePoint[] sortedPoints)
+    AudioFadeEnvelope(AudioFadePoint[] sortedPoints)
     {
         _points = sortedPoints;
         Points = Array.AsReadOnly(sortedPoints);
@@ -50,9 +50,9 @@ public sealed class AudioFadeEnvelope
     {
         ArgumentNullException.ThrowIfNull(points);
         var byPosition = new SortedDictionary<double, AudioFadePoint>();
-        foreach (AudioFadePoint existing in _points)
+        foreach (var existing in _points)
             byPosition[existing.Position] = existing;
-        foreach (AudioFadePoint point in points)
+        foreach (var point in points)
             byPosition[point.Position] = point;
 
         return new AudioFadeEnvelope([.. byPosition.Values]);
@@ -73,11 +73,11 @@ public sealed class AudioFadeEnvelope
 
         for (var i = 1; i < _points.Length; i++)
         {
-            AudioFadePoint right = _points[i];
+            var right = _points[i];
             if (position > right.Position)
                 continue;
 
-            AudioFadePoint left = _points[i - 1];
+            var left = _points[i - 1];
             var span = right.Position - left.Position;
             var t = (position - left.Position) / span;
             return left.Gain + ((right.Gain - left.Gain) * t);
@@ -86,7 +86,7 @@ public sealed class AudioFadeEnvelope
         return _points[^1].Gain;
     }
 
-    private static double FindAudibleStart(AudioFadePoint[] points)
+    static double FindAudibleStart(AudioFadePoint[] points)
     {
         if (points[0].Gain > 0)
             return 0;
@@ -94,7 +94,7 @@ public sealed class AudioFadeEnvelope
         // Gain before the first point holds the first point's gain, so a zero first point opens
         // the plateau at 0 and every following zero point extends it.
         var plateauEnd = 0d;
-        foreach (AudioFadePoint point in points)
+        foreach (var point in points)
         {
             if (point.Gain > 0)
                 return plateauEnd;

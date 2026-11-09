@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Core.Network;
 /// Whether playback ran to its end (as opposed to a pause): a buffering spell in progress ends
 /// with it (ENG-034: the clock can run out during an outage).
 /// </param>
-internal readonly record struct NetworkBufferingSample(bool IsPlaying, TimeSpan ReadStall, double QueueFill, bool EndOfStream, bool PlaybackEnded = false);
+readonly record struct NetworkBufferingSample(bool IsPlaying, TimeSpan ReadStall, double QueueFill, bool EndOfStream, bool PlaybackEnded = false);
 
 /// <summary>
 /// Samples an FFmpeg network reader every 250 ms (the 014A cadence) and raises buffering changes
@@ -18,7 +18,7 @@ internal readonly record struct NetworkBufferingSample(bool IsPlaying, TimeSpan 
 /// player drops changes that arrive after the source closed. While playback is paused the state is
 /// left as it is; when playback has ended a buffering spell in progress ends.
 /// </summary>
-internal sealed class NetworkBufferingMonitor : IDisposable
+sealed class NetworkBufferingMonitor : IDisposable
 {
     /// <summary>
     /// The exit fill for a read-ahead sample (slice 2): its fill is already the progress towards
@@ -26,14 +26,14 @@ internal sealed class NetworkBufferingMonitor : IDisposable
     /// </summary>
     public const double ReadAheadExitFill = 1.0;
 
-    private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(250);
-    private readonly Lock _gate = new();
-    private readonly Func<NetworkBufferingSample> _sample;
-    private readonly Action<MediaBufferingChangedEventArgs> _raise;
-    private readonly Action? _onTick;
-    private readonly NetworkStallBufferingTracker _tracker;
-    private readonly Timer _timer;
-    private bool _disposed;
+    static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(250);
+    readonly Lock _gate = new();
+    readonly Func<NetworkBufferingSample> _sample;
+    readonly Action<MediaBufferingChangedEventArgs> _raise;
+    readonly Action? _onTick;
+    readonly NetworkStallBufferingTracker _tracker;
+    readonly Timer _timer;
+    bool _disposed;
 
     /// <param name="sample">Reads the reader's state.</param>
     /// <param name="raise">Raises a change, from the timer thread.</param>
@@ -48,7 +48,7 @@ internal sealed class NetworkBufferingMonitor : IDisposable
         _timer = new Timer(_ => Tick(), null, Interval, Interval);
     }
 
-    private void Tick()
+    void Tick()
     {
         try
         {
@@ -56,7 +56,7 @@ internal sealed class NetworkBufferingMonitor : IDisposable
                 return;
 
             _onTick?.Invoke();
-            NetworkBufferingSample sample = _sample();
+            var sample = _sample();
             MediaBufferingChangedEventArgs? change = null;
             lock (_gate)
             {

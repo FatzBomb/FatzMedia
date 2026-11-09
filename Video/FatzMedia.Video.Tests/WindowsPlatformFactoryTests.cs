@@ -21,7 +21,7 @@ public sealed class WindowsPlatformFactoryTests
         Assert.Null(rendererFactory.MediaEngine);
     }
 
-    private sealed class TestPresentationCoordinatorFactory(IMediaPresentationCoordinator coordinator) : IMediaPresentationCoordinatorFactory
+    sealed class TestPresentationCoordinatorFactory(IMediaPresentationCoordinator coordinator) : IMediaPresentationCoordinatorFactory
     {
         public string BackendName => "Test";
 

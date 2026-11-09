@@ -10,16 +10,16 @@ namespace FatzMedia.Video.Tests;
 /// </remarks>
 public sealed class PlayerSetControllerTests
 {
-    private static readonly ProcessSample Sample = new(12, 0.5, 40, 120);
+    static readonly ProcessSample Sample = new(12, 0.5, 40, 120);
 
     [Fact]
     public void Start_BuildsTheRequestedPlayersAndInitializesThemInOrder()
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 3 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
-        Task build = controller.StartAsync();
+        var build = controller.StartAsync();
 
         Assert.True(build.IsCompletedSuccessfully);
         Assert.Equal(["P1", "P2", "P3"], controller.Slots.Select(static slot => slot.Name));
@@ -36,7 +36,7 @@ public sealed class PlayerSetControllerTests
         // rebuild that follows may ask again.
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         Assert.True(controller.StartAsync().IsCompletedSuccessfully);
 
         controller.Slots[0].RaiseRendererDeviceLost();
@@ -53,7 +53,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
         Assert.True(controller.RebuildAsync().IsCompletedSuccessfully);
         Assert.Empty(host.Created);
@@ -66,13 +66,13 @@ public sealed class PlayerSetControllerTests
         var host = new FakeHost();
         var gate = new TaskCompletionSource();
         host.InitGates.Enqueue(gate.Task);
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
-        Task first = controller.StartAsync();
-        Task second = controller.RebuildAsync();
-        Task third = controller.RebuildAsync();
+        var first = controller.StartAsync();
+        var second = controller.RebuildAsync();
+        var third = controller.RebuildAsync();
         host.RequestedPlayerCount = 2;
-        Task fourth = controller.RebuildAsync();
+        var fourth = controller.RebuildAsync();
 
         Assert.Same(first, second);
         Assert.Same(first, third);
@@ -94,7 +94,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         host.Log.Clear();
         host.RequestedPlayerCount = 1;
@@ -112,12 +112,12 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         var disposing = new TaskCompletionSource();
         host.Created[0].DisposeGate = disposing.Task;
 
-        Task rebuild = controller.RebuildAsync();
+        var rebuild = controller.RebuildAsync();
         Assert.Same(rebuild, controller.RebuildAsync());
         disposing.SetResult();
 
@@ -136,10 +136,10 @@ public sealed class PlayerSetControllerTests
         var host = new FakeHost { RequestedPlayerCount = 2 };
         var gate = new TaskCompletionSource();
         host.InitGates.Enqueue(gate.Task);
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
         _ = controller.StartAsync();
-        Task rebuild = controller.RebuildAsync();
+        var rebuild = controller.RebuildAsync();
         gate.SetResult();
 
         Assert.True(rebuild.IsCompletedSuccessfully);
@@ -154,13 +154,13 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2, FailCreatingIndex = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
-        Task build = controller.StartAsync();
+        var build = controller.StartAsync();
 
         Assert.True(build.IsCompletedSuccessfully);
         Assert.Equal("Rebuilding the players failed", Assert.Single(host.Failures).What);
-        FakeSlot partial = Assert.Single(controller.Slots);
+        var partial = Assert.Single(controller.Slots);
 
         host.FailCreatingIndex = null;
         Assert.True(controller.RebuildAsync().IsCompletedSuccessfully);
@@ -176,9 +176,9 @@ public sealed class PlayerSetControllerTests
         Inline();
         var host = new FakeHost();
         host.InitGates.Enqueue(Task.FromException(new InvalidOperationException("no engine")));
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
-        Task build = controller.StartAsync();
+        var build = controller.StartAsync();
 
         Assert.True(build.IsCompletedSuccessfully);
         Assert.IsType<InvalidOperationException>(Assert.Single(host.Failures).Exception);
@@ -189,7 +189,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         host.Created[0].DisposeFailure = new InvalidOperationException("stuck");
 
@@ -208,13 +208,13 @@ public sealed class PlayerSetControllerTests
         // The B6 regression: closing while a toolbar rebuild starts its players.
         var host = new FakeHost { RequestedPlayerCount = 2 };
         var gate = new TaskCompletionSource();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         host.InitGates.Enqueue(gate.Task);
         _ = controller.RebuildAsync();
 
-        Task<bool> shutdown = controller.ShutdownAsync();
-        Task<bool> secondClose = controller.ShutdownAsync();
+        var shutdown = controller.ShutdownAsync();
+        var secondClose = controller.ShutdownAsync();
 
         Assert.False(shutdown.IsCompleted);
         Assert.True(secondClose.IsCompletedSuccessfully);
@@ -239,17 +239,17 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         var disposing = new TaskCompletionSource();
         host.Created[0].DisposeGate = disposing.Task;
         _ = controller.RebuildAsync();
 
-        Task<bool> shutdown = controller.ShutdownAsync();
+        var shutdown = controller.ShutdownAsync();
         disposing.SetResult();
 
         Assert.True(await shutdown);
-        FakeSlot only = Assert.Single(host.Created);
+        var only = Assert.Single(host.Created);
         Assert.True(only.Disposed);
         Assert.True(controller.RebuildAsync().IsCompletedSuccessfully);
         Assert.Single(host.Created);
@@ -260,7 +260,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 3 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         host.Created[1].DisposeFailure = new InvalidOperationException("stuck");
 
@@ -277,7 +277,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         controller.EnterFullScreen(controller.Slots[1]);
         host.Log.Clear();
@@ -292,7 +292,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         host.Log.Clear();
 
@@ -313,7 +313,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         controller.Slots[0].RequestFullScreen();
         host.Log.Clear();
@@ -331,9 +331,9 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
-        FakeSlot old = controller.Slots[0];
+        var old = controller.Slots[0];
         old.RequestFullScreen();
 
         _ = controller.RebuildAsync();
@@ -349,7 +349,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost();
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
 
         Assert.False(controller.HandleFullScreenKey());
     }
@@ -359,7 +359,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 3 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
 
         Assert.True(controller.HandleFullScreenKey());
@@ -377,7 +377,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 2 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         controller.Slots[0].HasOpenFlyout = true;
         controller.Slots[1].HasOpenFlyout = true;
@@ -398,7 +398,7 @@ public sealed class PlayerSetControllerTests
     {
         Inline();
         var host = new FakeHost { RequestedPlayerCount = 3 };
-        PlayerSetController<FakeSlot> controller = host.CreateController();
+        var controller = host.CreateController();
         _ = controller.StartAsync();
         controller.Slots[0].HasOpenFlyout = true;
         controller.Slots[2].HasOpenFlyout = true;
@@ -423,7 +423,7 @@ public sealed class PlayerSetControllerTests
         var dispatcher = new TestPlayerDispatcher();
         var samples = 0;
         var controller = new PlayerSetController<FakeSlot>(host, dispatcher, () => { samples++; return Sample; }, TimeSpan.FromMilliseconds(250));
-        TestPlayerTimer timer = Assert.Single(dispatcher.Timers);
+        var timer = Assert.Single(dispatcher.Timers);
         Assert.Equal(TimeSpan.FromMilliseconds(250), timer.Interval);
         Assert.False(timer.IsRunning);
 
@@ -455,9 +455,9 @@ public sealed class PlayerSetControllerTests
     }
 
     /// <summary>Clears the test thread's synchronization context: awaits in the controller then continue inline.</summary>
-    private static void Inline() => SynchronizationContext.SetSynchronizationContext(null);
+    static void Inline() => SynchronizationContext.SetSynchronizationContext(null);
 
-    private sealed class FakeHost : IPlayerSetHost<FakeSlot>
+    sealed class FakeHost : IPlayerSetHost<FakeSlot>
     {
         public int RequestedPlayerCount { get; set; } = 1;
 
@@ -482,7 +482,7 @@ public sealed class PlayerSetControllerTests
             if (index == FailCreatingIndex)
                 throw new InvalidOperationException("no surface");
 
-            var slot = new FakeSlot(this, index, atStartup, InitGates.TryDequeue(out Task? gate) ? gate : Task.CompletedTask);
+            var slot = new FakeSlot(this, index, atStartup, InitGates.TryDequeue(out var gate) ? gate : Task.CompletedTask);
             Created.Add(slot);
             return slot;
         }
@@ -512,7 +512,7 @@ public sealed class PlayerSetControllerTests
         }
     }
 
-    private sealed class FakeSlot(FakeHost host, int index, bool atStartup, Task initGate) : IPlayerSlot
+    sealed class FakeSlot(FakeHost host, int index, bool atStartup, Task initGate) : IPlayerSlot
     {
         public event EventHandler? FullScreenToggleRequested;
 

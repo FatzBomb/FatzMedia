@@ -10,9 +10,9 @@ namespace FatzMedia.Video.Wpf;
 /// </summary>
 public sealed partial class MediaSurface
 {
-    private int _firstFrameReadyLoad;
-    private long _retiredCompositedFrames;
-    private TimeSpan _retiredCompositedTime;
+    int _firstFrameReadyLoad;
+    long _retiredCompositedFrames;
+    TimeSpan _retiredCompositedTime;
 
     /// <summary>
     /// Raised on the UI thread once per load of media with visual content (and once when
@@ -44,7 +44,7 @@ public sealed partial class MediaSurface
     public long CompositedFramesPublished => _retiredCompositedFrames + (_compositedHost?.FramesPublished ?? 0);
 
     // UI thread: after content state, host visibility or a composited publish changed.
-    private void RaiseFirstFrameReadyIfDue()
+    void RaiseFirstFrameReadyIfDue()
     {
         var load = _contentTracker.FirstFrameLoad;
         if (load == 0 || load == _firstFrameReadyLoad || !_primaryAttached || !_contentTracker.HasPresentation)
@@ -70,7 +70,7 @@ public sealed partial class MediaSurface
         FirstFrameReady?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RetireCompositedCounters(WpfCompositedSurfaceHost host)
+    void RetireCompositedCounters(WpfCompositedSurfaceHost host)
     {
         _retiredCompositedFrames += host.FramesPublished;
         _retiredCompositedTime += host.UiThreadTime;

@@ -12,14 +12,14 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// (<c>--lightweight-surfaces</c>, Stage 046A slice 2; the WPF and WinForms players have the same
 /// window). Each control creates its own player with the renderer chosen at startup.
 /// </summary>
-internal sealed class LightweightSurfacesWindow : Window
+sealed class LightweightSurfacesWindow : Window
 {
-    private static readonly Color[] Colours = [Colors.DarkSlateBlue, Colors.DarkGreen, Colors.Black];
+    static readonly Color[] Colours = [Colors.DarkSlateBlue, Colors.DarkGreen, Colors.Black];
 
-    private readonly BackgroundSurface _background;
-    private readonly KaraokeSurface _karaoke;
-    private readonly TextBox _path = new() { Width = 380, Margin = new Thickness(4) };
-    private int _colour;
+    readonly BackgroundSurface _background;
+    readonly KaraokeSurface _karaoke;
+    readonly TextBox _path = new() { Width = 380, Margin = new Thickness(4) };
+    int _colour;
 
     public LightweightSurfacesWindow(
         Func<IPlatformFactory> createPlatformFactory,
@@ -80,11 +80,11 @@ internal sealed class LightweightSurfacesWindow : Window
         };
     }
 
-    private string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
+    string? PathOrNull() => string.IsNullOrWhiteSpace(_path.Text) ? null : _path.Text.Trim().Trim('"');
 
-    private async void BrowseAsync()
+    async void BrowseAsync()
     {
-        IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Background (image, video) or karaoke (CDG, MP3+G, ZIP, KAR, MID)",
             AllowMultiple = false,
@@ -93,7 +93,7 @@ internal sealed class LightweightSurfacesWindow : Window
             _path.Text = path;
     }
 
-    private static Button Button(string text, Action click)
+    static Button Button(string text, Action click)
     {
         var button = new Button { Content = text, Margin = new Thickness(4) };
         button.Click += (_, _) => click();

@@ -25,7 +25,7 @@ public static class WinFormsMediaInputSources
         var pixels = new byte[checked(stride * height)];
 
         // Format32bppArgb is BGRA in memory with straight alpha; GDI+ converts other formats.
-        BitmapData data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
             // Packed top-down rows (the usual case) copy at once; a padded or bottom-up (negative

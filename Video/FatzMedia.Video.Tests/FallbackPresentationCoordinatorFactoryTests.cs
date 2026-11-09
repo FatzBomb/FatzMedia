@@ -16,7 +16,7 @@ public sealed class FallbackPresentationCoordinatorFactoryTests
 
         Assert.Equal("Direct3D11", chain.BackendName);
         Assert.Same(gpu, chain.Selected);
-        MediaPresentationCandidateResult only = Assert.Single(chain.Selection);
+        var only = Assert.Single(chain.Selection);
         Assert.Equal(("Direct3D11", true, "GPU, Test Adapter", true), (only.BackendName, only.IsAvailable, only.Detail, only.IsSelected));
         Assert.Equal(0, software.ProbeCount);
     }
@@ -104,7 +104,7 @@ public sealed class FallbackPresentationCoordinatorFactoryTests
         _ = Assert.Throws<ArgumentNullException>(() => new FallbackPresentationCoordinatorFactory(null!));
     }
 
-    private class PlainFactory(string backendName) : IMediaPresentationCoordinatorFactory
+    class PlainFactory(string backendName) : IMediaPresentationCoordinatorFactory
     {
         public int CreateCount { get; private set; }
 
@@ -117,7 +117,7 @@ public sealed class FallbackPresentationCoordinatorFactoryTests
         }
     }
 
-    private sealed class FakeFactory(string backendName, Func<MediaPresentationAvailability> probe)
+    sealed class FakeFactory(string backendName, Func<MediaPresentationAvailability> probe)
         : PlainFactory(backendName), IMediaPresentationAvailabilityProbe
     {
         public FakeFactory(string backendName, MediaPresentationAvailability availability)

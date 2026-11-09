@@ -1,8 +1,8 @@
 namespace FatzMedia.Video.Core.Audio;
 
-internal static class SilenceTrimCalculator
+static class SilenceTrimCalculator
 {
-    private const double EdgeToleranceSeconds = 0.001;
+    const double EdgeToleranceSeconds = 0.001;
 
     public static MediaAnalysisResult Calculate(
         double sourceDuration,
@@ -27,7 +27,7 @@ internal static class SilenceTrimCalculator
 
         if (options.Enabled && options.TrimLeading)
         {
-            SilenceRegion? leading = regions
+            var leading = regions
                 .Where(region => region.StartSeconds <= EdgeToleranceSeconds)
                 .OrderByDescending(region => region.EndSeconds)
                 .Select(static region => (SilenceRegion?)region)
@@ -41,7 +41,7 @@ internal static class SilenceTrimCalculator
 
         if (options.Enabled && options.TrimTrailing)
         {
-            SilenceRegion? trailing = regions
+            var trailing = regions
                 .Where(region => region.EndSeconds >= sourceDuration - EdgeToleranceSeconds)
                 .OrderBy(region => region.StartSeconds)
                 .Select(static region => (SilenceRegion?)region)
@@ -66,8 +66,8 @@ internal static class SilenceTrimCalculator
             normalizationGain);
     }
 
-    private static SilenceRegion[] NormalizeRegions(double sourceDuration, IEnumerable<SilenceRegion>? silenceRegions)
-        => (silenceRegions ?? [])
+    static SilenceRegion[] NormalizeRegions(double sourceDuration, IEnumerable<SilenceRegion>? silenceRegions)
+        => [.. (silenceRegions ?? [])
             .Where(region => double.IsFinite(region.StartSeconds)
                 && double.IsFinite(region.EndSeconds)
                 && region.EndSeconds > region.StartSeconds
@@ -78,6 +78,5 @@ internal static class SilenceTrimCalculator
                 Math.Clamp(region.EndSeconds, 0, sourceDuration)))
             .Where(region => region.Duration > 0)
             .OrderBy(region => region.StartSeconds)
-            .ThenBy(region => region.EndSeconds)
-            .ToArray();
+            .ThenBy(region => region.EndSeconds)];
 }

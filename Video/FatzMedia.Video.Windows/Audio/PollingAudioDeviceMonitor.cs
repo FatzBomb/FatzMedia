@@ -1,20 +1,19 @@
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
-using ManagedBass;
 using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Windows.Audio;
 
-internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
+sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 {
-    private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(1);
 
-    private readonly PollingLoop _loop;
-    private long _lastSampleRate;
-    private int _lastDevice;
-    private string? _lastDeviceName;
-    private string? _lastDefaultEndpointId;
-    private string? _lastDefaultEndpointName;
+    readonly PollingLoop _loop;
+    long _lastSampleRate;
+    int _lastDevice;
+    string? _lastDeviceName;
+    string? _lastDefaultEndpointId;
+    string? _lastDefaultEndpointName;
 
     public PollingAudioDeviceMonitor()
         : this(DefaultPollInterval)
@@ -37,9 +36,9 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 
     public void Dispose() => Stop();
 
-    private void CaptureBaseline()
+    void CaptureBaseline()
     {
-        if (!MBass.GetInfo(out BassInfo info))
+        if (!MBass.GetInfo(out var info))
         {
             _lastSampleRate = 0;
             _lastDevice = -1;
@@ -49,7 +48,7 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 
         _lastSampleRate = info.SampleRate;
         _lastDevice = MBass.CurrentDevice;
-        if (MBass.GetDeviceInfo(_lastDevice, out DeviceInfo deviceInfo))
+        if (MBass.GetDeviceInfo(_lastDevice, out var deviceInfo))
             _lastDeviceName = deviceInfo.Name;
 
         if (CoreAudioDefaultEndpointReader.TryGetDefaultRenderEndpoint(out var endpointId, out var endpointName))
@@ -59,15 +58,15 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
         }
     }
 
-    private void CheckForChanges()
+    void CheckForChanges()
     {
-        if (!MBass.GetInfo(out BassInfo info))
+        if (!MBass.GetInfo(out var info))
             return;
 
         var currentSampleRate = info.SampleRate;
         var currentDevice = MBass.CurrentDevice;
         var currentDeviceName = _lastDeviceName;
-        if (MBass.GetDeviceInfo(currentDevice, out DeviceInfo deviceInfo))
+        if (MBass.GetDeviceInfo(currentDevice, out var deviceInfo))
             currentDeviceName = deviceInfo.Name;
 
         var currentDefaultEndpointId = _lastDefaultEndpointId;
@@ -78,7 +77,7 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
             currentDefaultEndpointName = endpointName;
         }
 
-        AudioDeviceChangeInfo? detected = AudioDeviceChangeDetector.Detect(
+        var detected = AudioDeviceChangeDetector.Detect(
             _lastSampleRate, _lastDevice, _lastDeviceName,
             _lastDefaultEndpointId, _lastDefaultEndpointName,
             currentSampleRate, currentDevice, currentDeviceName,

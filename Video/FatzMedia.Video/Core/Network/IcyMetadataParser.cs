@@ -1,15 +1,15 @@
 namespace FatzMedia.Video.Core.Network;
 
 /// <summary>Parsed stream metadata.</summary>
-internal readonly record struct StreamMetadata(string? Title, string? Artist, string? RawTitle);
+readonly record struct StreamMetadata(string? Title, string? Artist, string? RawTitle);
 
 /// <summary>
 /// Parses ICY (<c>StreamTitle='Artist - Title';StreamUrl='...';</c>) and Ogg-comment
 /// (<c>TITLE=</c>/<c>ARTIST=</c>) metadata.
 /// </summary>
-internal static class IcyMetadataParser
+static class IcyMetadataParser
 {
-    private const string StreamTitleKey = "StreamTitle='";
+    const string StreamTitleKey = "StreamTitle='";
 
     public static StreamMetadata ParseIcy(string? metadata)
     {
@@ -62,7 +62,7 @@ internal static class IcyMetadataParser
         return new StreamMetadata(title, artist, artist is null ? title : title is null ? artist : $"{artist} - {title}");
     }
 
-    private static StreamMetadata SplitArtistTitle(string raw)
+    static StreamMetadata SplitArtistTitle(string raw)
     {
         if (raw.Length == 0)
             return default;

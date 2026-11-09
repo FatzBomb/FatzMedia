@@ -1,5 +1,5 @@
-using FatzMedia.Video.Core.Configuration;
 using Avalonia.Media.Imaging;
+using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Avalonia;
 

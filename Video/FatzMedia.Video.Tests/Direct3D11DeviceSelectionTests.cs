@@ -17,7 +17,7 @@ public sealed class Direct3D11DeviceSelectionTests
     [Fact]
     public void WarpProbe_CreatesAWarpDevice()
     {
-        MediaPresentationAvailability availability = Probe(Direct3D11DeviceSelection.Warp);
+        var availability = Probe(Direct3D11DeviceSelection.Warp);
 
         Assert.True(availability.IsAvailable, availability.Detail);
         Assert.StartsWith("WARP", availability.Detail, StringComparison.Ordinal);
@@ -29,13 +29,13 @@ public sealed class Direct3D11DeviceSelectionTests
     public void AutoProbe_AlwaysFindsADevice()
     {
         // The GPU when there is one, otherwise WARP.
-        MediaPresentationAvailability availability = Probe(Direct3D11DeviceSelection.Auto);
+        var availability = Probe(Direct3D11DeviceSelection.Auto);
 
         Assert.True(availability.IsAvailable, availability.Detail);
         Assert.Contains("feature level", availability.Detail, StringComparison.Ordinal);
     }
 
-    private static MediaPresentationAvailability Probe(Direct3D11DeviceSelection selection)
+    static MediaPresentationAvailability Probe(Direct3D11DeviceSelection selection)
     {
         IMediaPresentationAvailabilityProbe probe = new Direct3D11PresentationCoordinatorFactory(
             new SystemPrecisionWaiterFactory(),

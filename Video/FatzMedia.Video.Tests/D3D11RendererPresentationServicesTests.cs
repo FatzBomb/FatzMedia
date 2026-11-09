@@ -19,7 +19,7 @@ public sealed class D3D11RendererPresentationServicesTests
             "test",
             1,
             CompositionTargetKind.FinalPresentation);
-        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        var frame = MediaCompositionFrame.Empty() with
         {
             BackgroundBgra = new byte[4],
             BackgroundWidth = 1,
@@ -28,9 +28,9 @@ public sealed class D3D11RendererPresentationServicesTests
             BackgroundRevision = 7
         };
 
-        D3D11RendererPresentationServices.DirectCompositionOverlaySplitBaseState original =
+        var original =
             D3D11RendererPresentationServices.CreateDirectCompositionOverlaySplitBaseState(frame, target);
-        D3D11RendererPresentationServices.DirectCompositionOverlaySplitBaseState transformed =
+        var transformed =
             D3D11RendererPresentationServices.CreateDirectCompositionOverlaySplitBaseState(
                 frame with { BaseVisualTransform = new BaseVisualTransform { RedGain = 0.5f } },
                 target);

@@ -10,12 +10,12 @@ namespace FatzMedia.Video.Core.Graphics.Composition.D3D11;
 /// Stage 10G adds lifecycle/deactivation summaries used by verbose diagnostics;
 /// Stage 10H/10I adds clear-only guardrails and update-planner metadata.
 /// </summary>
-internal sealed class D3D11CompositionLayerCache : IDisposable
+sealed class D3D11CompositionLayerCache : IDisposable
 {
-    private readonly Dictionary<MediaCompositionLayerId, D3D11CompositionLayerState> _layers = [];
-    private readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
-    private readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
-    private readonly List<CompositionLayerUpdate> _scratchUpdates = [];
+    readonly Dictionary<MediaCompositionLayerId, D3D11CompositionLayerState> _layers = [];
+    readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
+    readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
+    readonly List<CompositionLayerUpdate> _scratchUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool LastCaptureHadVisibleLayers { get; private set; }
@@ -35,7 +35,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
         _scratchDeactivatedIds.Clear();
         CaptureSequence++;
 
-        foreach (MediaCompositionLayer layer in frame.EnumerateLayers())
+        foreach (var layer in frame.EnumerateLayers())
         {
             _scratchActiveIds.Add(layer.Id);
             GetOrCreate(layer.Id).Update(layer, CaptureSequence);
@@ -43,11 +43,11 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
         LastCaptureHadVisibleLayers = _scratchActiveIds.Count > 0;
 
-        foreach (MediaCompositionLayerId existingId in _layers.Keys)
+        foreach (var existingId in _layers.Keys)
         {
             if (!_scratchActiveIds.Contains(existingId))
             {
-                D3D11CompositionLayerState state = _layers[existingId];
+                var state = _layers[existingId];
                 var wasActive = state.IsActive || state.HasRetainedResources;
                 state.Clear(CaptureSequence);
                 if (wasActive)
@@ -57,12 +57,12 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     }
 
     public D3D11CompositionLayerState? TryGet(MediaCompositionLayerId id)
-        => _layers.TryGetValue(id, out D3D11CompositionLayerState? state) && state.IsActive ? state : null;
+        => _layers.TryGetValue(id, out var state) && state.IsActive ? state : null;
 
     public CompositionLayerUpdatePlan CreateUpdatePlan()
     {
         _scratchUpdates.Clear();
-        foreach (D3D11CompositionLayerState layer in _layers.Values)
+        foreach (var layer in _layers.Values)
         {
             if (layer.IsActive || layer.WasDeactivated)
                 _scratchUpdates.Add(layer.CreateUpdatePlanEntry());
@@ -84,16 +84,16 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public void MarkPlanConsumed()
     {
-        foreach (D3D11CompositionLayerState layer in _layers.Values)
+        foreach (var layer in _layers.Values)
             layer.MarkPlanConsumed();
 
-        foreach (MediaCompositionLayerId inactiveId in _layers
+        foreach (var inactiveId in _layers
             .Where(static pair => !pair.Value.IsActive && !pair.Value.HasRetainedResources && !pair.Value.WasDeactivated)
             .Select(static pair => pair.Key)
             .ToArray())
             _ = _layers.Remove(inactiveId);
 
-        _ = _scratchDeactivatedIds.RemoveAll(id => !_layers.TryGetValue(id, out D3D11CompositionLayerState? state) || !state.WasDeactivated);
+        _ = _scratchDeactivatedIds.RemoveAll(id => !_layers.TryGetValue(id, out var state) || !state.WasDeactivated);
     }
 
     public string ActiveLayerStateSummary
@@ -104,7 +104,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public string LastDeactivatedLayerSummary
         => string.Join(",", _scratchDeactivatedIds
-            .Select(id => _layers.TryGetValue(id, out D3D11CompositionLayerState? state) ? state.LifecycleSummary : id.ToString()));
+            .Select(id => _layers.TryGetValue(id, out var state) ? state.LifecycleSummary : id.ToString()));
 
     public string CaptureLifecycleSummary
     {
@@ -123,7 +123,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public void Reset()
     {
-        foreach (D3D11CompositionLayerState layer in _layers.Values)
+        foreach (var layer in _layers.Values)
             layer.Clear();
 
         _scratchDeactivatedIds.Clear();
@@ -134,7 +134,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public void Dispose()
     {
-        foreach (D3D11CompositionLayerState layer in _layers.Values)
+        foreach (var layer in _layers.Values)
             layer.Dispose();
 
         _layers.Clear();
@@ -144,7 +144,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public D3D11CompositionLayerState GetOrCreate(MediaCompositionLayerId id)
     {
-        if (_layers.TryGetValue(id, out D3D11CompositionLayerState? state))
+        if (_layers.TryGetValue(id, out var state))
         {
             return state;
         }

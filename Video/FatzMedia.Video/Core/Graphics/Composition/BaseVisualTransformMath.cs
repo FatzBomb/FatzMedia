@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Graphics.Composition;
 /// </summary>
 public static class BaseVisualTransformMath
 {
-    private const float DegreesToRadians = MathF.PI / 180f;
+    const float DegreesToRadians = MathF.PI / 180f;
 
     /// <summary>Applies the transform to straight (non-premultiplied) channels in the 0..1 range.</summary>
     public static (float Red, float Green, float Blue) ApplyStraight(
@@ -61,7 +61,7 @@ public static class BaseVisualTransformMath
     public static byte Quantize(float channel)
         => (byte)Math.Round(Clamp(channel) * 255d, MidpointRounding.AwayFromZero);
 
-    private static void ApplyHue(ref float red, ref float green, ref float blue, float degrees)
+    static void ApplyHue(ref float red, ref float green, ref float blue, float degrees)
     {
         if (degrees == 0f)
         {
@@ -82,7 +82,7 @@ public static class BaseVisualTransformMath
         blue = Clamp(y - (1.106f * rotatedI) + (1.703f * rotatedQ));
     }
 
-    private static void ApplySaturation(ref float red, ref float green, ref float blue, float saturation)
+    static void ApplySaturation(ref float red, ref float green, ref float blue, float saturation)
     {
         if (saturation == 1f)
         {
@@ -95,7 +95,7 @@ public static class BaseVisualTransformMath
         blue = Clamp(luma + ((blue - luma) * saturation));
     }
 
-    private static void ApplyBrightness(ref float red, ref float green, ref float blue, float brightness)
+    static void ApplyBrightness(ref float red, ref float green, ref float blue, float brightness)
     {
         if (brightness == 0f)
         {
@@ -107,7 +107,7 @@ public static class BaseVisualTransformMath
         blue = Clamp(blue + brightness);
     }
 
-    private static void ApplyContrast(ref float red, ref float green, ref float blue, float contrast)
+    static void ApplyContrast(ref float red, ref float green, ref float blue, float contrast)
     {
         if (contrast == 1f)
         {
@@ -119,7 +119,7 @@ public static class BaseVisualTransformMath
         blue = Clamp(blue * contrast);
     }
 
-    private static void ApplyRgbGains(
+    static void ApplyRgbGains(
         ref float red,
         ref float green,
         ref float blue,
@@ -137,5 +137,5 @@ public static class BaseVisualTransformMath
         blue = Clamp(blue * blueGain);
     }
 
-    private static float Clamp(float value) => Math.Clamp(value, 0f, 1f);
+    static float Clamp(float value) => Math.Clamp(value, 0f, 1f);
 }

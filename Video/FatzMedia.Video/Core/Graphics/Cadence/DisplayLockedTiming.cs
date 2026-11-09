@@ -3,13 +3,13 @@ using FatzMedia.Video.Core.Graphics.Composition;
 namespace FatzMedia.Video.Core.Graphics.Cadence;
 
 /// <summary>One display refresh the presentation loop presents for: when to wake, and the refresh.</summary>
-internal readonly record struct DisplayLockedSlot(long VsyncTimestamp, long WakeTimestamp, long PeriodTicks);
+readonly record struct DisplayLockedSlot(long VsyncTimestamp, long WakeTimestamp, long PeriodTicks);
 
 /// <summary>
 /// Scheduling rules of display-locked video timing (Stage 017A slices 4 and 5): which refresh
 /// the loop aims for next, when to wake for it, and which media time a refresh shows.
 /// </summary>
-internal static class DisplayLockedTiming
+static class DisplayLockedTiming
 {
     /// <summary>
     /// A vertical-blank timestamp older than this is not used to predict refreshes. Predictions
@@ -21,8 +21,8 @@ internal static class DisplayLockedTiming
     /// <summary>Lead the loop starts with before a refresh, before measuring its own work.</summary>
     public static readonly TimeSpan InitialBudget = TimeSpan.FromMilliseconds(4);
 
-    private static readonly TimeSpan MinBudget = TimeSpan.FromMilliseconds(2);
-    private static readonly TimeSpan MaxBudget = TimeSpan.FromMilliseconds(12);
+    static readonly TimeSpan MinBudget = TimeSpan.FromMilliseconds(2);
+    static readonly TimeSpan MaxBudget = TimeSpan.FromMilliseconds(12);
 
     /// <summary>
     /// The next refresh to present for: the first one at least <paramref name="budgetTicks"/>

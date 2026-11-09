@@ -1,36 +1,36 @@
-using FatzMedia.Video.Core.Abstractions;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using FatzMedia.Video.Core.Abstractions;
 
 namespace FatzMedia.Video.Wpf;
 
 public sealed partial class MediaSurface : Grid
 {
     public const string DefaultSecondarySurfaceId = "secondary";
-    private const int WM_MOVE = 0x0003;
-    private const int WM_ENTERSIZEMOVE = 0x0231;
-    private const int WM_EXITSIZEMOVE = 0x0232;
+    const int WM_MOVE = 0x0003;
+    const int WM_ENTERSIZEMOVE = 0x0231;
+    const int WM_EXITSIZEMOVE = 0x0232;
 
-    private readonly NativeHwndSurfaceHost _surfaceHost;
-    private readonly ContentPresenter _overlayPresenter;
-    private readonly bool _isDesignMode;
-    private WpfCompositedSurfaceHost? _compositedHost;
-    private IPlayerSession? _attachedPrimarySession;
-    private IPlayerSession? _eventSession;
-    private Window? _ownerWindow;
-    private HwndSource? _ownerHwndSource;
-    private bool _primaryAttached;
-    private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
-    private MediaPresentationSurfaceRole _attachedRole = MediaPresentationSurfaceRole.Primary;
-    private bool _layoutRefreshQueued;
-    private bool _primarySurfaceLiveResize;
-    private volatile bool _showPrimarySurfaceAfterPresentation;
-    private SecondaryPresentationWindow? _secondaryWindow;
-    private MediaOverlayWindow? _overlayWindow;
-    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
+    readonly NativeHwndSurfaceHost _surfaceHost;
+    readonly ContentPresenter _overlayPresenter;
+    readonly bool _isDesignMode;
+    WpfCompositedSurfaceHost? _compositedHost;
+    IPlayerSession? _attachedPrimarySession;
+    IPlayerSession? _eventSession;
+    Window? _ownerWindow;
+    HwndSource? _ownerHwndSource;
+    bool _primaryAttached;
+    string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
+    MediaPresentationSurfaceRole _attachedRole = MediaPresentationSurfaceRole.Primary;
+    bool _layoutRefreshQueued;
+    bool _primarySurfaceLiveResize;
+    volatile bool _showPrimarySurfaceAfterPresentation;
+    SecondaryPresentationWindow? _secondaryWindow;
+    MediaOverlayWindow? _overlayWindow;
+    WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
 
     public MediaSurface()
     {
@@ -185,7 +185,7 @@ public sealed partial class MediaSurface : Grid
         set => SetValue(OverlayHitTestVisibleProperty, value);
     }
 
-    private const string SecondaryOutputObsolete =
+    const string SecondaryOutputObsolete =
         "Open a SecondaryPresentationWindow with ShowOnScreen instead (the test players do). Removed in a later release (ENG-039).";
 
     [Obsolete(SecondaryOutputObsolete)]
@@ -207,7 +207,7 @@ public sealed partial class MediaSurface : Grid
         return true;
     }
 
-    private void OpenSecondaryWindow(IPlayerSession session, Rect bounds, WindowState state)
+    void OpenSecondaryWindow(IPlayerSession session, Rect bounds, WindowState state)
     {
         // The secondary window presents the same way as this surface, so software mode, which
         // draws only into frame sinks, reaches it too (ENG-016).
@@ -243,13 +243,13 @@ public sealed partial class MediaSurface : Grid
     [Obsolete(SecondaryOutputObsolete)]
     public bool CloseSecondaryOutput() => CloseSecondaryWindow();
 
-    private bool CloseSecondaryWindow()
+    bool CloseSecondaryWindow()
     {
         if (_secondaryWindow == null)
             return false;
 
         _secondaryWindow.Closed -= OnSecondaryWindowClosed;
-        SecondaryPresentationWindow window = _secondaryWindow;
+        var window = _secondaryWindow;
         _secondaryWindow = null;
         window.Close();
         SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
@@ -273,7 +273,7 @@ public sealed partial class MediaSurface : Grid
         }));
     }
 
-    private static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface._isDesignMode)
@@ -298,7 +298,7 @@ public sealed partial class MediaSurface : Grid
         surface.UpdateNativeSurfaceVisibility();
     }
 
-    private static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface.Player is IPlayerSession session
@@ -309,7 +309,7 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private static void OnSurfaceIdentityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnSurfaceIdentityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface._isDesignMode)
@@ -326,7 +326,7 @@ public sealed partial class MediaSurface : Grid
         surface.AttachOrResizePrimarySurface();
     }
 
-    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    static object CoercePresentationMode(DependencyObject d, object baseValue)
     {
         var surface = (MediaSurface)d;
         if (surface._isDesignMode)
@@ -349,7 +349,7 @@ public sealed partial class MediaSurface : Grid
         return baseValue;
     }
 
-    private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface._isDesignMode)
@@ -367,18 +367,18 @@ public sealed partial class MediaSurface : Grid
     /// The secondary window's surface payload follows the presentation mode (ENG-016), so an
     /// open secondary is reopened in the new mode, in the same place.
     /// </summary>
-    private void ReopenSecondaryOutputInAppliedMode()
+    void ReopenSecondaryOutputInAppliedMode()
     {
         if (Player is not { } session || _secondaryWindow is not { IsVisible: true } previous)
             return;
 
-        Rect bounds = previous.RestoreBounds;
-        WindowState state = previous.WindowState;
+        var bounds = previous.RestoreBounds;
+        var state = previous.WindowState;
         _ = CloseSecondaryWindow();
         OpenSecondaryWindow(session, bounds, state);
     }
 
-    private static void OnOverlayContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnOverlayContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         surface._overlayPresenter.Content = e.NewValue;
@@ -389,14 +389,14 @@ public sealed partial class MediaSurface : Grid
         surface.UpdateOverlayWindow();
     }
 
-    private static void OnOverlayHitTestVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    static void OnOverlayHitTestVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         surface._overlayPresenter.IsHitTestVisible = e.NewValue is true;
         surface.UpdateOverlayWindow();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    void OnLoaded(object sender, RoutedEventArgs e)
     {
         AttachOwnerWindowHook();
         ConfigurePresentationHost();
@@ -408,7 +408,7 @@ public sealed partial class MediaSurface : Grid
         UpdateOverlayWindow();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    void OnUnloaded(object sender, RoutedEventArgs e)
     {
         DetachOwnerWindowHook();
         DetachSessionEvents(Player);
@@ -417,9 +417,9 @@ public sealed partial class MediaSurface : Grid
         DisposeCompositedHost();
     }
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
+    void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
 
-    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateOverlayWindow();
+    void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateOverlayWindow();
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
@@ -432,9 +432,9 @@ public sealed partial class MediaSurface : Grid
             RefreshPresentationLayout();
     }
 
-    private void OnNativeSurfaceChanged(object? sender, EventArgs e) => RefreshPresentationLayout();
+    void OnNativeSurfaceChanged(object? sender, EventArgs e) => RefreshPresentationLayout();
 
-    private void OnSecondaryWindowClosed(object? sender, EventArgs e)
+    void OnSecondaryWindowClosed(object? sender, EventArgs e)
     {
         if (_secondaryWindow != null)
         {
@@ -444,9 +444,9 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private void AttachOrResizePrimarySurface()
+    void AttachOrResizePrimarySurface()
     {
-        IPlayerSession? session = Player;
+        var session = Player;
         if (!IsLoaded || session == null)
             return;
 
@@ -455,7 +455,7 @@ public sealed partial class MediaSurface : Grid
         int pixelHeight;
         if (PresentationMode == WpfPresentationMode.WpfComposited)
         {
-            WpfCompositedSurfaceHost host = EnsureCompositedHost();
+            var host = EnsureCompositedHost();
             pixelWidth = Math.Max(1, (int)Math.Round(ActualWidth * VisualTreeHelper.GetDpi(this).DpiScaleX));
             pixelHeight = Math.Max(1, (int)Math.Round(ActualHeight * VisualTreeHelper.GetDpi(this).DpiScaleY));
             nativeSurface = host.CreateSurfaceDescriptor();
@@ -470,7 +470,7 @@ public sealed partial class MediaSurface : Grid
             nativeSurface = MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost.WindowHandle);
         }
 
-        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+        var dpi = VisualTreeHelper.GetDpi(this);
 
         if (_primaryAttached && ReferenceEquals(session, _attachedPrimarySession))
         {
@@ -481,7 +481,7 @@ public sealed partial class MediaSurface : Grid
 
         DetachPrimarySurface(_attachedPrimarySession);
         var surfaceId = EffectiveSurfaceId;
-        MediaPresentationSurfaceRole role = Role;
+        var role = Role;
         _primaryAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             surfaceId,
             role,
@@ -502,7 +502,7 @@ public sealed partial class MediaSurface : Grid
         UpdateNativeSurfaceVisibility();
     }
 
-    private void DetachPrimarySurface(IPlayerSession? session)
+    void DetachPrimarySurface(IPlayerSession? session)
     {
         if (!_primaryAttached || session == null)
             return;
@@ -517,7 +517,7 @@ public sealed partial class MediaSurface : Grid
         UpdateNativeSurfaceVisibility();
     }
 
-    private void AttachSessionEvents(IPlayerSession? session)
+    void AttachSessionEvents(IPlayerSession? session)
     {
         if (session == null || ReferenceEquals(session, _eventSession))
             return;
@@ -531,7 +531,7 @@ public sealed partial class MediaSurface : Grid
         session.PresentationFramePresented += OnSessionPresentationFramePresented;
     }
 
-    private void DetachSessionEvents(IPlayerSession? session)
+    void DetachSessionEvents(IPlayerSession? session)
     {
         if (session == null || !ReferenceEquals(session, _eventSession))
             return;
@@ -545,20 +545,20 @@ public sealed partial class MediaSurface : Grid
         _eventSession = null;
     }
 
-    private void OnSessionMediaStarted(object? sender, EventArgs e)
+    void OnSessionMediaStarted(object? sender, EventArgs e)
     {
         _showPrimarySurfaceAfterPresentation = !_contentTracker.AutoHide
             && !IsLoopingVisualPlayback(sender as IPlayerSession ?? _eventSession);
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
-    private void OnSessionMediaStopped(object? sender, EventArgs e)
+    void OnSessionMediaStopped(object? sender, EventArgs e)
     {
         _showPrimarySurfaceAfterPresentation = false;
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
-    private void OnSessionMediaEnded(object? sender, EventArgs e)
+    void OnSessionMediaEnded(object? sender, EventArgs e)
     {
         if (IsLoopingPlayback(sender as IPlayerSession ?? _eventSession))
             return;
@@ -568,10 +568,10 @@ public sealed partial class MediaSurface : Grid
     }
 
     // A deferred PresentationMode applies once the media is closed.
-    private void OnSessionMediaClosed(object? sender, MediaClosedEventArgs e) =>
+    void OnSessionMediaClosed(object? sender, MediaClosedEventArgs e) =>
         _ = Dispatcher.BeginInvoke(new Action(() => CoerceValue(PresentationModeProperty)));
 
-    private void OnSessionPresentationFramePresented(object? sender, EventArgs e)
+    void OnSessionPresentationFramePresented(object? sender, EventArgs e)
     {
         // This event is raised from Core's native present/render thread, NOT the WPF UI thread.
         // Do not touch the Player dependency property here; read the plain, thread-safe _eventSession
@@ -583,9 +583,9 @@ public sealed partial class MediaSurface : Grid
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
-    private void UpdateNativeSurfaceVisibility()
+    void UpdateNativeSurfaceVisibility()
     {
-        IPlayerSession? session = Player;
+        var session = Player;
         var shouldShow = _primaryAttached
             && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
             && !_showPrimarySurfaceAfterPresentation
@@ -595,8 +595,7 @@ public sealed partial class MediaSurface : Grid
         {
             if (PresentationMode == WpfPresentationMode.WpfComposited)
             {
-                if (_compositedHost != null)
-                    _compositedHost.Visibility = Visibility.Visible;
+                _compositedHost?.Visibility = Visibility.Visible;
             }
             else
             {
@@ -617,33 +616,32 @@ public sealed partial class MediaSurface : Grid
                 _surfaceHost.Visibility = Visibility.Hidden;
         }
 
-        if (_compositedHost != null)
-            _compositedHost.Visibility = Visibility.Hidden;
+        _compositedHost?.Visibility = Visibility.Hidden;
     }
 
     // A standalone visual without an audio stream (image, or video/CDG with no audio) is presented to
     // the swap chain by Core on load but never enters Playing/Paused, so show the native surface for it.
     // The Stopped gate keeps this from re-dispatching on every presented frame during no-audio playback.
-    private static bool HasStandaloneVisual(IPlayerSession? session) =>
+    static bool HasStandaloneVisual(IPlayerSession? session) =>
         session is { IsOpen: true }
         && !session.Content.HasFlag(MediaContent.Audio)
         && (session.Content.HasFlag(MediaContent.Image)
             || session.Content.HasFlag(MediaContent.Video)
             || session.Content.HasFlag(MediaContent.Cdg));
 
-    private static bool HasStoppedStandaloneVisual(IPlayerSession? session) =>
+    static bool HasStoppedStandaloneVisual(IPlayerSession? session) =>
         session is { State: MediaPlayerState.Stopped } && HasStandaloneVisual(session);
 
-    private static bool IsLoopingVisualPlayback(IPlayerSession? session) =>
+    static bool IsLoopingVisualPlayback(IPlayerSession? session) =>
         session is { IsOpen: true, LoopMedia: true }
         && (session.Content.HasFlag(MediaContent.Video)
             || session.Content.HasFlag(MediaContent.Cdg)
             || session.Content.HasFlag(MediaContent.Image));
 
-    private static bool IsLoopingPlayback(IPlayerSession? session) =>
+    static bool IsLoopingPlayback(IPlayerSession? session) =>
         session is { IsOpen: true, LoopMedia: true };
 
-    private void AttachOwnerWindowHook()
+    void AttachOwnerWindowHook()
     {
         var window = Window.GetWindow(this);
         if (window == null)
@@ -660,7 +658,7 @@ public sealed partial class MediaSurface : Grid
         AttachOwnerHwndSource(window);
     }
 
-    private void AttachOwnerHwndSource(Window window)
+    void AttachOwnerHwndSource(Window window)
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero)
@@ -675,7 +673,7 @@ public sealed partial class MediaSurface : Grid
         _ownerHwndSource.AddHook(OnOwnerWindowMessage);
     }
 
-    private void DetachOwnerWindowHook()
+    void DetachOwnerWindowHook()
     {
         SetPrimarySurfaceLiveResize(false);
         _ownerHwndSource?.RemoveHook(OnOwnerWindowMessage);
@@ -689,15 +687,15 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private void OnOwnerWindowSourceInitialized(object? sender, EventArgs e)
+    void OnOwnerWindowSourceInitialized(object? sender, EventArgs e)
     {
         if (sender is Window window)
             AttachOwnerHwndSource(window);
     }
 
-    private void OnOwnerWindowClosed(object? sender, EventArgs e) => DetachOwnerWindowHook();
+    void OnOwnerWindowClosed(object? sender, EventArgs e) => DetachOwnerWindowHook();
 
-    private IntPtr OnOwnerWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    IntPtr OnOwnerWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_MOVE)
         {
@@ -719,7 +717,7 @@ public sealed partial class MediaSurface : Grid
         return IntPtr.Zero;
     }
 
-    private void SetPrimarySurfaceLiveResize(bool isResizing)
+    void SetPrimarySurfaceLiveResize(bool isResizing)
     {
         if (_primarySurfaceLiveResize == isResizing)
             return;
@@ -733,7 +731,7 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private void ApplyPrimarySurfaceLiveResize(IPlayerSession session)
+    void ApplyPrimarySurfaceLiveResize(IPlayerSession session)
     {
         if (_primarySurfaceLiveResize)
         {
@@ -743,7 +741,7 @@ public sealed partial class MediaSurface : Grid
         }
     }
 
-    private void UpdateOverlayWindow()
+    void UpdateOverlayWindow()
     {
         if (!IsLoaded || !IsVisible || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
         {
@@ -760,13 +758,13 @@ public sealed partial class MediaSurface : Grid
             _overlayWindow.Show();
     }
 
-    private void ConfigurePresentationHost()
+    void ConfigurePresentationHost()
     {
         if (PresentationMode == WpfPresentationMode.WpfComposited)
         {
             _surfaceHost.SetNativeVisible(false);
             Children.Remove(_surfaceHost);
-            WpfCompositedSurfaceHost host = EnsureCompositedHost();
+            var host = EnsureCompositedHost();
             if (!Children.Contains(host))
                 Children.Insert(0, host);
 
@@ -785,13 +783,13 @@ public sealed partial class MediaSurface : Grid
         _overlayPresenter.Content = null;
     }
 
-    private WpfCompositedSurfaceHost EnsureCompositedHost()
+    WpfCompositedSurfaceHost EnsureCompositedHost()
     {
         _compositedHost ??= new WpfCompositedSurfaceHost(RaiseFirstFrameReadyIfDue);
         return _compositedHost;
     }
 
-    private void DisposeCompositedHost()
+    void DisposeCompositedHost()
     {
         if (_compositedHost == null)
             return;
@@ -802,7 +800,7 @@ public sealed partial class MediaSurface : Grid
         _compositedHost = null;
     }
 
-    private MediaOverlayWindow CreateOverlayWindow()
+    MediaOverlayWindow CreateOverlayWindow()
     {
         var window = new MediaOverlayWindow
         {
@@ -812,13 +810,13 @@ public sealed partial class MediaSurface : Grid
         return window;
     }
 
-    private void CloseOverlayWindow()
+    void CloseOverlayWindow()
     {
         if (_overlayWindow == null)
             return;
 
         _overlayWindow.SetContent(null);
-        MediaOverlayWindow window = _overlayWindow;
+        var window = _overlayWindow;
         _overlayWindow = null;
         window.Close();
     }

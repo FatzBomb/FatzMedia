@@ -12,14 +12,14 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// </summary>
 public partial class PlayerViewModel
 {
-    private static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMilliseconds(200);
-    private static readonly TimeSpan SlowStatusRead = TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan BlockedStatusRead = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMilliseconds(200);
+    static readonly TimeSpan SlowStatusRead = TimeSpan.FromMilliseconds(100);
+    static readonly TimeSpan BlockedStatusRead = TimeSpan.FromSeconds(1);
 
-    private Task? _statusRead;
-    private long _statusReadStarted;
-    private bool _statusReadStallLogged;
-    private bool _statusReadFailureLogged;
+    Task? _statusRead;
+    long _statusReadStarted;
+    bool _statusReadStallLogged;
+    bool _statusReadFailureLogged;
 
     /// <summary>Gets the transport state from the latest status read.</summary>
     public MediaPlayerState PlaybackState
@@ -36,14 +36,14 @@ public partial class PlayerViewModel
     public bool IsPlaying => PlaybackState == MediaPlayerState.Playing;
 
     // A drag owns the seek bar: no reads while it scrubs (they would only be thrown away).
-    private void OnPositionTimerTick()
+    void OnPositionTimerTick()
     {
         if (!_isSeekPreviewActive)
             RefreshPlaybackPosition();
     }
 
     /// <summary>Starts a status read unless one is out (UI thread); the result is applied on the UI thread.</summary>
-    private void RefreshPlaybackPosition()
+    void RefreshPlaybackPosition()
     {
         if (_disposed)
             return;
@@ -57,7 +57,7 @@ public partial class PlayerViewModel
         if (_statusRead is { IsCompleted: false })
         {
             // The previous read has not returned: skip this one (logged once) instead of piling up.
-            TimeSpan blocked = Stopwatch.GetElapsedTime(_statusReadStarted);
+            var blocked = Stopwatch.GetElapsedTime(_statusReadStarted);
             if (!_statusReadStallLogged && blocked > BlockedStatusRead)
             {
                 _statusReadStallLogged = true;
@@ -71,7 +71,7 @@ public partial class PlayerViewModel
         _statusRead = ReadStatusAsync(player, _statusReadStarted);
     }
 
-    private async Task ReadStatusAsync(PlayerCore player, long started)
+    async Task ReadStatusAsync(PlayerCore player, long started)
     {
         PlaybackStatus status;
         try
@@ -97,7 +97,7 @@ public partial class PlayerViewModel
             return;
         }
 
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+        var elapsed = Stopwatch.GetElapsedTime(started);
         RunOnUiThread(() =>
         {
             if (elapsed > SlowStatusRead)
@@ -109,7 +109,7 @@ public partial class PlayerViewModel
         });
     }
 
-    private void ApplyStatus(PlayerCore? player, PlaybackStatus status)
+    void ApplyStatus(PlayerCore? player, PlaybackStatus status)
     {
         if (player is not null)
             PlaybackState = status.State;
@@ -133,5 +133,5 @@ public partial class PlayerViewModel
         SeekPositionSeconds = PositionSeconds;
     }
 
-    private readonly record struct PlaybackStatus(MediaPlayerState State, double Duration, double Position);
+    readonly record struct PlaybackStatus(MediaPlayerState State, double Duration, double Position);
 }

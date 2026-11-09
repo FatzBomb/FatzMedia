@@ -9,9 +9,9 @@ namespace FatzMedia.Video.Windows.Video;
 /// refresh rate; DWM does not reliably identify a specific display on mixed-refresh
 /// multi-monitor setups.
 /// </summary>
-internal static partial class DwmCompositionTiming
+static partial class DwmCompositionTiming
 {
-    private static int s_failureReported;
+    static int s_failureReported;
 
     /// <summary>The size DWM expects in <c>DWM_TIMING_INFO.cbSize</c>: the packed native layout.</summary>
     internal static int TimingInfoSize => Marshal.SizeOf<DwmTimingInfo>();
@@ -47,7 +47,7 @@ internal static partial class DwmCompositionTiming
     /// Once per process, and for no player in particular (the DWM rate is global): a failure here
     /// used to be silent, and video timing then always used the 60 Hz fallback (ENG-039 G2).
     /// </summary>
-    private static void ReportFailureOnce(string detail)
+    static void ReportFailureOnce(string detail)
     {
         if (Interlocked.Exchange(ref s_failureReported, 1) != 0)
             return;
@@ -60,7 +60,7 @@ internal static partial class DwmCompositionTiming
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct UnsignedRatio
+struct UnsignedRatio
     {
         public uint Numerator;
         public uint Denominator;
@@ -69,7 +69,7 @@ internal static partial class DwmCompositionTiming
     // DWM_TIMING_INFO is declared under #pragma pack(1) (dwmapi.h): 292 bytes. The default layout
     // (320 bytes) made every call fail with E_INVALIDARG (ENG-039 G2).
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct DwmTimingInfo
+struct DwmTimingInfo
     {
         public uint Size;
         public UnsignedRatio RefreshRate;

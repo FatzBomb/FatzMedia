@@ -20,8 +20,8 @@ public sealed record ContainerCapability(
 
 public sealed class VideoDecodeCapabilities
 {
-    private readonly Dictionary<string, CodecCapability> _codecs;
-    private readonly Dictionary<string, ContainerCapability> _containers;
+    readonly Dictionary<string, CodecCapability> _codecs;
+    readonly Dictionary<string, ContainerCapability> _containers;
 
     internal VideoDecodeCapabilities(
         Dictionary<string, CodecCapability> codecs,
@@ -56,7 +56,7 @@ public sealed class VideoDecodeCapabilities
         [.. _codecs.Values.Where(c => !c.HardwareDecodeAvailable && c.SoftwareDecodeAvailable).Select(c => c.CodecName)];
 
     public CodecCapability? ForCodec(string codecName) =>
-        _codecs.TryGetValue(codecName.ToLowerInvariant(), out CodecCapability? capability) ? capability : null;
+        _codecs.TryGetValue(codecName.ToLowerInvariant(), out var capability) ? capability : null;
 
     public bool IsHardwareDecodeAvailable(string codecName) =>
         ForCodec(codecName)?.HardwareDecodeAvailable ?? false;
@@ -67,10 +67,10 @@ public sealed class VideoDecodeCapabilities
     public ContainerCapability? ForExtension(string extension)
     {
         var normalized = NormalizeExtension(extension);
-        return _containers.TryGetValue(normalized, out ContainerCapability? capability) ? capability : null;
+        return _containers.TryGetValue(normalized, out var capability) ? capability : null;
     }
 
-    private static string NormalizeExtension(string extension)
+    static string NormalizeExtension(string extension)
     {
         var trimmed = extension.Trim();
         return trimmed.StartsWith('.') ? trimmed.ToLowerInvariant() : $".{trimmed.ToLowerInvariant()}";

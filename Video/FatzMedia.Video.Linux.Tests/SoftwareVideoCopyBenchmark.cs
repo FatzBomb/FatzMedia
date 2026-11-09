@@ -1,9 +1,9 @@
+using System.Buffers;
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Linux.Runtime;
-using System.Buffers;
-using System.Diagnostics;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -19,7 +19,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// </summary>
 public sealed class SoftwareVideoCopyBenchmark(ITestOutputHelper output)
 {
-    private const int MaxFrames = 120;
+    const int MaxFrames = 120;
 
     [Fact]
     public void MeasureSoftwareFrameCopies()
@@ -44,9 +44,9 @@ public sealed class SoftwareVideoCopyBenchmark(ITestOutputHelper output)
             Measure(video);
     }
 
-    private void Measure(string path)
+    void Measure(string path)
     {
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(
+        using var decoder = VideoDecoder.FromConfiguration(
             new MediaPlayerConfiguration(VideoDecodingMethod.Software),
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(path), $"cannot open {path}");
@@ -60,7 +60,7 @@ public sealed class SoftwareVideoCopyBenchmark(ITestOutputHelper output)
         var width = 0;
         var height = 0;
         byte[]? retained = null;
-        ArrayPool<byte> snapshotPool = ArrayPool<byte>.Create(64 * 1024 * 1024, 4);
+        var snapshotPool = ArrayPool<byte>.Create(64 * 1024 * 1024, 4);
 
         while (frames < MaxFrames)
         {

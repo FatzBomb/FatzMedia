@@ -1,8 +1,8 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -19,11 +19,11 @@ namespace FatzMedia.Video.Linux.Tests;
 [Collection("File type registry")]
 public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
 {
-    private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
-    private const string Mp4 = "h264_1080p.mp4";
-    private const string HlsPlaylist = "hls/index.m3u8";
-    private const string MultiVariantPlaylist = "hls_multi/master.m3u8";
-    private static readonly TimeSpan SegmentRoundTrip = TimeSpan.FromMilliseconds(150);
+    const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
+    const string Mp4 = "h264_1080p.mp4";
+    const string HlsPlaylist = "hls/index.m3u8";
+    const string MultiVariantPlaylist = "hls_multi/master.m3u8";
+    static readonly TimeSpan SegmentRoundTrip = TimeSpan.FromMilliseconds(150);
 
     [Fact]
     public void ProgressiveMp4_PresentsFramesAndSeeks()
@@ -33,12 +33,12 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
         using var server = new LocalHttpMediaServer(media);
         using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full);
-        Uri uri = server.UriFor(Mp4);
+        var uri = server.UriFor(Mp4);
 
         var startup = Stopwatch.StartNew();
         Assert.True(session.Player.Load(MediaInputSource.FromUri(uri)), session.Errors);
         var loadMs = startup.Elapsed.TotalMilliseconds;
-        MediaSourceCapabilities? capabilities = session.Player.CurrentSourceCapabilities;
+        var capabilities = session.Player.CurrentSourceCapabilities;
         Assert.NotNull(capabilities);
         Assert.Equal(MediaSourceClass.NetworkFile, capabilities.SourceClass);
         Assert.True(capabilities.IsSeekable);
@@ -81,7 +81,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         var startup = Stopwatch.StartNew();
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(HlsPlaylist))), session.Errors);
         var loadMs = startup.Elapsed.TotalMilliseconds;
-        MediaSourceCapabilities? capabilities = session.Player.CurrentSourceCapabilities;
+        var capabilities = session.Player.CurrentSourceCapabilities;
         Assert.NotNull(capabilities);
         Assert.Equal(MediaSourceClass.NetworkFile, capabilities.SourceClass);
         Assert.True(capabilities.IsSeekable);
@@ -173,7 +173,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         Assert.Equal("4470400", VariantBitrate(demuxer, audio));
 
         demuxer.DiscardAllStreamsExcept([audio]);
-        FFmpeg.AutoGen.AVPacket* packet = FFmpeg.AutoGen.ffmpeg.av_packet_alloc();
+        var packet = FFmpeg.AutoGen.ffmpeg.av_packet_alloc();
         try
         {
             var audioPackets = 0;
@@ -198,13 +198,13 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
         static string? VariantBitrate(Core.Media.MediaDemuxer demuxer, int streamIndex)
         {
-            FFmpeg.AutoGen.AVDictionaryEntry* entry = FFmpeg.AutoGen.ffmpeg.av_dict_get(demuxer.GetStream(streamIndex)->metadata, "variant_bitrate", null, 0);
+            var entry = FFmpeg.AutoGen.ffmpeg.av_dict_get(demuxer.GetStream(streamIndex)->metadata, "variant_bitrate", null, 0);
             return entry == null ? null : System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)entry->value);
         }
     }
 
     /// <summary>Segment requests per variant folder (<c>hls_multi/v0/seg003.ts</c> counts for <c>v0</c>).</summary>
-    private static Dictionary<string, int> CountSegmentsPerVariant(IEnumerable<HttpRequestRecord> requests) =>
+    static Dictionary<string, int> CountSegmentsPerVariant(IEnumerable<HttpRequestRecord> requests) =>
         requests
             .Where(request => request.Path.EndsWith(".ts", StringComparison.Ordinal))
             .GroupBy(request => request.Path.Split('/', StringSplitOptions.RemoveEmptyEntries) is { Length: >= 2 } parts ? parts[^2] : string.Empty)
@@ -227,7 +227,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         var ended = 0;
         session.Player.MediaEnded += (_, _) => Interlocked.Increment(ref ended);
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor("hls/live.m3u8"))), session.Errors);
-        MediaSourceCapabilities? capabilities = session.Player.CurrentSourceCapabilities;
+        var capabilities = session.Player.CurrentSourceCapabilities;
         Assert.NotNull(capabilities);
         Assert.Equal(MediaSourceClass.NetworkLive, capabilities.SourceClass);
         Assert.False(capabilities.IsSeekable);
@@ -259,7 +259,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         using var hung = new SilentTcpServer();
         using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { MaxRetries = 2, ConnectTimeout = TimeSpan.FromSeconds(20) });
 
-        Task<bool> load = Task.Run(() => session.Player.Load(MediaInputSource.FromUri(hung.Uri, MediaNetworkContent.Video)));
+        var load = Task.Run(() => session.Player.Load(MediaInputSource.FromUri(hung.Uri, MediaNetworkContent.Video)));
         await Task.Delay(TimeSpan.FromMilliseconds(500));
         Assert.False(load.IsCompleted, "the load did not wait for the hung server");
 
@@ -341,7 +341,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         Assert.True(SpinWait.SpinUntil(() => session.BufferingList.Contains(true), TimeSpan.FromSeconds(20)),
             $"no buffering start; diagnostics: {string.Join(" | ", session.DiagnosticList)}");
         var stallStart = Stopwatch.StartNew();
-        Assert.True(SpinWait.SpinUntil(() => session.BufferingList.LastOrDefault() == false && session.BufferingList.Contains(false), TimeSpan.FromSeconds(10)), "buffering never ended");
+        Assert.True(SpinWait.SpinUntil(() => !session.BufferingList.LastOrDefault() && session.BufferingList.Contains(false), TimeSpan.FromSeconds(10)), "buffering never ended");
         var framesAfterStall = session.Sink.Frames;
         Assert.True(SpinWait.SpinUntil(() => session.Sink.Frames > framesAfterStall + 5, TimeSpan.FromSeconds(10)), "no frames after the reconnect");
         Assert.Contains(session.DiagnosticList, line => line.Contains("Network retry", StringComparison.Ordinal));
@@ -508,7 +508,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         Assert.DoesNotContain(session.DiagnosticList, line => line.Contains("certificate", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static void AssertPlays(PlayerSession session, Uri uri)
+    static void AssertPlays(PlayerSession session, Uri uri)
     {
         Assert.True(session.Player.Load(MediaInputSource.FromUri(uri)), session.Errors);
         Assert.True(session.Player.Play());
@@ -519,11 +519,11 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     /// <summary>The request that streams the sample from its start (after the head and index reads).</summary>
-    private static bool IsPlaybackRequest(HttpRequestRecord request, long fileLength) =>
+    static bool IsPlaybackRequest(HttpRequestRecord request, long fileLength) =>
         request.Path.EndsWith(Mp4, StringComparison.Ordinal) && request.Number > 1 && (request.RangeStart ?? 0) < fileLength / 10;
 
     /// <summary>Seek latency: from the Seek call to <c>SeekCompleted</c> (the picture settled at the target).</summary>
-    private static double MeasureSeek(PlayerSession session, double target)
+    static double MeasureSeek(PlayerSession session, double target)
     {
         using var completed = new ManualResetEventSlim();
         void OnCompleted(object? sender, MediaSeekCompletedEventArgs e) => completed.Set();
@@ -544,7 +544,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         }
     }
 
-    private static bool TryGetEnvironment(out string ffmpeg, out string media)
+    static bool TryGetEnvironment(out string ffmpeg, out string media)
     {
         ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR") ?? string.Empty;
         media = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_MEDIA_DIR") is { Length: > 0 } configured ? configured : DefaultMediaDirectory;
@@ -552,15 +552,15 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     /// <summary>A player with no BASS, the software renderer and a counting frame sink.</summary>
-    private sealed class PlayerSession : IDisposable
+    sealed class PlayerSession : IDisposable
     {
-        private readonly string _appBase;
-        private readonly MediaPresentationFrameSinkHandle? _handle;
-        private readonly ConcurrentQueue<string> _errors = new();
-        private readonly ConcurrentQueue<string> _diagnostics = new();
-        private readonly ConcurrentQueue<bool> _buffering = new();
+        readonly string _appBase;
+        readonly MediaPresentationFrameSinkHandle? _handle;
+        readonly ConcurrentQueue<string> _errors = new();
+        readonly ConcurrentQueue<string> _diagnostics = new();
+        readonly ConcurrentQueue<bool> _buffering = new();
 
-        private PlayerSession(string appBase, PlayerCore player, CountingFrameSink sink, MediaPresentationFrameSinkHandle? handle)
+        PlayerSession(string appBase, PlayerCore player, CountingFrameSink sink, MediaPresentationFrameSinkHandle? handle)
         {
             _appBase = appBase;
             Player = player;
@@ -617,11 +617,11 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         }
     }
 
-    private sealed class CountingFrameSink : IMediaPresentationFrameSink
+    sealed class CountingFrameSink : IMediaPresentationFrameSink
     {
-        private readonly ConcurrentQueue<long> _presentedAt = new();
-        private int _frames;
-        private volatile bool _lastFrameHasContent;
+        readonly ConcurrentQueue<long> _presentedAt = new();
+        int _frames;
+        volatile bool _lastFrameHasContent;
 
         public int Frames => Volatile.Read(ref _frames);
 
@@ -632,7 +632,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
         public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
         {
-            ReadOnlySpan<byte> row = bgraPixels.Slice(height / 2 * stride, width * 4);
+            var row = bgraPixels.Slice(height / 2 * stride, width * 4);
             var distinct = new HashSet<byte>();
             foreach (var value in row)
             {

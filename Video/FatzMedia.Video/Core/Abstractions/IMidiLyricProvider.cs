@@ -27,7 +27,7 @@ public interface IMidiLyricProvider
 /// A <see cref="IMidiLyricProvider"/> that builds cues from an engine-neutral
 /// <see cref="IMidiEventReader"/> (037A slice 1), so the player needs no audio engine handle.
 /// </summary>
-internal interface IMidiLyricReaderProvider : IMidiLyricProvider
+interface IMidiLyricReaderProvider : IMidiLyricProvider
 {
     /// <summary>
     /// Extracts the lyric cues <paramref name="reader"/> reads; <see langword="null"/> when there is

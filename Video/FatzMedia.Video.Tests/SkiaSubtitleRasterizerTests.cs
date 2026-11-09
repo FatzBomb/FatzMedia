@@ -10,17 +10,17 @@ namespace FatzMedia.Video.Tests;
 /// </summary>
 public sealed class SkiaSubtitleRasterizerTests
 {
-    private const int CanvasWidth = 1920;
-    private const int CanvasHeight = 1080;
-    private const uint Sung = 0xFFFF0000;
-    private const uint Unsung = 0xFFFFFFFF;
+    const int CanvasWidth = 1920;
+    const int CanvasHeight = 1080;
+    const uint Sung = 0xFFFF0000;
+    const uint Unsung = 0xFFFFFFFF;
 
     [Fact]
     public void Render_PlainText_DrawsNearTheBottomCentreOnly()
     {
         using var rasterizer = new SkiaSubtitleRasterizer();
 
-        SubtitleRasterResult result = rasterizer.Render("A plain subtitle", CanvasWidth, CanvasHeight);
+        var result = rasterizer.Render("A plain subtitle", CanvasWidth, CanvasHeight);
 
         Assert.Equal((CanvasWidth, CanvasHeight), (result.CanvasWidth, result.CanvasHeight));
         Assert.Equal(result.Width * 4, result.Stride);
@@ -31,7 +31,7 @@ public sealed class SkiaSubtitleRasterizerTests
         Assert.InRange(centre, (CanvasWidth / 2.0) - 8, (CanvasWidth / 2.0) + 8);
 
         // Text in the middle, transparent padding around it, and premultiplied colour throughout.
-        ReadOnlySpan<byte> pixels = result.Pixels.Span;
+        var pixels = result.Pixels.Span;
         var opaque = 0;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
@@ -54,7 +54,7 @@ public sealed class SkiaSubtitleRasterizerTests
         using var rasterizer = new SkiaSubtitleRasterizer();
         var rented = 0;
 
-        SubtitleRasterResult result = rasterizer.Render("  \n ", CanvasWidth, CanvasHeight, length =>
+        var result = rasterizer.Render("  \n ", CanvasWidth, CanvasHeight, length =>
         {
             rented++;
             return new byte[length];
@@ -78,11 +78,11 @@ public sealed class SkiaSubtitleRasterizerTests
             TransitionStart: TimeSpan.Zero,
             TransitionEnd: TimeSpan.Zero);
 
-        SubtitleRasterResult result = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(seconds), CanvasWidth, CanvasHeight);
+        var result = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(seconds), CanvasWidth, CanvasHeight);
 
         // Opaque pixels across the line's middle band, by canvas x.
         var opaque = new List<(int X, uint Argb)>();
-        ReadOnlySpan<byte> pixels = result.Pixels.Span;
+        var pixels = result.Pixels.Span;
         for (var canvasY = (CanvasHeight / 2) - 10; canvasY <= (CanvasHeight / 2) + 10; canvasY++)
         {
             var y = canvasY - result.CanvasTop;
@@ -110,7 +110,7 @@ public sealed class SkiaSubtitleRasterizerTests
     public void RenderKaraoke_PooledOverload_WritesIntoTheRentedBufferAndAllocatesLittle()
     {
         using var rasterizer = new SkiaSubtitleRasterizer();
-        KaraokeCueTiming timing = CreateTiming();
+        var timing = CreateTiming();
         var buffer = new byte[CanvasWidth * CanvasHeight * 4];
         Func<int, Memory<byte>> rent = length => buffer.AsMemory(0, length);
 
@@ -133,7 +133,7 @@ public sealed class SkiaSubtitleRasterizerTests
     [Fact]
     public void RenderKaraoke_CachedPath_MatchesAColdRasterizer()
     {
-        KaraokeCueTiming timing = CreateTiming();
+        var timing = CreateTiming();
         using var warm = new SkiaSubtitleRasterizer();
         for (var frame = 0; frame < 30; frame++)
             _ = warm.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight);
@@ -168,12 +168,12 @@ public sealed class SkiaSubtitleRasterizerTests
     {
         using var rasterizer = new SkiaSubtitleRasterizer(new SubtitleTextStyle { FontFamily = "No Such Font Family 1234", FontSize = 44, TextArgb = Unsung });
 
-        SubtitleRasterResult result = rasterizer.Render("Fallback", CanvasWidth, CanvasHeight);
+        var result = rasterizer.Render("Fallback", CanvasWidth, CanvasHeight);
 
         Assert.Contains(result.Pixels.ToArray(), static value => value == 255);
     }
 
-    private static KaraokeTextStyle PlainKaraokeStyle() => new()
+    static KaraokeTextStyle PlainKaraokeStyle() => new()
     {
         TextArgb = Unsung,
         WipeTextArgb = Sung,
@@ -183,7 +183,7 @@ public sealed class SkiaSubtitleRasterizerTests
         WipeShadowArgb = 0,
     };
 
-    private static void AssertSameRaster(SubtitleRasterResult expected, SubtitleRasterResult actual)
+    static void AssertSameRaster(SubtitleRasterResult expected, SubtitleRasterResult actual)
     {
         Assert.Equal(
             (expected.Width, expected.Height, expected.Stride, expected.CanvasLeft, expected.CanvasTop),
@@ -220,5 +220,5 @@ public sealed class SkiaSubtitleRasterizerTests
             TransitionEnd: TimeSpan.FromSeconds(10));
     }
 
-    private static TimeSpan FramePosition(int frame) => TimeSpan.FromSeconds(1 + (frame / 60.0));
+    static TimeSpan FramePosition(int frame) => TimeSpan.FromSeconds(1 + (frame / 60.0));
 }

@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Vulkan;
 /// </summary>
 public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
-    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    readonly IPrecisionWaiterFactory _precisionWaiterFactory;
 
     public VulkanPresentationCoordinatorFactory()
         : this(new SystemPrecisionWaiterFactory())
@@ -32,7 +32,7 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     /// </summary>
     public static bool IsSupported(out string? reason)
     {
-        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out reason);
+        using var compositor = VulkanOffscreenCompositor.TryCreate(out reason);
         return compositor is not null;
     }
 
@@ -48,8 +48,8 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     {
         try
         {
-            using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out var reason);
-            MediaPresentationAvailability availability = compositor is null
+            using var compositor = VulkanOffscreenCompositor.TryCreate(out var reason);
+            var availability = compositor is null
                 ? MediaPresentationAvailability.Unavailable(reason ?? "Vulkan initialization failed.")
                 : MediaPresentationAvailability.Available($"{compositor.DeviceName} ({compositor.DeviceType}), {DescribeVideoDecode(compositor)}");
             // Stage 045A slice 2: hardware frames when FFmpeg can decode on the device.
@@ -73,9 +73,9 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
             configuration,
             _precisionWaiterFactory);
 
-    private static VulkanOffscreenCompositor? CreateCompositor()
+    static VulkanOffscreenCompositor? CreateCompositor()
     {
-        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out var failure);
+        var compositor = VulkanOffscreenCompositor.TryCreate(out var failure);
         if (compositor is null)
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Vulkan", failure ?? "Vulkan initialization failed.");
         else
@@ -84,7 +84,7 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     }
 
     /// <summary>Whether the device decodes with Vulkan Video, and which codecs, or why not.</summary>
-    private static string DescribeVideoDecode(VulkanOffscreenCompositor compositor) =>
+    static string DescribeVideoDecode(VulkanOffscreenCompositor compositor) =>
         compositor.VideoDecode is { } decode
             ? $"Vulkan Video decoding: {decode.Describe()}"
             : $"no Vulkan Video decoding: {compositor.VideoDecodeUnavailableReason ?? "unknown"}";

@@ -21,11 +21,11 @@ public class SecondaryPresentationWindow : Form
     /// <summary>The default client size, in pixels, when the window is not full screen.</summary>
     public static readonly Size DefaultClientSize = new(960, 540);
 
-    private readonly IPlayerSession _session;
-    private bool _isFullScreen;
-    private bool _closed;
-    private FormBorderStyle _restoreBorderStyle;
-    private FormWindowState _restoreWindowState;
+    readonly IPlayerSession _session;
+    bool _isFullScreen;
+    bool _closed;
+    FormBorderStyle _restoreBorderStyle;
+    FormWindowState _restoreWindowState;
 
     /// <param name="session">The session to present.</param>
     /// <param name="surfaceId">
@@ -130,7 +130,7 @@ public class SecondaryPresentationWindow : Form
     /// <summary>The top-left position that centres a window of <paramref name="size"/> in <paramref name="area"/> (clamped to it).</summary>
     internal static Point CenteredLocation(Rectangle area, Size size)
     {
-        (int x, int y) = PresentationPlacement.Center(area.X, area.Y, area.Width, area.Height, size.Width, size.Height);
+        (var x, var y) = PresentationPlacement.Center(area.X, area.Y, area.Width, area.Height, size.Width, size.Height);
         return new Point(x, y);
     }
 
@@ -172,7 +172,7 @@ public class SecondaryPresentationWindow : Form
         base.OnFormClosed(e);
     }
 
-    private void OnSurfaceMouseDoubleClick(object? sender, MouseEventArgs e)
+    void OnSurfaceMouseDoubleClick(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
             IsFullScreen = !IsFullScreen;

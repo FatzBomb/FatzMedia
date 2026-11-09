@@ -44,10 +44,13 @@ public sealed class WpfMediaSurfaceParityTests
     [Fact]
     public void ProjectorSurface_DoesNotForwardItsDisplayMode() => RunSta(() =>
     {
-        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
-        var surface = new MediaSurface { Role = MediaPresentationSurfaceRole.Projector, VideoDisplayMode = VideoDisplayMode.Stretch };
-
-        surface.Player = session;
+        (var session, var recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        var surface = new MediaSurface
+        {
+            Role = MediaPresentationSurfaceRole.Projector,
+            VideoDisplayMode = VideoDisplayMode.Stretch,
+            Player = session
+        };
         surface.VideoDisplayMode = VideoDisplayMode.Original;
         Assert.Equal(0, recorder.VideoDisplayModeSets);
 
@@ -65,7 +68,7 @@ public sealed class WpfMediaSurfaceParityTests
     [Fact]
     public void SecondaryWindow_HostsAProjectorSurfaceInTheRequestedMode() => RunSta(() =>
     {
-        (IPlayerSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
+        (var session, var recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
         var window = new SecondaryPresentationWindow(session, " singer ", presentationMode: WpfPresentationMode.WpfComposited);
 
         Assert.Equal(MediaPresentationSurfaceRole.Projector, window.Surface.Role);
@@ -94,7 +97,7 @@ public sealed class WpfMediaSurfaceParityTests
             (expectedX, expectedY),
             PresentationScreen.CenteredPosition(new Int32Rect(x, y, width, height), windowWidth, windowHeight));
 
-    private static void RunAudioModeScenario()
+    static void RunAudioModeScenario()
     {
         var factory = new PlayerModeSwitchTests.SwitchTestPlatformFactory();
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
@@ -114,7 +117,7 @@ public sealed class WpfMediaSurfaceParityTests
         surface.Player = null;
     }
 
-    private static void RunUnloadedScenario()
+    static void RunUnloadedScenario()
     {
         // The content state follows the Player property, not the load state (029C: a paused
         // video moved to another tab or parent stays visible).
@@ -132,7 +135,7 @@ public sealed class WpfMediaSurfaceParityTests
         Assert.False(surface.IsPresentationSuspended);
     }
 
-    private static void DrainDispatcher()
+    static void DrainDispatcher()
     {
         var frame = new DispatcherFrame();
         _ = Dispatcher.CurrentDispatcher.BeginInvoke(
@@ -148,7 +151,7 @@ public sealed class WpfMediaSurfaceParityTests
         var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(
             2, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, pixels, 8);
 
-        MediaInputSource source = WpfMediaInputSources.FromImageSource(bitmap, "test");
+        var source = WpfMediaInputSources.FromImageSource(bitmap, "test");
 
         Assert.True(source.IsBgraImage);
         Assert.Equal((2, 1, 8), (source.Width, source.Height, source.Stride));
@@ -171,7 +174,7 @@ public sealed class WpfMediaSurfaceParityTests
         Assert.True(karaoke.AutoPlay);
     });
 
-    private static void RunSta(Action action)
+    static void RunSta(Action action)
     {
         Exception? failure = null;
         var thread = new Thread(() =>

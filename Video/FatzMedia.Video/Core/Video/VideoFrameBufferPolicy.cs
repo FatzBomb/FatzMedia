@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Core.Video;
 /// <see cref="GetHardwareSurfaceReserve"/> extra pool surfaces, because every queued hardware
 /// frame pins a surface of FFmpeg's fixed d3d11va pool (ENG-027).
 /// </summary>
-internal static class VideoFrameBufferPolicy
+static class VideoFrameBufferPolicy
 {
     public const int MaxBufferedFrames = 12;
     public const int MinBufferedFrames = 4;

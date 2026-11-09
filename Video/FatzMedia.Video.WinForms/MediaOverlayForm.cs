@@ -8,7 +8,7 @@ namespace FatzMedia.Video.WinForms;
 /// click-through (<c>WS_EX_TRANSPARENT</c>) unless <see cref="MediaSurface.OverlayHitTestVisible"/>
 /// is set. It never takes the focus when shown.
 /// </summary>
-internal sealed class MediaOverlayForm : Form
+sealed class MediaOverlayForm : Form
 {
     /// <summary>
     /// The colour key: a near-black that overlay content rarely uses, so anti-aliased edges blend
@@ -16,13 +16,13 @@ internal sealed class MediaOverlayForm : Form
     /// </summary>
     internal static readonly Color TransparencyKeyColor = Color.FromArgb(1, 0, 1);
 
-    private const int WsExTransparent = 0x00000020;
-    private const int WsExToolWindow = 0x00000080;
-    private const int WsExNoActivate = 0x08000000;
-    private const int WmMouseActivate = 0x0021;
-    private const int MaNoActivate = 3;
+    const int WsExTransparent = 0x00000020;
+    const int WsExToolWindow = 0x00000080;
+    const int WsExNoActivate = 0x08000000;
+    const int WmMouseActivate = 0x0021;
+    const int MaNoActivate = 3;
 
-    private bool _hitTestVisible;
+    bool _hitTestVisible;
 
     public MediaOverlayForm()
     {
@@ -48,7 +48,7 @@ internal sealed class MediaOverlayForm : Form
     {
         get
         {
-            CreateParams parameters = base.CreateParams;
+            var parameters = base.CreateParams;
             parameters.ExStyle |= WsExToolWindow;
             if (!_hitTestVisible)
                 parameters.ExStyle |= WsExTransparent | WsExNoActivate;

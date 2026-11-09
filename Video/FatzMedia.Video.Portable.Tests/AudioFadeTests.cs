@@ -32,7 +32,7 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void WithPoints_UpsertsExactPositionsLastWriteWins_IncludingDefaults()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateOutgoing([new(0, 0.8), new(0.5, 0.4), new(0.5, 0.6), new(1, 0.1)]);
+        var envelope = AudioFadeEnvelope.CreateOutgoing([new(0, 0.8), new(0.5, 0.4), new(0.5, 0.6), new(1, 0.1)]);
 
         Assert.Equal([new AudioFadePoint(0, 0.8), new AudioFadePoint(0.5, 0.6), new AudioFadePoint(1, 0.1)], envelope.Points);
     }
@@ -40,7 +40,7 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void WithPoints_DoesNotMergeNearPositions()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Outgoing.WithPoints([new(0.5, 0.5), new(0.5000001, 0.4)]);
+        var envelope = AudioFadeEnvelope.Outgoing.WithPoints([new(0.5, 0.5), new(0.5000001, 0.4)]);
 
         Assert.Equal(4, envelope.Points.Count);
     }
@@ -48,9 +48,9 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void WithPoint_ReturnsNewSnapshotAndLeavesOriginalUntouched()
     {
-        AudioFadeEnvelope original = AudioFadeEnvelope.Incoming;
+        var original = AudioFadeEnvelope.Incoming;
 
-        AudioFadeEnvelope changed = original.WithPoint(new AudioFadePoint(0.5, 0.25));
+        var changed = original.WithPoint(new AudioFadePoint(0.5, 0.25));
 
         Assert.NotSame(original, changed);
         Assert.Equal(2, original.Points.Count);
@@ -60,7 +60,7 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void Points_AreSorted()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Incoming.WithPoints([new(0.75, 0.9), new(0.25, 0.1)]);
+        var envelope = AudioFadeEnvelope.Incoming.WithPoints([new(0.75, 0.9), new(0.25, 0.1)]);
 
         Assert.Equal([0, 0.25, 0.75, 1], envelope.Points.Select(static point => point.Position));
     }
@@ -79,7 +79,7 @@ public sealed class AudioFadeEnvelopeTests
     public void Evaluate_HoldsOuterPointsWhenEndsAreOverridden()
     {
         // Upserting at 0 and 1 is the only way to change the ends; interior evaluation interpolates.
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateIncoming([new(0, 0.2), new(1, 0.6)]);
+        var envelope = AudioFadeEnvelope.CreateIncoming([new(0, 0.2), new(1, 0.6)]);
 
         Assert.Equal(0.4, envelope.Evaluate(0.5), precision: 12);
     }
@@ -91,7 +91,7 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void AudibleStart_LeadingZeroPlateauDelaysStart()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateIncoming([new(0.2, 0), new(0.4, 0)]);
+        var envelope = AudioFadeEnvelope.CreateIncoming([new(0.2, 0), new(0.4, 0)]);
 
         Assert.Equal(0.4, envelope.AudibleStart);
     }
@@ -99,7 +99,7 @@ public sealed class AudioFadeEnvelopeTests
     [Fact]
     public void AudibleStart_AllZeroIsNeverAudible()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateIncoming([new(1, 0)]);
+        var envelope = AudioFadeEnvelope.CreateIncoming([new(1, 0)]);
 
         Assert.Equal(1, envelope.AudibleStart);
     }
@@ -141,9 +141,9 @@ public sealed class AudioFadeScheduleTests
     [Fact]
     public void Build_DefaultOutgoing_IsOneRamp()
     {
-        IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(4));
+        var segments = AudioFadeSchedule.Build(AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(4));
 
-        AudioFadeSegment segment = Assert.Single(segments);
+        var segment = Assert.Single(segments);
         Assert.Equal(TimeSpan.Zero, segment.StartOffset);
         Assert.Equal(TimeSpan.FromSeconds(4), segment.Duration);
         Assert.Equal(1, segment.FromGain);
@@ -153,9 +153,9 @@ public sealed class AudioFadeScheduleTests
     [Fact]
     public void Build_ChainsRampsBetweenPoints()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.25, 0.5));
+        var envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.25, 0.5));
 
-        IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(4));
+        var segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(4));
 
         Assert.Equal(
             [
@@ -168,11 +168,11 @@ public sealed class AudioFadeScheduleTests
     [Fact]
     public void Build_FromAudibleStart_SkipsMutedPlateauTime()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.CreateIncoming([new(0.5, 0)]);
+        var envelope = AudioFadeEnvelope.CreateIncoming([new(0.5, 0)]);
 
-        IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(4), envelope.AudibleStart);
+        var segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(4), envelope.AudibleStart);
 
-        AudioFadeSegment segment = Assert.Single(segments);
+        var segment = Assert.Single(segments);
         Assert.Equal(TimeSpan.Zero, segment.StartOffset);
         Assert.Equal(TimeSpan.FromSeconds(2), segment.Duration);
         Assert.Equal(0, segment.FromGain);
@@ -186,9 +186,9 @@ public sealed class AudioFadeScheduleTests
     [Fact]
     public void Build_SegmentsSumToRemainingDuration()
     {
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Incoming.WithPoints([new(0.1, 0.3), new(0.6, 0.7), new(0.9, 0.95)]);
+        var envelope = AudioFadeEnvelope.Incoming.WithPoints([new(0.1, 0.3), new(0.6, 0.7), new(0.9, 0.95)]);
 
-        IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(10), 0.1);
+        var segments = AudioFadeSchedule.Build(envelope, TimeSpan.FromSeconds(10), 0.1);
 
         Assert.Equal(TimeSpan.FromSeconds(9), TimeSpan.FromTicks(segments.Sum(static s => s.Duration.Ticks)));
     }
@@ -216,7 +216,7 @@ public sealed class AudioFadeRunnerTests
             delays.Add(delay);
             return Task.CompletedTask;
         });
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.5, 0.25));
+        var envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.5, 0.25));
 
         Assert.True(await runner.RunAsync(target, envelope, TimeSpan.FromSeconds(2), 0, CancellationToken.None));
 
@@ -258,9 +258,9 @@ public sealed class AudioFadeRunnerTests
             }
         });
 
-        Task<bool> first = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
+        var first = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
         await firstDelay.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Task<bool> second = runner.RunAsync(target, AudioFadeEnvelope.Incoming, TimeSpan.FromSeconds(1), 0, CancellationToken.None);
+        var second = runner.RunAsync(target, AudioFadeEnvelope.Incoming, TimeSpan.FromSeconds(1), 0, CancellationToken.None);
 
         Assert.False(await first.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.True(await second.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -281,7 +281,7 @@ public sealed class AudioFadeRunnerTests
             await Task.Delay(Timeout.Infinite, token);
         });
 
-        Task<bool> run = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
+        var run = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
         await delayStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         runner.Cancel();
 
@@ -297,7 +297,7 @@ public sealed class AudioFadeRunnerTests
             target.EndSession();
             return Task.CompletedTask;
         });
-        AudioFadeEnvelope envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.5, 0.5));
+        var envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.5, 0.5));
 
         Assert.False(await runner.RunAsync(target, envelope, TimeSpan.FromSeconds(2), 0, CancellationToken.None));
         Assert.Equal(2, target.Calls.Count);
@@ -340,7 +340,7 @@ public sealed class AudioFadeRunnerTests
             await Task.Delay(Timeout.Infinite, token);
         });
 
-        Task<bool> running = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
+        var running = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
         await delayStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(runner.RestoreUnityIfIdle(target, TimeSpan.FromMilliseconds(250)));
 
@@ -358,16 +358,16 @@ public sealed class AudioFadeRunnerTests
 
         for (var i = 0; i < 200; i++)
         {
-            Task<bool> run = Task.Run(() => runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromMilliseconds(1), 0, CancellationToken.None));
+            var run = Task.Run(() => runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromMilliseconds(1), 0, CancellationToken.None));
             runner.Cancel();
             _ = await run.WaitAsync(TimeSpan.FromSeconds(10));
             runner.Cancel();
         }
     }
 
-    private sealed class RecordingTarget : IAudioFadeGainTarget
+    sealed class RecordingTarget : IAudioFadeGainTarget
     {
-        private int _session;
+        int _session;
 
         public List<(double Gain, TimeSpan Ramp)> Calls { get; } = [];
         public bool IsFadeAvailable { get; init; } = true;

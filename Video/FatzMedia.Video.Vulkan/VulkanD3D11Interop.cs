@@ -13,31 +13,31 @@ namespace FatzMedia.Video.Vulkan;
 /// Windows-only packages.
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static unsafe partial class VulkanD3D11Interop
+static unsafe partial class VulkanD3D11Interop
 {
-    private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
-    private const uint D3D11SdkVersion = 7;
-    private const uint DxgiFormatR8G8B8A8Unorm = 28;
-    private const uint BindShaderResource = 0x8;
-    private const uint BindRenderTarget = 0x20;
-    private const uint MiscSharedKeyedMutex = 0x100;
-    private const uint MiscSharedNtHandle = 0x800;
-    private const uint SharedResourceRead = 0x80000000;
-    private const uint SharedResourceWrite = 0x1;
+    const int DxgiErrorNotFound = unchecked((int)0x887A0002);
+    const uint D3D11SdkVersion = 7;
+    const uint DxgiFormatR8G8B8A8Unorm = 28;
+    const uint BindShaderResource = 0x8;
+    const uint BindRenderTarget = 0x20;
+    const uint MiscSharedKeyedMutex = 0x100;
+    const uint MiscSharedNtHandle = 0x800;
+    const uint SharedResourceRead = 0x80000000;
+    const uint SharedResourceWrite = 0x1;
 
     // The adapter LUID in DXGI_ADAPTER_DESC1: after the 128 WCHARs of the description (256 bytes),
     // four UINTs (16) and three SIZE_Ts (24).
-    private const int AdapterDescLuidOffset = 296;
-    private const int AdapterDescSize = 312;
+    const int AdapterDescLuidOffset = 296;
+    const int AdapterDescSize = 312;
 
     // Vtable slots: IUnknown, IDXGIFactory1::EnumAdapters1, IDXGIAdapter1::GetDesc1,
     // ID3D11Device::CreateTexture2D, IDXGIResource1::CreateSharedHandle.
-    private const int QueryInterfaceSlot = 0;
-    private const int ReleaseSlot = 2;
-    private const int EnumAdapters1Slot = 12;
-    private const int GetDesc1Slot = 10;
-    private const int CreateTexture2DSlot = 5;
-    private const int CreateSharedHandleSlot = 13;
+    const int QueryInterfaceSlot = 0;
+    const int ReleaseSlot = 2;
+    const int EnumAdapters1Slot = 12;
+    const int GetDesc1Slot = 10;
+    const int CreateTexture2DSlot = 5;
+    const int CreateSharedHandleSlot = 13;
 
     /// <summary>
     /// <c>ID3D11Device::GetDeviceRemovedReason</c>: after IUnknown (0-2), CreateBuffer (3) through
@@ -45,8 +45,8 @@ internal static unsafe partial class VulkanD3D11Interop
     /// </summary>
     internal const int GetDeviceRemovedReasonSlot = 39;
 
-    private static readonly Guid FactoryId = new("770aae78-f26f-4dba-a829-253c83d1b387");
-    private static readonly Guid Resource1Id = new("30961379-4609-4a41-998e-54fe567ee0c1");
+    static readonly Guid FactoryId = new("770aae78-f26f-4dba-a829-253c83d1b387");
+    static readonly Guid Resource1Id = new("30961379-4609-4a41-998e-54fe567ee0c1");
 
     /// <summary>
     /// Creates a Direct3D11 device on the adapter whose LUID is <paramref name="luid"/> (8 bytes,
@@ -61,7 +61,7 @@ internal static unsafe partial class VulkanD3D11Interop
         }
 
         void* factory = null;
-        Guid factoryId = FactoryId;
+        var factoryId = FactoryId;
         var result = CreateDXGIFactory1(&factoryId, &factory);
         if (result < 0)
         {
@@ -144,7 +144,7 @@ internal static unsafe partial class VulkanD3D11Interop
         void* resource = null;
         try
         {
-            Guid resourceId = Resource1Id;
+            var resourceId = Resource1Id;
             result = ((delegate* unmanaged<void*, Guid*, void**, int>)Slot(texture, QueryInterfaceSlot))(texture, &resourceId, &resource);
             if (result < 0)
                 throw new InvalidOperationException($"IDXGIResource1 is unavailable (0x{result:X8})");
@@ -189,7 +189,7 @@ internal static unsafe partial class VulkanD3D11Interop
             _ = CloseHandle(handle);
     }
 
-    private static nint Slot(void* unknown, int index) => (*(nint**)unknown)[index];
+    static nint Slot(void* unknown, int index) => (*(nint**)unknown)[index];
 
     [LibraryImport("dxgi.dll")]
     private static partial int CreateDXGIFactory1(Guid* riid, void** factory);

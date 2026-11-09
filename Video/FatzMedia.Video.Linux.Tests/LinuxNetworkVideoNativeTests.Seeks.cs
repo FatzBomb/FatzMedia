@@ -1,6 +1,6 @@
-using FatzMedia.Video.Core.Configuration;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Linux.Tests;
 
@@ -16,8 +16,8 @@ namespace FatzMedia.Video.Linux.Tests;
 public sealed partial class LinuxNetworkVideoNativeTests
 {
     // A UI timer that blocks longer than this drops frames visibly.
-    private static readonly TimeSpan GetterBudget = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan SeekSettleTimeout = TimeSpan.FromSeconds(30);
+    static readonly TimeSpan GetterBudget = TimeSpan.FromMilliseconds(50);
+    static readonly TimeSpan SeekSettleTimeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public async Task HlsMultiVariant_RapidAndSpacedSeeks_KeepTheGettersResponsive()
@@ -34,10 +34,11 @@ public sealed partial class LinuxNetworkVideoNativeTests
         await StartAsync(session, server);
 
         using var poller = GetterPoller.Start(session.Player, output);
-        var settles = new List<double>();
-
-        // Rapid: a burst of requests (a drag released several times); only the last must settle.
-        settles.Add(await SeekBurstAsync(session, [20.0, 6.0, 26.0]));
+        var settles = new List<double>
+        {
+            // Rapid: a burst of requests (a drag released several times); only the last must settle.
+            await SeekBurstAsync(session, [20.0, 6.0, 26.0])
+        };
         // Spaced: forward and back, each settling before the next.
         foreach (var target in new[] { 10.0, 28.0, 2.0, 16.0 })
         {
@@ -146,7 +147,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         Assert.Empty(session.ErrorList);
     }
 
-    private static async Task StartAsync(PlayerSession session, LocalHttpMediaServer server)
+    static async Task StartAsync(PlayerSession session, LocalHttpMediaServer server)
     {
         Assert.True(await session.Player.LoadAsync(MediaInputSource.FromUri(server.UriFor(MultiVariantPlaylist))), session.Errors);
         Assert.True(await session.Player.PlayAsync());
@@ -158,7 +159,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
     /// must be accepted, and the last must settle (<c>SeekCompleted</c> for it). Returns the time
     /// from the last request to its settle.
     /// </summary>
-    private async Task<double> SeekBurstAsync(PlayerSession session, IReadOnlyList<double> targets)
+    async Task<double> SeekBurstAsync(PlayerSession session, IReadOnlyList<double> targets)
     {
         var settled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var last = targets[^1];
@@ -202,25 +203,25 @@ public sealed partial class LinuxNetworkVideoNativeTests
     }
 
     /// <summary>Writes every managed thread's stack to the test output, through <c>dotnet-stack</c> when it is installed.</summary>
-    private void DumpStacks(string reason) => GetterPoller.DumpStacks(output, reason);
+    void DumpStacks(string reason) => GetterPoller.DumpStacks(output, reason);
 
     /// <summary>
     /// A "UI thread" that reads the player's state every 200 ms, as the test players' timers do,
     /// and records the longest read; a watchdog dumps the stacks once if a read hangs for 2 s.
     /// </summary>
-    private sealed class GetterPoller : IDisposable
+    sealed class GetterPoller : IDisposable
     {
-        private readonly PlayerCore _player;
-        private readonly Xunit.Abstractions.ITestOutputHelper _output;
-        private readonly Thread _thread;
-        private readonly Thread _watchdog;
-        private readonly CancellationTokenSource _stop = new();
-        private readonly ConcurrentDictionary<string, long> _longestTicks = new(StringComparer.Ordinal);
-        private long _readStarted;
-        private int _reads;
-        private bool _taller;
+        readonly PlayerCore _player;
+        readonly Xunit.Abstractions.ITestOutputHelper _output;
+        readonly Thread _thread;
+        readonly Thread _watchdog;
+        readonly CancellationTokenSource _stop = new();
+        readonly ConcurrentDictionary<string, long> _longestTicks = new(StringComparer.Ordinal);
+        long _readStarted;
+        int _reads;
+        bool _taller;
 
-        private GetterPoller(PlayerCore player, Xunit.Abstractions.ITestOutputHelper output)
+        GetterPoller(PlayerCore player, Xunit.Abstractions.ITestOutputHelper output)
         {
             _player = player;
             _output = output;
@@ -273,7 +274,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
                     RedirectStandardError = true,
                     UseShellExecute = false
                 })!;
-                Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+                var stdout = process.StandardOutput.ReadToEndAsync();
                 if (!process.WaitForExit(TimeSpan.FromSeconds(30)))
                     process.Kill();
                 output.WriteLine($"{reason}; stacks:{Environment.NewLine}{stdout.Result}");
@@ -284,7 +285,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
             }
         }
 
-        private void Run()
+        void Run()
         {
             while (!_stop.IsCancellationRequested)
             {
@@ -305,7 +306,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
             }
         }
 
-        private void Measure(string name, Action read)
+        void Measure(string name, Action read)
         {
             var started = Stopwatch.GetTimestamp();
             Volatile.Write(ref _readStarted, started);
@@ -315,7 +316,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
             _ = _longestTicks.AddOrUpdate(name, elapsed, (_, previous) => Math.Max(previous, elapsed));
         }
 
-        private void Watch()
+        void Watch()
         {
             var dumped = false;
             while (!_stop.Token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100)))

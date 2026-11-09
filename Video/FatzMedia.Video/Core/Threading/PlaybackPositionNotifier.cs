@@ -1,19 +1,19 @@
 namespace FatzMedia.Video.Core.Threading;
 
-internal sealed class PlaybackPositionNotifier : IDisposable
+sealed class PlaybackPositionNotifier : IDisposable
 {
     internal static readonly TimeSpan DefaultInterval = TimeSpan.FromMilliseconds(250);
 
-    private readonly Lock _sync = new();
-    private readonly Func<double> _positionSeconds;
-    private readonly Func<double> _durationSeconds;
-    private readonly TimeProvider _timeProvider;
-    private readonly TimeSpan _interval;
-    private CancellationTokenSource? _cancellation;
-    private Task? _task;
-    private int _generation;
-    private bool _isRunning;
-    private bool _disposed;
+    readonly Lock _sync = new();
+    readonly Func<double> _positionSeconds;
+    readonly Func<double> _durationSeconds;
+    readonly TimeProvider _timeProvider;
+    readonly TimeSpan _interval;
+    CancellationTokenSource? _cancellation;
+    Task? _task;
+    int _generation;
+    bool _isRunning;
+    bool _disposed;
 
     public PlaybackPositionNotifier(
         Func<double> positionSeconds,
@@ -42,7 +42,7 @@ internal sealed class PlaybackPositionNotifier : IDisposable
             var generation = ++_generation;
             _cancellation = new CancellationTokenSource();
             // Read the token now: a Stop() before the task runs clears (and later disposes) the field.
-            CancellationToken token = _cancellation.Token;
+            var token = _cancellation.Token;
             _task = Task.Run(() => RunAsync(generation, token));
         }
     }
@@ -70,7 +70,7 @@ internal sealed class PlaybackPositionNotifier : IDisposable
 
     public void PublishNow() => PublishCurrentPosition();
 
-    private async Task RunAsync(int generation, CancellationToken cancellationToken)
+    async Task RunAsync(int generation, CancellationToken cancellationToken)
     {
         try
         {
@@ -91,7 +91,7 @@ internal sealed class PlaybackPositionNotifier : IDisposable
         }
     }
 
-    private void PublishCurrentPosition()
+    void PublishCurrentPosition()
     {
         if (Volatile.Read(ref _disposed))
             return;
@@ -127,7 +127,7 @@ internal sealed class PlaybackPositionNotifier : IDisposable
         DisposeCancellationAfterCompletion(task, cancellation);
     }
 
-    private static void DisposeCancellationAfterCompletion(Task? task, CancellationTokenSource? cancellation)
+    static void DisposeCancellationAfterCompletion(Task? task, CancellationTokenSource? cancellation)
     {
         if (cancellation == null)
             return;
@@ -146,6 +146,6 @@ internal sealed class PlaybackPositionNotifier : IDisposable
             TaskScheduler.Default);
     }
 
-    private static double CleanSeconds(double seconds) =>
+    static double CleanSeconds(double seconds) =>
         double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

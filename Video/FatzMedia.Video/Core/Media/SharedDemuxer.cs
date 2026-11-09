@@ -26,17 +26,17 @@ namespace FatzMedia.Video.Core.Media;
 ///   <see cref="Seek"/> clears it.
 /// </para>
 /// </remarks>
-internal sealed unsafe class SharedDemuxer : IDisposable
+sealed unsafe class SharedDemuxer : IDisposable
 {
-    private readonly MediaDemuxer _demuxer = new();
-    private readonly Lock _sync = new();
-    private bool _videoEof;
-    private bool _audioEof;
-    private int _videoStreamIndex = -1;
-    private int _audioStreamIndex = -1;
+    readonly MediaDemuxer _demuxer = new();
+    readonly Lock _sync = new();
+    bool _videoEof;
+    bool _audioEof;
+    int _videoStreamIndex = -1;
+    int _audioStreamIndex = -1;
     // The network read-ahead (slice 2), or null for a local file. Read once per call: Close clears it.
-    private volatile NetworkReadAhead? _readAhead;
-    private NetworkVideoProbe _networkProbe;
+    volatile NetworkReadAhead? _readAhead;
+    NetworkVideoProbe _networkProbe;
 
     public bool IsOpen => _demuxer.IsOpen;
     public uint StreamCount => _demuxer.StreamCount;
@@ -305,11 +305,11 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         _demuxer.Dispose();
     }
 
-    private void DisposeReadAhead()
+    void DisposeReadAhead()
     {
         // Disposed before it is forgotten: until then a late consumer read gets the end from it,
         // never the format context the reader is still using.
-        NetworkReadAhead? readAhead = _readAhead;
+        var readAhead = _readAhead;
         readAhead?.Dispose();
         _readAhead = null;
         _networkProbe = default;
@@ -317,7 +317,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     // Under _sync: the next packet of the stream, dropping any other (a local cursor discards the
     // streams its consumer does not play, so there are normally none).
-    private int ReadInline(int streamIndex, ref bool endOfStream, AVPacket* packet)
+    int ReadInline(int streamIndex, ref bool endOfStream, AVPacket* packet)
     {
         if (endOfStream)
             return ffmpeg.AVERROR_EOF;

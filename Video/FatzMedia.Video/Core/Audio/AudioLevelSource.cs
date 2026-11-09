@@ -9,7 +9,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// (<see cref="AudioSilenceAnalyzer"/>) read, so neither needs an audio engine handle. Reading a
 /// level advances the stream. <see cref="BassChannelLevelSource"/> is the BASS implementation.
 /// </summary>
-internal interface IAudioLevelSource
+interface IAudioLevelSource
 {
     /// <summary>
     /// Reads the next <paramref name="seconds"/> of audio and returns the larger of the left and
@@ -37,13 +37,13 @@ internal interface IAudioLevelSource
 /// <see cref="IAudioLevelSource"/> on a BASS decode (or play) channel. Each member makes the same
 /// BASS calls, with the same arguments, that the analyzers made on the handle before 037A slice 1.
 /// </summary>
-internal sealed class BassChannelLevelSource : IAudioLevelSource
+sealed class BassChannelLevelSource : IAudioLevelSource
 {
-    private const LevelRetrievalFlags Flags = LevelRetrievalFlags.Stereo;
-    private static readonly ThreadLocal<float[]> LevelBuffer = new(() => new float[2]);
-    private readonly int _handle;
+    const LevelRetrievalFlags Flags = LevelRetrievalFlags.Stereo;
+    static readonly ThreadLocal<float[]> LevelBuffer = new(() => new float[2]);
+    readonly int _handle;
 
-    private BassChannelLevelSource(int handle) => _handle = handle;
+    BassChannelLevelSource(int handle) => _handle = handle;
 
     /// <summary>Returns a source on <paramref name="handle"/>, or <see langword="null"/> for 0 (no channel).</summary>
     public static BassChannelLevelSource? ForHandle(int handle) => handle == 0 ? null : new BassChannelLevelSource(handle);

@@ -14,16 +14,16 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Presentation.Managed;
 /// survives <see cref="Cleanup"/> and re-creation at another size (a live resize re-creates the
 /// target at every step), and is released by <see cref="Dispose"/> (ENG-026).
 /// </summary>
-internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
+sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
 {
-    private D3D11DeviceResources? _deviceResources;
-    private ID3D11Texture2D? _targetTexture;
-    private ID3D11Texture2D? _stagingTexture;
-    private IMediaPresentationFrameSink? _sink;
-    private byte[] _pixels = [];
-    private bool _deviceLostReported;
-    private readonly RendererDiagnosticLatch _createFailure = new();
-    private readonly RendererDiagnosticLatch _readbackFailure = new();
+    D3D11DeviceResources? _deviceResources;
+    ID3D11Texture2D? _targetTexture;
+    ID3D11Texture2D? _stagingTexture;
+    IMediaPresentationFrameSink? _sink;
+    byte[] _pixels = [];
+    bool _deviceLostReported;
+    readonly RendererDiagnosticLatch _createFailure = new();
+    readonly RendererDiagnosticLatch _readbackFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.ManagedFrameSink;
     public bool IsActive => _targetTexture != null && _stagingTexture != null && _sink != null;
@@ -110,16 +110,16 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         if (!IsActive || _deviceResources?.Context == null)
             return false;
 
-        ID3D11DeviceContext context = _deviceResources.Context;
+        var context = _deviceResources.Context;
         try
         {
             context.CopyResource(_stagingTexture!, _targetTexture!);
-            Result result = context.Map(
+            var result = context.Map(
                 _stagingTexture!,
                 0,
                 MapMode.Read,
                 Vortice.Direct3D11.MapFlags.None,
-                out MappedSubresource mapped);
+                out var mapped);
             if (result.Failure)
             {
                 ReportPresentFailure(result);
@@ -129,7 +129,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
             try
             {
                 var stride = checked(Width * 4);
-                Span<byte> destination = _pixels.AsSpan(0, checked(stride * Height));
+                var destination = _pixels.AsSpan(0, checked(stride * Height));
                 for (var y = 0; y < Height; y++)
                 {
                     var source = new ReadOnlySpan<byte>(
@@ -156,7 +156,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
     }
 
-    private void ReportPresentFailure(Result result)
+    void ReportPresentFailure(Result result)
     {
         if (D3D11DeviceLostClassifier.IsDeviceLost(result))
         {
@@ -168,9 +168,9 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
     }
 
-    private void ReportPresentException(Exception ex)
+    void ReportPresentException(Exception ex)
     {
-        Result removedReason = GetDeviceRemovedReason();
+        var removedReason = GetDeviceRemovedReason();
         if (removedReason.Failure && D3D11DeviceLostClassifier.IsDeviceLost(removedReason))
         {
             RaiseDeviceLostOnce($"Managed frame-sink present detected GPU device lost: {D3D11DeviceLostClassifier.Describe(removedReason, swapChain: null)}");
@@ -181,7 +181,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
     }
 
-    private Result GetDeviceRemovedReason()
+    Result GetDeviceRemovedReason()
     {
         if (_deviceResources?.Device == null)
             return default;
@@ -198,7 +198,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
     }
 
-    private void RaiseDeviceLostOnce(string message)
+    void RaiseDeviceLostOnce(string message)
     {
         if (_deviceLostReported)
             return;

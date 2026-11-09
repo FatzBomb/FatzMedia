@@ -5,7 +5,7 @@ namespace FatzMedia.Video.Core.Graphics.D3D.Upload;
 /// <summary>
 /// Owns upload diagnostics for presentation frame paths.
 /// </summary>
-internal sealed class D3D11FrameUploadResources(
+sealed class D3D11FrameUploadResources(
     D3D11PresentationDiagnostics diagnostics)
 {
     public void RecordUpload(

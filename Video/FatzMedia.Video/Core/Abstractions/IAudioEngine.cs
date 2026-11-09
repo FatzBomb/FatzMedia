@@ -167,18 +167,18 @@ public enum AudioEngineState
     Stalled
 }
 
-internal interface IAudioLoopControl
+interface IAudioLoopControl
 {
     bool LoopPlayback { get; set; }
 }
 
-internal interface IAudioAnalysisOpenControl
+interface IAudioAnalysisOpenControl
 {
     bool Open(string filePath, bool analyzeSilence);
 }
 
 /// <summary>Audio engines that host framework filters (Stage 020A).</summary>
-internal interface IAudioFilterHost
+interface IAudioFilterHost
 {
     AudioEqualizerSettings Equalizer { get; }
 
@@ -186,7 +186,7 @@ internal interface IAudioFilterHost
     bool SetEqualizer(AudioEqualizerSettings settings);
 }
 
-internal interface IAudioTrimWindowProvider
+interface IAudioTrimWindowProvider
 {
     MediaAnalysisResult? ActiveTrimWindow { get; }
 }

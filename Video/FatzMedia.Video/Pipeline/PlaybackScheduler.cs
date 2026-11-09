@@ -14,17 +14,17 @@ namespace FatzMedia.Video.Pipeline;
 /// not return within the <see cref="StopAndWait"/> timeout (a native call that ignores
 /// cancellation) keeps its thread, and later starts get a new worker.
 /// </remarks>
-internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDisposable
+sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDisposable
 {
     public static readonly TimeSpan DefaultIdleTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(2);
+    static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(2);
 
-    private readonly Lock _lock = new();
-    private readonly TimeSpan _idleTimeout = idleTimeout ?? DefaultIdleTimeout;
-    private Worker? _worker;
-    private Run? _pending;
-    private Run? _running;
-    private bool _disposed;
+    readonly Lock _lock = new();
+    readonly TimeSpan _idleTimeout = idleTimeout ?? DefaultIdleTimeout;
+    Worker? _worker;
+    Run? _pending;
+    Run? _running;
+    bool _disposed;
 
     /// <summary>Gets how many worker threads this scheduler has created (diagnostics and tests).</summary>
     internal int WorkerThreadsCreated { get; private set; }
@@ -91,14 +91,14 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
         }
 
         Cancel(cancelled);
-        Run? running = cancelled.Running;
+        var running = cancelled.Running;
         if (running is null)
             return true;
 
         if (ReferenceEquals(Thread.CurrentThread, worker?.Thread))
             return false;
 
-        TimeSpan waitTimeout = timeout ?? DefaultStopTimeout;
+        var waitTimeout = timeout ?? DefaultStopTimeout;
         if (running.Completed.Wait(waitTimeout))
             return true;
 
@@ -134,7 +134,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
             _ = _worker?.Wake.Set(); // a parked worker sees the disposal and exits
     }
 
-    private Worker CreateWorkerNoLock()
+    Worker CreateWorkerNoLock()
     {
         var worker = new Worker();
         var thread = new Thread(() => WorkerLoop(worker)) { IsBackground = true, Name = $"FatzMedia.Video.{name}" };
@@ -157,7 +157,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
         return worker;
     }
 
-    private void WorkerLoop(Worker worker)
+    void WorkerLoop(Worker worker)
     {
         while (true)
         {
@@ -196,14 +196,14 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
         }
     }
 
-    private void ExitNoLock(Worker worker)
+    void ExitNoLock(Worker worker)
     {
         if (ReferenceEquals(_worker, worker))
             _worker = null;
         worker.Wake.Dispose();
     }
 
-    private void Execute(Run run)
+    void Execute(Run run)
     {
         try
         {
@@ -231,9 +231,9 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
     }
 
     /// <summary>Takes the pending and running loops for cancellation outside the lock.</summary>
-    private (Run? Pending, Run? Running) DetachForCancelNoLock()
+    (Run? Pending, Run? Running) DetachForCancelNoLock()
     {
-        Run? pending = _pending;
+        var pending = _pending;
         _pending = null;
         return (pending, _running);
     }
@@ -242,7 +242,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
     /// Cancels outside the lock, so token callbacks never run while the scheduler lock is held.
     /// A replaced pending run never started, so it is completed here.
     /// </summary>
-    private static void Cancel((Run? Pending, Run? Running) runs)
+    static void Cancel((Run? Pending, Run? Running) runs)
     {
         if (runs.Pending is { } pending)
         {
@@ -255,7 +255,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
 
     // A worker thread must survive a throwing diagnostic subscriber: an exception escaping a
     // raw thread would end the process.
-    private static void Report(MediaDiagnosticLevel level, string message, Exception? exception)
+    static void Report(MediaDiagnosticLevel level, string message, Exception? exception)
     {
         try
         {
@@ -266,16 +266,16 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
         }
     }
 
-    private sealed class Worker
+    sealed class Worker
     {
         public Thread? Thread { get; set; }
         public AutoResetEvent Wake { get; } = new(false);
     }
 
-    private sealed class Run(Action<CancellationToken> loop)
+    sealed class Run(Action<CancellationToken> loop)
     {
-        private readonly CancellationTokenSource _cancellation = new();
-        private int _completed;
+        readonly CancellationTokenSource _cancellation = new();
+        int _completed;
 
         public Action<CancellationToken> Loop { get; } = loop;
         public CancellationTokenSource Cancellation => _cancellation;

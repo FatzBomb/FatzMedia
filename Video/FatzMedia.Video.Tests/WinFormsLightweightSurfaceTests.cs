@@ -1,4 +1,3 @@
-using FatzMedia.Video.Core.Abstractions;
 using System.Collections.Concurrent;
 using WinFormsBackgroundSurface = FatzMedia.Video.WinForms.BackgroundSurface;
 using WinFormsKaraokeSurface = FatzMedia.Video.WinForms.KaraokeSurface;
@@ -18,7 +17,7 @@ public sealed class WinFormsLightweightSurfaceTests
         _ = karaoke.Handle;
         karaoke.PerformLayout();
 
-        System.Drawing.Rectangle bounds = karaoke.Surface.Bounds;
+        var bounds = karaoke.Surface.Bounds;
         Assert.Equal(200, bounds.Height);
         Assert.InRange(bounds.Width, 266, 267);
         Assert.InRange(bounds.X, 66, 67);
@@ -67,7 +66,7 @@ public sealed class WinFormsLightweightSurfaceTests
                 Thread.Sleep(5);
             }
 
-            MediaDiagnosticInfo warning = Assert.Single(notices);
+            var warning = Assert.Single(notices);
             Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
             Assert.Null(background.Session);
         }
@@ -77,7 +76,7 @@ public sealed class WinFormsLightweightSurfaceTests
         }
     });
 
-    private static void RunSta(Action action)
+    static void RunSta(Action action)
     {
         Exception? failure = null;
         var thread = new Thread(() =>

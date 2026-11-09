@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Graphics.Composition;
@@ -6,7 +7,6 @@ using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
 using FatzMedia.Video.Pipeline;
 using FFmpeg.AutoGen;
-using System.Diagnostics;
 using Xunit.Abstractions;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -19,8 +19,8 @@ namespace FatzMedia.Video.Linux.Tests;
 /// </summary>
 public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output)
 {
-    private const string Mp4 = "h264_1080p.mp4";
-    private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
+    const string Mp4 = "h264_1080p.mp4";
+    const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
 
     /// <summary>
     /// P5-5: the video cursor of a local file (audio has its own cursor) discards the streams it
@@ -35,7 +35,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpegDirectory);
         using var shared = new SharedDemuxer();
         Assert.True(shared.Open(path));
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(
+        using var decoder = VideoDecoder.FromConfiguration(
             new MediaPlayerConfiguration(VideoDecodingMethod.Software),
             shared,
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
@@ -61,7 +61,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
 
         for (var index = 0; index < (int)shared.StreamCount; index++)
         {
-            AVDiscard expected = index == decoder.VideoStreamIndex ? AVDiscard.AVDISCARD_DEFAULT : AVDiscard.AVDISCARD_ALL;
+            var expected = index == decoder.VideoStreamIndex ? AVDiscard.AVDISCARD_DEFAULT : AVDiscard.AVDISCARD_ALL;
             Assert.Equal(expected, shared.GetStream(index)->discard);
         }
 
@@ -73,7 +73,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         Assert.True(videoPackets < allPackets);
     }
 
-    private static unsafe (int Packets, double Milliseconds) CountPackets(string path, bool discardOthers)
+    static unsafe (int Packets, double Milliseconds) CountPackets(string path, bool discardOthers)
     {
         using var demuxer = new MediaDemuxer();
         Assert.True(demuxer.Open(path));
@@ -81,7 +81,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         if (discardOthers)
             demuxer.DiscardAllStreamsExcept([video]);
 
-        AVPacket* packet = ffmpeg.av_packet_alloc();
+        var packet = ffmpeg.av_packet_alloc();
         var stopwatch = Stopwatch.StartNew();
         var packets = 0;
         try
@@ -150,7 +150,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         _ = pipeline.Stop();
 
         // The first second settles (first frames, the display-locked state report).
-        long[] settled = perPass[60..];
+        var settled = perPass[60..];
         var allocating = settled.Count(static bytes => bytes > 0);
         output.WriteLine($"P5-6 display-locked: {settled.Sum()} bytes over {settled.Length} passes, {allocating} passes allocated, max {settled.Max()} bytes");
         Assert.Equal(0, settled.Sum());
@@ -167,7 +167,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
             return;
 
         FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpegDirectory);
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(
+        using var decoder = VideoDecoder.FromConfiguration(
             new MediaPlayerConfiguration(VideoDecodingMethod.Software),
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(path));
@@ -196,7 +196,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         Assert.Equal(0, allocated);
     }
 
-    private static long ReadProcessBytes()
+    static long ReadProcessBytes()
     {
         foreach (var line in File.ReadLines("/proc/self/io"))
             if (line.StartsWith("rchar:", StringComparison.Ordinal))
@@ -205,7 +205,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         return 0;
     }
 
-    private static bool TryGetEnvironment(out string ffmpeg, out string path)
+    static bool TryGetEnvironment(out string ffmpeg, out string path)
     {
         ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR") ?? string.Empty;
         var media = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_MEDIA_DIR") is { Length: > 0 } configured ? configured : DefaultMediaDirectory;
@@ -218,11 +218,11 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
     /// now and then, and that is the platform waiter's cost, not the pipeline's. Short waits keep
     /// Stop prompt.
     /// </summary>
-    private sealed class SleepWaiterFactory : IPrecisionWaiterFactory
+    sealed class SleepWaiterFactory : IPrecisionWaiterFactory
     {
         public IPrecisionWaiter Create() => new SleepWaiter();
 
-        private sealed class SleepWaiter : IPrecisionWaiter
+        sealed class SleepWaiter : IPrecisionWaiter
         {
             public bool IsHighResolution => false;
 
@@ -238,7 +238,7 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
         }
     }
 
-    private sealed class FixedRefresh : IVideoPipelinePlatformServices
+    sealed class FixedRefresh : IVideoPipelinePlatformServices
     {
         public double GetPresentationRefreshIntervalSeconds() => 1.0 / 60;
     }

@@ -13,9 +13,9 @@ namespace FatzMedia.Video.Linux;
 /// </summary>
 public sealed class LinuxPlatformFactory : IPlatformFactory
 {
-    private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
-    private readonly LinuxPlatformOptions _options;
-    private readonly LinuxNativeLibraryBootstrapper _bootstrapper;
+    readonly IMediaPresentationCoordinatorFactory _presentationFactory;
+    readonly LinuxPlatformOptions _options;
+    readonly LinuxNativeLibraryBootstrapper _bootstrapper;
 
     public LinuxPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory, LinuxPlatformOptions? options = null)
         : this(presentationFactory, options, LinuxNativeLibraryBootstrapper.Default)

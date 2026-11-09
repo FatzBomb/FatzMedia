@@ -9,19 +9,19 @@ namespace FatzMedia.Video.Vulkan;
 /// <see cref="Threshold"/> raises one warning naming it, at most once a second per call site.
 /// Process-wide: the warning goes to whichever player made the call.
 /// </summary>
-internal static class VulkanStallMeter
+static class VulkanStallMeter
 {
     /// <summary>A call slower than this is reported.</summary>
     internal static readonly TimeSpan Threshold = TimeSpan.FromMilliseconds(250);
 
-    private static readonly TimeSpan ReportInterval = TimeSpan.FromSeconds(1);
-    private static readonly ConcurrentDictionary<string, long> LastReports = new(StringComparer.Ordinal);
+    static readonly TimeSpan ReportInterval = TimeSpan.FromSeconds(1);
+    static readonly ConcurrentDictionary<string, long> LastReports = new(StringComparer.Ordinal);
 
     /// <summary>Reports <paramref name="operation"/> when it took longer than <see cref="Threshold"/> since <paramref name="startTimestamp"/>.</summary>
     public static void Report(long startTimestamp, string operation)
     {
         var now = Stopwatch.GetTimestamp();
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(startTimestamp, now);
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp, now);
         if (elapsed < Threshold)
             return;
 

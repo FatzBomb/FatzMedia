@@ -10,7 +10,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// This is a self-contained binary reader/writer — no external DLS2/SF2 library needed.
 /// It reads only the DLS chunks required for GM conversion and writes a minimal valid SF2.
 /// </summary>
-internal static class DlsToSf2Converter
+static class DlsToSf2Converter
 {
     public static string? Convert(string dlsPath)
     {
@@ -27,7 +27,7 @@ internal static class DlsToSf2Converter
             var readPath = dlsPath;
             try
             {
-                using FileStream testStream = File.OpenRead(dlsPath);
+                using var testStream = File.OpenRead(dlsPath);
             }
             catch (UnauthorizedAccessException)
             {
@@ -55,7 +55,7 @@ internal static class DlsToSf2Converter
         }
     }
 
-    private static string GetCachePath(string dlsPath)
+    static string GetCachePath(string dlsPath)
     {
         // Keyed on the name alone, as before: an SF2 converted by an earlier version keeps being
         // used. (Keying on size and write time would convert Windows' gm.dls again.)
@@ -68,9 +68,9 @@ internal static class DlsToSf2Converter
 
     // ─── DLS reading ──────────────────────────────────────────────
 
-    private sealed class DlsReader(BinaryReader reader)
+    sealed class DlsReader(BinaryReader reader)
     {
-        private readonly BinaryReader _reader = reader;
+        readonly BinaryReader _reader = reader;
 
         public string ReadFourCC() => Encoding.ASCII.GetString(_reader.ReadBytes(4));
         public uint ReadUInt32() => _reader.ReadUInt32();
@@ -100,15 +100,15 @@ internal static class DlsToSf2Converter
             Seek(chunkStart + chunkSize + (chunkSize & 1));
     }
 
-    private sealed record DlsSample(short[] Pcm16, uint SampleRate, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
+    sealed record DlsSample(short[] Pcm16, uint SampleRate, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
 
-    private sealed record DlsRegion(byte KeyLow, byte KeyHigh, byte VelLow, byte VelHigh, int SampleIndex, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
+    sealed record DlsRegion(byte KeyLow, byte KeyHigh, byte VelLow, byte VelHigh, int SampleIndex, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
 
-    private sealed record DlsInstrument(ushort Bank, ushort Preset, List<DlsRegion> Regions);
+    sealed record DlsInstrument(ushort Bank, ushort Preset, List<DlsRegion> Regions);
 
     internal static string? ConvertAndSave(string dlsPath, string cachePath)
     {
-        using FileStream stream = File.OpenRead(dlsPath);
+        using var stream = File.OpenRead(dlsPath);
         var reader = new BinaryReader(stream, Encoding.ASCII);
         var dls = new DlsReader(reader);
 
@@ -163,7 +163,7 @@ internal static class DlsToSf2Converter
                 var listType = dls.ReadFourCC();
                 if (listType == "wave")
                 {
-                    DlsSample? sample = ParseWaveChunk(dls, chunkStart + chunkSize);
+                    var sample = ParseWaveChunk(dls, chunkStart + chunkSize);
                     if (sample != null)
                     {
                         sampleIndexMap[waveIndex] = samples.Count;
@@ -195,7 +195,7 @@ internal static class DlsToSf2Converter
                 var listType = dls.ReadFourCC();
                 if (listType == "ins ")
                 {
-                    DlsInstrument? inst = ParseInstrumentChunk(dls, chunkStart + chunkSize, sampleIndexMap);
+                    var inst = ParseInstrumentChunk(dls, chunkStart + chunkSize, sampleIndexMap);
                     if (inst != null)
                         instruments.Add(inst);
                 }
@@ -227,7 +227,7 @@ internal static class DlsToSf2Converter
         return cachePath;
     }
 
-    private static DlsSample? ParseWaveChunk(DlsReader dls, long endOffset)
+    static DlsSample? ParseWaveChunk(DlsReader dls, long endOffset)
     {
         uint sampleRate = 44100;
         ushort unityNote = 60;
@@ -284,7 +284,7 @@ internal static class DlsToSf2Converter
         return pcm16 == null || pcm16.Length == 0 ? null : new DlsSample(pcm16, sampleRate, unityNote, fineTune, loopStart, loopLength);
     }
 
-    private static DlsInstrument? ParseInstrumentChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
+    static DlsInstrument? ParseInstrumentChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
     {
         ushort bank = 0;
         ushort preset = 0;
@@ -321,7 +321,7 @@ internal static class DlsToSf2Converter
                             var rgnType = dls.ReadFourCC();
                             if (rgnType == "rgn ")
                             {
-                                DlsRegion? region = ParseRegionChunk(dls, rgnStart + rgnSize, sampleIndexMap);
+                                var region = ParseRegionChunk(dls, rgnStart + rgnSize, sampleIndexMap);
                                 if (region != null)
                                     regions.Add(region);
                             }
@@ -338,7 +338,7 @@ internal static class DlsToSf2Converter
         return regions.Count == 0 ? null : new DlsInstrument(bank, preset, regions);
     }
 
-    private static DlsRegion? ParseRegionChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
+    static DlsRegion? ParseRegionChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
     {
         byte keyLow = 0, keyHigh = 127;
         byte velLow = 0, velHigh = 127;
@@ -398,7 +398,7 @@ internal static class DlsToSf2Converter
 
     // ─── SF2 writing ─────────────────────────────────────────────
 
-    private static void WriteSf2(string path, List<DlsSample?> samples, List<DlsInstrument> instruments, string bankName)
+    static void WriteSf2(string path, List<DlsSample?> samples, List<DlsInstrument> instruments, string bankName)
     {
         // Build SF2 in memory as lists, then serialize
         var smplData = new List<short>();
@@ -451,12 +451,12 @@ internal static class DlsToSf2Converter
 
         // Add instruments and presets
         ushort instIdx = 0;
-        foreach (DlsInstrument inst in instruments)
+        foreach (var inst in instruments)
         {
             var instName = $"Inst{instIdx}";
             var instBagIndex = (ushort)ibagEntries.Count;
 
-            foreach (DlsRegion region in inst.Regions)
+            foreach (var region in inst.Regions)
             {
                 if (samples[region.SampleIndex] is null)
                     continue;
@@ -505,7 +505,7 @@ internal static class DlsToSf2Converter
         pmodEntries.Add((0, 0, 0, 0, 0));
 
         // Serialize to file
-        using FileStream outStream = File.Create(path);
+        using var outStream = File.Create(path);
         using var writer = new BinaryWriter(outStream, Encoding.ASCII);
 
         // Build INFO LIST
@@ -550,7 +550,7 @@ internal static class DlsToSf2Converter
         WriteListChunk(writer, "pdta", pdtaBytes);
     }
 
-    private static void WriteInfoChunk(MemoryStream ms, string name, byte[] data)
+    static void WriteInfoChunk(MemoryStream ms, string name, byte[] data)
     {
         ms.Write(Encoding.ASCII.GetBytes(name));
         ms.Write(BitConverter.GetBytes((uint)data.Length));
@@ -559,7 +559,7 @@ internal static class DlsToSf2Converter
             ms.WriteByte(0);
     }
 
-    private static void WriteInfoString(MemoryStream ms, string name, string value)
+    static void WriteInfoString(MemoryStream ms, string name, string value)
     {
         var bytes = Encoding.ASCII.GetBytes(value + '\0');
         if (bytes.Length % 2 != 0)
@@ -567,7 +567,7 @@ internal static class DlsToSf2Converter
         WriteInfoChunk(ms, name, bytes);
     }
 
-    private static void WriteChunk(MemoryStream ms, string name, byte[] data)
+    static void WriteChunk(MemoryStream ms, string name, byte[] data)
     {
         ms.Write(Encoding.ASCII.GetBytes(name));
         ms.Write(BitConverter.GetBytes((uint)data.Length));
@@ -576,7 +576,7 @@ internal static class DlsToSf2Converter
             ms.WriteByte(0);
     }
 
-    private static void WriteListChunk(BinaryWriter writer, string listType, byte[] data)
+    static void WriteListChunk(BinaryWriter writer, string listType, byte[] data)
     {
         writer.Write(Encoding.ASCII.GetBytes("LIST"));
         writer.Write((uint)(4 + data.Length));
@@ -584,7 +584,7 @@ internal static class DlsToSf2Converter
         writer.Write(data);
     }
 
-    private static void WritePhdrChunk(MemoryStream ms, List<(string Name, ushort Preset, ushort Bank, ushort BagIndex)> entries)
+    static void WritePhdrChunk(MemoryStream ms, List<(string Name, ushort Preset, ushort Bank, ushort BagIndex)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
@@ -604,7 +604,7 @@ internal static class DlsToSf2Converter
         WriteChunk(ms, "phdr", chunkMs.ToArray());
     }
 
-    private static void WriteBagChunk(MemoryStream ms, string name, List<(ushort GenIndex, ushort ModIndex)> entries)
+    static void WriteBagChunk(MemoryStream ms, string name, List<(ushort GenIndex, ushort ModIndex)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
@@ -616,7 +616,7 @@ internal static class DlsToSf2Converter
         WriteChunk(ms, name, chunkMs.ToArray());
     }
 
-    private static void WriteModChunk(MemoryStream ms, string name, List<(ushort Src, ushort Dest, short Amount, ushort SrcAmt, ushort Transform)> entries)
+    static void WriteModChunk(MemoryStream ms, string name, List<(ushort Src, ushort Dest, short Amount, ushort SrcAmt, ushort Transform)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
@@ -631,7 +631,7 @@ internal static class DlsToSf2Converter
         WriteChunk(ms, name, chunkMs.ToArray());
     }
 
-    private static void WriteGenChunk(MemoryStream ms, string name, List<(ushort Gen, short Amount)> entries)
+    static void WriteGenChunk(MemoryStream ms, string name, List<(ushort Gen, short Amount)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
@@ -643,7 +643,7 @@ internal static class DlsToSf2Converter
         WriteChunk(ms, name, chunkMs.ToArray());
     }
 
-    private static void WriteInstChunk(MemoryStream ms, List<(string Name, ushort BagIndex)> entries)
+    static void WriteInstChunk(MemoryStream ms, List<(string Name, ushort BagIndex)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
@@ -658,7 +658,7 @@ internal static class DlsToSf2Converter
         WriteChunk(ms, "inst", chunkMs.ToArray());
     }
 
-    private static void WriteShdrChunk(MemoryStream ms, List<(string Name, uint Start, uint End, uint LoopStart, uint LoopEnd, uint SampleRate, byte OriginalKey, sbyte PitchCorrection)> entries)
+    static void WriteShdrChunk(MemoryStream ms, List<(string Name, uint Start, uint End, uint LoopStart, uint LoopEnd, uint SampleRate, byte OriginalKey, sbyte PitchCorrection)> entries)
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);

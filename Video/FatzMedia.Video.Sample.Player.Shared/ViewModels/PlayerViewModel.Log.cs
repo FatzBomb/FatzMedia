@@ -1,6 +1,6 @@
-using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using CommunityToolkit.Mvvm.Input;
 
 namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 
@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// </summary>
 public partial class PlayerViewModel
 {
-    private const int MaxLogEntries = 1000;
+    const int MaxLogEntries = 1000;
 
     public ObservableCollection<DiagnosticLogEntry> DiagnosticLog { get; } = [];
 
@@ -19,11 +19,11 @@ public partial class PlayerViewModel
     public string LogFilePath => _host.LogFilePath ?? string.Empty;
 
     // Any thread: the debug log file gets the line even while the UI thread is blocked (ENG-039).
-    private void TraceLogEntry(DiagnosticLogEntry entry) =>
+    void TraceLogEntry(DiagnosticLogEntry entry) =>
         Trace.WriteLine(Label is { Length: > 0 } label ? $"[Diagnostic] {label} {entry.Line}" : $"[Diagnostic] {entry.Line}");
 
     // UI thread: the log panel. The entry was traced already.
-    private void AppendToLog(DiagnosticLogEntry entry)
+    void AppendToLog(DiagnosticLogEntry entry)
     {
         DiagnosticLog.Insert(0, entry);
         while (DiagnosticLog.Count > MaxLogEntries)
@@ -34,7 +34,7 @@ public partial class PlayerViewModel
     public string GetLogText() => string.Join(Environment.NewLine, DiagnosticLog.Reverse().Select(entry => entry.Line));
 
     [RelayCommand]
-    private async Task CopyLogAsync()
+async Task CopyLogAsync()
     {
         if (_host.Clipboard is not { } clipboard)
         {
@@ -56,10 +56,10 @@ public partial class PlayerViewModel
     }
 
     [RelayCommand]
-    private void ClearLog() => DiagnosticLog.Clear();
+void ClearLog() => DiagnosticLog.Clear();
 
     [RelayCommand]
-    private void OpenLogFile()
+void OpenLogFile()
     {
         if (LogFilePath.Length == 0 || !File.Exists(LogFilePath))
         {

@@ -2,18 +2,18 @@ using System.Diagnostics;
 
 namespace FatzMedia.Video;
 
-internal static partial class Bootstrap
+static partial class Bootstrap
 {
     // Serializes loading: a concurrent caller waits for the load in progress and gets its result
     // instead of failing with an empty message. A failed load is retried by the next caller.
     // FFmpeg is required; BASS is optional (ENG-033): without it the player starts with no audio,
     // and a later caller with other paths retries BASS while the loaded FFmpeg stays as it is.
-    private static readonly Lock InitGate = new();
-    private static volatile bool _isInitialized;
+    static readonly Lock InitGate = new();
+    static volatile bool _isInitialized;
     // The search paths of the last load that found FFmpeg but not BASS: the next player with the
     // same paths keeps that outcome instead of scanning them for BASS again (ENG-039 P5-8). Other
     // paths still retry BASS.
-    private static List<string>? _withoutBassSearchPaths;
+    static List<string>? _withoutBassSearchPaths;
 
     internal static bool IsBassLoaded { get; private set; } = false;
     internal static bool IsFfmpegLoaded { get; private set; } = false;
@@ -27,11 +27,11 @@ internal static partial class Bootstrap
 
     /// <summary>Loads the native libraries; true when FFmpeg loaded (BASS may still be missing: see <see cref="IsBassLoaded"/>).</summary>
     public static bool EnsureInitialized(IReadOnlyList<string> nativeLibraryPaths) => Initialize(nativeLibraryPaths);
-    private static List<string> searchPaths = [];
-    private static readonly List<string> _nativeLoadMessages = [];
-    private static readonly List<NativeLibraryCheck> _nativeChecks = [];
+    static List<string> searchPaths = [];
+    static readonly List<string> _nativeLoadMessages = [];
+    static readonly List<NativeLibraryCheck> _nativeChecks = [];
 
-    private static bool Initialize(IReadOnlyList<string> nativeLibraryPaths)
+    static bool Initialize(IReadOnlyList<string> nativeLibraryPaths)
     {
         if (_isInitialized) return true;
 
@@ -96,7 +96,7 @@ internal static partial class Bootstrap
         }
     }
 
-    private static string BuildFailureMessage()
+    static string BuildFailureMessage()
     {
         var searchPathText = searchPaths.Count == 0
             ? "none"
@@ -109,7 +109,7 @@ internal static partial class Bootstrap
         return $"Failed to load required native libraries. Search path(s): {searchPathText}.{details}";
     }
 
-    private static void AddNativeCheck(string component, string fileName, bool isRequired, NativeLibraryStatus status, string? path = null)
+    static void AddNativeCheck(string component, string fileName, bool isRequired, NativeLibraryStatus status, string? path = null)
     {
         string? hint = null;
         if (status == NativeLibraryStatus.Missing)
@@ -122,14 +122,14 @@ internal static partial class Bootstrap
         _nativeChecks.Add(new NativeLibraryCheck(component, fileName, isRequired, status, path, hint));
     }
 
-    private static IEnumerable<string> ListSearchPathFileNames()
+    static IEnumerable<string> ListSearchPathFileNames()
     {
         foreach (var path in searchPaths)
         {
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(path, "*.dll", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>().ToArray();
+                files = [.. Directory.EnumerateFiles(path, "*.dll", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()];
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -141,13 +141,13 @@ internal static partial class Bootstrap
         }
     }
 
-    private static void AddNativeLoadMessage(string message)
+    static void AddNativeLoadMessage(string message)
     {
         _nativeLoadMessages.Add(message);
         Debug.WriteLine(message);
     }
 
-    private static string? GetUserPath(string? path)
+    static string? GetUserPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
         if (Path.IsPathRooted(path))
@@ -170,7 +170,7 @@ internal static partial class Bootstrap
         return Path.GetFullPath(candidate);
     }
 
-    private static string[] ToNativeLibraryPathArray(string? nativeLibraryPath) => string.IsNullOrWhiteSpace(nativeLibraryPath)
+    static string[] ToNativeLibraryPathArray(string? nativeLibraryPath) => string.IsNullOrWhiteSpace(nativeLibraryPath)
             ? []
             : [nativeLibraryPath];
 }
