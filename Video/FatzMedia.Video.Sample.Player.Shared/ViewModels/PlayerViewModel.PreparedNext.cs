@@ -83,7 +83,7 @@ public partial class PlayerViewModel
         CancelFadeCommand.NotifyCanExecuteChanged();
     }
 
-    private void StartPreparedNextValidation(MediaControlPlayer player)
+    private void StartPreparedNextValidation(PlayerCore player)
     {
         player.PreparedNextChanged += OnPreparedNextChanged;
         player.PreparedNextTransitioned += OnPreparedNextTransitioned;
@@ -93,7 +93,7 @@ public partial class PlayerViewModel
             _ = PrepareNextAsync(path);
     }
 
-    private void StopPreparedNextValidation(MediaControlPlayer player)
+    private void StopPreparedNextValidation(PlayerCore player)
     {
         player.PreparedNextChanged -= OnPreparedNextChanged;
         player.PreparedNextTransitioned -= OnPreparedNextTransitioned;

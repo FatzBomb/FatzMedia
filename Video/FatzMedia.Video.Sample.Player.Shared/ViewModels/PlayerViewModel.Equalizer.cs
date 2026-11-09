@@ -29,7 +29,7 @@ public sealed class EqualizerBandViewModel(string label, Action changed) : Obser
 
 /// <summary>
 /// Validation-host equalizer: ten ISO octave bands plus an on/off switch, applied live through
-/// <see cref="MediaControlPlayer.Equalizer"/>. <c>--eq=g1,...,g10</c> pre-sets the bands and enables it.
+/// <see cref="PlayerCore.Equalizer"/>. <c>--eq=g1,...,g10</c> pre-sets the bands and enables it.
 /// </summary>
 public partial class PlayerViewModel
 {

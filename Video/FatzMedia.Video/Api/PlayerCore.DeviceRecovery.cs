@@ -11,7 +11,7 @@ namespace FatzMedia.Video;
 /// lost device is gone (a hardware decoder, or the device the renderer adopted from it), so the
 /// open video is reopened once, at its position and in its transport state, as a mode switch does.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     private const string DeviceRecoveryDiagnosticCategory = "DeviceRecovery";
 
@@ -60,7 +60,7 @@ public partial class MediaControlPlayer
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Reopening after a device recovery failed: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Reopening after a device recovery failed: {ex.Message}");
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,
                 DeviceRecoveryDiagnosticCategory,

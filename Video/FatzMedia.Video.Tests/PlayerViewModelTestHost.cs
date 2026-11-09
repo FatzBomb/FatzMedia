@@ -109,14 +109,14 @@ internal sealed class GatedEngineFactory(Task gate) : IPlayerEngineFactory
 
     public Task<PlayerRendererInfo> ResolveRendererAsync() => _inner.ResolveRendererAsync();
 
-    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         await gate.ConfigureAwait(false);
         return await _inner.CreatePlayerAsync(renderer, configuration).ConfigureAwait(false);
     }
 }
 
-/// <summary>Creates real <see cref="MediaControlPlayer"/>s over <see cref="TestMediaEngine"/>s.</summary>
+/// <summary>Creates real <see cref="PlayerCore"/>s over <see cref="TestMediaEngine"/>s.</summary>
 internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 {
     public TestPlayerEngineFactory()
@@ -154,7 +154,7 @@ internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 
     public MediaPlayerConfiguration? Configuration { get; private set; }
 
-    public MediaControlPlayer? Created { get; private set; }
+    public PlayerCore? Created { get; private set; }
 
     public TestMediaEngine Engine => Platform.Engines[^1];
 
@@ -164,13 +164,13 @@ internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 
     public Task<PlayerRendererInfo> ResolveRendererAsync() => Task.FromResult(Renderer);
 
-    public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    public Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         Configuration = configuration;
         if (CreateFailure is { } failure)
-            return Task.FromException<MediaControlPlayer>(failure);
+            return Task.FromException<PlayerCore>(failure);
 
-        return Task.Run(() => Created = new MediaControlPlayer(Platform, configuration, NativeLibraryPaths));
+        return Task.Run(() => Created = new PlayerCore(Platform, configuration, NativeLibraryPaths));
     }
 }
 
@@ -201,7 +201,7 @@ internal sealed class PlayerViewModelHarness : IAsyncDisposable
 
     public PlayerViewModel ViewModel { get; }
 
-    public MediaControlPlayer Player => ViewModel.Player ?? throw new InvalidOperationException("The player was not created.");
+    public PlayerCore Player => ViewModel.Player ?? throw new InvalidOperationException("The player was not created.");
 
     public TestPlayerTimer PositionTimer => Assert.Single(Dispatcher.Timers);
 

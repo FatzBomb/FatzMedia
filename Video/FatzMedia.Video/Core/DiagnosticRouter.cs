@@ -3,7 +3,7 @@ namespace FatzMedia.Video;
 
 /// <summary>
 /// Static sink through which engine and platform components can raise host-routable
-/// diagnostics. <see cref="MediaControlPlayer"/> subscribes and re-marshals to the
+/// diagnostics. <see cref="PlayerCore"/> subscribes and re-marshals to the
 /// public <see cref="IPlayerSession.MediaDiagnostic"/> event.
 /// </summary>
 /// <remarks>

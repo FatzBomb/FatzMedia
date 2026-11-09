@@ -81,7 +81,7 @@ public sealed class HdrToneMappingNativeTests(ITestOutputHelper output)
             var errors = new ConcurrentQueue<string>();
             var sink = new CapturingFrameSink(framesToSkip: 15);
 
-            using var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
+            using var player = new PlayerCore(factory, configuration, [ffmpeg]);
             player.MediaDiagnostic += (_, args) => messages.Enqueue(args.Message);
             player.MediaError += (_, args) => errors.Enqueue(args.Message);
             Assert.True(player.NativeDependencies.RequiredLoaded, string.Join(" ", player.NativeDependencies.Describe()));

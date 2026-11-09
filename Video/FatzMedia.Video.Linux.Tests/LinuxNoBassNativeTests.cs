@@ -42,7 +42,7 @@ public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
             var errors = new ConcurrentQueue<string>();
             var sink = new CountingFrameSink();
 
-            using var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
+            using var player = new PlayerCore(factory, configuration, [ffmpeg]);
             player.MediaError += (_, args) => errors.Enqueue(args.Message);
 
             output.WriteLine(player.LastNativeLoadMessage);

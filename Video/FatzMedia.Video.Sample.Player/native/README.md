@@ -54,7 +54,7 @@ instead of keeping them here.
 `FatzMedia.Video.Sample.Player.csproj` copies `native/**/*.dll` and `native/**/*.sf2` to
 a `native/` folder beside `FatzMedia.Video.Sample.Player.exe`. `PlayerNativeLibraries`
 resolves that folder and passes it to the WPF `Player`, which inherits the Core
-`MediaControlPlayer`.
+`PlayerCore`.
 
 ## Licensing
 

@@ -23,7 +23,7 @@ public sealed class PlayerViewModelTests
         };
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync(options);
         PlayerViewModel viewModel = harness.ViewModel;
-        MediaControlPlayer player = harness.Player;
+        PlayerCore player = harness.Player;
 
         Assert.Null(viewModel.StartupError);
         Assert.False(viewModel.IsBusy);
@@ -271,7 +271,7 @@ public sealed class PlayerViewModelTests
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
-        MediaControlPlayer player = harness.Player;
+        PlayerCore player = harness.Player;
 
         viewModel.Volume = 1.5;
         viewModel.Pitch = 20;
@@ -360,7 +360,7 @@ public sealed class PlayerViewModelTests
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
-        MediaControlPlayer player = harness.Player;
+        PlayerCore player = harness.Player;
         await harness.LoadAsync("song.mp3");
         TestMediaEngine engine = harness.Engine.Engine;
 
@@ -388,7 +388,7 @@ public sealed class PlayerViewModelTests
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
-        MediaControlPlayer player = harness.Player;
+        PlayerCore player = harness.Player;
         await harness.LoadAsync("song.mp3");
         TestMediaEngine engine = harness.Engine.Engine;
         using var release = new ManualResetEventSlim();
@@ -596,7 +596,7 @@ public sealed class PlayerViewModelTests
     public async Task DisposeAsync_DisposesTheEngineAndStopsListening()
     {
         PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
-        MediaControlPlayer player = harness.Player;
+        PlayerCore player = harness.Player;
         PlayerViewModel viewModel = harness.ViewModel;
         var entries = viewModel.DiagnosticLog.Count;
 

@@ -4,8 +4,8 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 
 /// <summary>
 /// Player modes (Stage 043A): the mode the engine is created in (<c>--mode=</c>) and switching on
-/// the fly with <see cref="MediaControlPlayer.SetModeAsync"/>. Background mode forces looping, so
-/// <see cref="LoopPlayback"/> follows the engine's <see cref="MediaControlPlayer.LoopMedia"/>.
+/// the fly with <see cref="PlayerCore.SetModeAsync"/>. Background mode forces looping, so
+/// <see cref="LoopPlayback"/> follows the engine's <see cref="PlayerCore.LoopMedia"/>.
 /// </summary>
 public partial class PlayerViewModel
 {
@@ -46,19 +46,19 @@ public partial class PlayerViewModel
 
     private void InitializeModeControls() => PlayerMode = Options.Mode;
 
-    private void StartModeTracking(MediaControlPlayer player)
+    private void StartModeTracking(PlayerCore player)
     {
         player.ModeChanged += OnPlayerModeChanged;
         player.LoopMediaChanged += OnPlayerLoopMediaChanged;
     }
 
-    private void StopModeTracking(MediaControlPlayer player)
+    private void StopModeTracking(PlayerCore player)
     {
         player.ModeChanged -= OnPlayerModeChanged;
         player.LoopMediaChanged -= OnPlayerLoopMediaChanged;
     }
 
-    private async Task SwitchModeAsync(MediaControlPlayer player, MediaPlayerMode mode)
+    private async Task SwitchModeAsync(PlayerCore player, MediaPlayerMode mode)
     {
         IsSwitchingMode = true;
         StatusText = $"Switching to {mode} mode...";
@@ -84,7 +84,7 @@ public partial class PlayerViewModel
 
     private void OnPlayerModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e)
     {
-        if (sender is MediaControlPlayer player)
+        if (sender is PlayerCore player)
             RunOnUiThread(() => SyncFromPlayer(player));
     }
 
@@ -92,7 +92,7 @@ public partial class PlayerViewModel
         => RunOnUiThread(() => SetLoopFromPlayer(e.CurrentValue));
 
     /// <summary>Shows the engine's mode and loop setting without sending them back to it.</summary>
-    private void SyncFromPlayer(MediaControlPlayer player)
+    private void SyncFromPlayer(PlayerCore player)
     {
         if (!ReferenceEquals(player, Player))
             return;

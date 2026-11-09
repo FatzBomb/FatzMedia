@@ -6,13 +6,13 @@ using System.Collections.Concurrent;
 
 namespace FatzMedia.Video.Tests;
 
-public sealed class MediaControlPlayerTests
+public sealed class PlayerCoreTests
 {
     [Fact]
     public void Constructor_NullPlatformFactory_Throws()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new MediaControlPlayer(null!, MediaPlayerConfiguration.Auto, Array.Empty<string>()));
+            new PlayerCore(null!, MediaPlayerConfiguration.Auto, Array.Empty<string>()));
 
         Assert.Equal("platformFactory", exception.ParamName);
     }
@@ -21,7 +21,7 @@ public sealed class MediaControlPlayerTests
     public async Task Load_RaisesLoadedThenStateThenPosition()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var order = new ConcurrentQueue<string>();
         var positionRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.MediaLoaded += (_, _) => order.Enqueue("loaded");
@@ -49,7 +49,7 @@ public sealed class MediaControlPlayerTests
         // run first, and the start then played the media anyway.
         var engine = new TestMediaEngine();
         engine.TestAudio.NormalizationReady = false;
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
 
         Assert.True(player.Load("song.mp3"));
         _ = Task.Delay(200).ContinueWith(_ => engine.TestAudio.NormalizationReady = true, TaskScheduler.Default);
@@ -64,7 +64,7 @@ public sealed class MediaControlPlayerTests
     public async Task SyncLoad_PlayOnLoad_StartsOnce()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
 
         Assert.True(player.Load("song.mp3"));
         await player.FlushControlOperationsAsync();
@@ -77,7 +77,7 @@ public sealed class MediaControlPlayerTests
     public async Task Stop_RaisesStoppedThenStateThenPosition()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
@@ -124,7 +124,7 @@ public sealed class MediaControlPlayerTests
         // new item stopping: an image (one frame, never started) loaded over playing media stayed
         // hidden. The documented order is the old item's MediaStopped and MediaClosed, then MediaLoaded.
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
         await player.FlushControlOperationsAsync();
@@ -144,7 +144,7 @@ public sealed class MediaControlPlayerTests
     public async Task Seek_RaisesCompletedThenPosition()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
@@ -181,7 +181,7 @@ public sealed class MediaControlPlayerTests
         // Stage 022A slice 4: hosts send seek-bar drags through SeekAsync; a release Seek right
         // after must not be overtaken by a drag seek still queued.
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         var requested = new ConcurrentQueue<TimeSpan>();
         player.SeekCompleted += (_, e) => requested.Enqueue(e.RequestedPosition);
@@ -203,7 +203,7 @@ public sealed class MediaControlPlayerTests
         // seek outside a scrub still refreshes.
         var engine = new TestMediaEngine();
         var factory = new TestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.BeginScrub());
         var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
@@ -223,7 +223,7 @@ public sealed class MediaControlPlayerTests
         // the UI froze. Setters now ask the control queue for one redraw.
         var engine = new TestMediaEngine();
         var factory = new TestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
         var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
@@ -263,7 +263,7 @@ public sealed class MediaControlPlayerTests
         var opens = 0;
         engine.BeforeOpen = () => opens++;
         var factory = new TestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("clip.mp4"));
         Assert.True(player.Play());
         Assert.True(player.Seek(30));
@@ -283,7 +283,7 @@ public sealed class MediaControlPlayerTests
         var opens = 0;
         engine.BeforeOpen = () => opens++;
         var factory = new TestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("clip.mp4"));
 
         // Both before the queued reopen runs: hold the queue with a seek.
@@ -313,7 +313,7 @@ public sealed class MediaControlPlayerTests
         var opens = 0;
         engine.BeforeOpen = () => opens++;
         var factory = new TestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
 
@@ -328,7 +328,7 @@ public sealed class MediaControlPlayerTests
     public async Task SilentScrub_MutesBeforeTheDragSeek_AndRestoresTheVolumeWhenTheScrubEnds()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         player.Effects.Volume = 0.6;
         player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
@@ -359,7 +359,7 @@ public sealed class MediaControlPlayerTests
     public async Task AudibleScrub_IsTheDefault_AndNeverMutes()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         player.Effects.Volume = 0.6;
         var volumeAtSeek = double.NaN;
@@ -377,7 +377,7 @@ public sealed class MediaControlPlayerTests
     public async Task SilentScrub_LoadingMidDrag_LeavesTheNewMediaAudible()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         player.Effects.Volume = 0.6;
         player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
@@ -395,7 +395,7 @@ public sealed class MediaControlPlayerTests
     public async Task SeekAsync_RequestsWaitingToRun_CollapseToTheNewest()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         var seeks = new ConcurrentQueue<double>();
         using var firstEntered = new ManualResetEventSlim();
@@ -426,7 +426,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.SeekCompleted += (_, e) => completed.TrySetResult(e);
@@ -447,7 +447,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         video.Position = 12;
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -467,7 +467,7 @@ public sealed class MediaControlPlayerTests
         // seek is only queued), while the settle may land on the previewed frame near the target.
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.SeekCompleted += (_, e) => completed.TrySetResult(e);
@@ -493,7 +493,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.SeekCompleted += (_, e) => completed.TrySetResult(e);
@@ -514,7 +514,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         video.Position = 11.9;
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -535,7 +535,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.SeekCompleted += (_, e) => completed.TrySetResult(e);
@@ -561,7 +561,7 @@ public sealed class MediaControlPlayerTests
             Content = MediaContent.Audio | MediaContent.Cdg,
             TestCdg = new TestCdgEngine()
         };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.SeekCompleted += (_, e) => completed.TrySetResult(e);
@@ -577,7 +577,7 @@ public sealed class MediaControlPlayerTests
     {
         var video = new TestVideoEngine();
         var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("video.mp4"));
         Assert.True(player.Play());
         var completionCount = 0;
@@ -595,7 +595,7 @@ public sealed class MediaControlPlayerTests
     public async Task Pause_StopsPeriodicPositionNotifications()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
@@ -615,7 +615,7 @@ public sealed class MediaControlPlayerTests
     public async Task NaturalEnd_RaisesEndedThenStateThenPosition()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
@@ -657,7 +657,7 @@ public sealed class MediaControlPlayerTests
     public async Task InternalLoop_RaisesEndedThenLoopedThenPosition()
     {
         var engine = new TestMediaEngine { HandlesLoopInternally = true };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
@@ -687,7 +687,7 @@ public sealed class MediaControlPlayerTests
     public async Task MediaEndedHandler_StopCancelsQueuedLoopRestart()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
         player.LoopMedia = true;
@@ -709,7 +709,7 @@ public sealed class MediaControlPlayerTests
         using var releaseStop = new ManualResetEventSlim();
         var stopEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
         player.LoopMedia = true;
@@ -743,7 +743,7 @@ public sealed class MediaControlPlayerTests
             ResetPitchOnMediaLoad = true,
             ResetTempoOnMediaLoad = true
         };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), configuration, []);
         player.Effects.Pitch = 5;
         player.Effects.Tempo = 125;
         var order = new List<string>();
@@ -777,7 +777,7 @@ public sealed class MediaControlPlayerTests
     {
         var engine = new TestMediaEngine();
         var configuration = new MediaPlayerConfiguration { ResetTempoOnMediaLoad = true };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), configuration, []);
         player.Effects.Pitch = 5;
         player.Effects.Tempo = 125;
         var pitchEvents = 0;
@@ -797,7 +797,7 @@ public sealed class MediaControlPlayerTests
     public void Load_DefaultConfigurationPreservesPitchAndTempo()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         player.Effects.Pitch = 5;
         player.Effects.Tempo = 125;
         var changeEvents = 0;
@@ -817,7 +817,7 @@ public sealed class MediaControlPlayerTests
         var firstEngine = new TestMediaEngine();
         var resetEngine = new TestMediaEngine();
         var factory = new TestPlatformFactory(firstEngine, resetEngine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var resetConfiguration = new MediaPlayerConfiguration
         {
             ResetPitchOnMediaLoad = true,
@@ -839,7 +839,7 @@ public sealed class MediaControlPlayerTests
         var firstEngine = new TestMediaEngine();
         var retryEngine = new TestMediaEngine();
         var factory = new TestPlatformFactory(firstEngine, retryEngine);
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         factory.BeforeCreateServiceProvider = callCount =>
         {
             if (callCount == 2)
@@ -867,7 +867,7 @@ public sealed class MediaControlPlayerTests
             }
         };
         var resetEngine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(
+        using var player = new PlayerCore(
             new TestPlatformFactory(firstEngine, resetEngine),
             MediaPlayerConfiguration.Auto,
             []);
@@ -900,7 +900,7 @@ public sealed class MediaControlPlayerTests
                 releaseLoad.Wait();
             }
         };
-        var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
         Task<bool> load = player.LoadAsync("song.mp3");
         await loadEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
@@ -926,7 +926,7 @@ public sealed class MediaControlPlayerTests
         var firstEngine = new TestMediaEngine();
         var resetEngine = new TestMediaEngine();
         var factory = new TestPlatformFactory(firstEngine, resetEngine);
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         factory.BeforeCreateServiceProvider = callCount =>
         {
             if (callCount == 2)
@@ -955,7 +955,7 @@ public sealed class MediaControlPlayerTests
     public void Dispose_FromInlineControlEvent_IsRejectedUntilTheOperationCompletes()
     {
         var engine = new TestMediaEngine();
-        var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Exception? disposeException = null;
         player.MediaStarted += (_, _) => disposeException = Record.Exception(player.Dispose);
@@ -976,7 +976,7 @@ public sealed class MediaControlPlayerTests
             ResetPitchOnMediaLoad = true,
             ResetTempoOnMediaLoad = true
         };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), configuration, []);
         player.Effects.Pitch = 5;
         player.Effects.Tempo = 125;
         var resetEvents = 0;
@@ -993,7 +993,7 @@ public sealed class MediaControlPlayerTests
     public void HasVisualContentIncludesMainVisualsAndResolvedBackgrounds()
     {
         var engine = new TestMediaEngine { Content = MediaContent.Audio };
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.False(player.HasVisualContent);
 
         engine.Content = MediaContent.Video;
@@ -1008,7 +1008,7 @@ public sealed class MediaControlPlayerTests
     public void BaseVisualTransformChangedFiresOnlyOnActualChange()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var changes = new List<MediaValueChangedEventArgs<BaseVisualTransform>>();
         player.BaseVisualTransformChanged += (_, e) => changes.Add(e);
         var transform = new BaseVisualTransform { Brightness = 0.25f };
@@ -1027,7 +1027,7 @@ public sealed class MediaControlPlayerTests
     public void LoadResetOptionsCanBeChangedForTheNextLoad()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         player.Effects.Pitch = 5;
         player.Effects.Tempo = 125;
         player.ResetPitchOnMediaLoad = true;
@@ -1049,8 +1049,8 @@ public sealed class MediaControlPlayerTests
     [Fact]
     public async Task MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll()
     {
-        using var playerA = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
-        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerA = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         var seenByA = new ConcurrentQueue<string>();
         var seenByB = new ConcurrentQueue<string>();
         using var bothSawUnowned = new CountdownEvent(2);
@@ -1085,8 +1085,8 @@ public sealed class MediaControlPlayerTests
     {
         // ENG-036: adapters raise outside the engine (the UI thread has no ambient owner) and name
         // the session they belong to; an explicit owner wins over an ambient one.
-        using var playerA = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
-        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerA = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         var seenByA = new ConcurrentQueue<string>();
         var seenByB = new ConcurrentQueue<string>();
         using var bothSawUnowned = new CountdownEvent(2);
@@ -1120,8 +1120,8 @@ public sealed class MediaControlPlayerTests
     {
         // ENG-025: a synchronous call runs on the caller's thread, which has no owner.
         var engineA = new TestMediaEngine();
-        using var playerA = new MediaControlPlayer(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
-        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerA = new PlayerCore(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         Assert.True(playerA.Load("song.mp3"));
         engineA.OnPlay = static () => DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Sync", "from A");
         (ConcurrentQueue<string> seenByA, ConcurrentQueue<string> seenByB) = await CaptureOwnership(playerA, playerB, "OwnershipTest.Sync", () =>
@@ -1138,8 +1138,8 @@ public sealed class MediaControlPlayerTests
     public async Task PrepareNext_AnalysisFailure_ReachesOnlyItsPlayer()
     {
         var engineA = new TestMediaEngine { Analyzer = new ThrowingAnalyzer() };
-        using var playerA = new MediaControlPlayer(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
-        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerA = new PlayerCore(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new PlayerCore(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         var path = Path.Combine(Path.GetTempPath(), $"fb-prepare-{Guid.NewGuid():N}.mp3");
         await File.WriteAllBytesAsync(path, [0]);
         try
@@ -1161,7 +1161,7 @@ public sealed class MediaControlPlayerTests
     /// marker; returns what each player received in <paramref name="category"/>.
     /// </summary>
     private static async Task<(ConcurrentQueue<string> A, ConcurrentQueue<string> B)> CaptureOwnership(
-        MediaControlPlayer playerA, MediaControlPlayer playerB, string category, Func<Task> action)
+        PlayerCore playerA, PlayerCore playerB, string category, Func<Task> action)
     {
         var seenByA = new ConcurrentQueue<string>();
         var seenByB = new ConcurrentQueue<string>();

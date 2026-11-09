@@ -44,7 +44,7 @@ public sealed class MediaSurfacePresentationModeTests
     {
         s_step = "create player";
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(
+        using var player = new PlayerCore(
             new TestPlatformFactory(engine),
             MediaPlayerConfiguration.Auto,
             []);

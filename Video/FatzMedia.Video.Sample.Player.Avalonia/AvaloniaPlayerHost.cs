@@ -119,7 +119,7 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
             lines));
     }
 
-    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
+    public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {
         IPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;

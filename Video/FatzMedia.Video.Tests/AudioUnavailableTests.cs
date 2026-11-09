@@ -111,7 +111,7 @@ public sealed class AudioUnavailableTests : IDisposable
     public void Player_WithoutBass_ConstructsAndLoadReportsTheError()
     {
         var path = CreateMediaFile("song.mp3");
-        using var player = new MediaControlPlayer(new NoAudioPlatformFactory(), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NoAudioPlatformFactory(), MediaPlayerConfiguration.Auto, []);
         var errors = new ConcurrentQueue<MediaErrorEventArgs>();
         player.MediaError += (_, args) => errors.Enqueue(args);
 

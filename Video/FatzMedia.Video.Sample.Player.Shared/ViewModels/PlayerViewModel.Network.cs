@@ -35,7 +35,7 @@ public partial class PlayerViewModel
         NetworkUrl = Options.NetworkUri?.AbsoluteUri ?? string.Empty;
     }
 
-    private void StartNetworkValidation(MediaControlPlayer player)
+    private void StartNetworkValidation(PlayerCore player)
     {
         player.BufferingChanged += OnPlayerBufferingChanged;
         player.StreamMetadataChanged += OnPlayerStreamMetadataChanged;
@@ -43,7 +43,7 @@ public partial class PlayerViewModel
             _ = LoadNetworkAsync(player, uri);
     }
 
-    private void StopNetworkValidation(MediaControlPlayer player)
+    private void StopNetworkValidation(PlayerCore player)
     {
         player.BufferingChanged -= OnPlayerBufferingChanged;
         player.StreamMetadataChanged -= OnPlayerStreamMetadataChanged;
@@ -73,7 +73,7 @@ public partial class PlayerViewModel
         }
     }
 
-    private async Task LoadNetworkAsync(MediaControlPlayer player, Uri uri)
+    private async Task LoadNetworkAsync(PlayerCore player, Uri uri)
     {
         RunOnUiThread(() =>
         {

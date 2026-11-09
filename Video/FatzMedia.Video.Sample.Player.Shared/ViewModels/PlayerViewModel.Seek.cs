@@ -7,9 +7,9 @@ namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 /// same way while dragging.
 /// </summary>
 /// <remarks>
-/// <see cref="MediaControlPlayer.BeginScrub"/> and <see cref="MediaControlPlayer.EndScrub"/> wait
+/// <see cref="PlayerCore.BeginScrub"/> and <see cref="PlayerCore.EndScrub"/> wait
 /// for the operations queued before them (a network seek can take seconds), so they run in order on
-/// a "scrub lane" off the UI thread. Drag seeks use <see cref="MediaControlPlayer.SeekAsync"/>; one
+/// a "scrub lane" off the UI thread. Drag seeks use <see cref="PlayerCore.SeekAsync"/>; one
 /// made while the lane is busy waits for it (only the newest), so it never overtakes the
 /// <c>BeginScrub</c> of its own drag or the release of the previous one.
 /// </remarks>
@@ -160,7 +160,7 @@ public partial class PlayerViewModel
     }
 
     // Fire-and-forget from the drag handlers: every failure is handled here, never left unobserved.
-    private async Task SendDragSeekAsync(MediaControlPlayer player, double target)
+    private async Task SendDragSeekAsync(PlayerCore player, double target)
     {
         try
         {

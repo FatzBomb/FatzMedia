@@ -55,7 +55,7 @@ public static class LightweightPlayerPolicy
     /// Applies the kind's player settings once, after creation: karaoke shows MIDI lyrics and does
     /// not loop; a background loops (Background mode forces it). Both zoom the picture.
     /// </summary>
-    public static void ConfigurePlayer(MediaControlPlayer player, LightweightPlayerKind kind)
+    public static void ConfigurePlayer(PlayerCore player, LightweightPlayerKind kind)
     {
         ArgumentNullException.ThrowIfNull(player);
         if (kind == LightweightPlayerKind.Karaoke)

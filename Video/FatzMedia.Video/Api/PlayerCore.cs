@@ -16,7 +16,7 @@ namespace FatzMedia.Video;
 /// Core-owned media-control session. Framework adapters supply surfaces; this object owns playback,
 /// layer composition, native target fan-out, and presentation coordination.
 /// </summary>
-public partial class MediaControlPlayer : IPlayerSession
+public partial class PlayerCore : IPlayerSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
@@ -63,7 +63,7 @@ public partial class MediaControlPlayer : IPlayerSession
     private bool _sessionGraphFreed;
     private volatile bool _disposed;
 
-    public MediaControlPlayer(
+    public PlayerCore(
         IPlatformFactory platformFactory,
         MediaPlayerConfiguration configuration,
         IEnumerable<string> nativeLibraryPaths)
@@ -402,7 +402,7 @@ public partial class MediaControlPlayer : IPlayerSession
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Seek failed: {ex.Message}");
             return false;
         }
     }
@@ -488,7 +488,7 @@ public partial class MediaControlPlayer : IPlayerSession
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Seek failed: {ex.Message}");
             _ = queued.Completion.TrySetResult(false);
             return false;
         }
@@ -789,7 +789,7 @@ public partial class MediaControlPlayer : IPlayerSession
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[MediaControlPlayer] Reattaching surface {kvp.Key} failed: {ex.Message}");
+                    Debug.WriteLine($"[PlayerCore] Reattaching surface {kvp.Key} failed: {ex.Message}");
                 }
             }
         }
@@ -808,7 +808,7 @@ public partial class MediaControlPlayer : IPlayerSession
                 foreach (var surfaceId in _presentationSurfaces.Keys.ToArray())
                 {
                     try { _ = _presentationCoordinator.DetachPresentationSurface(surfaceId); }
-                    catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Detaching surface {surfaceId} failed: {ex.Message}"); }
+                    catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Detaching surface {surfaceId} failed: {ex.Message}"); }
                 }
             }
 
@@ -896,7 +896,7 @@ public partial class MediaControlPlayer : IPlayerSession
                     using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(this);
                     DiagnosticRouter.Raise(
                         MediaDiagnosticLevel.Warning,
-                        "MediaControlPlayer",
+                        "PlayerCore",
                         $"Reset gave up after {ResetWaitTimeout.TotalSeconds:0.#} s waiting for the operation in progress; the player was not reset.");
                     return false;
                 }
@@ -1050,10 +1050,10 @@ public partial class MediaControlPlayer : IPlayerSession
 
         StopAudioDeviceMonitor();
 
-        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
-        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
-        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
+        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Controls dispose failed: {ex.Message}"); }
+        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Presentation coordinator dispose failed: {ex.Message}"); }
+        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Media engine dispose failed: {ex.Message}"); }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[PlayerCore] Service provider dispose failed: {ex.Message}"); }
     }
 
     private void StartAudioDeviceMonitor()
@@ -1069,7 +1069,7 @@ public partial class MediaControlPlayer : IPlayerSession
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Audio device monitor failed to start: {ex.Message}");
         }
     }
 
@@ -1212,7 +1212,7 @@ public partial class MediaControlPlayer : IPlayerSession
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaControlPlayer] Dispose failed: {ex.Message}");
+                Debug.WriteLine($"[PlayerCore] Dispose failed: {ex.Message}");
                 if (!teardownRan)
                     DisposeCore();
             }
@@ -1239,7 +1239,7 @@ public partial class MediaControlPlayer : IPlayerSession
         {
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,
-                "MediaControlPlayer",
+                "PlayerCore",
                 $"Dispose did not get its turn within {DisposeWaitTimeout.TotalSeconds:0.#} s; the player is closed and finishes freeing itself when the operation in progress ends.");
         }
 
@@ -1256,7 +1256,7 @@ public partial class MediaControlPlayer : IPlayerSession
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaControlPlayer] Deferred dispose failed: {ex.Message}");
+                Debug.WriteLine($"[PlayerCore] Deferred dispose failed: {ex.Message}");
             }
 
             // From inside its own operation, the queue finishes after this returns.

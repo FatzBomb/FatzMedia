@@ -9,7 +9,7 @@ namespace FatzMedia.Video;
 /// multiplied with user volume and normalization, and runs in wall-clock time off the control
 /// queue.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     /// <summary>Ramp used to bring outgoing media back to full gain when a faded transition fails.</summary>
     private static readonly TimeSpan FailedTransitionRestoreRamp = TimeSpan.FromMilliseconds(250);

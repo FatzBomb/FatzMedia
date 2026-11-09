@@ -48,7 +48,7 @@ Every package is optional apart from Core, which every other one builds on. A ho
 
 | Package | Targets | What it is |
 | --- | --- | --- |
-| `FatzMedia.Video` | net10.0 | The Core engine: playback, timing, composition policy, state, CD+G, subtitles, backgrounds, player modes, archives, and the contracts renderers and platforms implement. Contains <xref:FatzMedia.Video.MediaControlPlayer>. |
+| `FatzMedia.Video` | net10.0 | The Core engine: playback, timing, composition policy, state, CD+G, subtitles, backgrounds, player modes, archives, and the contracts renderers and platforms implement. Contains <xref:FatzMedia.Video.PlayerCore>. |
 | `FatzMedia.Video.Windows` | net10.0-windows7.0 | Windows platform services: BASS and FFmpeg loading, audio device handling, precision timing, hardware decode policy. Contains <xref:FatzMedia.Video.WindowsPlatformFactory>. |
 | `FatzMedia.Video.Linux` | net10.0 | Linux platform services: shared library loading, timing, BASS device monitoring, software decode. Contains <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>. |
 | `FatzMedia.Video.Direct3D11` | net10.0-windows7.0 | The Direct3D 11 renderer: GPU composition, swap chains, subtitle and lyric text, HDR output. |

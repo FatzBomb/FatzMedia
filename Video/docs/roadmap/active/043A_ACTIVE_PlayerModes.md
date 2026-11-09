@@ -23,11 +23,11 @@ Full or Background (see "Slice 2 decisions").
 
 - `public enum MediaPlayerMode { Full, Background, Audio }`.
 - `MediaPlayerConfiguration.Mode` (default `Full`): the mode the player is created in.
-- `MediaControlPlayer.Mode` (and on `IPlayerSession` with a default implementation returning
+- `PlayerCore.Mode` (and on `IPlayerSession` with a default implementation returning
   `Full`, so other implementers do not break).
-- `MediaControlPlayer.AutoBackground` (default `true`): Full mode searches for sidecar/archive
+- `PlayerCore.AutoBackground` (default `true`): Full mode searches for sidecar/archive
   backgrounds. `false` = no search; explicit `Load(path, backgroundPath)` still works.
-- `MediaControlPlayer.TransparentBackground` (default `false`): where nothing is drawn (no background,
+- `PlayerCore.TransparentBackground` (default `false`): where nothing is drawn (no background,
   CD+G background colour) the output is transparent instead of black, so an app layer below shows
   through on hosts that composite (WPF composited, Avalonia, frame sinks). It drives the CD+G
   background opacity and the composition clear mode.
@@ -53,9 +53,9 @@ Full or Background (see "Slice 2 decisions").
   opens each file kind (normal, audio only, reject), which source kinds it accepts, and whether it
   uses presentation, audio output, backgrounds and forced loop. The engine and the player read it;
   the tests check it directly.
-- **Mode-dependent construction in one place.** `MediaControlPlayer.CreateSessionGraph` builds
+- **Mode-dependent construction in one place.** `PlayerCore.CreateSessionGraph` builds
   everything from the configuration, including `Mode`; the mode-specific choices are in
-  `MediaControlPlayer.Modes.cs` (presentation coordinator, audio device monitor, forced loop,
+  `PlayerCore.Modes.cs` (presentation coordinator, audio device monitor, forced loop,
   the host's background options), `PlayerServiceProvider` (audio engine) and the
   `PlaybackCoordinator` constructor (which pipelines are attached). `Reset` with another
   configuration already rebuilds the graph in another mode, so slice 2's `SetModeAsync` is a
@@ -110,7 +110,7 @@ Full or Background (see "Slice 2 decisions").
 
 ## Slice 2 decisions
 
-- **API.** `MediaControlPlayer.SetModeAsync(MediaPlayerMode)` returns `Task<bool>` and
+- **API.** `PlayerCore.SetModeAsync(MediaPlayerMode)` returns `Task<bool>` and
   `ModeChanged` is an `EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>` (no new event
   args type). `IPlayerSession` gets both with default implementations: `SetModeAsync`
   returns `true` only for the current mode, and `ModeChanged` is never raised. `Mode` now reads the

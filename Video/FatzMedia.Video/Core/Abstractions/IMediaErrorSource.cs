@@ -2,7 +2,7 @@ namespace FatzMedia.Video.Core.Abstractions;
 
 /// <summary>
 /// Internal seam through which the media engine surfaces typed failure information
-/// to the host-facing <see cref="MediaControlPlayer"/> without leaking pipeline
+/// to the host-facing <see cref="PlayerCore"/> without leaking pipeline
 /// internals into the public <see cref="IPlayerSession"/> contract.
 /// </summary>
 internal interface IMediaErrorSource

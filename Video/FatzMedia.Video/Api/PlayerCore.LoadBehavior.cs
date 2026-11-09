@@ -1,7 +1,7 @@
 #pragma warning disable IDE0130
 namespace FatzMedia.Video;
 
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     public bool ResetPitchOnMediaLoad
     {

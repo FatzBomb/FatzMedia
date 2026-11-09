@@ -32,7 +32,7 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         return selection.ToRendererInfo(App.StartupOptions);
     }
 
-    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");

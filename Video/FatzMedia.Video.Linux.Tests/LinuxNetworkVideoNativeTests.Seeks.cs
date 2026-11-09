@@ -210,7 +210,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
     /// </summary>
     private sealed class GetterPoller : IDisposable
     {
-        private readonly MediaControlPlayer _player;
+        private readonly PlayerCore _player;
         private readonly Xunit.Abstractions.ITestOutputHelper _output;
         private readonly Thread _thread;
         private readonly Thread _watchdog;
@@ -220,7 +220,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
         private int _reads;
         private bool _taller;
 
-        private GetterPoller(MediaControlPlayer player, Xunit.Abstractions.ITestOutputHelper output)
+        private GetterPoller(PlayerCore player, Xunit.Abstractions.ITestOutputHelper output)
         {
             _player = player;
             _output = output;
@@ -230,7 +230,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
 
         public TimeSpan Longest => TimeSpan.FromTicks(_longestTicks.Values.DefaultIfEmpty(0).Max() * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
 
-        public static GetterPoller Start(MediaControlPlayer player, Xunit.Abstractions.ITestOutputHelper output)
+        public static GetterPoller Start(PlayerCore player, Xunit.Abstractions.ITestOutputHelper output)
         {
             var poller = new GetterPoller(player, output);
             poller._thread.Start();

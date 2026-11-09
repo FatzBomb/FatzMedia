@@ -97,7 +97,7 @@ public sealed class WpfMediaSurfaceParityTests
     private static void RunAudioModeScenario()
     {
         var factory = new PlayerModeSwitchTests.SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var surface = new MediaSurface { AutoHide = false, Player = player };
         DrainDispatcher();
         Assert.False(surface.IsPresentationSuspended);
@@ -119,7 +119,7 @@ public sealed class WpfMediaSurfaceParityTests
         // The content state follows the Player property, not the load state (029C: a paused
         // video moved to another tab or parent stays visible).
         var factory = new PlayerModeSwitchTests.SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var surface = new MediaSurface { AutoHide = false, Player = player };
         surface.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
         DrainDispatcher();

@@ -57,7 +57,7 @@ subtitles are only looked for next to local video files.
 
 ## Listing and selecting tracks
 
-<xref:FatzMedia.Video.MediaControlPlayer> exposes:
+<xref:FatzMedia.Video.PlayerCore> exposes:
 
 | Member | Meaning |
 | --- | --- |

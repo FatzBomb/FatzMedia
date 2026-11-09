@@ -26,7 +26,7 @@ public sealed class PlayerThreadingContractTests
                     releaseOpen.Wait();
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Task<bool> syncLoad = Task.Run(() => player.Load("slow.mp3"));
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
@@ -60,7 +60,7 @@ public sealed class PlayerThreadingContractTests
                 }
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
         await rebuildEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
@@ -87,7 +87,7 @@ public sealed class PlayerThreadingContractTests
                     engine.OpenSucceeds = false;
             }
         };
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Task<bool> load = player.LoadAsync("stream.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
@@ -116,7 +116,7 @@ public sealed class PlayerThreadingContractTests
                 releaseOpen.Wait();
             }
         };
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, [])
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, [])
         {
             DisposeWaitTimeout = TimeSpan.FromMilliseconds(200)
         };
@@ -159,7 +159,7 @@ public sealed class PlayerThreadingContractTests
                     releaseOpen.Wait();
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Task<bool> first = player.LoadAsync("first.mp3");
         await openEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         using var cancellation = new CancellationTokenSource();
@@ -194,7 +194,7 @@ public sealed class PlayerThreadingContractTests
                 MediaOpenCancellation.Current.WaitHandle.WaitOne(TestEnvironment.EventuallyTimeout);
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var loaded = new ConcurrentQueue<string?>();
         var closed = new ConcurrentQueue<string?>();
         player.MediaLoaded += (_, e) => loaded.Enqueue(e.Source.FilePath);
@@ -221,7 +221,7 @@ public sealed class PlayerThreadingContractTests
     public async Task LoadAsync_WithACancelledToken_IsCancelledWithoutQueueing()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -249,7 +249,7 @@ public sealed class PlayerThreadingContractTests
                 releaseOpen.Wait();
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, [])
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, [])
         {
             ResetWaitTimeout = TimeSpan.FromMilliseconds(200)
         };
@@ -280,7 +280,7 @@ public sealed class PlayerThreadingContractTests
                     throw new InvalidOperationException("Audio device unavailable.");
             }
         };
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.AttachPresentationSurface(Surface("primary", 640, 360)));
 
         _ = Assert.Throws<InvalidOperationException>(() => player.Reset(MediaPlayerConfiguration.Auto, []));
@@ -310,7 +310,7 @@ public sealed class PlayerThreadingContractTests
                     throw new InvalidOperationException("Audio device unavailable.");
             }
         };
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         _ = Assert.Throws<InvalidOperationException>(() => player.Reset(MediaPlayerConfiguration.Auto, []));
 
         await Task.Run(player.Dispose).WaitAsync(TestEnvironment.EventuallyTimeout);
@@ -323,7 +323,7 @@ public sealed class PlayerThreadingContractTests
     public async Task Reset_RaisesChangeEventsForTheSettingsItReturnedToDefaults()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         player.Effects.Volume = 0.5;
         player.Effects.Pitch = 2;
         player.LoopMedia = true;
@@ -352,7 +352,7 @@ public sealed class PlayerThreadingContractTests
     public async Task SurfaceCalls_RacingResetsAndModeSwitches_EndAttachedToTheLastGraph()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         using var stop = new CancellationTokenSource();
         string[] ids = ["s0", "s1", "s2", "s3"];
@@ -400,7 +400,7 @@ public sealed class PlayerThreadingContractTests
     public async Task Dispose_FromATaskAHandlerStarted_RunsOutsideTheOperation()
     {
         var factory = new SwitchTestPlatformFactory();
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var disposeResult = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var handlerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.MediaLoaded += (_, _) =>
@@ -426,7 +426,7 @@ public sealed class PlayerThreadingContractTests
     public async Task MediaDiagnostic_RaisedDuringALongOperation_ReachesTheHostBeforeItEnds_InOrder()
     {
         const string category = "ThreadingTest.Retry";
-        MediaControlPlayer? owner = null;
+        PlayerCore? owner = null;
         var received = new ConcurrentQueue<string>();
         using var allReceived = new CountdownEvent(3);
         var deliveredDuringOpen = false;
@@ -444,7 +444,7 @@ public sealed class PlayerThreadingContractTests
                 deliveredDuringOpen = allReceived.Wait(TestEnvironment.EventuallyTimeout);
             }
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         owner = player;
         player.MediaDiagnostic += (_, e) =>
         {
@@ -464,7 +464,7 @@ public sealed class PlayerThreadingContractTests
     public async Task MediaDiagnostic_IsNotDeliveredAfterDispose()
     {
         const string category = "ThreadingTest.AfterDispose";
-        var player = new MediaControlPlayer(new SwitchTestPlatformFactory(), MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(new SwitchTestPlatformFactory(), MediaPlayerConfiguration.Auto, []);
         var received = new ConcurrentQueue<string>();
         player.MediaDiagnostic += (_, e) =>
         {
@@ -488,7 +488,7 @@ public sealed class PlayerThreadingContractTests
     public async Task HandlerExceptions_DoNotStopOtherHandlers_AndAreReported()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reported = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.MediaDiagnostic += (_, e) =>

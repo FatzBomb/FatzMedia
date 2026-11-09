@@ -37,7 +37,7 @@ Batches:
    a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
    failures and the startup delay; karaoke `Source = null` releases the player.
 2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
-3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
+3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `PlayerCore.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
 4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c **implemented, pending manual smoke** (`updates/ENG-039/Batch4c.md`): adapter, renderer and audio duplicates moved into shared helpers.
 5. **Performance: implemented, pending manual smoke** (`updates/ENG-039/Batch5.md`): KAR raster
    caching and pooled subtitle buffers, embedded subtitles scanned after the open
@@ -116,7 +116,7 @@ Avalonia `FilePickerFileType` helper).
 
 ### ENG-055 - A missing native library folder throws
 
-Reported: 2026-11-05 (audit). `MediaControlPlayer.ResolveNativeLibraryPaths` throws
+Reported: 2026-11-05 (audit). `PlayerCore.ResolveNativeLibraryPaths` throws
 `DirectoryNotFoundException` for a folder that does not exist, so each player filters its list first
 (`Player/Configuration/PlayerNativeLibraries.cs`, `Player.Avalonia/NativePaths.cs`,
 `Player.Shared/Hosting/PlayerNativePaths.cs`), while the Windows bootstrap and `LinuxNativeLibraryLocator`
@@ -767,7 +767,7 @@ Extended (owner 2026-11-06): the background is independent of the media's whole 
 It loops from the moment it is shown (before Play), and through the song's pause, stop, end and loop.
 `MediaPlayerConfiguration.BackgroundFollowsMedia = true` gives the previous behaviour exactly (waits for
 Play, pauses with the song, rewinds on Stop and at the end, restarts with the song's loop).
-`MediaControlPlayer.PauseBackground[Async]` / `ResumeBackground[Async]` / `IsBackgroundPaused` pause it
+`PlayerCore.PauseBackground[Async]` / `ResumeBackground[Async]` / `IsBackgroundPaused` pause it
 explicitly in either mode; the pause holds across loads and mode switches (`RestoreSettings` applies it to
 the rebuilt engine). Test players: `--background-follows-media` and a background pause button (WPF "BG",
 Avalonia and WinForms "BG pause"). Tests: `LinuxBackgroundLoopNativeTests` (moves before Play and while
@@ -1271,7 +1271,7 @@ cancelled while queued, during the open, and with an already-cancelled token; Re
 after its bound; a failed Reset is clearly faulted, then rebuildable or disposable; Reset change
 events; surface calls racing mode switches and Resets; Dispose from a task a handler started;
 handler exceptions. `PlayerOperationQueueTests` (+5): scope ends with the operation, other
-threads are outside, handler scopes, abandoned turns, cancellation. Two `MediaControlPlayerTests`
+threads are outside, handler scopes, abandoned turns, cancellation. Two `PlayerCoreTests`
 now expect the load that Reset/Dispose waited for to report `false` (cancelled). The new
 concurrency tests passed 20 runs in a row.
 
@@ -1304,7 +1304,7 @@ Fix:
 - `DiagnosticRouter` keeps an `AsyncLocal` owner. A player enters itself as owner in its
   constructor and around surface attach/resize/detach/live-resize, so the threads and tasks
   it starts inherit it; `MediaDiagnosticInfo.Owner` carries it and `IsFor(owner)` is true for
-  the owner and for unowned (process-wide) diagnostics. `MediaControlPlayer.MediaDiagnostic`
+  the owner and for unowned (process-wide) diagnostics. `PlayerCore.MediaDiagnostic`
   and the coordinator's device-lost recovery ignore other owners' diagnostics.
 - Paths that drop the execution context re-enter the owner: `AudioEngine`'s BASS end-sync
   callback (native thread) and the faded prepared-next transition (`SuppressFlow`).
@@ -1315,7 +1315,7 @@ Fix:
   player loads media, and re-adding an existing extension does not mutate a `HashSet`, so
   concurrent readers never see a write in progress.
 
-Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
+Tests: `DiagnosticOwnershipTests`, `PlayerCoreTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
 `MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
 
 Known limits (code review 2026-10-23, not fixed):
@@ -1763,7 +1763,7 @@ metadata.
 
 Resolved: 2026-08-17
 
-Public control admissions now share a lifecycle gate with `MediaControlPlayer.Reset`.
+Public control admissions now share a lifecycle gate with `PlayerCore.Reset`.
 Reset waits behind already-admitted work, rejects new work while teardown is active,
 rebuilds the player, and disposes the old operation queue only after the exclusive
 turn completes. Caller-thread nested queue execution now runs inline instead of
@@ -1847,7 +1847,7 @@ latest-wins, and terminal clearing.
 
 Resolved: 2026-08-17
 
-`MediaControlPlayer.Dispose` now waits behind admitted work and shares the reset
+`PlayerCore.Dispose` now waits behind admitted work and shares the reset
 admission gate. Teardown runs in an exclusive queue turn, terminal event deliveries
 drain before the queue closes, and the disposed flag is published afterward. Tests
 cover an admitted load, concurrent reset followed by disposal of the rebuilt engine,

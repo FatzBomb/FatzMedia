@@ -150,7 +150,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public async Task SubtitleTracksChanged_IsForwardedToHost()
     {
         var engine = new TestMediaEngine { Content = MediaContent.Video };
-        using var player = new MediaControlPlayer(new ScanTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new ScanTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var changed = new TaskCompletionSource<(SubtitleTracksChangedEventArgs Args, bool AfterLoaded, bool Inline)>(TaskCreationOptions.RunContinuationsAsynchronously);
         var raising = false;
@@ -177,7 +177,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     public void SubtitleTracksChanged_IsNotForwardedAfterClose()
     {
         var engine = new TestMediaEngine { Content = MediaContent.Video };
-        using var player = new MediaControlPlayer(new ScanTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new ScanTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var raised = 0;
         player.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref raised);
         Assert.True(player.Load("movie.mkv"));

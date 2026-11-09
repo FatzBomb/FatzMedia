@@ -88,7 +88,7 @@ is pending; the checklist is in the Stage 030A section below.
 On 2026-08-10, Stage 030A added the Player advanced validation controls: a
 collapsed `ADVANCED VALIDATION` expander with a live Auto Hide checkbox, runtime
 Reset Pitch on Load / Reset Tempo on Load checkboxes (additive
-`IPlayerSession` properties via `MediaControlPlayer.LoadBehavior.cs` and
+`IPlayerSession` properties via `PlayerCore.LoadBehavior.cs` and
 mutable `MediaFile` options), RED GAIN / GREEN GAIN / BLUE GAIN (0–2), HUE,
 BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), and SATURATION (0–2) sliders (no
 Lightness), an IDENTITY/ACTIVE indicator, and a Reset Visual command. The
@@ -633,7 +633,7 @@ Procedure and expected:
 39. ZIP archive with video only opens as video main.
 40. Audio-only media auto-detects matching image and video sidecars.
 41. MIDI with no karaoke lyrics auto-detects matching image and video sidecars.
-42. `ignoreSidecar: true` and `MediaControlPlayer.AutoBackground = false` each disable automatic sidecar loading.
+42. `ignoreSidecar: true` and `PlayerCore.AutoBackground = false` each disable automatic sidecar loading.
 43. An image main ignores matching sidecars but accepts an explicitly supplied background.
 44. A video main does not load a matching video sidecar or explicit background.
 45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.

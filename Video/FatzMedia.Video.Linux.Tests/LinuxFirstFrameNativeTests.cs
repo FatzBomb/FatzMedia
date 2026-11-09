@@ -57,7 +57,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
             AudioEngineFactory = engine == "fatz" ? new FatzAudioEngineFactory(nullOutput: true) : null,
         };
         using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], configuration, attachSurface: false);
-        MediaControlPlayer player = session.Player;
+        PlayerCore player = session.Player;
         player.PlayOnLoad = false;
         using var tracker = new MediaSurfaceContentTracker { Session = player };
         Assert.True(player.Load(sample), string.Join(" | ", session.Errors));
@@ -90,7 +90,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
 
         using var a = CreatePlayer(ffmpeg);
         using var b = CreatePlayer(ffmpeg);
-        MediaControlPlayer[] players = [a, b];
+        PlayerCore[] players = [a, b];
         var sinks = new[] { new FrameCounter(), new FrameCounter() };
         var handles = sinks.Select(static sink => new MediaPresentationFrameSinkHandle(sink)).ToArray();
         var trackers = players.Select(static player => new MediaSurfaceContentTracker { Session = player }).ToArray();
@@ -135,13 +135,13 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
     }
 
     // Background mode: picture only, so no BASS is needed; the application folder is empty.
-    private static MediaControlPlayer CreatePlayer(string ffmpeg)
+    private static PlayerCore CreatePlayer(string ffmpeg)
     {
         var appBase = Directory.CreateTempSubdirectory("fbm-first-frame-").FullName;
         var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
         var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
         var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = MediaPlayerMode.Background };
-        return new MediaControlPlayer(factory, configuration, [ffmpeg]);
+        return new PlayerCore(factory, configuration, [ffmpeg]);
     }
 
     private static MediaPresentationSurfaceDescriptor Descriptor(MediaPresentationFrameSinkHandle handle) => new(

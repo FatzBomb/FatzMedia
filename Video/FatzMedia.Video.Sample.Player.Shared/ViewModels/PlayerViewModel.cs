@@ -22,7 +22,7 @@ public enum PlayerFlyout
 /// One test player's state and commands, shared by every host (WPF, Avalonia, WinForms): engine
 /// creation, transport, seek scrubbing, sync offsets, effects, equalizer, subtitles, visual
 /// transforms, prepared next and fades, network sources and the diagnostics log. Written against
-/// the Core <see cref="MediaControlPlayer"/>; the host supplies its UI thread, timer, clipboard,
+/// the Core <see cref="PlayerCore"/>; the host supplies its UI thread, timer, clipboard,
 /// file picker and engine through <see cref="PlayerHost"/>. Every property changes on the UI
 /// thread: engine events are marshalled there.
 /// </summary>
@@ -88,7 +88,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     public string LoadingMediaText { get; private set; } = "(no media)";
 
     /// <summary>Gets the engine, once <see cref="StartAsync"/> created it; bind the host's surface to it.</summary>
-    public MediaControlPlayer? Player
+    public PlayerCore? Player
     {
         get;
         private set
@@ -267,7 +267,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         }
     }
 
-    /// <summary>The background video's own pause (<see cref="MediaControlPlayer.PauseBackgroundAsync"/>), separate from the song's.</summary>
+    /// <summary>The background video's own pause (<see cref="PlayerCore.PauseBackgroundAsync"/>), separate from the song's.</summary>
     public bool BackgroundPaused
     {
         get;
@@ -388,7 +388,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             IsBusy = true;
             LoadingMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } loading ? loading : mediaPath;
             StatusText = $"Loading: {mediaPath}";
-            MediaControlPlayer? player = Player;
+            PlayerCore? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             if (loaded)
                 LoadedMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } name ? name : mediaPath;
@@ -442,7 +442,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     private async Task InitializePlayerAsync()
     {
-        MediaControlPlayer? createdPlayer = null;
+        PlayerCore? createdPlayer = null;
         var creationStarted = false;
         try
         {
@@ -480,7 +480,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
                 HandleDiagnosticOnUiThread(level, "Renderer", message);
 
             creationStarted = true;
-            MediaControlPlayer player = await _host.Engine.CreatePlayerAsync(renderer, configuration);
+            PlayerCore player = await _host.Engine.CreatePlayerAsync(renderer, configuration);
             createdPlayer = player;
             if (_disposed)
             {
@@ -564,7 +564,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         string workingStatus,
         string completedStatus,
         string failedStatus,
-        Func<MediaControlPlayer, Task<bool>> operation)
+        Func<PlayerCore, Task<bool>> operation)
     {
         if (Player is not { } player)
             return;
@@ -823,7 +823,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         GC.SuppressFinalize(this);
     }
 
-    private MediaControlPlayer? DetachPlayer()
+    private PlayerCore? DetachPlayer()
     {
         if (_disposed) return null;
 

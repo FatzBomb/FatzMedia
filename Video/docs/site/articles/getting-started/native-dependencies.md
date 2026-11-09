@@ -41,7 +41,7 @@ The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (t
 
 - Each BASS add-on enables the file extensions it handles (`bass_aac`: `.aac`, `.m4a`, `.m4b`; `bass_ac3`: `.ac3`; `bassflac`: `.flac`; `bassmidi`: `.mid`, `.midi`, `.kar`, `.rmi`; `bassopus`: `.opus`; `basscd`: `.cda`).
 - When FFmpeg is loaded, audio formats whose add-on is missing (AAC, M4A, ALAC, FLAC, Opus, AC-3, WMA and others FFmpeg decodes) still open through an FFmpeg fallback that feeds the same BASS playback chain. MIDI needs `bassmidi` and has no fallback.
-- `OpenFileDialogFilter` on the player (<xref:FatzMedia.Video.MediaControlPlayer.OpenFileDialogFilter>) lists what the loaded libraries accept, so your Open dialog matches the install.
+- `OpenFileDialogFilter` on the player (<xref:FatzMedia.Video.PlayerCore.OpenFileDialogFilter>) lists what the loaded libraries accept, so your Open dialog matches the install.
 
 ### MIDI soundfont
 
@@ -92,7 +92,7 @@ To use only the default folders, pass an empty list or <xref:FatzMedia.Video.Win
 
 ## Startup report
 
-Read <xref:FatzMedia.Video.MediaControlPlayer.NativeDependencies> (or `NativeDependencies` on the platform factory) to see what was found. It returns a <xref:FatzMedia.Video.NativeDependencyReport> with one <xref:FatzMedia.Video.NativeLibraryCheck> per library: exact file name, required or not, status (`Loaded`, `Missing`, `NotLoaded`, `FailedToLoad`), where it was found, and a hint. `Describe()` returns one readable line per problem, ready to show to a user.
+Read <xref:FatzMedia.Video.PlayerCore.NativeDependencies> (or `NativeDependencies` on the platform factory) to see what was found. It returns a <xref:FatzMedia.Video.NativeDependencyReport> with one <xref:FatzMedia.Video.NativeLibraryCheck> per library: exact file name, required or not, status (`Loaded`, `Missing`, `NotLoaded`, `FailedToLoad`), where it was found, and a hint. `Describe()` returns one readable line per problem, ready to show to a user.
 
 When a required FFmpeg library fails, the player constructor throws, and the exception message includes the hints. The player does not exist then, so read the report from the platform factory you passed in:
 

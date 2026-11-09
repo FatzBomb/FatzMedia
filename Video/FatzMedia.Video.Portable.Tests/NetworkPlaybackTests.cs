@@ -200,7 +200,7 @@ public sealed class PlayerNetworkEventTests
     public async Task BufferingAndMetadata_AreForwardedToHost()
     {
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var buffering = new TaskCompletionSource<MediaBufferingChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         var metadata = new TaskCompletionSource<MediaStreamMetadataChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.BufferingChanged += (_, e) => buffering.TrySetResult(e);
@@ -222,7 +222,7 @@ public sealed class PlayerNetworkEventTests
     {
         // ENG-034: https audio plays through FFmpeg; its titles come from the engine, not BASS.
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var metadata = new TaskCompletionSource<MediaStreamMetadataChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.StreamMetadataChanged += (_, e) => metadata.TrySetResult(e);
         Assert.True(player.Load("radio.mp3"));
@@ -238,7 +238,7 @@ public sealed class PlayerNetworkEventTests
     public async Task NetworkVideoBuffering_FromTheEngine_IsForwardedToHost()
     {
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var buffering = new TaskCompletionSource<MediaBufferingChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.BufferingChanged += (_, e) => buffering.TrySetResult(e);
         Assert.True(player.Load("clip.mp4"));
@@ -254,7 +254,7 @@ public sealed class PlayerNetworkEventTests
     public void CloseAndDispose_CancelANetworkOpenInProgress()
     {
         var engine = new TestMediaEngine();
-        var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
         player.Close();
         Assert.Equal(1, engine.CancelPendingNetworkOpenCount);
@@ -266,7 +266,7 @@ public sealed class PlayerNetworkEventTests
     public async Task LoopMedia_NetworkSourceEnd_StopsInsteadOfRestarting()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("radio.mp3"));
         Assert.True(player.Play());
         engine.CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed;
@@ -289,7 +289,7 @@ public sealed class PlayerNetworkEventTests
     public async Task MetadataPublishedDuringLoad_ArrivesAfterMediaLoaded()
     {
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var order = new System.Collections.Concurrent.ConcurrentQueue<string>();
         var metadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.MediaLoaded += (_, _) => order.Enqueue("loaded");
@@ -312,7 +312,7 @@ public sealed class PlayerNetworkEventTests
         // Review follow-up: a buffering or title event from the old stream, queued behind a Load
         // of a local file, must not reach the host as the new source's state.
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var raised = 0;
         player.BufferingChanged += (_, _) => Interlocked.Increment(ref raised);
         player.StreamMetadataChanged += (_, _) => Interlocked.Increment(ref raised);
@@ -334,7 +334,7 @@ public sealed class PlayerNetworkEventTests
     public void Dispose_UnsubscribesNetworkEvents()
     {
         var engine = new TestMediaEngine();
-        var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var raised = 0;
         player.BufferingChanged += (_, _) => Interlocked.Increment(ref raised);
 
@@ -347,7 +347,7 @@ public sealed class PlayerNetworkEventTests
     [Fact]
     public void CurrentSourceCapabilities_NullWhenClosed()
     {
-        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new NetworkTestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
 
         Assert.Null(player.CurrentSourceCapabilities);
     }

@@ -525,7 +525,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
     public async Task Reset_ClearsPreparedItem()
     {
         var factory = new PreparedTestPlatformFactory(new FakeAnalyzer(), new TestMediaEngine(), new TestMediaEngine());
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(await player.PrepareNextAsync(CreateFile("next.mp3")).WaitAsync(Timeout));
 
         Assert.True(player.Reset(MediaPlayerConfiguration.Auto, []));
@@ -533,7 +533,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         Assert.Equal(PreparedNextState.Empty, player.PreparedNext.State);
     }
 
-    private static async Task DrainQueueAsync(MediaControlPlayer player)
+    private static async Task DrainQueueAsync(PlayerCore player)
     {
         // The auto transition is scheduled two queue hops after media end; each flush queues
         // behind everything queued so far.
@@ -548,7 +548,7 @@ public sealed class PreparedNextPlayerTests : IDisposable
         return path;
     }
 
-    private static MediaControlPlayer CreatePlayer(TestMediaEngine engine, FakeAnalyzer analyzer) =>
+    private static PlayerCore CreatePlayer(TestMediaEngine engine, FakeAnalyzer analyzer) =>
         new(new PreparedTestPlatformFactory(analyzer, engine), MediaPlayerConfiguration.Auto, []);
 
     private sealed class FakeAnalyzer : IMediaFileAnalyzer

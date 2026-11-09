@@ -14,7 +14,7 @@ flowchart TB
     end
 
     subgraph Core["FatzMedia.Video (Core)"]
-        Player["MediaControlPlayer<br/>IPlayerSession"]
+        Player["PlayerCore<br/>IPlayerSession"]
         Engine["Playback, timing, CD+G,<br/>subtitles, backgrounds, modes"]
         Compose["Composition and<br/>target fan-out"]
     end
@@ -49,7 +49,7 @@ flowchart TB
 - fan-out of the composed picture to every attached surface (a main window and a second screen),
 - the contracts that renderers and platforms implement.
 
-Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzMedia.Video.MediaControlPlayer>, which implements <xref:FatzMedia.Video.IPlayerSession>.
+Core has no reference to Windows, WPF, any renderer or any platform package, and declares no `DllImport` or `LibraryImport` of its own. Its public face is <xref:FatzMedia.Video.PlayerCore>, which implements <xref:FatzMedia.Video.IPlayerSession>.
 
 ### Renderers: the final picture
 
@@ -77,7 +77,7 @@ var platform = new WindowsPlatformFactory(new SoftwarePresentationCoordinatorFac
 
 The WPF, WinForms and Avalonia adapters connect Core to a UI framework. They own the surface control (`MediaSurface`: size, DPI, window handle or bitmap, input), the second-screen window, the ready-made `KaraokeSurface` and `BackgroundSurface` controls, and conversion of framework images to engine images. They own no media logic, no renderer policy and no timing.
 
-Each adapter also has a `Player` class that derives from `MediaControlPlayer`. It adds only an asynchronous factory (`Player.CreateAsync`) and `Load` overloads that accept the framework's image type (`ImageSource` for WPF, `Bitmap` for Avalonia and WinForms). Everything else is the Core API. See [Player and session](player-and-session.md).
+Each adapter also has a `Player` class that derives from `PlayerCore`. It adds only an asynchronous factory (`Player.CreateAsync`) and `Load` overloads that accept the framework's image type (`ImageSource` for WPF, `Bitmap` for Avalonia and WinForms). Everything else is the Core API. See [Player and session](player-and-session.md).
 
 ## How frames reach the screen
 

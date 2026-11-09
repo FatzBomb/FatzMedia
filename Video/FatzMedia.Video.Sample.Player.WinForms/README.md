@@ -4,7 +4,7 @@ WinForms test player for `FatzMedia.Video`. Windows only (`net10.0-windows7.0`, 
 
 ## What it tests
 
-- The `FatzMedia.Video.WinForms` adapter: an HWND `MediaSurface` bound to a `MediaControlPlayer`
+- The `FatzMedia.Video.WinForms` adapter: an HWND `MediaSurface` bound to a `PlayerCore`
   (attach, resize, DPI, live resize, auto-hide, the Audio-mode clear, detach on close; with
   `--renderer=software` its frame-sink path), and the adapter's `SecondaryPresentationWindow` (a
   projector `MediaSurface`) for the second screen (Stage 046A). With `--lightweight-surfaces`, the

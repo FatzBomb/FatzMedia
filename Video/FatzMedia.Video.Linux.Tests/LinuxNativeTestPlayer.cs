@@ -22,7 +22,7 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
     private readonly ConcurrentQueue<string> _errors = new();
     private readonly ConcurrentQueue<string> _diagnostics = new();
 
-    private LinuxNativeTestPlayer(string appBase, MediaControlPlayer player, NativeTestFrameSink sink, MediaPresentationFrameSinkHandle? handle)
+    private LinuxNativeTestPlayer(string appBase, PlayerCore player, NativeTestFrameSink sink, MediaPresentationFrameSinkHandle? handle)
     {
         _appBase = appBase;
         Player = player;
@@ -32,7 +32,7 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
         player.MediaDiagnostic += (_, args) => _diagnostics.Enqueue($"{args.Level} {args.Category}: {args.Message}");
     }
 
-    public MediaControlPlayer Player { get; }
+    public PlayerCore Player { get; }
 
     public NativeTestFrameSink Sink { get; }
 
@@ -62,7 +62,7 @@ internal sealed class LinuxNativeTestPlayer : IDisposable
         if (config.Normalization.CacheDirectory is null)
             config = config with { Normalization = config.Normalization with { CacheDirectory = string.Empty } };
 
-        var player = new MediaControlPlayer(factory, config, nativePaths);
+        var player = new PlayerCore(factory, config, nativePaths);
         var sink = new NativeTestFrameSink();
         MediaPresentationFrameSinkHandle? handle = null;
         if (attachSurface && config.Mode != MediaPlayerMode.Audio)

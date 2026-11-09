@@ -21,7 +21,7 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
             return;
 
         using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-        MediaControlPlayer player = test.Player;
+        PlayerCore player = test.Player;
         var scans = 0;
         player.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref scans);
 
@@ -48,7 +48,7 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
             return;
 
         using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-        MediaControlPlayer player = test.Player;
+        PlayerCore player = test.Player;
         Assert.True(player.Load(Media));
         Assert.True(player.SelectSubtitleTrack(null));
         Assert.True(player.Play());

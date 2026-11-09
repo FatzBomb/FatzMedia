@@ -111,7 +111,7 @@ public sealed class PlayerEqualizerTests
     public void SettingEqualizer_AppliesToAudioEngineAndRaisesEvent()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         MediaValueChangedEventArgs<AudioEqualizerSettings>? raised = null;
         player.EqualizerChanged += (_, e) => raised = e;
@@ -128,7 +128,7 @@ public sealed class PlayerEqualizerTests
     public void EqualSettings_AreNoOps()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         player.Equalizer = AudioEqualizerSettings.CreateGraphic10Band(2);
         var applied = engine.TestAudio.EqualizerApplyCount;
@@ -145,7 +145,7 @@ public sealed class PlayerEqualizerTests
     public void SettingsChangedWhileNoAudioIsOpen_ReachTheEngineOnNextLoad()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("a.mp3"));
         player.Close();
         engine.Content = MediaContent.None;
@@ -163,7 +163,7 @@ public sealed class PlayerEqualizerTests
     [Fact]
     public void NullEqualizer_FallsBackToDisabled()
     {
-        using var player = new MediaControlPlayer(new EqualizerTestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new EqualizerTestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
         player.Equalizer = AudioEqualizerSettings.CreateGraphic10Band(2);
 
         player.Equalizer = null!;

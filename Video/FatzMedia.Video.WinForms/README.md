@@ -6,7 +6,7 @@ fallback and overlay content), `SecondaryPresentationWindow` for a second screen
 `KaraokeSurface` and `BackgroundSurface` controls, and `WinFormsMediaInputSources`.
 
 ```csharp
-var player = new MediaControlPlayer(new WindowsDirect3D11PlatformFactory(), MediaPlayerConfiguration.Auto, ["native"]);
+var player = new PlayerCore(new WindowsDirect3D11PlatformFactory(), MediaPlayerConfiguration.Auto, ["native"]);
 var surface = new MediaSurface { Dock = DockStyle.Fill, Player = player };
 ```
 

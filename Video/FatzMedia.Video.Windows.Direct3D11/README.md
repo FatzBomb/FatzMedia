@@ -4,7 +4,7 @@ Convenience integration package combining `FatzMedia.Video.Windows` platform
 services with the `FatzMedia.Video.Direct3D11` backend.
 
 Pass `WindowsDirect3D11PlatformFactory` to a WPF `Player` or directly to
-`MediaControlPlayer`. Advanced hosts can reference the Windows and renderer packages
+`PlayerCore`. Advanced hosts can reference the Windows and renderer packages
 separately and inject another renderer factory.
 
 Direct3D11-specific options are configured at the integration boundary:

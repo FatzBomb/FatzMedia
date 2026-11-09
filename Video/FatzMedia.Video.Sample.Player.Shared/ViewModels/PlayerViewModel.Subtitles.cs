@@ -37,14 +37,14 @@ public partial class PlayerViewModel
         }
     } = SubtitlesOff;
 
-    private void StartSubtitleTracking(MediaControlPlayer player)
+    private void StartSubtitleTracking(PlayerCore player)
     {
         player.MediaLoaded += OnSubtitleMediaLoaded;
         player.MediaClosed += OnSubtitleMediaClosed;
         player.SubtitleTracksChanged += OnSubtitleTracksChanged;
     }
 
-    private void StopSubtitleTracking(MediaControlPlayer player)
+    private void StopSubtitleTracking(PlayerCore player)
     {
         player.MediaLoaded -= OnSubtitleMediaLoaded;
         player.MediaClosed -= OnSubtitleMediaClosed;

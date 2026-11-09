@@ -121,7 +121,7 @@ public sealed class PlayerModeTests
     public void FullMode_CreatesPlatformCoordinatorAndStartsAudioMonitor()
     {
         var factory = new ModeTestPlatformFactory(new TestMediaEngine());
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
 
         Assert.Equal(MediaPlayerMode.Full, player.Mode);
         Assert.Equal(1, factory.CreatePresentationCoordinatorCount);
@@ -134,7 +134,7 @@ public sealed class PlayerModeTests
     public void AudioMode_UsesNoPresentationCoordinatorAndKeepsSurfaces()
     {
         var factory = new ModeTestPlatformFactory(new TestMediaEngine());
-        using var player = new MediaControlPlayer(factory, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, []);
+        using var player = new PlayerCore(factory, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, []);
         var surfaceId = $"audio-mode-{Guid.NewGuid():N}";
         var surface = new MediaPresentationSurfaceDescriptor(
             surfaceId,
@@ -161,7 +161,7 @@ public sealed class PlayerModeTests
     {
         var engine = new TestMediaEngine();
         var factory = new ModeTestPlatformFactory(engine);
-        using var player = new MediaControlPlayer(factory, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background }, []);
+        using var player = new PlayerCore(factory, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Background }, []);
 
         Assert.Equal(MediaPlayerMode.Background, player.Mode);
         Assert.Equal(1, factory.CreatePresentationCoordinatorCount);
@@ -222,7 +222,7 @@ public sealed class PlayerModeTests
     public void TransparentBackground_ForcesCdgBackgroundTransparentAndRestoresOpacity()
     {
         var engine = new TestMediaEngine { TestCdg = new TestCdgEngine() };
-        using var player = new MediaControlPlayer(new ModeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new ModeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         player.CdgVisuals.BackgroundOpacity = 60;
         Assert.Equal(60, engine.TestCdg.BackgroundOpacity);
 
@@ -243,7 +243,7 @@ public sealed class PlayerModeTests
     public void AutoBackground_DrivesTheEngineSearch()
     {
         var engine = new TestMediaEngine();
-        using var player = new MediaControlPlayer(new ModeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(new ModeTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
         player.AutoBackground = false;
 

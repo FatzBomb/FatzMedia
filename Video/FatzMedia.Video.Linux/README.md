@@ -12,7 +12,7 @@ using FatzMedia.Video.Software;
 var factory = new LinuxPlatformFactory(
     new SoftwarePresentationCoordinatorFactory(),
     new LinuxPlatformOptions { DisplayRefreshRateHz = 60 });
-using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, ["native"]);
+using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, ["native"]);
 ```
 
 What it provides:

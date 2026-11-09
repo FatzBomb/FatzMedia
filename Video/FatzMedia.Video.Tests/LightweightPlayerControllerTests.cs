@@ -63,7 +63,7 @@ public sealed class LightweightPlayerControllerTests
 
         Assert.True(await controller.LoadAsync("song.mp3", factory));
 
-        MediaControlPlayer player = Assert.IsType<MediaControlPlayer>(controller.Player);
+        PlayerCore player = Assert.IsType<PlayerCore>(controller.Player);
         Assert.Same(player, controller.Session);
         Assert.Equal(1, changes);
         Assert.Equal(MediaPlayerMode.Full, player.Mode);
@@ -97,7 +97,7 @@ public sealed class LightweightPlayerControllerTests
 
         Assert.True(await controller.LoadAsync("picture.png", factory));
 
-        MediaControlPlayer player = controller.Player!;
+        PlayerCore player = controller.Player!;
         Assert.Equal(MediaPlayerMode.Background, player.Mode);
         Assert.True(player.LoopMedia);
         Assert.Equal(VideoDisplayMode.Zoom, player.VideoDisplayMode);
@@ -192,13 +192,13 @@ public sealed class LightweightPlayerControllerTests
         var changes = 0;
         controller.PlayerChanged += (_, _) => Interlocked.Increment(ref changes);
 
-        Task<MediaControlPlayer?> first = controller.EnsurePlayerAsync(factory);
-        Task<MediaControlPlayer?> second = controller.EnsurePlayerAsync(factory);
+        Task<PlayerCore?> first = controller.EnsurePlayerAsync(factory);
+        Task<PlayerCore?> second = controller.EnsurePlayerAsync(factory);
         Assert.True(controller.HasPlayerOrPendingCreation);
         factory.Gate.Set();
 
-        MediaControlPlayer? a = await first;
-        MediaControlPlayer? b = await second;
+        PlayerCore? a = await first;
+        PlayerCore? b = await second;
         Assert.NotNull(a);
         Assert.Same(a, b);
         Assert.Equal(1, factory.CreatedPlayers);

@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Wpf;
 /// WPF adapter facade over the Core-owned media-control player.
 /// Core owns playback, commands, events, composition, and presentation; this type adds only WPF input conversions.
 /// </summary>
-public sealed class Player : MediaControlPlayer
+public sealed class Player : PlayerCore
 {
     public Player(
         MediaPlayerConfiguration configuration,

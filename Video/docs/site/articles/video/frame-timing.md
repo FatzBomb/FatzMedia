@@ -4,7 +4,7 @@ Video looks smooth when each decoded frame stays on screen for the same number o
 
 ## Timing modes
 
-<xref:FatzMedia.Video.MediaControlPlayer.VideoFrameTiming> chooses how the presentation loop decides when to show each frame. It is a runtime property.
+<xref:FatzMedia.Video.PlayerCore.VideoFrameTiming> chooses how the presentation loop decides when to show each frame. It is a runtime property.
 
 | Mode | Behavior |
 | --- | --- |

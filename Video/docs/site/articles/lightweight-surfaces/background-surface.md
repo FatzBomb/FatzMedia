@@ -30,7 +30,7 @@ returns `false` from `LoadAsync`. Use [Karaoke surface](karaoke-surface.md) for 
 
 ## Quick start
 
-The platform factory is the same one you would give a `MediaControlPlayer`; on Windows
+The platform factory is the same one you would give a `PlayerCore`; on Windows
 `WindowsDirect3D11PlatformFactory`. Set it before the first load.
 
 # [WPF](#tab/wpf)
@@ -184,4 +184,4 @@ Backdrop.SetColor(Colors.DarkSlateBlue);   // WPF; Color.DarkSlateBlue on WinFor
 
 - [Karaoke surface](karaoke-surface.md)
 - [Backgrounds behind karaoke](../karaoke/backgrounds.md): sidecar pictures and videos for a
-  `MediaControlPlayer`.
+  `PlayerCore`.

@@ -12,7 +12,7 @@ namespace FatzMedia.Video;
 /// the session graph is decided here, from the configuration that <c>CreateSessionGraph</c>
 /// builds with, so <see cref="SetModeAsync"/> rebuilds the graph for another mode.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     private MediaPlayerConfiguration _configuration;
     private IReadOnlyList<string> _nativeLibraryPaths = [];

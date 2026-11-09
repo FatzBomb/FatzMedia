@@ -2,7 +2,7 @@
 
   <!--
     UI-agnostic view model shared by the test players (WPF, Avalonia, WinForms). It is written
-    against the Core MediaControlPlayer only; each host supplies its UI thread, timer, clipboard,
+    against the Core PlayerCore only; each host supplies its UI thread, timer, clipboard,
     file picker and engine (renderer, platform package, native paths) through Hosting/.
     It must not reference a UI framework, an adapter, a platform package or a renderer.
   -->

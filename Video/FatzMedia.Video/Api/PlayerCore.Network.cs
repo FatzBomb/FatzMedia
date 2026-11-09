@@ -13,7 +13,7 @@ namespace FatzMedia.Video;
 /// in progress instead of queueing behind it. https and HLS audio (ENG-034) play through the same
 /// FFmpeg path, whose stream titles arrive from the engine as well.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     private INetworkAudioSource? _networkAudioSource;
     private INetworkPlayer? _networkMediaControl;
@@ -71,7 +71,7 @@ public partial class MediaControlPlayer
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Cancelling the network open failed: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Cancelling the network open failed: {ex.Message}");
         }
     }
 

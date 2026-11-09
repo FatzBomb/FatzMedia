@@ -8,7 +8,7 @@ namespace FatzMedia.Video;
 /// ENG-024: <see cref="Reset"/> starts the runtime settings from their defaults again; hosts hear
 /// about each one that changed through its usual change event.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     /// <summary>Reads the settings Reset returns to defaults; <see langword="null"/> if the graph cannot say.</summary>
     private ResetChanges? TryCaptureResetChanges()
@@ -26,7 +26,7 @@ public partial class MediaControlPlayer
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Reading settings for Reset failed: {ex.Message}");
+            Debug.WriteLine($"[PlayerCore] Reading settings for Reset failed: {ex.Message}");
             return null;
         }
     }

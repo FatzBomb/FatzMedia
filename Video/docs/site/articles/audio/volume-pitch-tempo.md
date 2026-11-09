@@ -37,7 +37,7 @@ Setters take effect immediately and do not queue behind other control calls, so 
 There is no separate mute property. Set `Volume` to 0 and remember the previous value in your own code:
 
 ```csharp
-public sealed class MuteButton(MediaControlPlayer player)
+public sealed class MuteButton(PlayerCore player)
 {
     private double _volumeBeforeMute = 1.0;
 

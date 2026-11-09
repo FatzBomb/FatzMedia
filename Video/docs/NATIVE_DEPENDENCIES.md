@@ -19,11 +19,11 @@ The host may either:
    - `native`
    - `runtimes/win-x64/native`
 2. Pass one or more custom directories, in priority order, to the WPF `Player` or
-   Core `MediaControlPlayer` constructor.
+   Core `PlayerCore` constructor.
 
 Caller-supplied directories are searched first. Existing predefined directories are
 appended as fallbacks. Searches are recursive, so BASS and FFmpeg may use separate
-subdirectories beneath a supplied root. Paths passed through `MediaControlPlayer`
+subdirectories beneath a supplied root. Paths passed through `PlayerCore`
 must exist; a missing directory produces `DirectoryNotFoundException` before native
 initialization.
 
@@ -282,14 +282,14 @@ FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
    the FFmpeg libraries (both LGPL 2.1 and 3 require this).
 6. Ship the DLLs that match the control: FFmpeg 9.0.x for this binding. When an update
    moves the control to a new FFmpeg major, the same app update must carry the new DLLs.
-   `MediaControlPlayer.NativeDependencies` reports any missing or wrong-version file at
+   `PlayerCore.NativeDependencies` reports any missing or wrong-version file at
    startup, so a broken install is visible immediately.
 7. Codec patents (H.264, HEVC, AAC, and others) are a separate question from FFmpeg's
    copyright licence and depend on the country; review them before a commercial release.
 
 ## Startup Dependency Report
 
-`MediaControlPlayer.NativeDependencies` (and `IPlatformFactory.NativeDependencies`)
+`PlayerCore.NativeDependencies` (and `IPlatformFactory.NativeDependencies`)
 returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
 with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
 (found, but its set is incomplete), or `FailedToLoad`, plus the search paths and

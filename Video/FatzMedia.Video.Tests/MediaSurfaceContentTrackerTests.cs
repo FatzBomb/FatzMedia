@@ -337,7 +337,7 @@ public sealed class MediaSurfaceContentTrackerTests
     public async Task Player_RaisesHasPresentationChangedOnlyWhenAudioModeIsEnteredOrLeft()
     {
         var factory = new PlayerModeSwitchTests.SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var changes = new ConcurrentQueue<(bool Previous, bool Current)>();
         player.HasPresentationChanged += (_, e) => changes.Enqueue((e.PreviousValue, e.CurrentValue));
         using var tracker = new MediaSurfaceContentTracker(autoHide: false) { Session = player };

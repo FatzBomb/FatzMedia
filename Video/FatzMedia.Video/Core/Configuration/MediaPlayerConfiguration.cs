@@ -151,8 +151,8 @@ public readonly record struct MediaPlayerConfiguration
     /// <see langword="false"/>: the background loops on its own while it is shown, from the moment it
     /// appears, through the media's pause, stop, end and loop. <see langword="true"/>: it waits for
     /// Play, pauses with the media, shows its first frame again on Stop and at the end, and restarts
-    /// when the media loops. Either way <see cref="MediaControlPlayer.PauseBackground"/> pauses it
-    /// explicitly until <see cref="MediaControlPlayer.ResumeBackground"/>.
+    /// when the media loops. Either way <see cref="PlayerCore.PauseBackground"/> pauses it
+    /// explicitly until <see cref="PlayerCore.ResumeBackground"/>.
     /// </summary>
     public bool BackgroundFollowsMedia { get; init; }
 

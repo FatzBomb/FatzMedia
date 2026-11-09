@@ -43,7 +43,7 @@ if (!VulkanPresentationCoordinatorFactory.IsSupported(out string? reason))
     throw new InvalidOperationException($"No Vulkan: {reason}");
 
 var platform = new LinuxPlatformFactory(new VulkanPresentationCoordinatorFactory());
-var player = new MediaControlPlayer(platform, MediaPlayerConfiguration.Auto, [nativeDir]);
+var player = new PlayerCore(platform, MediaPlayerConfiguration.Auto, [nativeDir]);
 ```
 
 The renderer does not change after the player is built. To switch, dispose the player and create another.

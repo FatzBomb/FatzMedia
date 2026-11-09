@@ -66,7 +66,7 @@ player.MediaError += (_, e) =>
 
 The test players do the renderer switch (the players come back empty).
 
-Hosts that build on the lower-level `IMediaPresentationCoordinator` interface also get its `DeviceRecovered` event, raised on the recovery thread after a successful recovery. A host using `MediaControlPlayer` does not need it, because the player already reopens its video.
+Hosts that build on the lower-level `IMediaPresentationCoordinator` interface also get its `DeviceRecovered` event, raised on the recovery thread after a successful recovery. A host using `PlayerCore` does not need it, because the player already reopens its video.
 
 ## If recovery fails
 

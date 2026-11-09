@@ -33,7 +33,7 @@ See
 
 ## Platform Composition
 
-`MediaControlPlayer` receives an `IPlatformFactory`, which selects the
+`PlayerCore` receives an `IPlatformFactory`, which selects the
 native media-engine services for the current operating system. Core owns session
 lifecycle and Core-service composition through `PlayerServiceProvider`; an OS
 package owns native-library loading, platform-specific registrations through
@@ -289,7 +289,7 @@ named `window` handle.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
-- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IPlayerSession` and `MediaControlPlayer`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
+- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IPlayerSession` and `PlayerCore`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
 - MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style
@@ -419,7 +419,7 @@ binary compatibility hold for existing construction sites. The
 (source-compatible; binary/ABI-relevant pre-1.0 because the struct layout grows).
 
 Stage 030A (2026-08-10) additionally exposed both options as runtime
-`IPlayerSession` properties — `MediaControlPlayer.LoadBehavior.cs` (new
+`IPlayerSession` properties — `PlayerCore.LoadBehavior.cs` (new
 partial) forwards them to mutable `MediaFile.ResetPitchOnMediaLoad` /
 `ResetTempoOnMediaLoad` options applied by `MediaFile.LoadCore` at each load —
 so hosts can toggle the resets live; the config flags seed the initial values.
@@ -471,7 +471,7 @@ pending completion state so stale signals cannot complete an obsolete request.
 ## Diagnostic Ownership (ENG-025, ENG-036)
 
 Components raise host-routable diagnostics through `DiagnosticRouter`; each
-`MediaControlPlayer` reports a diagnostic on `MediaDiagnostic` only if it owns it or if it
+`PlayerCore` reports a diagnostic on `MediaDiagnostic` only if it owns it or if it
 is process-wide (no owner). Engine code is owned implicitly: a player enters
 `DiagnosticRouter.EnterOwner(this)` (an `AsyncLocal`) while it builds and drives its engine, so
 the owner flows to the threads and tasks it starts; work that drops the execution context
@@ -498,7 +498,7 @@ the positive proof of visual output — never file extensions or content flags:
 - Additive Core capability: `IPlayerSession.HasVisualContent` — true when
   the loaded media's content role includes a visual main (`Video`, `Cdg`,
   `Image`, or `Subtitle`) or when a resolved composition background is present
-  (`MediaControlPlayer`: content flags OR `_mediaEngine.Background != null`).
+  (`PlayerCore`: content flags OR `_mediaEngine.Background != null`).
   It arms hidden targets so presentation can restart; it never makes a show
   decision by itself.
 - `MediaSurface.AutoHide` dependency property, default `true` (standard media-player behavior).
@@ -547,7 +547,7 @@ Owner direction (2026-10-26): no feature solo for one player or adapter. Logic t
 would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters bind to it:
 
 - `IPlayerSession.HasPresentation` / `HasPresentationChanged` (default members; false in
-  Audio mode, raised by `MediaControlPlayer` on the control queue after the `ModeChanged` of a
+  Audio mode, raised by `PlayerCore` on the control queue after the `ModeChanged` of a
   switch into or out of Audio mode). A surface shows its background instead of the last frame
   while it is false (`IsPresentationSuspended` on every `MediaSurface`).
 - `MediaSurfaceContentTracker`: the 029C auto-hide rules (latch replay, stale-frame filter
@@ -627,7 +627,7 @@ Slice 3 (`updates/046A_3`):
   ENG-039 R1 one `PlayerSetController<TSlot>` (Player.Shared) rebuilds them on toolbar changes,
   runs full screen, F11/Escape and the stats tick, and disposes them before the window closes;
   the windows keep only creation, layout and window state.
-- The Avalonia and WinForms adapters have a thin `Player : MediaControlPlayer` facade like the WPF
+- The Avalonia and WinForms adapters have a thin `Player : PlayerCore` facade like the WPF
   one (`CreateAsync` with a platform factory, `Bitmap` load overloads); only the WPF facade has a
   default platform (Windows).
 - `scripts/check-presentation-parity.ps1` pins the facades and the shared helpers in every player.
@@ -651,7 +651,7 @@ and both-renderer smoke. The completed specification lives at
 `roadmap/complete/030A_COMPLETED_VisualTransforms.md`; the fixed operation order and
 pinned coefficients below are the exact reference implemented by every path.
 
-`IPlayerSession` (and `MediaControlPlayer`) exposes
+`IPlayerSession` (and `PlayerCore`) exposes
 `BaseVisualTransform { get; set; }` plus a change-only `BaseVisualTransformChanged`
 event carrying previous/current `MediaValueChangedEventArgs<BaseVisualTransform>`
 (raised through `HostEventDispatcher`). `BaseVisualTransform` is a public
@@ -769,7 +769,7 @@ Reset Visual command restores identity (gains `1/1/1`, hue/brightness `0`,
 contrast/saturation `1`, Include Overlays unchecked). The **Audio flyout** has
 pitch/tempo/normalize and runtime Reset Pitch on Load / Reset Tempo on Load
 checkboxes backed by additive `IPlayerSession.ResetPitchOnMediaLoad` /
-`ResetTempoOnMediaLoad` properties (`MediaControlPlayer.LoadBehavior.cs` partial
+`ResetTempoOnMediaLoad` properties (`PlayerCore.LoadBehavior.cs` partial
 → mutable `MediaFile` options applied per load), so the Stage 029B config flags
 are now also live session toggles. The **A/V flyout** carries Auto Play, Auto
 Hide (Stage 029C runtime toggle), the secondary/projector window toggle, video
@@ -887,7 +887,7 @@ linear interpolation, `AudibleStart` for the leading zero plateau), and
 `AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The BASS
 `AudioEngine` implements the target with a dedicated `BASS_FX_VOLUME` stage, so final
 gain = envelope x channel volume attribute (user volume) x normalization gain FX.
-Fade sessions end on Open/Close/Stop (Stop restores unity). `MediaControlPlayer`
+Fade sessions end on Open/Close/Stop (Stop restores unity). `PlayerCore`
 exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
 which turns 031A transitions into fade-through transitions; waits run off the control
 queue. Overlapping two-handle crossfades are deferred. See
@@ -900,7 +900,7 @@ queue. Overlapping two-handle crossfades are deferred. See
 the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
 NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
 `IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
-`MediaControlPlayer.CurrentSourceCapabilities` expose the row. Plain http audio opens through
+`PlayerCore.CurrentSourceCapabilities` expose the row. Plain http audio opens through
 the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
 normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
@@ -942,7 +942,7 @@ and the paused render (`NoWait`); a seek's waits give up when a newer seek, Paus
 queued; the soundtrack pump's waits end with its cancellation. A lone network seek settles on its
 exact preview instead of seeking again. `PipelineMediaEngine` runs the
 attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
-`INetworkPlayer`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
+`INetworkPlayer`: `PlayerCore.Close`/`Dispose` call `CancelPendingNetworkOpen`
 before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
 from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
 whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
@@ -1129,14 +1129,14 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 - Automatic image/video sidecar backgrounds apply to every non-video, non-image playable main: audio (MP3, FLAC, etc.), MIDI/KAR/MID with or without lyrics, MOD/tracker, CDG, audio+CDG pairs, and future non-visual content.
 - Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
-- `ignoreSidecar: true` or `MediaControlPlayer.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
+- `ignoreSidecar: true` or `PlayerCore.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
 - Image main files never auto-detect a background. Their background must be explicitly supplied through a load overload.
 - Video mains reject backgrounds entirely (both auto and explicit).
 - Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, image/video entries become automatic background candidates rather than taking the main role.
 - Supported automatic archive backgrounds include MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, and standalone CDG+image/video.
 - Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
-`FatzMedia.Video.Wpf.Player` derives from Core `MediaControlPlayer`.
+`FatzMedia.Video.Wpf.Player` derives from Core `PlayerCore`.
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 

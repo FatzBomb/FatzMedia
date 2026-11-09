@@ -44,7 +44,7 @@ not up front.
 - Non-goals: plugin architecture, DVD/Blu-ray, playlist/library ownership. Audio CD and CD+G
   discs are in scope.
 - File size is a prompt to look, not a rule. Split along real seams (a part that can be named
-  and tested on its own; partial classes per concern, as `MediaControlPlayer.*.cs` does), in its
+  and tested on its own; partial classes per concern, as `PlayerCore.*.cs` does), in its
   own commit, not mixed with feature work. Cohesive engine files (D3D11 composition, decoders,
   presentation, CDG) may stay large.
 

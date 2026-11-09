@@ -12,7 +12,7 @@ public sealed class PlayerModeSwitchTests
     public async Task SameMode_IsANoOp()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var modeChanges = 0;
         player.ModeChanged += (_, _) => Interlocked.Increment(ref modeChanges);
         Assert.True(player.Load("song.mp3"));
@@ -36,7 +36,7 @@ public sealed class PlayerModeSwitchTests
     public async Task Switch_RebuildsTheGraphAndReopensAtPositionAndTransportState(MediaPlayerState transport)
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         MediaInputSource background = MediaInputSource.FromColor(0xFF336699);
         var loaded = new ConcurrentQueue<string?>();
         player.MediaLoaded += (_, e) => loaded.Enqueue(e.Source.FilePath);
@@ -80,7 +80,7 @@ public sealed class PlayerModeSwitchTests
     public async Task ExplicitBackgroundPause_HoldsAcrossAModeSwitch_UntilResumed()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(await player.PauseBackgroundAsync());
         Assert.True(player.IsBackgroundPaused);
@@ -105,7 +105,7 @@ public sealed class PlayerModeSwitchTests
         {
             ConfigureEngine = (mode, engine) => engine.OpenSucceeds = mode != MediaPlayerMode.Background,
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
         await player.FlushControlOperationsAsync();
@@ -138,7 +138,7 @@ public sealed class PlayerModeSwitchTests
     public async Task LeavingBackground_RestoresTheHostLoopValue()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var loopChanges = new ConcurrentQueue<(bool Previous, bool Current)>();
         player.LoopMediaChanged += (_, e) => loopChanges.Enqueue((e.PreviousValue, e.CurrentValue));
         Assert.False(player.LoopMedia);
@@ -164,7 +164,7 @@ public sealed class PlayerModeSwitchTests
     public async Task Surfaces_AreKeptInAudioModeAndReattachedOnReturn()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         MediaPresentationSurfaceDescriptor primary = Surface("primary", 640, 360);
         MediaPresentationSurfaceDescriptor gone = Surface("gone", 320, 240);
         Assert.True(player.AttachPresentationSurface(primary));
@@ -194,7 +194,7 @@ public sealed class PlayerModeSwitchTests
     public async Task ModeChanged_IsRaisedOnceAfterTheSwitch()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var changes = new ConcurrentQueue<(MediaPlayerMode Previous, MediaPlayerMode Current, MediaPlayerMode Seen)>();
         player.ModeChanged += (_, e) => changes.Enqueue((e.PreviousValue, e.CurrentValue, player.Mode));
 
@@ -222,7 +222,7 @@ public sealed class PlayerModeSwitchTests
                 }
             },
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
         Assert.True(player.Play());
 
@@ -256,7 +256,7 @@ public sealed class PlayerModeSwitchTests
                 }
             },
         };
-        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
 
         Task<bool> switching = player.SetModeAsync(MediaPlayerMode.Background);
@@ -286,7 +286,7 @@ public sealed class PlayerModeSwitchTests
                     throw new InvalidOperationException("No audio device.");
             },
         };
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         var modeChanges = 0;
         player.ModeChanged += (_, _) => Interlocked.Increment(ref modeChanges);
         Assert.True(player.Load("song.mp3"));
@@ -309,7 +309,7 @@ public sealed class PlayerModeSwitchTests
     public async Task PreparedNext_SurvivesTheSwitch()
     {
         var factory = new SwitchTestPlatformFactory();
-        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         MediaInputSource next = MediaInputSource.FromColor(0xFF000000);
         Assert.True(await player.PrepareNextAsync(next));
         await player.FlushControlOperationsAsync();

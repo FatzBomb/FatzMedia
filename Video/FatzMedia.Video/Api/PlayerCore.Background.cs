@@ -8,7 +8,7 @@ namespace FatzMedia.Video;
 /// <see cref="Core.Configuration.MediaPlayerConfiguration.BackgroundFollowsMedia"/> makes it follow
 /// the media's transport instead. Either way these calls pause it explicitly.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     private volatile bool _backgroundPaused;
 

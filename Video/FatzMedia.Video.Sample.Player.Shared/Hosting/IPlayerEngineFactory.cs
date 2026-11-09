@@ -27,7 +27,7 @@ public interface IPlayerEngineFactory
     /// Creates the engine for <paramref name="renderer"/> off the UI thread (native loading blocks).
     /// Throws when the engine cannot start (for example missing native libraries).
     /// </summary>
-    Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration);
+    Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration);
 }
 
 /// <summary>What the host's renderer choice means for the view model.</summary>

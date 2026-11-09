@@ -122,7 +122,7 @@ public partial class PlayerViewModel
         _saturation = 1.2d;
     }
 
-    private void ApplyValidationControls(MediaControlPlayer player)
+    private void ApplyValidationControls(PlayerCore player)
     {
         player.ResetPitchOnMediaLoad = ResetPitchOnMediaLoad;
         player.ResetTempoOnMediaLoad = ResetTempoOnMediaLoad;

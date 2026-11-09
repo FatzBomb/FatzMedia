@@ -16,7 +16,7 @@ namespace FatzMedia.Video.WinForms;
 /// <c>WindowsDirect3D11PlatformFactory</c>, which this adapter does not reference (it
 /// depends on Core only). The WPF adapter has one only because it can present only on Windows.
 /// </remarks>
-public sealed class Player : MediaControlPlayer
+public sealed class Player : PlayerCore
 {
     /// <summary>Creates the player on the calling thread; it loads native libraries and blocks, so UI code uses <see cref="CreateAsync"/>.</summary>
     public Player(

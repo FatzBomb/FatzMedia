@@ -2,7 +2,7 @@
 
 `Load` and `LoadAsync` open one item on a player: a local file, an archive, an image, a solid colour, or an HTTP/HTTPS stream. This article covers the overloads, what the engine finds next to a file (karaoke graphics, subtitles, backgrounds), how network sources behave, the options that apply on load, and how to cancel a load.
 
-The examples assume you already have a player (`MediaControlPlayer`, or the WPF, Avalonia or WinForms `Player`, which derive from it). See the adapter articles for creating one.
+The examples assume you already have a player (`PlayerCore`, or the WPF, Avalonia or WinForms `Player`, which derive from it). See the adapter articles for creating one.
 
 ## The basic load
 
@@ -23,7 +23,7 @@ if (!loaded)
 
 The result is `true` when the media opened. On `false`, the reason arrives through `MediaError` (a <xref:FatzMedia.Video.MediaErrorCode> such as `FileNotFound`, `UnsupportedFormat`, `OpenFailed` or `NativeLibraryMissing`) and `MediaDiagnostic`. Loading new media while other media is open stops and closes the old item first, so you see `MediaStopped` and `MediaClosed` for the old item before `MediaLoaded` for the new one.
 
-All overloads are members of <xref:FatzMedia.Video.MediaControlPlayer>:
+All overloads are members of <xref:FatzMedia.Video.PlayerCore>:
 
 | Overload | Use |
 |---|---|

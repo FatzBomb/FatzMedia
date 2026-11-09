@@ -1,6 +1,6 @@
 # Multiple players
 
-You can run several players in one process: two preview panes, a karaoke player plus a background-loop player, or a wall of videos. Each <xref:FatzMedia.Video.MediaControlPlayer> is independent. This article explains what is separate, what is shared, and how to create and watch several players safely.
+You can run several players in one process: two preview panes, a karaoke player plus a background-loop player, or a wall of videos. Each <xref:FatzMedia.Video.PlayerCore> is independent. This article explains what is separate, what is shared, and how to create and watch several players safely.
 
 ## What each player owns
 

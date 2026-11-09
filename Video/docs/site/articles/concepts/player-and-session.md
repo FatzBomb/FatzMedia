@@ -1,16 +1,16 @@
 # Player and session
 
-Everything you do with the engine goes through one object: a player. This page explains the types involved (`MediaControlPlayer`, the adapters' `Player` classes and the `IPlayerSession` interface), how to create a player, what its configuration controls, how long it lives and how to dispose of it, and what state it exposes.
+Everything you do with the engine goes through one object: a player. This page explains the types involved (`PlayerCore`, the adapters' `Player` classes and the `IPlayerSession` interface), how to create a player, what its configuration controls, how long it lives and how to dispose of it, and what state it exposes.
 
 ## The types
 
 | Type | What it is |
 | --- | --- |
 | <xref:FatzMedia.Video.IPlayerSession> | The framework-neutral control surface: load, transport, seek, state, effects, backgrounds, prepared-next, events and presentation-surface calls. Adapter controls and your own code can depend on this interface instead of a concrete class, which also makes it easy to substitute a test double. |
-| <xref:FatzMedia.Video.MediaControlPlayer> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
-| <xref:FatzMedia.Video.Wpf.Player>, <xref:FatzMedia.Video.WinForms.Player>, <xref:FatzMedia.Video.Avalonia.Player> | Adapter classes that derive from `MediaControlPlayer`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
+| <xref:FatzMedia.Video.PlayerCore> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
+| <xref:FatzMedia.Video.Wpf.Player>, <xref:FatzMedia.Video.WinForms.Player>, <xref:FatzMedia.Video.Avalonia.Player> | Adapter classes that derive from `PlayerCore`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
 
-`MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IPlayerSession`.
+`PlayerCore` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IPlayerSession`.
 
 ## Creating a player
 
@@ -29,7 +29,7 @@ The three forms:
 | --- | --- |
 | `Player.CreateAsync(configuration, paths, platformFactory)` | UI code. It builds the player on a thread-pool thread, so the UI stays responsive. |
 | `new Player(configuration, paths, platformFactory)` | Code that already runs off the UI thread (a console tool, a background task). It blocks while the native libraries load. |
-| `new MediaControlPlayer(platformFactory, configuration, paths)` | Core-only hosts with no UI adapter. Note the argument order differs from the adapters' `Player`. |
+| `new PlayerCore(platformFactory, configuration, paths)` | Core-only hosts with no UI adapter. Note the argument order differs from the adapters' `Player`. |
 
 The WPF `Player` also has overloads that take an `IMediaPresentationCoordinatorFactory` (a renderer factory) in place of the platform factory and use the Windows platform; the Avalonia and WinForms ones always need a platform factory.
 

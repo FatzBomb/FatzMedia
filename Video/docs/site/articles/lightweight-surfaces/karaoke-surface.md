@@ -6,7 +6,7 @@ You give it a platform factory and a file; there is no player, no `MediaSurface`
 wiring to write. It exists in the WPF, Avalonia and WinForms adapters with the same behaviour
 and nearly the same properties. Use it to put karaoke in part of a window. If you need full
 control (a custom lyric style, a soundfont, a second screen, backgrounds), use your own
-<xref:FatzMedia.Video.MediaControlPlayer> with a `MediaSurface`.
+<xref:FatzMedia.Video.PlayerCore> with a `MediaSurface`.
 
 | Adapter | Class |
 | --- | --- |
@@ -35,7 +35,7 @@ it. Put a [Background surface](background-surface.md) beside the karaoke control
 ## Quick start
 
 Set the platform factory in code before the first load, and give the control a file in `Source`.
-The factory is the same one you would give a `MediaControlPlayer`: on Windows
+The factory is the same one you would give a `PlayerCore`: on Windows
 `WindowsDirect3D11PlatformFactory`.
 
 # [WPF](#tab/wpf)

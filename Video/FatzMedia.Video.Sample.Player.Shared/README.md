@@ -4,7 +4,7 @@ The test players' shared view model (Stage 044A). Not packable; `net10.0`; refer
 CommunityToolkit.Mvvm only (pinned in `scripts/check-core-boundary.ps1`).
 
 - `ViewModels/PlayerViewModel`: one player's state and commands, written against
-  `MediaControlPlayer`: engine creation, transport, seek scrubbing, sync offsets, effects,
+  `PlayerCore`: engine creation, transport, seek scrubbing, sync offsets, effects,
   equalizer, subtitles, visual transforms, prepared next and fades, network sources, player modes,
   flyout state and the diagnostics log. Every property changes on the UI thread; engine events are
   marshalled there. Status reads and scrub calls never block the UI thread.

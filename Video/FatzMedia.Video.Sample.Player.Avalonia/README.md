@@ -17,7 +17,7 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
 
 ## What it tests
 
-- `FatzMedia.Video.Avalonia.MediaSurface` bound to a `MediaControlPlayer` (composited frame sink).
+- `FatzMedia.Video.Avalonia.MediaSurface` bound to a `PlayerCore` (composited frame sink).
 - Software and Vulkan renderers, and Direct3D11 on the GPU and on WARP in the Windows build,
   switched at run time (an unusable renderer is greyed out). `--hdr-output` is logged as not
   available (the surfaces are composited) and ignored.

@@ -143,7 +143,7 @@ Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurfac
 # --players) instead of its own copy.
 foreach ($adapter in @('FatzMedia.Video.Wpf', 'FatzMedia.Video.Avalonia', 'FatzMedia.Video.WinForms')) {
     $facade = Read-Text "$adapter/Player.cs"
-    Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*MediaControlPlayer' "$adapter must offer a Player facade over MediaControlPlayer."
+    Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*PlayerCore' "$adapter must offer a Player facade over PlayerCore."
     Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
 }
 

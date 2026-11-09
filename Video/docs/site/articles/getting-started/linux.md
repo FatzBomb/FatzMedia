@@ -42,7 +42,7 @@ var platform = new LinuxPlatformFactory(
 // In an Avalonia app, pass `platform` to FatzMedia.Video.Avalonia.Player.CreateAsync.
 // Here, a UI-free audio-only player from Core:
 var configuration = MediaPlayerConfiguration.Auto with { Mode = MediaPlayerMode.Audio };
-using var player = new MediaControlPlayer(platform, configuration, []);
+using var player = new PlayerCore(platform, configuration, []);
 ```
 
 ## Platform options
@@ -60,7 +60,7 @@ The packages contain no binaries. You supply Linux x64 builds of BASS and FFmpeg
 
 The engine searches your paths first, then the application folder, `native`, and `runtimes/linux-x64/native` beneath it. It does not search system library directories on its own, and it does not search subfolders. Put FFmpeg's libraries in one directory. A path you pass to the player must exist, or the constructor throws.
 
-Check what loaded with <xref:FatzMedia.Video.MediaControlPlayer.NativeDependencies>; its `Describe()` text names missing and wrong-version files (for example `libavcodec.so.62` found where `libavcodec.so.63` is needed).
+Check what loaded with <xref:FatzMedia.Video.PlayerCore.NativeDependencies>; its `Describe()` text names missing and wrong-version files (for example `libavcodec.so.62` found where `libavcodec.so.63` is needed).
 
 Notes:
 

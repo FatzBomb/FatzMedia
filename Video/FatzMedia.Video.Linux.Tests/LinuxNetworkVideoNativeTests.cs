@@ -560,7 +560,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         private readonly ConcurrentQueue<string> _diagnostics = new();
         private readonly ConcurrentQueue<bool> _buffering = new();
 
-        private PlayerSession(string appBase, MediaControlPlayer player, CountingFrameSink sink, MediaPresentationFrameSinkHandle? handle)
+        private PlayerSession(string appBase, PlayerCore player, CountingFrameSink sink, MediaPresentationFrameSinkHandle? handle)
         {
             _appBase = appBase;
             Player = player;
@@ -571,7 +571,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             player.BufferingChanged += (_, args) => _buffering.Enqueue(args.IsBuffering);
         }
 
-        public MediaControlPlayer Player { get; }
+        public PlayerCore Player { get; }
 
         public CountingFrameSink Sink { get; }
 
@@ -590,7 +590,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
             var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
             var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls, NetworkReadAhead = readAhead };
-            var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
+            var player = new PlayerCore(factory, configuration, [ffmpeg]);
             var sink = new CountingFrameSink();
             MediaPresentationFrameSinkHandle? handle = null;
             if (attachSurface)

@@ -4,7 +4,7 @@ This article covers how the picture is fitted into the surface (<xref:FatzMedia.
 
 ## Display modes
 
-<xref:FatzMedia.Video.MediaControlPlayer.VideoDisplayMode> controls how primary video is mapped into the presentation surface. It is a runtime property of the player, takes effect on the next presented frame, and applies to every surface of the player.
+<xref:FatzMedia.Video.PlayerCore.VideoDisplayMode> controls how primary video is mapped into the presentation surface. It is a runtime property of the player, takes effect on the next presented frame, and applies to every surface of the player.
 
 | Mode | Behavior |
 | --- | --- |
@@ -27,7 +27,7 @@ Each adapter's `MediaSurface` has a `VideoDisplayMode` property (default `Zoom`)
 
 ## Color adjustments
 
-<xref:FatzMedia.Video.MediaControlPlayer.BaseVisualTransform> adjusts the color of the base visual layer: the video or image, not the overlays drawn on top of it (CD+G graphics, subtitles and lyrics) unless you ask for them. It is a value type; assign a new one to change it. `BaseVisualTransform.Identity` (the default) leaves the picture unchanged.
+<xref:FatzMedia.Video.PlayerCore.BaseVisualTransform> adjusts the color of the base visual layer: the video or image, not the overlays drawn on top of it (CD+G graphics, subtitles and lyrics) unless you ask for them. It is a value type; assign a new one to change it. `BaseVisualTransform.Identity` (the default) leaves the picture unchanged.
 
 | Property | Range | Neutral value |
 | --- | --- | --- |

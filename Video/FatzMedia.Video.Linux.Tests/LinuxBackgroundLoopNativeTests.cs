@@ -29,7 +29,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
             Run($"-f lavfi -i \"nullsrc=size=320x180:rate=30:duration=8,geq=lum='N':cb=128:cr=128\" -c:v mpeg4 -q:v 2 -g 30 -pix_fmt yuv420p \"{Path.Combine(folder, "loop.mp4")}\"");
 
             using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
-            MediaControlPlayer player = session.Player;
+            PlayerCore player = session.Player;
             player.LoopMedia = true;
             var loops = 0;
             player.MediaLooped += (_, _) => Interlocked.Increment(ref loops);
@@ -75,7 +75,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
 
             using (var session = LinuxNativeTestPlayer.Create([bass, ffmpeg]))
             {
-                MediaControlPlayer player = session.Player;
+                PlayerCore player = session.Player;
                 Assert.True(player.Load(song), string.Join(" | ", session.Errors));
                 Assert.True(Moves(session), "independent: the background should move before Play");
                 Assert.True(player.Play());
@@ -94,7 +94,7 @@ public sealed class LinuxBackgroundLoopNativeTests(ITestOutputHelper output)
 
             using (var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], new Core.Configuration.MediaPlayerConfiguration { BackgroundFollowsMedia = true }))
             {
-                MediaControlPlayer player = session.Player;
+                PlayerCore player = session.Player;
                 Assert.True(player.Load(song), string.Join(" | ", session.Errors));
                 Assert.False(Moves(session), "following the media: the background waits for Play");
                 Assert.True(player.Play());

@@ -12,7 +12,7 @@ namespace FatzMedia.Video;
 /// Depth-one prepared-next slot. The host owns its playlist; Core only keeps exactly one item
 /// analyzed and ready so the transition into it is immediate.
 /// </summary>
-public partial class MediaControlPlayer
+public partial class PlayerCore
 {
     private readonly PreparedNextSlot _preparedNext = new();
     private volatile bool _autoTransitionToPreparedNext;

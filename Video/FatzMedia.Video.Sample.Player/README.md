@@ -175,13 +175,13 @@ the monitor showing the video instead of the video's own frame times: an even 3:
 60 Hz, with no stray 3:3:1. It needs the Direct3D11 renderer with native windows (the default
 MODE). With the Secondary Window on a monitor with another refresh rate, each monitor follows
 its own refreshes. The Log panel's `VideoFrameTiming` entries say when it is on, or why it is
-unavailable, and summarize the cadence every minute. It sets `MediaControlPlayer.VideoFrameTiming`.
+unavailable, and summarize the cadence every minute. It sets `PlayerCore.VideoFrameTiming`.
 
 ## Silent drag
 
 **Silent Drag** in the **Audio** flyout (on by default) mutes audio while the seek bar is
 dragged; it plays again when the drag rests for about a tenth of a second or is released. Off,
-drags sound as before. It sets `MediaControlPlayer.ScrubAudio`; the volume setting is not
+drags sound as before. It sets `PlayerCore.ScrubAudio`; the volume setting is not
 touched.
 
 ## Log panel

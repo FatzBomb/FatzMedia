@@ -4,8 +4,8 @@ using FatzMedia.Video.Core.Abstractions;
 namespace FatzMedia.Video.Sample.Player.Shared.ViewModels;
 
 /// <summary>
-/// The 200 ms position refresh. <see cref="MediaControlPlayer.State"/>, <see cref="MediaControlPlayer.Duration"/>
-/// and <see cref="MediaControlPlayer.Position"/> are read on the thread pool, never on the UI
+/// The 200 ms position refresh. <see cref="PlayerCore.State"/>, <see cref="PlayerCore.Duration"/>
+/// and <see cref="PlayerCore.Position"/> are read on the thread pool, never on the UI
 /// thread (ENG-035: a network source can hold them), and a tick is skipped while a read is still
 /// out or a seek drag is active. A read slower than 100 ms, blocked for a second, or failing (once
 /// until a read succeeds) is logged as a warning.
@@ -71,7 +71,7 @@ public partial class PlayerViewModel
         _statusRead = ReadStatusAsync(player, _statusReadStarted);
     }
 
-    private async Task ReadStatusAsync(MediaControlPlayer player, long started)
+    private async Task ReadStatusAsync(PlayerCore player, long started)
     {
         PlaybackStatus status;
         try
@@ -109,7 +109,7 @@ public partial class PlayerViewModel
         });
     }
 
-    private void ApplyStatus(MediaControlPlayer? player, PlaybackStatus status)
+    private void ApplyStatus(PlayerCore? player, PlaybackStatus status)
     {
         if (player is not null)
             PlaybackState = status.State;

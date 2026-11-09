@@ -30,7 +30,7 @@ The host composition root selects platform services and a renderer, while adapte
 supply framework/native surfaces and route framework-specific controls or source
 types into Core APIs.
 
-The WPF adapter exposes `FatzMedia.Video.Wpf.Player`, which derives from Core `MediaControlPlayer`. Core commands, properties, and events are inherited automatically; WPF-specific additions should stay limited to conversions such as `ImageSource`/`BitmapSource` to `MediaInputSource`.
+The WPF adapter exposes `FatzMedia.Video.Wpf.Player`, which derives from Core `PlayerCore`. Core commands, properties, and events are inherited automatically; WPF-specific additions should stay limited to conversions such as `ImageSource`/`BitmapSource` to `MediaInputSource`.
 
 ## Native DLLs
 

@@ -12,7 +12,7 @@ public interface IPlayerFilePicker
 {
     /// <summary>
     /// Asks for one local file; called on the UI thread. <paramref name="filter"/> is the engine's
-    /// "Name|*.a;*.b|Name2|*.c" filter (<see cref="MediaControlPlayer.OpenFileDialogFilter"/>).
+    /// "Name|*.a;*.b|Name2|*.c" filter (<see cref="PlayerCore.OpenFileDialogFilter"/>).
     /// </summary>
     /// <returns>The chosen path, or null when the user cancelled.</returns>
     Task<string?> PickFileAsync(string title, string filter);

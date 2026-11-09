@@ -72,7 +72,7 @@ Add `FatzMedia.Video.Vulkan` if you want the Vulkan renderer. The Software and V
 
 ### Core only
 
-A host without a UI (an audio-only service, a test) references `FatzMedia.Video` and one platform package (`FatzMedia.Video.Windows` or `FatzMedia.Video.Linux`) and creates <xref:FatzMedia.Video.MediaControlPlayer> directly. A player in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> `Audio` needs no renderer at all, but the platform factory constructors still take one, so pass the Software renderer's factory.
+A host without a UI (an audio-only service, a test) references `FatzMedia.Video` and one platform package (`FatzMedia.Video.Windows` or `FatzMedia.Video.Linux`) and creates <xref:FatzMedia.Video.PlayerCore> directly. A player in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> `Audio` needs no renderer at all, but the platform factory constructors still take one, so pass the Software renderer's factory.
 
 ## Project references instead of packages
 
@@ -93,6 +93,6 @@ On Linux use `native\**\*.so*` for the shared libraries. SkiaSharp's native libr
 
 ## Check that it works
 
-After the first player is created, read <xref:FatzMedia.Video.MediaControlPlayer.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a missing BASS library only disables audio. See [Native dependencies](native-dependencies.md#startup-report).
+After the first player is created, read <xref:FatzMedia.Video.PlayerCore.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a missing BASS library only disables audio. See [Native dependencies](native-dependencies.md#startup-report).
 
 Then follow a quickstart: [WPF](quickstart-wpf.md), [Avalonia](quickstart-avalonia.md) or [WinForms](quickstart-winforms.md).

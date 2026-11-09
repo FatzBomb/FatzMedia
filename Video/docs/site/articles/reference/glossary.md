@@ -25,7 +25,7 @@ Short definitions of terms used across this guide.
 ## Rendering and presentation
 
 **Player, session**
-: The object you load and control media with. `MediaControlPlayer` (or an adapter's `Player`, which derives from it) is the implementation; `IPlayerSession` is the interface surfaces and your code can depend on. See [Player and session](../concepts/player-and-session.md).
+: The object you load and control media with. `PlayerCore` (or an adapter's `Player`, which derives from it) is the implementation; `IPlayerSession` is the interface surfaces and your code can depend on. See [Player and session](../concepts/player-and-session.md).
 
 **Control queue**
 : The per-player queue that runs load, transport, seek and mode calls one at a time, in order. See [Threading and events](../concepts/threading-and-events.md).

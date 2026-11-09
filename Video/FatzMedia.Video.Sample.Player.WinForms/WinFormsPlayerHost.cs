@@ -101,7 +101,7 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
     public static IPlatformFactory CreatePlatformFactory(PlayerRendererSelection selection) =>
         new WindowsPlatformFactory(selection.CreateFactory());
 
-    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    public async Task<PlayerCore> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
