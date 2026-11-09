@@ -12,8 +12,8 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// The FatzAudio engine (037A slice 2) on the real FatzAudio native library from the pinned
-/// package, playing to FatzAudio's null output device (this machine has no sound device). Timing
+/// The FatzAudio engine (037A slice 2) on the real FatzAudio native library built from Audio/
+/// (FatzAudioNativeDir), playing to FatzAudio's null output device (this machine has no sound device). Timing
 /// is real time, so waits are generous. Linux only, like the rest of this project; Windows and a
 /// real device are the owner's smoke.
 /// </summary>

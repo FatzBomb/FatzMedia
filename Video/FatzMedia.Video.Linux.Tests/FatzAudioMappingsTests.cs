@@ -86,12 +86,12 @@ public sealed class FatzAudioMappingsTests
 
         Assert.Equal(Path.Combine("C:/Users/u/AppData/Local", "FatzMedia.Video", "AudioCache"),
             FatzAudioMappings.ResolveCacheDirectory(null, isWindows: true, Env, "C:/Users/u/AppData/Local", "C:/Users/u"));
-        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzbomb-mediacontrol", "audio"),
+        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzmedia-video", "audio"),
             FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, Env, "/home/u/.local/share", "/home/u"));
-        Assert.Equal(Path.Combine("/xdg", "fatzbomb-mediacontrol", "audio"),
+        Assert.Equal(Path.Combine("/xdg", "fatzmedia-video", "audio"),
             FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, static _ => "/xdg", "", "/home/u"));
         // A relative XDG_CACHE_HOME is ignored, as the XDG spec says.
-        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzbomb-mediacontrol", "audio"),
+        Assert.Equal(Path.Combine("/home/u", ".cache", "fatzmedia-video", "audio"),
             FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, static _ => "relative", "", "/home/u"));
         Assert.Null(FatzAudioMappings.ResolveCacheDirectory("", isWindows: true, Env, "C:/x", "C:/u"));
         Assert.Null(FatzAudioMappings.ResolveCacheDirectory("  ", isWindows: false, Env, "", "/home/u"));

@@ -53,7 +53,7 @@ public readonly record struct NormalizationOptions
     /// Gets the folder where measured loudness is kept, so a song is scanned once, not once per
     /// run. <see langword="null"/> (the default) uses a per-user folder
     /// (<c>%LOCALAPPDATA%\FatzMedia.Video\AudioCache</c> on Windows,
-    /// <c>$XDG_CACHE_HOME/fatzbomb-mediacontrol/audio</c> or <c>~/.cache/fatzbomb-mediacontrol/audio</c>
+    /// <c>$XDG_CACHE_HOME/fatzmedia-video/audio</c> or <c>~/.cache/fatzmedia-video/audio</c>
     /// elsewhere); an empty string turns the cache off. A relative path is made absolute when the
     /// player is created. Entries are a few bytes each, keyed by the
     /// file's content (size and three 64 KB blocks), so renamed or moved files are still found.

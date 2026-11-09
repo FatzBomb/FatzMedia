@@ -18,7 +18,7 @@ Next: [Concepts](concepts.md), then [Common tasks in five minutes](common-tasks.
 The package is `FatzMedia.Audio`, for `net8.0` and `net10.0`. CI publishes a prerelease of every `main` build to the repository owner's GitHub Packages feed; stable versions are published by hand. Setting up the feed (`nuget.config`, token, version pinning) is in [Building](building.md#nuget-package-and-versions).
 
 ```bash
-dotnet add package FatzMedia.Audio --version 1.0.0-rc.1
+dotnet add package FatzMedia.Audio --prerelease
 ```
 
 The package carries the native library for **Windows** (x64, arm64), **Linux** (x64, arm64), **macOS** (universal), **Android** (arm64, x64) and **iOS** (xcframework), in `runtimes/<rid>/native/`, and .NET finds it from there. For other Android ABIs build the library yourself ([Building](building.md)). Nothing else is needed: there are no add-on libraries and no runtime to install.

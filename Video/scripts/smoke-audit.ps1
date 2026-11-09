@@ -288,7 +288,7 @@ function Test-8 {
         Start-Sleep -Seconds 3
         $left = @(Get-Process -Name 'FatzMedia.Video.Sample.Player.Avalonia' -ErrorAction SilentlyContinue)
         $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
-            Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting') -and $_.Message -match 'FatzBomb' })
+            Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting') -and $_.Message -match 'FatzMedia|FatzBomb' })
         $log = Save-RunLog 'Ava' '8a'
         Add-Result ('8a: exited = {0} after {1:N1} s, exit code = {2}, processes left over = {3}, crash events = {4}' -f $exited, $sw.Elapsed.TotalSeconds, $code, $left.Count, $events.Count)
         foreach ($e in $events) { Add-Result ('    event: ' + (($e.Message -split "`n")[0..3] -join ' | ')) }

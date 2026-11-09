@@ -92,7 +92,7 @@ internal static class FatzAudioMappings
         var root = !string.IsNullOrEmpty(xdg) && Path.IsPathRooted(xdg)
             ? xdg
             : string.IsNullOrEmpty(userProfile) ? null : Path.Combine(userProfile, ".cache");
-        return root is null ? null : Path.Combine(root, "fatzbomb-mediacontrol", "audio");
+        return root is null ? null : Path.Combine(root, "fatzmedia-video", "audio");
     }
 
     /// <summary><see cref="ResolveCacheDirectory(string?, bool, Func{string, string?}, string, string)"/> for this machine and user.</summary>

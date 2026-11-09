@@ -67,7 +67,7 @@ var configuration = new MediaPlayerConfiguration
 |---|---|---|
 | `TargetLufs` | -14 | The loudness every song is brought to (Spotify, YouTube). A karaoke host might use about -16 for microphone headroom. -60 to 0. |
 | `TruePeakCeilingDbtp` | -1 | The limiter's ceiling. -20 to 0. |
-| `CacheDirectory` | `null` | Where measured loudness is kept. `null` is a per-user folder (`%LOCALAPPDATA%\FatzMedia.Video\AudioCache` on Windows, `$XDG_CACHE_HOME/fatzbomb-mediacontrol/audio` or `~/.cache/fatzbomb-mediacontrol/audio` elsewhere); an empty string turns the cache off. |
+| `CacheDirectory` | `null` | Where measured loudness is kept. `null` is a per-user folder (`%LOCALAPPDATA%\FatzMedia.Video\AudioCache` on Windows, `$XDG_CACHE_HOME/fatzmedia-video/audio` or `~/.cache/fatzmedia-video/audio` elsewhere); an empty string turns the cache off. |
 
 - **Where the loudness comes from:** ReplayGain 2 or R128 tags, then the cache, then a scan of the whole file on all cores (a 4-minute song takes about 0.1-0.35 s, a 10-minute one about 0.5 s). The gain is target minus loudness, limited to -30 to +12 dB.
 - **The first play:** playback starts at once on FatzAudio's running estimate and glides to the measured level when the scan finishes (at most 12 dB/s down, 6 dB/s up). Tagged and cached songs are at the right level from the first sample. Play-on-load does not wait.
