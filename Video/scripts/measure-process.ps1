@@ -44,7 +44,7 @@ if ($Id -gt 0) {
 
 $pidText = $proc.Id
 $cores = [Environment]::ProcessorCount
-$desktop = Join-Path $PSScriptRoot '..\..\work\fatzvideo\test-results'
+$desktop = Join-Path $PSScriptRoot '..\..\..\work\fatzvideo\test-results'
 New-Item -ItemType Directory -Force -Path $desktop | Out-Null
 if (-not $desktop) { $desktop = [IO.Path]::GetTempPath() }
 $outDir = Join-Path $desktop ("FatzBomb-measure-{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmm'))

@@ -139,7 +139,7 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   restore keeps the old package contents).
 - Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
-Windows (owner): repo at `D:\development\FatzBomb\FatzVideo`, media in `C:\media`, RTX 5090, three
+Windows (owner): repo at `D:\development\FatzBomb\FatzMedia\Video`, media in `C:\media`, RTX 5090, three
 monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI. **Owner preference (2026-11-06):** full commands for every smoke step, and a `.ps1` script (on `scripts/smoke-common.ps1`, like `smoke-backlog.ps1` and `smoke-051A.ps1`) whenever there are many steps or they can be automated; the owner is still learning git and PowerShell, so scripts do the git steps too.
 
 ## Next steps

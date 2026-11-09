@@ -13,7 +13,7 @@
 
     Run it from the repository folder, in PowerShell:
 
-        cd D:\development\FatzBomb\FatzVideo
+        cd D:\development\FatzBomb\FatzMedia\Video
         powershell -ExecutionPolicy Bypass -File scripts\smoke-051A.ps1
 
     Run it again on the laptop for the laptop numbers (test 3).

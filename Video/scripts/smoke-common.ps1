@@ -74,7 +74,7 @@ public static class FbSmoke
 # ---------------------------------------------------------------------------------------------
 # Output folder and results file
 # ---------------------------------------------------------------------------------------------
-$OutDir = Join-Path (Join-Path $PSScriptRoot '..\..\work\fatzvideo\test-results') ('FatzBomb-' + $SmokeName + '-' + (Get-Date -Format 'yyyyMMdd-HHmm'))
+$OutDir = Join-Path (Join-Path $PSScriptRoot '..\..\..\work\fatzvideo\test-results') ('FatzBomb-' + $SmokeName + '-' + (Get-Date -Format 'yyyyMMdd-HHmm'))
 $LogsOut = Join-Path $OutDir 'logs'
 $ShotsOut = Join-Path $OutDir 'screenshots'
 New-Item -ItemType Directory -Force -Path $OutDir, $LogsOut, $ShotsOut | Out-Null
