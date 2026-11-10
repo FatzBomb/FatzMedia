@@ -1,4 +1,3 @@
-using System.Buffers;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Audio.Filters;
@@ -128,19 +127,11 @@ sealed class BassPushAudioOutput(IOutputLatencyProvider outputLatencyProvider, i
         }
     }
 
-    public bool Push(ReadOnlySpan<byte> interleavedFloat, double continuousStartSeconds)
+    public unsafe bool Push(ReadOnlySpan<byte> interleavedFloat, double continuousStartSeconds)
     {
-        var byteCount = interleavedFloat.Length;
-        var data = ArrayPool<byte>.Shared.Rent(byteCount);
-        try
-        {
-            interleavedFloat.CopyTo(data);
-            return Bass.StreamPutData(SourceHandle, data, byteCount) > 0;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(data);
-        }
+        // BASS copies the samples into its queue: no managed copy first.
+        fixed (byte* data = interleavedFloat)
+            return Bass.StreamPutData(SourceHandle, (IntPtr)data, interleavedFloat.Length) > 0;
     }
 
     public bool Play()
@@ -276,7 +267,7 @@ sealed class BassPushAudioOutput(IOutputLatencyProvider outputLatencyProvider, i
         return BassChannelVolume.Set(PlayHandle, _volume);
     }
 
-    public void StartNormalization(string filePath, string? cacheKey, double durationSeconds)
+    public void StartNormalization(string filePath, string? cacheKey, double durationSeconds, bool temporaryCopy)
     {
         CancelNormalizationAnalysis();
         var generation = Volatile.Read(ref _normalizationGeneration);

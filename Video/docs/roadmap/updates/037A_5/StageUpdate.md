@@ -62,8 +62,27 @@ Decisions:
 
 ## Verification (Windows, this machine)
 
-See "Verification" in the PR. Not verified here: a real audio device, A/V sync by eye, clicks by ear, a run with
-the BASS DLLs removed (the test above covers the service graph only).
+Release build 0 warnings; tests: Video 1603, Portable 1788, Linux 227 (48 FatzAudio tests ran, the 8 above among
+them), Vulkan 103, Avalonia 52, all passed; boundary scripts and `dotnet format --verify-no-changes` pass. Not
+verified here: a real audio device, A/V sync by eye, clicks by ear, a run with the BASS DLLs removed (the test
+above covers the service graph only).
+
+## Review notes (pre-PR, 2026-11-10)
+
+Fixed before the PR: the normalization event is raised on the thread pool, never on the scan thread or
+FatzAudio's event thread (the engine waits on those under its lock); a scan never throws into Dispose; closing a
+song does not wait for its loudness scan (scans run on, and only Dispose waits; archive entries, played from a
+temp copy the engine deletes on close, are not scanned); a push within 20 ms of where the previous one ended is
+not re-stamped (Matroska rounds frame times to 1 ms; contiguous PCM must not get a timestamp in its middle); the
+BASS output pushes the decoded buffer without an extra copy; an unused constructor removed.
+
+Known, not fixed:
+- A third-party `IAudioEngineFactory` engine that does not offer `IPushAudioOutputSource` counts as audio being
+  available, so on a machine without BASS its video audio would try BASS and stay silent. Only the FatzAudio
+  factory exists; it offers the seam.
+- After a seek the position holds the target until FatzAudio's clock moves; if the clock still moved for a moment
+  after the pause (audio already in the device), the position could step back briefly. The seek tests pass;
+  watch for it in the hand tests.
 
 ## Manual smoke (owner)
 

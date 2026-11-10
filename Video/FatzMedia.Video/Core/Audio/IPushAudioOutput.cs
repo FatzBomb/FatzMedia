@@ -94,7 +94,8 @@ interface IPushAudioOutput : IDisposable
     /// <param name="filePath">The file the audio comes from (a temp copy for an archive entry).</param>
     /// <param name="cacheKey">The key of the file's measured gain, or null.</param>
     /// <param name="durationSeconds">The file's duration, 0 when unknown.</param>
-    void StartNormalization(string filePath, string? cacheKey, double durationSeconds);
+    /// <param name="temporaryCopy">The file is a copy the engine deletes when the song closes.</param>
+    void StartNormalization(string filePath, string? cacheKey, double durationSeconds, bool temporaryCopy);
 
     /// <summary>MIDI events of the stream (BASS only); null for other outputs.</summary>
     IMidiEventReader? GetMidiEventReader();

@@ -53,11 +53,6 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     MediaSourceCapabilities? _networkCapabilities;
     NetworkBufferingMonitor? _bufferingMonitor;
 
-    public SoundtrackAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
-        : this(new BassPushAudioOutput(outputLatencyProvider, bassDeviceIndex))
-    {
-    }
-
     /// <param name="output">Where the soundtrack plays (BASS, or the FatzAudio engine's device); owned.</param>
     internal SoundtrackAudioEngine(IPushAudioOutput output)
     {

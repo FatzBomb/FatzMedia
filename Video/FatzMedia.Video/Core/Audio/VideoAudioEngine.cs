@@ -260,7 +260,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         ArgumentNullException.ThrowIfNull(options);
-        return OpenCore(url, () => _demuxer.IsOpen || _demuxer.Open(url, options), normalizationCacheKey: null, analyzeNormalization: false);
+        return OpenCore(url, () => _demuxer.IsOpen || _demuxer.Open(url, options), normalizationCacheKey: null, analyzeNormalization: false, temporaryCopy: false);
     }
 
     /// <summary>Aborts blocking network I/O at once, without the engine lock (Stage 039A).</summary>
@@ -320,10 +320,10 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         return _demuxer.TryTakeStreamMetadata(playedUpTo, out metadata);
     }
 
-    bool OpenFile(string filePath, string? normalizationCacheKey) =>
-        OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true);
+    bool OpenFile(string filePath, string? normalizationCacheKey, bool temporaryCopy = false) =>
+        OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true, temporaryCopy);
 
-    bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization)
+    bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization, bool temporaryCopy)
     {
         lock (_ioGate)
         {
@@ -340,12 +340,12 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
                 return false;
 
             lock (_sync)
-                return CompleteOpenCore(filePath, normalizationCacheKey, analyzeNormalization);
+                return CompleteOpenCore(filePath, normalizationCacheKey, analyzeNormalization, temporaryCopy);
         }
     }
 
     // Under _ioGate and _sync, with the demuxer open.
-    bool CompleteOpenCore(string filePath, string? normalizationCacheKey, bool analyzeNormalization)
+    bool CompleteOpenCore(string filePath, string? normalizationCacheKey, bool analyzeNormalization, bool temporaryCopy)
     {
         // A network source takes the audio of the variant the picture plays (039A).
         AudioStreamIndex = _demuxer.SelectAudioStream();
@@ -383,7 +383,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         State = AudioEngineState.Stopped;
         PublishPositionSnapshot(_positionBaseSeconds);
         if (analyzeNormalization)
-            _output.StartNormalization(filePath, normalizationCacheKey, Duration);
+            _output.StartNormalization(filePath, normalizationCacheKey, Duration, temporaryCopy);
         _openPublished = IsOpenCore;
         Opened?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
@@ -397,7 +397,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         // Streamed straight to the scratch file: no in-memory copies of the whole entry.
         var tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
         var normalizationCacheKey = $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}";
-        var success = OpenFile(tempPath, normalizationCacheKey);
+        var success = OpenFile(tempPath, normalizationCacheKey, temporaryCopy: true);
         if (success)
             lock (_sync)
                 _tempPath = tempPath;
@@ -785,11 +785,11 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         if (_ownsDemuxer)
             _demuxer.Dispose();
         lock (_sync)
-        {
             _disposed = true;
-            _output.NormalizationGainChanged -= OnOutputNormalizationGainChanged;
-            _output.Dispose();
-        }
+
+        // Outside _sync: disposing may wait for the output's background work (FatzAudio loudness scans).
+        _output.NormalizationGainChanged -= OnOutputNormalizationGainChanged;
+        _output.Dispose();
 
         GC.SuppressFinalize(this);
     }

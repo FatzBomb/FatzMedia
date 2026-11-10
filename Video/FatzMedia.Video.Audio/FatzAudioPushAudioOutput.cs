@@ -28,8 +28,9 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     /// <summary>Longest local file whose loudness is scanned by path when it opens: 15 minutes.</summary>
     internal const double MaxScanSeconds = 15 * 60;
 
-    // A push whose start is this close to where the previous one ended continues it (no timestamp).
-    const double ContinuationToleranceSeconds = 0.001;
+    // A push whose start is this close to where the previous one ended continues it (no timestamp):
+    // containers round frame times (Matroska to 1 ms), and contiguous PCM is never re-stamped for that.
+    const double ContinuationToleranceSeconds = 0.02;
 
     readonly FatzAudioEngine _owner;
     readonly Fa.AudioEngine _engine;
@@ -41,7 +42,8 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     // the fade runner and the equalizer come from other threads.
     readonly Lock _gate = new();
     Fa.PushAudioStream? _stream;
-    Task _scan = Task.CompletedTask;
+    // Loudness scans still running; they cannot be cancelled. Close does not wait for them, Dispose does.
+    readonly HashSet<Task> _scans = [];
     double _volume = 1;
     int _pitch;
     int _tempo;
@@ -352,19 +354,22 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     /// <summary>
     /// Scans a local file of up to <see cref="MaxScanSeconds"/> by path in the background, so its loudness is
     /// measured once and cached; FatzAudio glides the playing stream to it. Files FatzAudio cannot open (a
-    /// container it does not read) keep the running estimate.
+    /// container it does not read) and temporary copies (an archive entry: the engine deletes the copy when the
+    /// song closes, and a scan cannot be stopped) keep the running estimate.
     /// </summary>
-    public void StartNormalization(string filePath, string? cacheKey, double durationSeconds)
+    public void StartNormalization(string filePath, string? cacheKey, double durationSeconds, bool temporaryCopy)
     {
-        if (durationSeconds is <= 0 or > MaxScanSeconds || !double.IsFinite(durationSeconds))
+        if (temporaryCopy || durationSeconds is <= 0 or > MaxScanSeconds || !double.IsFinite(durationSeconds))
             return;
 
         lock (_gate)
         {
-            if (_disposed || _stream is not { } stream || IsLoudnessFinal(stream) || !_scan.IsCompleted)
+            if (_disposed || _stream is not { } stream || IsLoudnessFinal(stream))
                 return;
 
-            _scan = Task.Run(() => Scan(stream, filePath));
+            var scan = Task.Run(() => Scan(stream, filePath));
+            _ = _scans.Add(scan);
+            _ = scan.ContinueWith(done => { lock (_gate) _ = _scans.Remove(done); }, TaskScheduler.Default);
         }
     }
 
@@ -386,10 +391,11 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
             }
 
             // A supplied loudness raises no LoudnessFinal.
-            NormalizationGainChanged?.Invoke(this, NormalizationGain);
+            QueueNormalizationGainChanged(stream);
         }
-        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or IOException)
+        catch (Exception ex)
         {
+            // Every failure ends here: Dispose waits for the scan and must not throw.
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"Soundtrack not scanned ({ex.Message}); FatzAudio uses its running estimate.", sourcePath: filePath);
         }
     }
@@ -400,8 +406,11 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
             _disposed = true;
 
         Release();
-        // A scan uses the FatzAudio engine, which the player disposes after its pipelines.
-        _scan.Wait();
+        // Running scans use the FatzAudio engine, which the player disposes after its pipelines.
+        Task[] scans;
+        lock (_gate)
+            scans = [.. _scans];
+        Task.WaitAll(scans);
         _bus.Dispose();
     }
 
@@ -441,21 +450,35 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
 
     void OnLoudnessFinal(object? sender, EventArgs e)
     {
-        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
-        try
-        {
-            lock (_gate)
-            {
-                if (!ReferenceEquals(sender, _stream))
-                    return;
-            }
+        if (sender is Fa.PushAudioStream stream)
+            QueueNormalizationGainChanged(stream);
+    }
 
-            NormalizationGainChanged?.Invoke(this, NormalizationGain);
-        }
-        catch (Exception ex)
+    /// <summary>
+    /// Raises <see cref="NormalizationGainChanged"/> on the thread pool, for the stream still playing: host
+    /// handlers never run on the scan thread (which <see cref="Release"/> joins under the engine's lock) or
+    /// on FatzAudio's event thread (which a stream's disposal may wait for).
+    /// </summary>
+    void QueueNormalizationGainChanged(Fa.PushAudioStream stream)
+    {
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        _ = Task.Run(() =>
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"Loudness handling failed: {ex.Message}", innerException: ex);
-        }
+            try
+            {
+                lock (_gate)
+                {
+                    if (!ReferenceEquals(stream, _stream))
+                        return;
+                }
+
+                NormalizationGainChanged?.Invoke(this, NormalizationGain);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"Loudness handling failed: {ex.Message}", innerException: ex);
+            }
+        });
     }
 
     static bool IsLoudnessFinal(Fa.AudioStream stream)
