@@ -151,6 +151,12 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets an <c>--audio=</c> value that is not an engine name (then BASS applies), or null.</summary>
     public string? UnknownAudioEngine { get; init; }
 
+    /// <summary>
+    /// Gets the FatzAudio output device (<c>--audio-device=</c>, its id or name; the Log lists the names when
+    /// it is not found), or null for the system default. Only with <c>--audio=fatz</c>.
+    /// </summary>
+    public string? AudioDevice { get; init; }
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
@@ -208,6 +214,7 @@ public sealed record PlayerStartupOptions
             UnknownSurface = surface is null || IsValue(surface, "framesink") || IsValue(surface, "auto") ? null : surface,
             AudioEngine = PlayerAudioEngineRules.Parse(audio) ?? PlayerAudioEngine.Bass,
             UnknownAudioEngine = audio is not null && PlayerAudioEngineRules.Parse(audio) is null ? audio : null,
+            AudioDevice = Values(args, "--audio-device=").LastOrDefault(static value => !string.IsNullOrWhiteSpace(value)),
             SoftwareDecoding = IsValue(decoding, "software"),
             UnknownDecoding = decoding is null || IsValue(decoding, "software") || IsValue(decoding, "auto") ? null : decoding,
             SecondScreen = Values(args, "--second-screen=", trimQuotes: false)

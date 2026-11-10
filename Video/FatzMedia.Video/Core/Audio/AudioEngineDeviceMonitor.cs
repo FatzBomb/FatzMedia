@@ -10,12 +10,19 @@ interface IAudioDeviceChangeSource
 {
     /// <summary>Raised on the engine's own thread when its output moved to another device.</summary>
     event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
+
+    /// <summary>
+    /// True when <see cref="DeviceChanged"/> also reports devices added and removed and every default
+    /// change (the FatzAudio engine watches the device list itself): the platform's monitor, which watches
+    /// BASS, is then not used, so each change is reported once.
+    /// </summary>
+    bool ReportsDeviceList => false;
 }
 
 /// <summary>
 /// The player's device monitor when an <see cref="IAudioEngineFactory"/> engine plays file audio:
-/// the engine's own device moves (<see cref="IAudioDeviceChangeSource"/>) plus the platform's
-/// monitor, which still watches BASS for video audio. Either may be missing.
+/// the engine's own device events (<see cref="IAudioDeviceChangeSource"/>) plus the platform's
+/// monitor unless the engine watches the device list itself. Either may be missing.
 /// </summary>
 sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDeviceMonitor? platform) : IAudioDeviceMonitor
 {

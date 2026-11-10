@@ -1,5 +1,4 @@
 using FatzMedia.Video.Audio;
-using FatzMedia.Video.Core.Abstractions;
 using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -64,12 +63,6 @@ public sealed class FatzAudioMappingsTests
         Assert.Empty(FatzAudioMappings.ToEdgeRegions(0, 308700, 308700, 44100, 7));
         Assert.Equal([new SilenceRegion(0, 7)], FatzAudioMappings.ToEdgeRegions(null, null, 308700, 44100, 7));
     }
-
-    [Theory]
-    [InlineData(0, AudioDeviceChangeKind.DefaultDeviceChanged)]
-    [InlineData(1, AudioDeviceChangeKind.DeviceRemoved)]
-    public void DeviceChange_ValueBecomesOurKind(long value, AudioDeviceChangeKind kind) =>
-        Assert.Equal(kind, FatzAudioMappings.ToDeviceChangeKind(value));
 
     [Theory]
     [InlineData(Fa.MidiTextFlags.None, "word")]

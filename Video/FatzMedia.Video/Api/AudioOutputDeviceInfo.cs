@@ -2,7 +2,8 @@
 namespace FatzMedia.Video;
 
 /// <summary>
-/// Describes a BASS output device that can be selected when creating a media-control player.
+/// Describes an output device that can be selected when creating a player: a BASS device (by
+/// <see cref="DeviceIndex"/>) or a FatzAudio device (by <see cref="Id"/>).
 /// </summary>
 public sealed record class AudioOutputDeviceInfo(
     int DeviceIndex,
@@ -14,6 +15,12 @@ public sealed record class AudioOutputDeviceInfo(
 {
     /// <summary>Gets the synthetic device index used for the system primary/default output.</summary>
     public const int PrimaryDeviceIndex = -1;
+
+    /// <summary>
+    /// Gets the FatzAudio device id to pass as <c>MediaPlayerConfiguration.AudioOutputDeviceId</c>;
+    /// <see langword="null"/> for the system default and for BASS devices (which use <see cref="DeviceIndex"/>).
+    /// </summary>
+    public string? Id { get; init; }
 
     /// <summary>Gets the display text hosts can show in a device selector.</summary>
     public string DisplayName => IsPrimary ? "Primary (device default)" : Name;

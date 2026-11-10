@@ -37,9 +37,9 @@ sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         var selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         _platformFactory = new WindowsPlatformFactory(selection.CreateFactory());
-        // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
+        // --audio=fatz (037A): FatzAudio plays everything, on --audio-device= when given; BASS stays the default.
         if (App.StartupOptions.AudioEngine == PlayerAudioEngine.FatzAudio)
-            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };
+            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory(), AudioOutputDeviceId = App.StartupOptions.AudioDevice };
         return await FatzMediaPlayer.CreateAsync(configuration, NativeLibraryPaths, _platformFactory).ConfigureAwait(false);
     }
 }
