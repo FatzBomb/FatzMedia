@@ -9,10 +9,10 @@ namespace FatzMedia.Video.Core.Abstractions;
 /// supplies one.
 /// </summary>
 /// <remarks>
-/// Only file and archive audio moves to the engine this creates. Video audio, video soundtracks and
-/// network audio through FFmpeg stay on BASS, so the BASS libraries are still loaded and BASS is
-/// still initialized on the configured device. When <see cref="Create"/> throws, the player warns
-/// and uses the BASS engine.
+/// The engine plays file and archive audio. When it also offers Core's internal output and CD+G seams
+/// (the FatzAudio engine does), video audio, soundtracks, network audio through FFmpeg and CD+G go to
+/// it as well, and BASS is not initialized. When <see cref="Create"/> throws, the player warns and
+/// uses the BASS engine if BASS loaded, otherwise it has no audio.
 /// </remarks>
 public interface IAudioEngineFactory
 {

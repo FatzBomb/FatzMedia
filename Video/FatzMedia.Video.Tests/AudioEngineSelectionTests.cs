@@ -1,6 +1,7 @@
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Pipeline;
 using FatzMedia.Video.Sample.Player.Shared;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -72,6 +73,43 @@ public sealed class AudioEngineSelectionTests
 
         Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning
             && info.Message.Contains("Test could not start (no fatzaudio); using BASS.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ServiceProvider_WithAFactory_NeedsNoBass()
+    {
+        // 037A slice 5: the factory's engine plays everything, so audio works where BASS did not load.
+        var engine = new DeviceReportingEngine();
+        var services = PlayerServiceProvider.Create(
+            new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) },
+            [],
+            new TestPlatformServices(audioAvailable: false));
+
+        Assert.Same(engine, services.GetRequiredService<IAudioEngine>());
+        _ = Assert.IsType<AudioEngineDeviceMonitor>(services.GetRequiredService<IAudioDeviceMonitor>());
+    }
+
+    [Fact]
+    public void ServiceProvider_WhenTheFactoryFailsWithoutBass_WarnsAndHasNoAudio()
+    {
+        List<MediaDiagnosticInfo> diagnostics = [];
+        void Capture(MediaDiagnosticInfo info) => diagnostics.Add(info);
+        DiagnosticRouter.DiagnosticOccurred += Capture;
+        try
+        {
+            var services = PlayerServiceProvider.Create(
+                new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => throw new DllNotFoundException("no fatzaudio")) },
+                [],
+                new TestPlatformServices(audioAvailable: false));
+            _ = Assert.IsType<SilentAudioEngine>(services.GetRequiredService<IAudioEngine>());
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Capture;
+        }
+
+        Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning
+            && info.Message.Contains("Test could not start (no fatzaudio); no audio.", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -179,11 +217,11 @@ public sealed class AudioEngineSelectionTests
 
     // Audio is reported available; BASS itself is not loaded, so the BASS engine is created and
     // fails to initialize, as on a machine without the BASS libraries.
-    sealed class TestPlatformServices : IPlatformServices
+    sealed class TestPlatformServices(bool audioAvailable = true) : IPlatformServices
     {
         public TestDeviceMonitor Monitor { get; } = new();
 
-        public bool IsAudioAvailable => true;
+        public bool IsAudioAvailable => audioAvailable;
 
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {

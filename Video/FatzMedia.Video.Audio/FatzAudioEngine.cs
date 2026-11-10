@@ -30,7 +30,7 @@ namespace FatzMedia.Video.Audio;
 /// </remarks>
 sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
     IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource,
-    ICdgEngineSource
+    ICdgEngineSource, IPushAudioOutputSource
 {
     const string Category = "FatzAudioEngine";
 
@@ -280,6 +280,10 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
 
     /// <summary>CD+G drawn by FatzAudio on this engine (037A slice 3).</summary>
     ICdgEngine ICdgEngineSource.CreateCdgEngine() => new FatzAudioCdgEngine(_engine);
+
+    /// <summary>Video audio, soundtracks and network audio through FFmpeg on this engine's device (037A slice 5).</summary>
+    IPushAudioOutput IPushAudioOutputSource.CreatePushAudioOutput() =>
+        new FatzAudioPushAudioOutput(this, _engine, _output, _normalization);
 
     /// <summary>The engine is ready from construction (the factory opens the device).</summary>
     public bool Init(int device = -1, int sampleRate = 44100) => !_disposed;

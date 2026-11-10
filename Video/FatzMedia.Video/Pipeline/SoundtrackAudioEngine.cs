@@ -9,8 +9,8 @@ namespace FatzMedia.Video.Pipeline;
 
 /// <summary>
 /// Plays the soundtrack of a video file with no video decoder (Stage 043A, Audio mode). It wraps
-/// the <see cref="VideoAudioEngine"/> that video playback already uses (FFmpeg decode into a BASS
-/// push stream, with tempo, pitch, equalizer, fades and normalization) and runs the decode pump
+/// the <see cref="VideoAudioEngine"/> that video playback already uses (FFmpeg decode into a BASS or
+/// FatzAudio push stream, with tempo, pitch, equalizer, fades and normalization) and runs the decode pump
 /// that <see cref="VideoPipeline"/> otherwise drives, so the file plays as plain audio content.
 /// </summary>
 /// <remarks>
@@ -54,8 +54,14 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     NetworkBufferingMonitor? _bufferingMonitor;
 
     public SoundtrackAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
+        : this(new BassPushAudioOutput(outputLatencyProvider, bassDeviceIndex))
     {
-        _audio = new VideoAudioEngine(outputLatencyProvider, bassDeviceIndex);
+    }
+
+    /// <param name="output">Where the soundtrack plays (BASS, or the FatzAudio engine's device); owned.</param>
+    internal SoundtrackAudioEngine(IPushAudioOutput output)
+    {
+        _audio = new VideoAudioEngine(output, null);
         _audio.StateChanged += OnAudioStateChanged;
         _audio.Opened += OnAudioOpened;
         _audio.Closed += OnAudioClosed;

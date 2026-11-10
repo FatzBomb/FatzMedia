@@ -22,14 +22,14 @@ sealed partial class VideoPipeline(
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
     RendererVideoDecodeServices hardwareAccelerationServices,
-    bool usesAudio) : IVideoEngine, IVideoOpenOutcome, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
+    bool usesAudio,
+    Func<IPushAudioOutput>? createAudioOutput = null) : IVideoEngine, IVideoOpenOutcome, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
     readonly HoldableClock _clock = new(clock ?? throw new ArgumentNullException(nameof(clock)));
     long _clockHoldStarted;
     readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     readonly MediaPlayerConfiguration _configuration = configuration;
-    readonly int _bassDeviceIndex = bassDeviceIndex;
     readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
@@ -37,7 +37,9 @@ sealed partial class VideoPipeline(
     // False in Background mode (043A) and without BASS (ENG-033): picture only, on the playback clock.
     readonly bool _usesAudio = usesAudio;
     readonly AudioPresentationClock _presentationClock = new();
-    readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
+    // Where video audio plays: the player's FatzAudio device (037A slice 5), else BASS on the player's device.
+    readonly Func<IPushAudioOutput> _createAudioOutput = createAudioOutput
+        ?? (() => new BassPushAudioOutput(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex));
     readonly Lock _decodeLock = new();
     readonly PlaybackScheduler _decodeScheduler = new("VideoDecode");
     readonly PlaybackScheduler _presentationScheduler = new("VideoPresentation");
@@ -305,7 +307,7 @@ sealed partial class VideoPipeline(
         // Background mode (043A), and any mode without BASS (ENG-033), decodes the picture only
         // and runs on the playback clock.
         _audioEngine = _usesAudio
-            ? new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex, network is not null ? _sharedDemuxer : null)
+            ? new VideoAudioEngine(_createAudioOutput(), network is not null ? _sharedDemuxer : null)
             : null;
         if (_audioEngine is null)
         {

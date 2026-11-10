@@ -1,32 +1,30 @@
-using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio.Fade;
-using FatzMedia.Video.Core.Audio.Filters;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Network;
 using FFmpeg.AutoGen;
-using ManagedBass;
-using ManagedBass.Fx;
 
 namespace FatzMedia.Video.Core.Audio;
 
+/// <summary>
+/// Plays the audio of a video file, a soundtrack or network audio: FFmpeg demuxes and decodes it, and an
+/// <see cref="IPushAudioOutput"/> plays the PCM (BASS by default, FatzAudio with the FatzAudio engine;
+/// 037A slice 5). Seeks, gapless loops, the push throttle and the position bookkeeping live here, the
+/// same for every output.
+/// </summary>
 sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
 {
     const double AudioBufferHighWatermarkSeconds = 4.0;
     const double AudioBufferLowWatermarkSeconds = 2.0;
-    // The quick normalization pass may attenuate but not boost; see RunNormalizationAnalysis.
-    static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
 
-    readonly IOutputLatencyProvider _outputLatencyProvider;
-    readonly int _bassDeviceIndex;
+    readonly IPushAudioOutput _output;
     // Lock order: _ioGate, then _sync. _ioGate owns the demuxer cursor (open, read, seek, close);
     // the packet reads and container seeks (network I/O for a network source: a segment download
-    // can take seconds) run under it but never under _sync. _sync guards the decoder, the BASS
-    // channel and the position bookkeeping, and is only ever held for CPU work, so Position,
+    // can take seconds) run under it but never under _sync. _sync guards the decoder, the output
+    // and the position bookkeeping, and is only ever held for CPU work, so Position,
     // Normalize and the volume/pitch/tempo setters a host calls from its UI thread never wait for
     // the network (ENG-035: the Avalonia player froze when a network seek held _sync).
     readonly Lock _ioGate = new();
@@ -45,9 +43,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     double _streamStartSeconds;
     double? _discardAudioBeforeSeconds;
     double _positionBaseSeconds;
-    double _volume = 1.0;
-    int _pitch;
-    bool _normalize = true;
     string? _tempPath;
     long _pushedAudioFrameCount;
     double _lastPushedAudioEndSeconds;
@@ -64,23 +59,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     bool _audioPushThrottled;
     bool _disposed;
 
-    // Effects chain on PlayHandle, in the same order as AudioEngine: equalizer, normalization
-    // gain, fade envelope, then the channel volume attribute (user volume).
-    readonly BassEqualizerFilter _equalizer = new();
-    readonly AudioNormalizer _normalizer = new();
-    readonly BassFadeGainStage _fade = new("VideoAudioEngine");
-
-    // Normalization runs on a background FfmpegAudioReader. _gainGate serializes gain FX writes
-    // between it and the Normalize setter; the analysis never takes _sync, so CloseCore can join
-    // it while holding _sync.
-    readonly Lock _gainGate = new();
-    CancellationTokenSource? _normalizationCts;
-    Task? _normalizationTask;
-    int _normalizationGeneration;
-    volatile bool _normalizationReady = true;
-    readonly Lock _gainEventGate = new();
-    Task _gainEvents = Task.CompletedTask;
-
     // Gapless loop bookkeeping (see AudioLoopBoundaryTracker). _pendingLoopBoundaries and
     // _completedLoopSeconds are only ever touched from within _sync (GetPositionCore and
     // WrapDecoderForLoop are both always called under lock).
@@ -88,7 +66,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     double _completedLoopSeconds;
 
     /// <summary>
-    /// When true, the decoder seeks back to 0 and keeps pushing into the same BASS channel
+    /// When true, the decoder seeks back to 0 and keeps pushing into the same output stream
     /// at end-of-stream instead of stopping - the channel never stops, so there is no audio
     /// gap at the loop boundary. Set by the owning pipeline before/while playing looped media.
     /// </summary>
@@ -107,32 +85,28 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     }
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
-    public int PlayHandle { get; private set; }
-    public int SourceHandle { get; private set; }
+    public int PlayHandle => _output.PlayHandle;
+    public int SourceHandle => _output.SourceHandle;
 
-    /// <summary>The push stream as the MIDI source, exactly as the lyric path read it before 037A slice 1.</summary>
-    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => BassMidiEventReader.ForHandle(SourceHandle);
+    /// <summary>The output's MIDI source (the BASS push stream, as before 037A slice 1); none for FatzAudio.</summary>
+    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => _output.GetMidiEventReader();
 
     public bool Normalize
     {
         get
         {
             lock (_sync)
-                return _normalize;
+                return _output.Normalize;
         }
         set
         {
             lock (_sync)
-            {
-                Volatile.Write(ref _normalize, value);
-                lock (_gainGate)
-                    _normalizer.SetNormalizeEnabled(value);
-            }
+                _output.Normalize = value;
         }
     }
 
-    public double NormalizationGain => _normalizer.NormalizationGain;
-    public bool IsNormalizationReady => _normalizationReady;
+    public double NormalizationGain => _output.NormalizationGain;
+    public bool IsNormalizationReady => _output.IsNormalizationReady;
     public int CurrentTempo { get; private set; }
     public double Duration { get; private set; }
     public bool IsOpen => _openPublished && _demuxer.IsOpen;
@@ -203,48 +177,29 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     }
 
     internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
-        : this(outputLatencyProvider, bassDeviceIndex, null)
+        : this(new BassPushAudioOutput(outputLatencyProvider, bassDeviceIndex), null)
     {
     }
 
-    internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex, SharedDemuxer? sharedDemuxer)
+    /// <param name="output">Where the audio plays; the engine owns and disposes it.</param>
+    /// <param name="sharedDemuxer">The picture's cursor of a network video, or null for a cursor of its own.</param>
+    internal VideoAudioEngine(IPushAudioOutput output, SharedDemuxer? sharedDemuxer)
     {
-        _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
-        _bassDeviceIndex = bassDeviceIndex;
+        _output = output ?? throw new ArgumentNullException(nameof(output));
+        _output.NormalizationGainChanged += OnOutputNormalizationGainChanged;
         _demuxer = sharedDemuxer ?? new SharedDemuxer();
         _ownsDemuxer = sharedDemuxer == null;
     }
 
-    double ApplyOutputLatency(double rawPositionSeconds)
-    {
-        if (rawPositionSeconds <= 0 || !double.IsFinite(rawPositionSeconds))
-            return rawPositionSeconds;
+    double ApplyOutputLatency(double rawPositionSeconds) => _output.ToHeardPosition(rawPositionSeconds);
 
-        // BASS reports latency for the current device, so position sampling selects this engine's device first.
-        _ = BassAudioOutputDevices.TrySetCurrentDevice(_bassDeviceIndex, "VideoAudioEngine", raiseDiagnostic: false);
+    bool IsOpenCore => _demuxer.IsOpen && AudioStreamIndex >= 0 && _output.IsCreated;
 
-        var latency = _outputLatencyProvider.GetOutputLatencySeconds();
-        if (latency <= 0 || !double.IsFinite(latency))
-            return rawPositionSeconds;
-
-        var corrected = rawPositionSeconds - latency;
-        return corrected < 0 ? 0 : corrected;
-    }
-
-    bool IsOpenCore => _demuxer.IsOpen && AudioStreamIndex >= 0 && PlayHandle != 0;
-
-    // The raw BASS channel position, never reset across a loop wrap (only Seek/Stop touch
-    // _positionBaseSeconds or the channel's own position counter). This is the timeline that
-    // loop boundaries are recorded against - see AudioLoopBoundaryTracker.
-    double GetContinuousPositionCore()
-    {
-        if (PlayHandle == 0)
-            return _positionBaseSeconds;
-
-        var bytes = Bass.ChannelGetPosition(PlayHandle);
-        var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
-        return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
-    }
+    // The output's position on the continuous timeline, never reset across a loop wrap (only
+    // Seek/Stop restart it at _positionBaseSeconds). This is the timeline that loop boundaries are
+    // recorded against - see AudioLoopBoundaryTracker.
+    double GetContinuousPositionCore() =>
+        _output.IsCreated ? _output.GetContinuousPosition(_positionBaseSeconds) : _positionBaseSeconds;
 
     double GetPositionCore()
     {
@@ -261,7 +216,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
             CompletedLoopCount += crossed;
 
             // A fade that ran to the end of a lap must not leave the next lap muted.
-            _fade.EndSession(releaseHandle: false);
+            _output.EndFadeSession();
         }
     }
 
@@ -416,7 +371,8 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
         _audioStream = _demuxer.GetStream(AudioStreamIndex);
         _streamStartSeconds = GetStreamStartSeconds(_audioStream);
-        if (!InitializeDecoder() || !CreateBassStreams())
+        // A local file (analyzed) names its source so the output can recognize the song.
+        if (!InitializeDecoder() || !_output.Create(_sampleRate, _channels, analyzeNormalization ? filePath : null))
         {
             CloseCore();
             return false;
@@ -427,7 +383,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         State = AudioEngineState.Stopped;
         PublishPositionSnapshot(_positionBaseSeconds);
         if (analyzeNormalization)
-            StartNormalizationAnalysis(filePath, normalizationCacheKey);
+            _output.StartNormalization(filePath, normalizationCacheKey, Duration);
         _openPublished = IsOpenCore;
         Opened?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
@@ -503,7 +459,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
             }
 
             // End of stream. Gapless loop: seek the FFmpeg decoder back to 0 and keep pushing
-            // PCM into the same BASS push stream instead of stopping it - the channel never
+            // PCM into the same output stream instead of stopping it - the stream never
             // stops, so there is no audio gap at the loop boundary. Mirrors
             // BackgroundVideoLoop's decoder-only pre-seek pattern.
             return WrapDecoderForLoop();
@@ -516,7 +472,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     }
 
     // Seeks the FFmpeg decoder back to 0, then records the continuous-timeline mark at which this
-    // lap's pushed audio ends. The BASS channel and its position counter are untouched, so
+    // lap's pushed audio ends. The output stream and its position are untouched, so
     // playback continues without interruption; PushAudioFrame's existing monotonic guard (see
     // below) keeps _lastPushedAudioEndSeconds increasing across the wrap automatically. Under
     // _ioGate (nothing is pushed meanwhile); the mark is recorded only once the seek succeeded,
@@ -539,27 +495,10 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
     bool PlayCore()
     {
-        if (PlayHandle == 0)
+        if (!_output.IsCreated)
             return false;
 
-        var success = Bass.ChannelPlay(PlayHandle);
-        if (!success)
-        {
-            // The output may be paused because the device became unavailable (another application
-            // holding it exclusively, or unplugged): restart it once and retry (ENG-032).
-            var error = Bass.LastError;
-            if (BassOutputWatchdog.IsOutputUnavailableError(error)
-                && BassOutputWatchdog.TryRestoreOutputForPlay(PlayHandle, _bassDeviceIndex, 0))
-            {
-                success = Bass.ChannelPlay(PlayHandle);
-                if (!success)
-                    error = Bass.LastError;
-            }
-
-            if (!success)
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", BassOutputWatchdog.DescribePlayFailure(error));
-        }
-
+        var success = _output.Play();
         if (success)
         {
             SetState(AudioEngineState.Playing);
@@ -572,29 +511,24 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     int IBassOutputClient.PlayingHandle => State == AudioEngineState.Playing ? PlayHandle : 0;
 
     /// <summary>
-    /// True while BASS has parked the channel because its output device was lost (ENG-032). Moved
-    /// here from <c>SoundtrackAudioEngine</c> (037A slice 1) so the BASS call stays in the engine;
-    /// the same unlocked read of the play handle and the same call as before.
+    /// True while BASS has parked the channel because its output device was lost (ENG-032); always
+    /// false for an output that is not BASS (FatzAudio follows the device itself).
     /// </summary>
-    internal bool IsChannelPausedByDevice()
-    {
-        var playHandle = PlayHandle;
-        return playHandle != 0 && (int)Bass.ChannelIsActive(playHandle) == BassOutputWatchdog.ActivePausedDevice;
-    }
+    internal bool IsChannelPausedByDevice() => _output is BassPushAudioOutput bass && bass.IsChannelPausedByDevice();
 
     bool IBassOutputClient.ResumeChannelPausedByDevice()
     {
         lock (_sync)
         {
-            if (_disposed || State != AudioEngineState.Playing || PlayHandle == 0
-                || (int)Bass.ChannelIsActive(PlayHandle) != BassOutputWatchdog.ActivePausedDevice)
+            if (_disposed || State != AudioEngineState.Playing || _output is not BassPushAudioOutput bass
+                || !bass.IsChannelPausedByDevice())
             {
                 return true;
             }
 
             // Not restarted: the channel carries on from its position, and the snapshot the video
             // clock reads restarts from the real position instead of the stalled one.
-            var resumed = Bass.ChannelPlay(PlayHandle);
+            var resumed = bass.ResumeIfPausedByDevice();
             PublishPositionSnapshot(GetPositionCore());
             return resumed;
         }
@@ -608,10 +542,10 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
     bool PauseCore()
     {
-        if (PlayHandle == 0)
+        if (!_output.IsCreated)
             return false;
 
-        var success = Bass.ChannelPause(PlayHandle);
+        var success = _output.Pause();
         if (success)
         {
             SetState(AudioEngineState.Paused);
@@ -628,15 +562,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
             lock (_sync)
             {
                 _positionBaseSeconds = 0;
-                if (PlayHandle != 0)
-                {
-                    _ = Bass.ChannelStop(PlayHandle);
-                    _ = Bass.ChannelSetPosition(PlayHandle, 0);
-                }
-
-                if (SourceHandle != 0)
-                    _ = Bass.ChannelSetPosition(SourceHandle, 0);
-
+                _output.Restart(0, stop: true);
                 ResetAudioBufferTracking();
             }
 
@@ -644,7 +570,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
             _ = SeekDecoder(0);
             lock (_sync)
             {
-                _fade.EndSession(releaseHandle: false);
+                _output.EndFadeSession();
                 SetState(AudioEngineState.Stopped);
                 PublishPositionSnapshot(0);
                 PositionChanged?.Invoke(this, 0);
@@ -684,20 +610,12 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     bool CompleteSeekCore(double target, bool resumePlayback)
     {
         var wasPlaying = State == AudioEngineState.Playing;
-        if (PlayHandle != 0)
-        {
-            _ = Bass.ChannelPause(PlayHandle);
-            _ = Bass.ChannelSetPosition(PlayHandle, 0);
-        }
-
-        if (SourceHandle != 0)
-            _ = Bass.ChannelSetPosition(SourceHandle, 0);
-
+        _output.Restart(target, stop: false);
         _positionBaseSeconds = target;
         ResetAudioBufferTracking();
-        if (resumePlayback && wasPlaying && PlayHandle != 0)
+        if (resumePlayback && wasPlaying && _output.IsCreated)
         {
-            _ = Bass.ChannelPlay(PlayHandle);
+            _ = _output.Resume();
             SetState(AudioEngineState.Playing);
         }
 
@@ -745,26 +663,8 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
         _openPublished = false;
 
-        // Join the analysis first: it reads the file (possibly a temp file deleted below) and
-        // writes the gain FX on PlayHandle.
-        CancelNormalizationAnalysis();
-        _fade.EndSession(releaseHandle: true);
-        _equalizer.Forget();
-        lock (_gainGate)
-            _normalizer.ResetGain(clearFxHandle: true);
-
-        if (PlayHandle != 0)
-        {
-            _ = Bass.ChannelStop(PlayHandle);
-            _ = Bass.StreamFree(PlayHandle);
-            PlayHandle = 0;
-        }
-
-        if (SourceHandle != 0)
-        {
-            _ = Bass.StreamFree(SourceHandle);
-            SourceHandle = 0;
-        }
+        // First: the output joins its normalization work, which may read the temp file deleted below.
+        _output.Release();
 
         if (_audioBuffer != null)
         {
@@ -823,30 +723,19 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     public void SetVolume(double volume01)
     {
         lock (_sync)
-        {
-            _volume = Math.Clamp(volume01, 0.0, 1.0);
-            _ = ApplyVolume();
-        }
+            _output.SetVolume(volume01);
     }
 
     void IAudioVolumeSlide.SlideVolume(double volume01, TimeSpan duration)
     {
         lock (_sync)
-        {
-            _volume = Math.Clamp(volume01, 0.0, 1.0);
-            if (PlayHandle != 0)
-                _ = BassChannelVolume.Slide(PlayHandle, _volume, duration);
-        }
+            _output.SlideVolume(volume01, duration);
     }
 
     public void SetPitch(int semitones)
     {
         lock (_sync)
-        {
-            _pitch = Math.Clamp(semitones, -60, 60);
-            if (PlayHandle != 0)
-                _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
-        }
+            _output.SetPitch(semitones);
     }
 
     public void SetTempo(int percent)
@@ -854,12 +743,13 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         lock (_sync)
         {
             CurrentTempo = Math.Clamp(percent, -95, 5000);
-            if (PlayHandle != 0)
-                _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
+            _output.SetTempo(CurrentTempo);
             if (IsOpenCore)
                 PublishPositionSnapshot(GetPositionCore());
         }
     }
+
+    void OnOutputNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
 
     // Analysis starts automatically on open; these report the gain it has reached so far.
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken)
@@ -874,19 +764,19 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         return Task.FromResult(NormalizationGain);
     }
 
-    AudioEqualizerSettings IAudioFilterHost.Equalizer => _equalizer.Settings;
+    AudioEqualizerSettings IAudioFilterHost.Equalizer => _output.Equalizer;
 
-    bool IAudioFilterHost.SetEqualizer(AudioEqualizerSettings settings) => _equalizer.Configure(settings);
+    bool IAudioFilterHost.SetEqualizer(AudioEqualizerSettings settings) => _output.SetEqualizer(settings);
 
-    int IAudioFadeGainTarget.BeginFadeSession() => _fade.BeginFadeSession();
+    int IAudioFadeGainTarget.BeginFadeSession() => _output.BeginFadeSession();
 
-    bool IAudioFadeGainTarget.SetFadeGain(int session, double gain, TimeSpan ramp) => _fade.SetFadeGain(session, gain, ramp);
+    bool IAudioFadeGainTarget.SetFadeGain(int session, double gain, TimeSpan ramp) => _output.SetFadeGain(session, gain, ramp);
 
     /// <summary>
     /// Restores full fade gain when playback reaches its natural end, so a fade-out that ran to
     /// the end does not leave a replay muted (the plain-audio engine does the same).
     /// </summary>
-    internal void EndFadeSessionAtEnd() => _fade.EndSession(releaseHandle: false);
+    internal void EndFadeSessionAtEnd() => _output.EndFadeSession();
 
     public void Dispose()
     {
@@ -895,7 +785,12 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         if (_ownsDemuxer)
             _demuxer.Dispose();
         lock (_sync)
+        {
             _disposed = true;
+            _output.NormalizationGainChanged -= OnOutputNormalizationGainChanged;
+            _output.Dispose();
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -913,44 +808,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         _audioBufferSize = _sampleRate * _channels * sizeof(float);
         _audioBuffer = (byte*)ffmpeg.av_malloc((ulong)_audioBufferSize);
         return _audioBuffer != null;
-    }
-
-    bool CreateBassStreams()
-    {
-        if (!BassAudioOutputDevices.TrySetCurrentDevice(_bassDeviceIndex, "VideoAudioEngine"))
-            return false;
-
-        var flags = BassFlags.Decode | BassFlags.Float;
-        if (_channels == 1)
-            flags |= BassFlags.Mono;
-
-        SourceHandle = Bass.CreateStream(_sampleRate, _channels, flags, StreamProcedureType.Push);
-        if (SourceHandle == 0)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create BASS push stream: {Bass.LastError}");
-            return false;
-        }
-
-        PlayHandle = BassFx.TempoCreate(SourceHandle, BassFlags.Float);
-        if (PlayHandle == 0)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create tempo stream: {Bass.LastError}");
-            return false;
-        }
-
-        lock (_gainGate)
-        {
-            _normalizer.ResetGain(clearFxHandle: true);
-            _ = _normalizer.SetupGainFx(PlayHandle);
-            _normalizer.SetNormalizeEnabled(_normalize);
-        }
-
-        _fade.Attach(PlayHandle);
-        _ = _equalizer.Apply(PlayHandle);
-        _ = ApplyVolume();
-        _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
-        _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
-        return true;
     }
 
     bool ProcessAudioPacket(AVPacket* packet)
@@ -1048,30 +905,20 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         }
 
         samples -= skip;
-        var byteCount = samples * _channels * sizeof(float);
-        var data = ArrayPool<byte>.Shared.Rent(byteCount);
-        try
-        {
-            Marshal.Copy((IntPtr)output + (skip * _channels * sizeof(float)), data, 0, byteCount);
-            var written = Bass.StreamPutData(SourceHandle, data, byteCount);
-            if (written > 0)
-            {
-                _pushedAudioFrameCount++;
-                if (_sampleRate > 0)
-                {
-                    var frameDuration = samples / (double)_sampleRate;
-                    var frameEndPosition = framePosition + frameDuration;
-                    if (!double.IsFinite(frameEndPosition) || frameEndPosition < _lastPushedAudioEndSeconds)
-                        frameEndPosition = _lastPushedAudioEndSeconds + frameDuration;
+        var frameDuration = _sampleRate > 0 ? samples / (double)_sampleRate : 0;
+        // The continuous timeline grows on across a loop wrap: a frame that starts before the
+        // previous one ended (the next lap) continues after it.
+        var frameEndPosition = framePosition + frameDuration;
+        if (!double.IsFinite(frameEndPosition) || frameEndPosition < _lastPushedAudioEndSeconds)
+            frameEndPosition = _lastPushedAudioEndSeconds + frameDuration;
 
-                    _lastPushedAudioEndSeconds = frameEndPosition;
-                }
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(data);
-        }
+        var pcm = new ReadOnlySpan<byte>(output + (skip * _channels * sizeof(float)), samples * _channels * sizeof(float));
+        if (!_output.Push(pcm, frameEndPosition - frameDuration))
+            return;
+
+        _pushedAudioFrameCount++;
+        if (_sampleRate > 0)
+            _lastPushedAudioEndSeconds = frameEndPosition;
     }
 
     // Under _ioGate and not under _sync: the container seek is network I/O for a network source.
@@ -1122,136 +969,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
             ? 0
             : Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
-
-    bool ApplyVolume()
-    {
-        if (PlayHandle == 0)
-            return false;
-
-        // Normalization is its own FX stage (it can amplify); the attribute carries user volume only.
-        return BassChannelVolume.Set(PlayHandle, _volume);
-    }
-
-    void StartNormalizationAnalysis(string filePath, string? cacheKey)
-    {
-        CancelNormalizationAnalysis();
-        var generation = Volatile.Read(ref _normalizationGeneration);
-        if (cacheKey is not null && NormalizationGainCache.TryGetValue(cacheKey, out var cachedGain))
-        {
-            ApplyNormalizationGain(cachedGain, cacheKey, generation, "Using cached normalization gain", filePath);
-            return;
-        }
-
-        _normalizationReady = false;
-        var cts = new CancellationTokenSource();
-        _normalizationCts = cts;
-        _normalizationTask = Task.Run(() => RunNormalizationAnalysis(filePath, cacheKey, generation, cts.Token));
-    }
-
-    void RunNormalizationAnalysis(string filePath, string? cacheKey, int generation, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var reader = FfmpegAudioReader.Open(filePath);
-            if (reader is null)
-                return;
-
-            // Film and TV soundtracks often open quietly: the quick pass only attenuates
-            // (NormalizationGainPolicy), boosting waits for the deep pass.
-            var quickPeak = FfmpegAudioPeakScanner.ScanQuick(reader, cancellationToken);
-            ApplyNormalizationGain(
-                NormalizationGainPolicy.QuickGain(quickPeak),
-                cacheKey: null,
-                generation,
-                NormalizationGainPolicy.QuickPassHeldBackBoost(quickPeak) ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete",
-                filePath);
-
-            var deepPeak = NormalizationGainPolicy.FinalPeak(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
-            ApplyNormalizationPeak(
-                deepPeak,
-                cacheKey,
-                generation,
-                // A silent or empty audio track (common in background videos) scans to a peak of 0,
-                // which leaves the gain at 1.0: say so rather than look like a measured gain.
-                deepPeak > 0 ? "Deep normalization complete" : "Deep normalization complete (no audible audio found; gain left at 1.0)",
-                filePath);
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded by a new open or a close.
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoAudioEngine", $"Normalization analysis failed: {ex.Message}", innerException: ex);
-        }
-        finally
-        {
-            if (Volatile.Read(ref _normalizationGeneration) == generation)
-                _normalizationReady = true;
-        }
-    }
-
-    void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message, string sourcePath) =>
-        ApplyNormalizationGain(AudioNormalizer.CalculateGainFromPeak(peak), cacheKey, generation, message, sourcePath);
-
-    void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message, string sourcePath)
-    {
-        lock (_gainGate)
-        {
-            if (Volatile.Read(ref _normalizationGeneration) != generation)
-                return;
-
-            _normalizer.SetNormalizationGain(gain);
-            _normalizer.SetNormalizeEnabled(Volatile.Read(ref _normalize));
-            _normalizationReady = true;
-        }
-
-        if (cacheKey is not null)
-            NormalizationGainCache.Set(cacheKey, gain);
-
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoAudioEngine", $"{message}, gain={gain:F3}", sourcePath: sourcePath);
-        QueueNormalizationGainChanged(gain, generation);
-    }
-
-    /// <summary>
-    /// Raises <see cref="NormalizationGainChanged"/> in order on the thread pool. Host handlers
-    /// must never run on the analysis thread, which <see cref="CloseCore"/> joins under _sync.
-    /// </summary>
-    void QueueNormalizationGainChanged(double gain, int generation)
-    {
-        lock (_gainEventGate)
-        {
-            _gainEvents = _gainEvents.ContinueWith(
-                _ =>
-                {
-                    if (Volatile.Read(ref _normalizationGeneration) == generation)
-                        NormalizationGainChanged?.Invoke(this, gain);
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.None,
-                TaskScheduler.Default);
-        }
-    }
-
-    void CancelNormalizationAnalysis()
-    {
-        _ = Interlocked.Increment(ref _normalizationGeneration);
-        var cts = _normalizationCts;
-        var task = _normalizationTask;
-        _normalizationCts = null;
-        _normalizationTask = null;
-        if (cts is null)
-        {
-            _normalizationReady = true;
-            return;
-        }
-
-        // The analysis handles its own exceptions; cancellation is checked once per decoded frame.
-        cts.Cancel();
-        task?.Wait();
-        cts.Dispose();
-        _normalizationReady = true;
-    }
 
     static string? CreatePathNormalizationCacheKey(string filePath)
     {
