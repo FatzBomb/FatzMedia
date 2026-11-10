@@ -155,7 +155,17 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var (carrier, surface, packs) = CreateCarrier(cdg, label);
-        var scaled = carrier is null ? null : CreateScaledSurface(carrier, label);
+        Fa.CdgSurface? scaled;
+        try
+        {
+            scaled = carrier is null ? null : CreateScaledSurface(carrier, label);
+        }
+        catch
+        {
+            carrier?.Dispose();
+            throw;
+        }
+
         Fa.PushAudioStream? oldCarrier;
         bool washChanged;
         lock (_renderLock)
@@ -405,6 +415,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         _borderIndex = -1;
         _surfacePaletteRevision = ulong.MaxValue; // the next frame's colours are taken whatever its revision
         _copyWholeFrame = true;
+        _lastTime = TimeSpan.Zero; // the scaled picture is blank too until the next render
         _dirtyRects.Clear();
         _dirtyRects.Add(CdgDirtyRect.FullFrame);
         RefreshPaletteLocked();

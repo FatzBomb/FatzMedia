@@ -21,7 +21,10 @@ Slice 4 (2026-11-10, `updates/037A_4`): mostly delivered by slice 2; no BASSMIDI
 network audio takes the FFmpeg path. Slice 5 (2026-11-10, pending owner smoke, `updates/037A_5`, hand
 tests `updates/037A_5/HandTests.md`): video audio, soundtracks and network audio play through FatzAudio
 push streams on its clock, and a FatzAudio player uses and needs no BASS. Slice 6 readiness (what is left
-before BASS can go): `updates/037A_6/Readiness.md`.
+before BASS can go): `updates/037A_6/Readiness.md`. Then (2026-11-10): output device choice and device
+events without BASS (`updates/037A_Devices`), the hand-test script (`updates/037A_5/HandTests.md`), FatzAudio-drawn
+MIDI lyrics (`updates/037A_Lyrics`), scaled CD+G (`updates/037A_CdgScaled`) and FatzAudio-decoded soundtracks
+(`updates/037A_Packets`): BASS is ready to retire once the owner's hand tests pass and he makes FatzAudio the default.
 Since the move into the FatzMedia repository, Video uses `FatzMedia.Audio` by project reference (no
 package pin or feed token).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against

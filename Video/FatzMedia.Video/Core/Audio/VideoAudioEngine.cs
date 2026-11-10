@@ -853,8 +853,9 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         var duration = packet->duration > 0 ? packet->duration * timeBase : 0;
         if (_discardAudioBeforeSeconds is { } target)
         {
+            // Consumed, as the decoding path reports a dropped frame: a prebuffer or pump keeps reading.
             if (duration > 0 && start + duration <= target)
-                return false;
+                return true;
             _discardAudioBeforeSeconds = null;
         }
 

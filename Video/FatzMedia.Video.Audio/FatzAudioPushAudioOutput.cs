@@ -52,6 +52,8 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     AudioEqualizerSettings _equalizer = AudioEqualizerSettings.Disabled;
     int _fadeSession;
     double? _nextContinuousStart;
+    // Guarded by _gate: a failed packet push was reported for this stream.
+    bool _packetFailureReported;
     bool _holding;
     double _heldPosition;
     double _clockAtRestart;
@@ -170,7 +172,13 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
             }
             catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or ArgumentException)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Packet push failed: {ex.Message}", innerException: ex);
+                // Once per stream: a track FatzAudio cannot decode fails on every packet (tens a second).
+                if (!_packetFailureReported)
+                {
+                    _packetFailureReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Packet push failed: {ex.Message}", innerException: ex);
+                }
+
                 return false;
             }
 
@@ -241,6 +249,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
             _fadeSession = NextSession(_fadeSession);
             _nextContinuousStart = null;
             _holding = false;
+            _packetFailureReported = false;
         }
 
         if (stream is not null)

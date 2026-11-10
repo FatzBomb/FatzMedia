@@ -61,42 +61,53 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
             if (surface.PresentationSize != size)
                 surface.PresentationSize = size;
 
-            var layout = surface.GetLayout();
-            var stride = layout.Width * 4;
-            var length = stride * layout.Height;
-            if (length <= 0)
-                return null;
-
-            var memory = rentPixels(length);
-            HeldFrame? frame = null;
-            ulong heldRevision = 0;
-            if (MemoryMarshal.TryGetArray<byte>(memory, out var segment) && segment.Offset == 0 && segment.Array is { } array)
+            // The layout can change while drawing (the Auto safety zone switches when the song first draws in the
+            // border): then read it again, so the frame is placed with the geometry it was drawn for.
+            for (var attempt = 0; ; attempt++)
             {
-                frame = held.GetOrCreateValue(array);
-                if (frame.LayoutRevision == layout.LayoutRevision)
-                    heldRevision = frame.Revision;
-            }
+                var layout = surface.GetLayout();
+                var stride = layout.Width * 4;
+                var length = stride * layout.Height;
+                if (length <= 0)
+                    return null;
 
-            var update = surface.UpdateInto(memory.Span, stride, layout.Width, layout.Height, heldRevision, at);
-            changed = update.Revision != heldRevision;
-            if (frame is not null)
-            {
-                frame.Revision = update.Revision;
-                frame.LayoutRevision = update.LayoutRevision;
-            }
+                var memory = rentPixels(length);
+                HeldFrame? frame = null;
+                ulong heldRevision = 0;
+                if (MemoryMarshal.TryGetArray<byte>(memory, out var segment) && segment.Offset == 0 && segment.Array is { } array)
+                {
+                    frame = held.GetOrCreateValue(array);
+                    if (frame.LayoutRevision == layout.LayoutRevision)
+                        heldRevision = frame.Revision;
+                }
 
-            // The buffer has a transparent margin of one CD+G pixel around the picture, which can reach past the
-            // canvas (5x at 1080 high is 1090 high): show the picture without it.
-            var m = layout.Margin;
-            return new SubtitleRasterResult(
-                memory[((m * stride) + (m * 4))..],
-                layout.Width - (2 * m),
-                layout.Height - (2 * m),
-                stride,
-                layout.BitmapX + m,
-                layout.BitmapY + m,
-                canvasWidth,
-                canvasHeight);
+                var update = surface.UpdateInto(memory.Span, stride, layout.Width, layout.Height, heldRevision, at);
+                if (update.LayoutRevision != layout.LayoutRevision && attempt == 0)
+                {
+                    frame?.LayoutRevision = 0; // what the buffer holds is unknown: draw it whole next time
+                    continue;
+                }
+
+                changed = update.Revision != heldRevision;
+                if (frame is not null)
+                {
+                    frame.Revision = update.Revision;
+                    frame.LayoutRevision = update.LayoutRevision;
+                }
+
+                // The buffer has a transparent margin of one CD+G pixel around the picture, which can reach past the
+                // canvas (5x at 1080 high is 1090 high): show the picture without it.
+                var m = layout.Margin;
+                return new SubtitleRasterResult(
+                    memory[((m * stride) + (m * 4))..],
+                    layout.Width - (2 * m),
+                    layout.Height - (2 * m),
+                    stride,
+                    layout.BitmapX + m,
+                    layout.BitmapY + m,
+                    canvasWidth,
+                    canvasHeight);
+            }
         }
         catch (ObjectDisposedException)
         {

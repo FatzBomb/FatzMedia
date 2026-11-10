@@ -154,7 +154,6 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         AssertSame(second, 1_000, cdg, opacity: 100, backgroundOverride: null);
     }
 
-    // Mid-pack: our engine shows floor(t x 300) = packs there; the FatzAudio engine must show the same.
     [Fact]
     public void Scaled_ThePictureIsTheOverlay_TheSnapshotOnlyTheWash()
     {
@@ -202,6 +201,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         Assert.True(changed);
     }
 
+    // Mid-pack: our engine shows floor(t x 300) = packs there; the FatzAudio engine must show the same.
     static double TimeAt(int packs) => (packs + 0.5) / CdgConstants.PacketsPerSecond;
 
     static bool Covers(CdgDirtyRect r, int x, int y) => x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height;

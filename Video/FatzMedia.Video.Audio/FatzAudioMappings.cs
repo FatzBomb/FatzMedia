@@ -222,7 +222,7 @@ static class FatzAudioMappings
             CdgSafetyZone.Super => Fa.SafetyZone.Super,
             _ => Fa.SafetyZone.Show,
         },
-        Smoothness = Math.Clamp(options.Smoothness, 0, 10),
+        Smoothness = options.Smoothness, // already 0..10 (CdgScalingOptions clamps it)
         EdgeBlend = options.EdgeBlend,
     };
 
