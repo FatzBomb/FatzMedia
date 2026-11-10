@@ -2,7 +2,7 @@
 
 OS- and UI-agnostic media engine core for FatzBomb (`net10.0`).
 
-This project intentionally contains no Win32, Vortice, WPF, or renderer implementation types. It owns shared media-engine state, portable audio/video/CD+G input handling, FFmpeg/BASS integration, neutral configuration and composition models, retained layer state, and platform/renderer contracts. Final GPU composition and native presentation belong to renderer packages selected by platform composition.
+This project intentionally contains no Win32, Vortice, WPF, or renderer implementation types. It owns shared media-engine state, portable audio/video/CD+G input handling, FFmpeg and FatzAudio integration, neutral configuration and composition models, retained layer state, and platform/renderer contracts. Final GPU composition and native presentation belong to renderer packages selected by platform composition.
 
 ## Boundary rule
 

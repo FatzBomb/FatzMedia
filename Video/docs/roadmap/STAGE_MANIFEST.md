@@ -19,8 +19,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   fallback. Slice 5, Avalonia second-screen output (one player on two screens; renderers
   accept secondary frame-sink and shared-image surfaces; Audio mode clears the surface), is
   implemented and pending manual smoke (`updates/027A_5`). WinUI 3 is deferred.
-- `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
-  the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
+- `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in until slice 6, which
+  removes BASS), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
   2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux; its Windows console-app smoke
   is superseded by the slice 2 owner smoke (the real engine in the players; closed 2026-11-05). Slice 1 (seams for MIDI
   events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
@@ -34,8 +34,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (classic CD+G drawn by FatzAudio with the FatzAudio engine) implemented, pending manual smoke
   (`updates/037A_3`). Slice 4 (MIDI, trackers, network: `updates/037A_4`) and slice 5 (video audio on
   FatzAudio's clock; a FatzAudio player needs no BASS: `updates/037A_5`) implemented, pending manual
-  smoke. Device choice and events, FatzAudio lyrics, scaled CD+G and packet soundtracks added 2026-11-10; BASS is
-  ready to retire after the owner's hand tests (`scripts/smoke-037A.ps1`): `updates/037A_6/Readiness.md`. Analysis:
+  smoke. Device choice and events, FatzAudio lyrics, scaled CD+G and packet soundtracks added 2026-11-10. Slice 6
+  (BASS removed, FatzAudio the default; breaking API) implemented on a draft PR, waiting for the owner's hand tests
+  (`scripts/smoke-037A.ps1`) and decision: `updates/037A_6/StageUpdate.md`, `updates/037A_6/Readiness.md`. Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules

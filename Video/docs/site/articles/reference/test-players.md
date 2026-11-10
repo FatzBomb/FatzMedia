@@ -12,9 +12,9 @@ All three bind one shared view model, `PlayerViewModel` in the `FatzMedia.Video.
 
 ## Build and run
 
-You need the .NET 10 SDK and the native libraries (the repository does not contain BASS or FFmpeg binaries).
+You need the .NET 10 SDK and the FFmpeg native libraries (the repository does not contain FFmpeg binaries). The audio engine, FatzAudio, is built with the repository.
 
-1. Obtain the x64 BASS DLLs (`bass.dll`, `bass_fx.dll`, plus any add-ons you want, such as `bassmidi.dll`) and FFmpeg 9.0.x shared DLLs (`avcodec-63.dll` and the six others). On Linux use the matching shared libraries (`libbass.so`, `libbass_fx.so`, `libavcodec.so.63` and the rest).
+1. Obtain the FFmpeg 9.0.x shared DLLs (`avcodec-63.dll` and the six others). On Linux use the matching shared libraries (`libavcodec.so.63` and the rest).
 2. Put them in the player project's `native/` folder (for example `FatzMedia.Video.Sample.Player/native/`). They are copied next to the application on build and publish. Alternatively pass `--native=<dir>` (repeatable, highest priority first).
 3. Build and run.
 
@@ -37,7 +37,7 @@ dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.
 xvfb-run -a dotnet run --project FatzMedia.Video.Sample.Player.Avalonia -c Release -f net10.0
 ```
 
-On Linux the Avalonia player also looks in the directories named by the environment variables `FATZBOMB_LINUX_FFMPEG_DIR` and `FATZBOMB_LINUX_BASS_DIR`. The repository script `scripts/setup-linux-native.sh` downloads FFmpeg 9.0 LGPL libraries and test media into `/opt/fatzbomb-native`. The Vulkan renderer on a machine without a GPU needs Mesa's lavapipe driver (`mesa-vulkan-drivers` on Debian and Ubuntu). BASS is not available from that script; without it the player starts and plays video without sound.
+On Linux the Avalonia player also looks in the directories named by the environment variables `FATZBOMB_LINUX_FFMPEG_DIR`. The repository script `scripts/setup-linux-native.sh` downloads FFmpeg 9.0 LGPL libraries and test media into `/opt/fatzbomb-native`. The Vulkan renderer on a machine without a GPU needs Mesa's lavapipe driver (`mesa-vulkan-drivers` on Debian and Ubuntu). FatzAudio's library comes from the repository build; without it the player starts and plays video without sound.
 
 Without the native libraries the players still start, the panels stay disabled, and the Log lists exactly which library is missing. See [Common problems](../troubleshooting/common-problems.md).
 
@@ -61,6 +61,10 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--no-hdr-tonemap` | Show HDR video without tone mapping, for comparison. |
 | `--hdr-tonemap-cpu` | Tone map HDR video on the CPU, for comparison. |
 | `--lightweight-surfaces` | Opens a smoke window with the adapter's `BackgroundSurface` and `KaraokeSurface`. |
+| `--audio-device=<id or name>` | The FatzAudio output device (see [Output devices](../audio/output-devices.md)). The Log lists the names when it is not found. The default is the system default device. |
+| `--cdg-scale[=0..10]` | The scaled CD+G picture; the value is the smoothness. Off (the classic picture) without it. |
+| `--cdg-effects` | Adds an outline and a shadow to the scaled CD+G picture. |
+| `--video-audio=fatz` | FatzAudio decodes video soundtracks from FFmpeg's packets; FFmpeg decodes otherwise. |
 | `--no-auto-hide` | Surfaces keep the last frame after stop (`AutoHide = false`). |
 | `--net-retries=<n>` | Retries when opening a network source (`NetworkRetryPolicy.MaxRetries`). |
 | `--net-ca-file=<path>` | An extra certificate authority file for `https` (`NetworkTlsPolicy.CertificateAuthorityFile`). |

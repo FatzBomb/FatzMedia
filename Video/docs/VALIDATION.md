@@ -338,8 +338,8 @@ Recommended media set:
 - Video with SRT/ASS sidecar subtitles
 - MKV/MP4 with embedded text subtitles
 
-Run runtime validation in **Release x64** with host-supplied BASS and FFmpeg DLLs
-present. See `docs/NATIVE_DEPENDENCIES.md` for supported versions, approved sources,
+Run runtime validation in **Release x64** with host-supplied FFmpeg DLLs
+and the FatzAudio library present. See `docs/NATIVE_DEPENDENCIES.md` for supported versions, approved sources,
 licensing cautions, and search paths.
 
 The Player uses Direct3D11 by default. Launch it with `--software` to select the
@@ -712,7 +712,7 @@ Expected:
 - No excessive composition logs or no-op presents during static lyrics.
 - Karaoke lyrics do not flash during window resize.
 - Karaoke lyrics do not freeze video playback when video subtitles are active.
-- AudioEngine reasserts/reinitializes BASS device if play fails after extended idle (no audio stall).
+- The audio engine keeps playing after extended idle (no audio stall).
 
 ---
 
@@ -880,14 +880,14 @@ Inspect with Windows Performance Analyzer or GPUView when needed.
 
 ## 7. Error Handling / Logging Validation
 
-Use after changes to structured logging, host-facing errors, load/open paths, native DLL loading, archive handling, FFmpeg/BASS handling, or background media loading.
+Use after changes to structured logging, host-facing errors, load/open paths, native DLL loading, archive handling, FFmpeg/FatzAudio handling, or background media loading.
 
 Test failures intentionally:
 
 1. Missing media file.
 2. Unsupported file type.
 3. Corrupted/invalid media file.
-4. Missing BASS native DLL.
+4. Missing FatzAudio native library (audio unavailable, video plays without sound).
 5. Missing FFmpeg native DLL.
 6. Corrupted ZIP/archive.
 7. ZIP with missing audio or missing CDG pair.

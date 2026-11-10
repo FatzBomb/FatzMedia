@@ -4,7 +4,7 @@
   href: equalizer.md
 - name: Normalization and silence trimming
   href: normalization.md
-- name: Audio engine (BASS or FatzAudio)
+- name: Audio engine (FatzAudio)
   href: audio-engine.md
 - name: Audio output devices
   href: output-devices.md

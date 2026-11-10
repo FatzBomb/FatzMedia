@@ -161,8 +161,8 @@ Backdrop.SetColor(Colors.DarkSlateBlue);   // WPF; Color.DarkSlateBlue on WinFor
 ## How it behaves
 
 - **No audio.** The player runs in `MediaPlayerMode.Background`: the soundtrack of a video is not
-  decoded, no audio device is opened and BASS is not needed, so a background works on a machine
-  without audio libraries.
+  decoded, no audio device is opened and FatzAudio is not needed, so a background works on a machine
+  without the audio library.
 - **Always loops.** Looping cannot be turned off. A video restarts from its first frame when it
   ends.
 - **Created when needed.** A colour or `null` creates no player. The first file, image or video

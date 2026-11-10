@@ -1,10 +1,12 @@
 # 037A slice 6: is BASS ready to retire? (updated 2026-11-10)
 
-Slice 6 is a decision, not a build. This note gives the facts for it.
+Slice 6 is the owner's decision. This note gives the facts for it. The removal itself is prepared on a draft PR
+(`StageUpdate.md`): FatzAudio the default, BASS and its API gone, build and tests green; it merges only after the
+hand tests and the owner's go-ahead.
 
 ## Short answer
 
-**Ready in code; waiting only on the owner.** A player with the FatzAudio engine (`--audio=fatz`) does everything
+**Ready in code; waiting only on the owner.** A player with the FatzAudio engine does everything
 without BASS and starts with no BASS libraries present: files and archives (slice 2), loudness normalization, CD+G
 (slice 3, classic and scaled), MIDI/KAR with FatzAudio-drawn lyrics, trackers (slice 4), video audio, soundtracks
 and network audio on FatzAudio's clock (slice 5, FFmpeg-decoded or, opt-in, FatzAudio-decoded packets), choosing
@@ -15,9 +17,8 @@ the output device, and device plug/unplug events. Two things are left, both the 
    screens at 1080p with no clicks in the first minute, CD+G, lyrics, device choice, a run with no BASS DLLs).
    Part 1 passed on 2026-11-10 on the owner's PC (null device): sync drift at most 1.2 ms over 12 s at any tempo,
    no clicks in seeks, loops, pause/resume or a steady minute.
-2. **The decision to make FatzAudio the default**: flip `MediaPlayerConfiguration.AudioEngineFactory`'s default (or
-   the test players' `--audio` default) and live with it for a while with BASS as the fallback. Then one PR deletes
-   BASS (below), with a minor version bump (public API changes). Nothing BASS has been deleted.
+2. **The decision**: merge the draft PR (`StageUpdate.md`), which makes FatzAudio the only engine and deletes BASS
+   (below) in one step, with a minor version bump (public API changes). Nothing BASS is deleted on `main` until then.
 
 Optional switches the owner may want to make the default after hearing them: `--video-audio=fatz` (FatzAudio
 decodes soundtracks from packets) and `--cdg-scale` (the scaled, smoothed CD+G picture).

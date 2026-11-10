@@ -18,9 +18,9 @@ not up front.
   live in `Directory.Build.props` (C# 14, nullable, implicit usings).
 - Windows projects target x64 (`net10.0-windows7.0`); Core, the Software and Vulkan renderers,
   Linux and Avalonia are `net10.0`.
-- No native binaries are tracked. To run a host, put the x64 BASS and FFmpeg DLLs in the host's
+- No native binaries are tracked. To run a host, put the x64 FFmpeg DLLs in the host's
   `native/` folder: `FatzMedia.Video.Sample.Player`, `.Sample.Player.Avalonia` or `.Sample.Player.WinForms`.
-  Details are in `docs/NATIVE_DEPENDENCIES.md`.
+  FatzAudio's library comes from Audio's build. Details are in `docs/NATIVE_DEPENDENCIES.md`.
 - After editing Vulkan `Shaders/*.vert|*.frag`, run `scripts/compile-vulkan-shaders.sh` and
   commit the `.spv` files; CI checks them.
 
@@ -35,9 +35,8 @@ not up front.
 - The project reference DAG is pinned in `scripts/check-core-boundary.ps1`; update it on
   purpose when adding a project or reference. `check-adapter-boundary.ps1`,
   `check-wpf-boundary.ps1` and `check-presentation-parity.ps1` guard the rest.
-- Audio is BASS today. Goal (037A): replace BASS with FatzAudio once it is proven, so end users
-  need no BASS DLLs or licence; until then FatzAudio is opt-in and BASS stays the default. Keep
-  BASS specifics behind `IAudioEngine` and don't add new public API that only BASS can serve.
+- Audio is FatzAudio (FatzMedia.Audio, 037A); BASS is gone, so end users need no BASS DLLs or licence.
+  Keep engine specifics behind `IAudioEngine` and its internal seams.
 - Non-goals: plugin architecture, DVD/Blu-ray, playlist/library ownership. Audio CD and CD+G
   discs are in scope.
 - File size is a prompt to look, not a rule. Split along real seams (a part that can be named

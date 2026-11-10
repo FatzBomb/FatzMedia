@@ -10,8 +10,6 @@ The Player needs these files to start playback:
 
 ```text
 FatzMedia.Video.Sample.Player/native/
-  bass.dll          audio playback
-  bass_fx.dll       tempo, pitch, equalizer, and fades
   avcodec-63.dll    FFmpeg 9.0.x (FFmpeg 8 DLLs no longer load)
   avdevice-63.dll
   avfilter-12.dll
@@ -23,24 +21,16 @@ FatzMedia.Video.Sample.Player/native/
 
 All seven FFmpeg DLLs must come from the same build.
 
-## Optional
+## Audio
 
-Each BASS plugin adds file types. When one is missing, FFmpeg decodes those formats
-instead (Stage 033A), so they still open; BASS's own decoder is just faster to start and
-streams instead of converting. The exceptions are MIDI and CD tracks, which FFmpeg
-cannot play: without `bassmidi.dll` or `basscd.dll` those files do not open.
+Audio needs nothing in this folder. The audio engine, FatzAudio, is built from `Audio\` in
+the repository and its library (`fatzaudio.dll`) is copied next to the app by the build.
+FFmpeg decodes the audio formats FatzAudio cannot open. BASS was removed in 037A: any
+`bass*.dll` still in this folder is not used and can be deleted.
 
-| File | Adds |
-|---|---|
-| `bass_aac.dll` | `.aac`, `.m4a`, `.m4b` |
-| `bassalac.dll` | Apple Lossless `.m4a` |
-| `bassflac.dll` | `.flac` |
-| `bassmidi.dll` | `.mid`, `.midi`, `.kar`, `.rmi` (MIDI karaoke) |
-| `bassopus.dll` | `.opus` |
-| `bass_ac3.dll` | `.ac3` |
-| `basswma.dll` | `.wma` |
-| `basscd.dll` | audio CD tracks (`.cda`) |
-| `TimGM6mb.sf2` | Fallback MIDI soundfont. It is used only when Windows' `gm.dls` is missing and no soundfont is configured. Check its licence before redistributing it. |
+MIDI plays with the system General MIDI bank (Windows `gm.dls`). To use a soundfont file
+instead, set `MediaPlayerConfiguration.MidiSoundfontPath` to it. `TimGM6mb.sf2` in this
+folder is not picked up automatically; check its licence before redistributing it.
 
 ## Not used
 
@@ -60,5 +50,4 @@ resolves that folder and passes it to the WPF `Player`, which inherits the Core
 
 Licensing matters only if you distribute the app. Gyan "full" FFmpeg builds are
 compiled with `--enable-gpl`. An LGPL build (see `docs/NATIVE_DEPENDENCIES.md`) is the
-default choice for a distributed host. BASS requires a licence from un4seen for
-commercial use.
+default choice for a distributed host.

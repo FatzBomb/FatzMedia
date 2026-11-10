@@ -135,7 +135,7 @@ What you get depends on the stream. Read `player.CurrentSourceCapabilities` (a <
 
 Network sources never loop through `LoopMedia`; their end is a stop. An HLS video stream with several quality levels plays one fixed level, the best one up to 1080p; there is no adaptive switching.
 
-Network audio over plain `http` plays through BASS. `https` and HLS audio and all network video play through FFmpeg, which verifies certificates by default (see the TLS policy below).
+Network audio and network video open through FFmpeg, which verifies certificates by default (see the TLS policy below).
 
 Two events are specific to buffered sources:
 
@@ -214,6 +214,6 @@ The synchronous `Load` methods take no token. They can be cancelled only by `Res
 
 - A load can take seconds (network, large archives). Never call the synchronous `Load` on the UI thread; use `LoadAsync`.
 - Loading does not start playback unless `PlayOnLoad` is set. Call `PlayAsync()` after `MediaLoaded` otherwise.
-- Which extensions load depends on the native libraries found at startup. A missing BASS plugin or FFmpeg library makes the matching formats fail with `UnsupportedFormat`. See [Supported formats](supported-formats.md).
-- Media with audio (audio files, MP3+G, MIDI, network audio) needs the BASS libraries. Without them the load fails with `NativeLibraryMissing`, while video (without sound), images and CD+G graphics without audio still load. See [Running without BASS](../getting-started/native-dependencies.md#running-without-bass).
+- Which extensions load depends on the native libraries found at startup. A missing FFmpeg library, or a FatzAudio that could not start, makes the matching formats fail with `UnsupportedFormat`. See [Supported formats](supported-formats.md).
+- Media with audio (audio files, MP3+G, MIDI, network audio) needs the audio engine (FatzAudio). Without it the load fails with `NativeLibraryMissing`, while video (without sound), images and CD+G graphics without audio still load. See [Running without audio](../getting-started/native-dependencies.md#running-without-audio).
 - A <xref:FatzMedia.Video.Core.Configuration.MediaPlayerMode> other than `Full` refuses some kinds of media. See [Player modes](player-modes.md).

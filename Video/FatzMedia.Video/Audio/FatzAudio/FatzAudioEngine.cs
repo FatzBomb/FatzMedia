@@ -84,9 +84,10 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         _diagnosticOwner = DiagnosticRouter.Owner;
         var cacheDirectory = EnsureCacheDirectory(FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory));
         _engine = Fa.AudioEngine.Create(new Fa.AudioEngineOptions { NullOutput = nullOutput, CacheDirectory = cacheDirectory });
-        FatzAudioFileTypes.Register();
         try
         {
+            FatzAudioFileTypes.Register();
+
             // FatzAudio's loudness normalization, with its limiter on while normalization is on.
             _engine.SetLimiter(Fa.LimiterMode.Auto, _normalization.TruePeakCeilingDbtp);
             ApplyNormalizationMode();
@@ -157,7 +158,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         }
     }
 
-
     /// <summary>How often the device list is read while someone listens to <see cref="DeviceChanged"/>.</summary>
     internal TimeSpan DeviceWatchInterval { get; set; } = TimeSpan.FromSeconds(1);
 
@@ -169,7 +169,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
                 return _state;
         }
     }
-
 
     public bool Normalize
     {

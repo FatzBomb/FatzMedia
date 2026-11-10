@@ -34,13 +34,13 @@ The three forms:
 The WPF `Player` also has overloads that take an `IMediaPresentationCoordinatorFactory` (a renderer factory) in place of the platform factory and use the Windows platform; the Avalonia and WinForms ones always need a platform factory.
 
 > [!IMPORTANT]
-> Creating a player loads BASS and FFmpeg and blocks. Calling the constructor on the UI thread freezes the window. In UI code, always use `Player.CreateAsync`.
+> Creating a player loads FFmpeg and FatzAudio and blocks. Calling the constructor on the UI thread freezes the window. In UI code, always use `Player.CreateAsync`.
 
 Creation throws when it cannot proceed:
 
 - `DirectoryNotFoundException` if a folder in the path list does not exist.
 - `InvalidOperationException` if the required FFmpeg libraries cannot be loaded. The message lists what is wrong; read `platformFactory.NativeDependencies` for the details ([Native dependencies](../getting-started/native-dependencies.md#startup-report)).
-- A missing BASS does not throw. The player starts without audio.
+- A FatzAudio that cannot start does not throw. The player warns and starts without audio.
 
 Create one player per independent playback, each with its own platform factory and renderer factory instance. Players keep their own playback state, but native library loading and the MIDI soundfont are process-wide; see [Multiple players](../presentation/multiple-players.md).
 
@@ -51,7 +51,7 @@ Create one player per independent playback, each with its own platform factory a
 ```csharp
 var configuration = MediaPlayerConfiguration.Auto with
 {
-    AudioOutputDeviceIndex = -1,
+    AudioOutputDeviceId = null,   // the system default
     MidiSoundfontPath = @"C:\soundfonts\gm.sf2",
     ResetPitchOnMediaLoad = true,
 };
@@ -61,7 +61,7 @@ The options you are most likely to set:
 
 - `VideoDecoding`: `Auto` (default), `Hardware` or `Software`. See [Hardware decoding](../video/hardware-decoding.md).
 - `Mode`: `Full` (default), `Background` or `Audio`. See below.
-- `AudioOutputDeviceIndex` and `AudioOutputFallbackMode`: the output device. See [Audio output devices](../audio/output-devices.md).
+- `AudioOutputDeviceId` and `AudioOutputFallbackMode`: the output device. See [Audio output devices](../audio/output-devices.md).
 - `SubtitleStyle`, `KaraokeStyle` and `MidiSoundfontPath`: text styles and the MIDI soundfont.
 - `NetworkRetry`, `NetworkTls` and `NetworkReadAhead`: network behaviour.
 

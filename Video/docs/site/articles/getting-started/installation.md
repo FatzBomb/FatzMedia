@@ -5,9 +5,9 @@ This page tells you which packages to reference for each kind of host, which tar
 ## Requirements
 
 - .NET 10 SDK.
-- x64. The native BASS and FFmpeg libraries are x64 only. The Windows packages include an MSBuild guard that fails the build if you set a `RuntimeIdentifier` that is not x64. Leaving `RuntimeIdentifier` empty is fine.
+- x64. The native FFmpeg and FatzAudio libraries are x64 only. The Windows packages include an MSBuild guard that fails the build if you set a `RuntimeIdentifier` that is not x64. Leaving `RuntimeIdentifier` empty is fine.
 - Windows 10 or 11 for the Windows packages. For Linux, see [Running on Linux](linux.md).
-- The BASS and FFmpeg native libraries, which you obtain and license yourself: [Native dependencies](native-dependencies.md).
+- The FFmpeg native libraries, which you obtain and license yourself: [Native dependencies](native-dependencies.md). The audio engine's library is built and copied for you.
 
 ## Target frameworks
 
@@ -80,7 +80,7 @@ If you build from source, reference the projects with the same combinations. Eac
 
 ## Put the native libraries next to your app
 
-The packages contain no BASS or FFmpeg binaries. The simplest layout is a `native` folder in your project that is copied to the output directory:
+The packages contain no FFmpeg binaries. The simplest layout is a `native` folder in your project that is copied to the output directory:
 
 ```xml
 <ItemGroup>
@@ -93,6 +93,6 @@ On Linux use `native\**\*.so*` for the shared libraries. SkiaSharp's native libr
 
 ## Check that it works
 
-After the first player is created, read <xref:FatzMedia.Video.PlayerCore.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a missing BASS library only disables audio. See [Native dependencies](native-dependencies.md#startup-report).
+After the first player is created, read <xref:FatzMedia.Video.PlayerCore.NativeDependencies> to see which libraries loaded. A missing FFmpeg library makes player creation throw; a FatzAudio library that cannot start only disables audio (the player warns). See [Native dependencies](native-dependencies.md#startup-report).
 
 Then follow a quickstart: [WPF](quickstart-wpf.md), [Avalonia](quickstart-avalonia.md) or [WinForms](quickstart-winforms.md).

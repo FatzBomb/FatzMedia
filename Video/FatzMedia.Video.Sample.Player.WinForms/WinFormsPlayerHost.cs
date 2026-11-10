@@ -106,13 +106,7 @@ sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayer
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         var platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
-        // FatzAudio plays everything: on --audio-device= when given, CD+G scaled with --cdg-scale.
-        configuration = configuration with
-        {
-            AudioOutputDeviceId = options.AudioDevice,
-            CdgScaling = options.CdgScaling,
-            AudioEngineDecodesSoundtracks = options.AudioEngineDecodesSoundtracks
-        };
+        configuration = options.ApplyAudioOptions(configuration);
         // Loading FFmpeg and FatzAudio blocks: CreateAsync runs it off the UI thread.
         return await global::FatzMedia.Video.WinForms.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }

@@ -6,7 +6,6 @@ namespace FatzMedia.Video;
 /// </summary>
 public static class DLLPath
 {
-
     /// <summary>
     /// Gets or sets the folder containing FFmpeg native DLLs. Leave empty to use the default host native folder.
     /// </summary>

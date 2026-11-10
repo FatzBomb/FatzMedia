@@ -11,7 +11,7 @@ The modes are the values of <xref:FatzMedia.Video.Core.Configuration.MediaPlayer
 | Audio output | Yes | No (no audio device is opened, no device monitor runs) | Yes |
 | Presentation (renderer, GPU device, surfaces) | Yes | Yes | No |
 | Looping | `LoopMedia` | Always on | `LoopMedia` |
-| Needs BASS | For audio media | No | Yes |
+| Needs FatzAudio | For audio media | No | Yes |
 
 What each mode accepts:
 
@@ -45,7 +45,7 @@ The complete player. It is the default.
 
 ### Background
 
-A looping picture source. It plays video (without decoding audio), images, and sources such as `MediaInputSource.FromColor`. No audio output is initialised, so it works without BASS. Looping is always on: setting `LoopMedia = false` is ignored and a diagnostic is raised. Pair it with a Full or Audio player when you need sound.
+A looping picture source. It plays video (without decoding audio), images, and sources such as `MediaInputSource.FromColor`. No audio output is initialised, so it works without FatzAudio. Looping is always on: setting `LoopMedia = false` is ignored and a diagnostic is raised. Pair it with a Full or Audio player when you need sound.
 
 ```csharp
 await backgroundPlayer.LoadAsync(MediaInputSource.FromColor(0xFF101820));

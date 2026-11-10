@@ -61,7 +61,7 @@ then software; software and Vulkan are shown through the surface's frame-sink pa
 
 ## Native libraries
 
-The packages ship no BASS or FFmpeg binaries. Put the x64 DLLs (BASS, BASS_FX, FFmpeg 9.x) in
+The packages ship no FFmpeg binaries. Put the x64 FFmpeg 9.x DLLs in
 
 ```text
 FatzMedia.Video.Sample.Player.WinForms/native/

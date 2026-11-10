@@ -8,7 +8,7 @@ This page lists what the library does, where it runs, and which package you refe
 
 | Area | What you get |
 | --- | --- |
-| Audio | Local audio files through BASS, plus an FFmpeg fallback for formats whose BASS plug-in is missing. Volume, pitch (-60 to +60 semitones), tempo (5 to 5000 percent), loudness normalization, a graphic equalizer, and scrubbing with optional silent seeking. |
+| Audio | Audio files, MIDI and trackers through the FatzAudio engine, plus an FFmpeg fallback for formats FatzAudio cannot open. Volume, pitch (-60 to +60 semitones), tempo (5 to 5000 percent), loudness normalization, a graphic equalizer, and scrubbing with optional silent seeking. |
 | Video | Decoding through FFmpeg, with pictures timed to the audio clock or a virtual clock. Hardware decoding where the renderer supports it, software decoding otherwise. |
 | HDR | HDR10 (PQ) and HLG video is tone mapped to SDR by default. The Direct3D11 renderer can also output HDR to an HDR display. |
 | CD+G and karaoke | `.cdg` graphics with their audio file, MP3+G, and CD+G inside an archive. MIDI and KAR files with lyrics drawn in time with the music. |
@@ -49,8 +49,8 @@ Every package is optional apart from Core, which every other one builds on. A ho
 | Package | Targets | What it is |
 | --- | --- | --- |
 | `FatzMedia.Video` | net10.0 | The Core engine: playback, timing, composition policy, state, CD+G, subtitles, backgrounds, player modes, archives, and the contracts renderers and platforms implement. Contains <xref:FatzMedia.Video.PlayerCore>. |
-| `FatzMedia.Video.Windows` | net10.0-windows7.0 | Windows platform services: BASS and FFmpeg loading, audio device handling, precision timing, hardware decode policy. Contains <xref:FatzMedia.Video.WindowsPlatformFactory>. |
-| `FatzMedia.Video.Linux` | net10.0 | Linux platform services: shared library loading, timing, BASS device monitoring, software decode. Contains <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>. |
+| `FatzMedia.Video.Windows` | net10.0-windows7.0 | Windows platform services: FFmpeg loading, audio device handling, precision timing, hardware decode policy. Contains <xref:FatzMedia.Video.WindowsPlatformFactory>. |
+| `FatzMedia.Video.Linux` | net10.0 | Linux platform services: shared library loading, timing, software decode. Contains <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>. |
 | `FatzMedia.Video.Direct3D11` | net10.0-windows7.0 | The Direct3D 11 renderer: GPU composition, swap chains, subtitle and lyric text, HDR output. |
 | `FatzMedia.Video.Windows.Direct3D11` | net10.0-windows7.0 | A convenience bundle: the Windows package plus the Direct3D11 renderer, with <xref:FatzMedia.Video.WindowsDirect3D11PlatformFactory> to create both. |
 | `FatzMedia.Video.Software` | net10.0 | A portable CPU renderer that needs no GPU. Deterministic output; every platform. Draws text through `FatzMedia.Video.Text`. |
@@ -77,5 +77,5 @@ The details, including target frameworks, are in [Installation](installation.md)
 ## Next steps
 
 1. [Installation](installation.md) for packages and project setup.
-2. [Native dependencies](native-dependencies.md): the BASS and FFmpeg libraries are not included, and you supply and license them.
+2. [Native dependencies](native-dependencies.md): the FFmpeg libraries are not included, and you supply and license them.
 3. A quickstart for your UI: [WPF](quickstart-wpf.md), [Avalonia](quickstart-avalonia.md) or [WinForms](quickstart-winforms.md).

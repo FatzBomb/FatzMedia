@@ -1,15 +1,14 @@
 # Native dependencies
 
-FatzMedia.Video plays media through two native libraries: BASS for audio and FFmpeg for video decoding and demuxing. Neither is included in the packages. You download them, license them, ship them with your application and tell the engine where to find them. This page lists the files, the folders the engine searches, and your licensing responsibilities.
+FatzMedia.Video needs one native library that you supply: FFmpeg, for video decoding and demuxing. It is not included in the packages. You download it, license it, ship it with your application and tell the engine where to find it. Audio needs nothing from you: the audio engine, FatzAudio, comes with the build. BASS was removed in 037A, so there is no BASS licence and there are no BASS libraries to ship. This page lists the files, the folders the engine searches, and your licensing responsibilities.
 
 ## What you need
 
 | Library | Needed for | Required? |
 | --- | --- | --- |
-| FFmpeg 9.0.x shared libraries | Video, embedded subtitles, network video, and the fallback decoder for audio formats BASS cannot open | Yes. Player creation throws without it. |
-| BASS and BASS_FX | Audio output and every audio feature | No. Without the core libraries the player starts with no audio (see [Running without BASS](#running-without-bass)). |
-| BASS add-ons | Extra audio formats, MIDI, audio CD | No. Each one adds the formats it handles. |
-| A MIDI soundfont | MIDI and KAR playback | Only for MIDI. |
+| FFmpeg 9.0.x shared libraries | Video, embedded subtitles, network video and network audio, and the fallback decoder for audio formats FatzAudio cannot open | Yes. Player creation throws without it. |
+| FatzAudio's native library (`fatzaudio.dll`, `libfatzaudio.so`) | Audio output and every audio feature | Built from `Audio\` in the repository by CMake and copied to the app output by the `FatzMedia.Audio` binding project; you do not supply it. Without it the player starts with no audio (see [Running without audio](#running-without-audio)). |
+| A MIDI soundfont | MIDI and KAR playback | Only for MIDI, and only when the system has no General MIDI bank. |
 | SkiaSharp's native library | Subtitle and lyric text with the Software and Vulkan renderers | Comes with the packages; nothing to download. |
 
 ### Windows (x64)
@@ -17,8 +16,6 @@ FatzMedia.Video plays media through two native libraries: BASS for audio and FFm
 | Kind | Files |
 | --- | --- |
 | FFmpeg, all seven required, all in one folder | `avcodec-63.dll`, `avdevice-63.dll`, `avfilter-12.dll`, `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll`, `swscale-10.dll` |
-| BASS core | `bass.dll`, `bass_fx.dll` |
-| BASS add-ons (optional) | `bass_aac.dll`, `bass_ac3.dll`, `bassalac.dll`, `basscd.dll`, `bassflac.dll`, `bassmidi.dll`, `bassopus.dll`, `basswma.dll` |
 
 The version numbers in the FFmpeg file names are the library major versions of FFmpeg 9.0.x. FFmpeg 8 libraries do not load. If the folder holds a different version of a library, the startup report says so, for example `Found avcodec-62.dll, a different version; this control needs avcodec-63.dll.`
 
@@ -29,33 +26,30 @@ Use a shared (DLL) build of FFmpeg. A static `ffmpeg.exe` is not enough.
 | Kind | Required | Optional |
 | --- | --- | --- |
 | FFmpeg 9.0.x | `libavutil.so.61`, `libswresample.so.7`, `libswscale.so.10`, `libavcodec.so.63`, `libavformat.so.63` | `libavfilter.so.12`, `libavdevice.so.63` |
-| BASS | `libbass.so`, `libbass_fx.so` (audio is off without them) | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
 
 Put all FFmpeg libraries in one directory. The engine preloads them in dependency order because typical builds refer to each other by soname without an `$ORIGIN` run path. See [Running on Linux](linux.md).
 
 ### SkiaSharp
 
-The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzMedia.Video.Text`). Unlike BASS and FFmpeg it is not optional and you do not supply it: it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
+The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzMedia.Video.Text`). Unlike FFmpeg it is not optional and you do not supply it: it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
 
 ### What the optional pieces change
 
-- Each BASS add-on enables the file extensions it handles (`bass_aac`: `.aac`, `.m4a`, `.m4b`; `bass_ac3`: `.ac3`; `bassflac`: `.flac`; `bassmidi`: `.mid`, `.midi`, `.kar`, `.rmi`; `bassopus`: `.opus`; `basscd`: `.cda`).
-- When FFmpeg is loaded, audio formats whose add-on is missing (AAC, M4A, ALAC, FLAC, Opus, AC-3, WMA and others FFmpeg decodes) still open through an FFmpeg fallback that feeds the same BASS playback chain. MIDI needs `bassmidi` and has no fallback.
-- `OpenFileDialogFilter` on the player (<xref:FatzMedia.Video.PlayerCore.OpenFileDialogFilter>) lists what the loaded libraries accept, so your Open dialog matches the install.
+- FatzAudio opens its own formats directly (see [Supported formats](../playback/supported-formats.md)). When FFmpeg is loaded, other audio formats FFmpeg decodes still open through an FFmpeg fallback that feeds the same FatzAudio playback chain.
+- `OpenFileDialogFilter` on the player (<xref:FatzMedia.Video.PlayerCore.OpenFileDialogFilter>) lists what the player accepts, so your Open dialog matches the install.
 
 ### MIDI soundfont
 
-MIDI synthesis needs a soundfont. The engine uses, in this order:
+MIDI synthesis needs a soundfont. FatzAudio uses, in this order:
 
-1. <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration.MidiSoundfontPath> when you set it (`.sf2`, `.sfz` or `.dls`).
-2. On Windows, the system `gm.dls` (converted to SF2 once and cached).
-3. The first that exists of `System32\drivers\sgm.sb` (Windows), and `soundfont.sf2`, `native/soundfont.sf2` and `native/TimGM6mb.sf2` under the application folder.
+1. <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration.MidiSoundfontPath> when you set it (`.sf2`, `.sf3` or `.dls`).
+2. The operating system's General MIDI bank where there is one: `gm.dls` on Windows, the system bank on macOS, an installed `.sf2` on Linux.
 
-If none is found, MIDI plays silently and the engine raises a Warning diagnostic in the `BASSMIDI` category. On Linux there is no `gm.dls`, so ship an `.sf2`. The soundfont is process-wide; see [MIDI and KAR](../karaoke/midi-and-kar.md#soundfonts).
+There is no folder search for soundfont files. On Linux, set `MidiSoundfontPath` and ship an `.sf2` unless you know the system has one. See [MIDI and KAR](../karaoke/midi-and-kar.md#soundfonts).
 
 ## Where the engine looks
 
-The engine searches the folders you pass to the player, then the default folders. A folder you pass must exist, or the player constructor throws `DirectoryNotFoundException`. On Windows the search is recursive, so BASS and FFmpeg can sit in separate subfolders of one root. On Linux each folder is searched without its subfolders.
+The engine searches the folders you pass to the player, then the default folders. A folder you pass must exist, or the player constructor throws `DirectoryNotFoundException`. On Windows the search is recursive, so FFmpeg can sit in a subfolder of one root. On Linux each folder is searched without its subfolders.
 
 | Platform | Default folders (under the application base directory), searched after yours |
 | --- | --- |
@@ -71,7 +65,6 @@ The player constructor and `CreateAsync` take a list of folders in priority orde
 ```csharp
 IReadOnlyList<string> nativePaths =
 [
-    @"C:\Program Files\MyHost\media-native\bass",
     @"C:\Program Files\MyHost\media-native\ffmpeg"
 ];
 
@@ -84,11 +77,11 @@ var player = await FatzMedia.Video.Wpf.Player.CreateAsync(
 To use only the default folders, pass an empty list or <xref:FatzMedia.Video.WindowsNativeLibraryPaths.GetDefaultSearchPaths>, which returns the default folders that exist.
 
 > [!NOTE]
-> Native libraries load once per process. A later player created with the same paths reuses the result. If BASS was missing the first time, a later player created with different paths tries BASS again, and a player created with the same paths keeps the "no BASS" result without scanning again. FFmpeg, once loaded, stays loaded.
+> Native libraries load once per process. A later player created with the same paths reuses the result. FFmpeg, once loaded, stays loaded.
 
 ### The DLLPath settings
 
-<xref:FatzMedia.Video.DLLPath> (`Bass`, `FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`), and `AudioOutputDevices` on Windows. A player you create yourself with a path list does not read it.
+<xref:FatzMedia.Video.DLLPath> (`FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`). A player you create yourself with a path list does not read it.
 
 ## Startup report
 
@@ -110,23 +103,17 @@ catch (Exception ex)
 }
 ```
 
-### Running without BASS
+### Running without audio
 
-When the BASS core libraries are missing or fail to load, the player still starts in every mode. The loader reports a Warning, `NativeDependencyReport.IsAudioAvailable` is false, and:
+When FatzAudio's native library is missing or fails to start, the player still starts in every mode. It raises a Warning in the `Bootstrap` category ("Audio engine FatzAudio could not start ... Audio engine unavailable") and:
 
 - Video plays its pictures on the playback clock without sound. Images and CD+G graphics without audio open normally.
 - Media that needs audio (audio files, MP3+G, network audio, MIDI, audio mode) fails to load: `Load` returns false, with an Error diagnostic and a `MediaError` carrying `NativeLibraryMissing`.
-- `AudioOutputDevices.Enumerate` returns an empty list.
+- `FatzAudioOutputDevices.Enumerate` throws `DllNotFoundException`.
 
 ## Licensing is your responsibility
 
-The packages do not redistribute BASS or FFmpeg. You are responsible for obtaining, licensing, validating, deploying and updating them. This guide is not legal advice.
-
-### BASS
-
-- Download BASS only from Un4seen Developments (<https://www.un4seen.com/bass.html>). The supported ABI line is BASS 2.4.
-- BASS is free only for qualifying non-commercial use. A commercial application needs a BASS licence from Un4seen, plus the terms of each add-on you ship.
-- Un4seen's licences apply to your end-user products and do not permit reselling or sublicensing BASS. The control does not do either; you hold the licence.
+The packages do not redistribute FFmpeg. You are responsible for obtaining, licensing, validating, deploying and updating them. This guide is not legal advice.
 
 ### FFmpeg
 
@@ -143,4 +130,4 @@ The packages do not redistribute BASS or FFmpeg. You are responsible for obtaini
 
 ## Where to get binaries
 
-Download BASS from Un4seen. For FFmpeg, ffmpeg.org links to third-party shared builds; review each build's configuration and licence before you redistribute it. Keep your own lock file with the source URL, exact version, SHA-256, build configuration, licence class and approver for each binary set you ship.
+For FFmpeg, ffmpeg.org links to third-party shared builds; review each build's configuration and licence before you redistribute it. Keep your own lock file with the source URL, exact version, SHA-256, build configuration, licence class and approver for each binary set you ship.

@@ -351,7 +351,6 @@ sealed class TestCdgEngine : ICdgEngine
     public event EventHandler? Closed { add { } remove { } }
     public event EventHandler? PlaybackStarted { add { } remove { } }
 
-
     public void Load(string filePath) { }
     public void Load(IArchiveEntryInfo archiveEntry) { }
     public void Play() { }

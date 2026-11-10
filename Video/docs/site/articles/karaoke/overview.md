@@ -51,11 +51,10 @@ any player code. See [Karaoke surface](../lightweight-surfaces/karaoke-surface.m
 > which follows the same layout, colours and timing. Fonts come from the system, so on a machine
 > without the configured family (Segoe UI by default) the default font is used.
 
-- **Audio.** Audio is played through BASS, with FFmpeg as a fallback for formats a BASS plug-in
-  would otherwise handle. MIDI and KAR need the BASS MIDI plug-in (`bassmidi.dll`, or
-  `libbassmidi.so` on Linux) next to the other native libraries; without it those extensions are
-  not accepted. CD+G itself needs no extra plug-in, only an audio decoder for the song's audio
-  format.
+- **Audio.** Audio is played by FatzAudio, with FFmpeg as a fallback for formats FatzAudio cannot
+  decode. MIDI and KAR are played by FatzAudio too (with a soundfont); if it cannot start, those
+  extensions are not accepted. CD+G itself needs no extra plug-in, only an audio decoder for the
+  song's audio format.
 - **Threads.** Player events (`MediaLoaded`, `MediaEnded`, `SubtitleTracksChanged` and others) are
   raised on background threads. Marshal to the UI thread before touching UI state.
 - **Offsets are per song.** The CD+G and subtitle sync offsets go back to zero when the media is

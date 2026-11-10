@@ -104,7 +104,7 @@ var player = await Player.CreateAsync(configuration, [nativePath], platform);
 ```
 
 The loader also recognizes `runtimes/win-x64/native` beneath the application base.
-A real host may pass separate BASS and FFmpeg directories in search-priority order.
+A real host may pass several directories in search-priority order.
 The MediaControl packages do not copy or redistribute native DLLs. See
 `docs/NATIVE_DEPENDENCIES.md` for the complete host distribution policy.
 
@@ -114,6 +114,7 @@ The player understands the flags all test players share (`PlayerStartupOptions`)
 or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--net-retries=`,
 `--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`,
 `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
+`--audio-device=<id or name>`, `--cdg-scale[=0..10]`, `--cdg-effects`, `--video-audio=fatz`,
 `--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, `--renderer=`/`--software` (below), `--no-auto-hide`, and since Stage 046A slice 3
 `--players=1..4` (players side by side, one `PlayerView` and view model each),
 `--surface=auto|framesink` (`framesink` starts in `WpfComposited`), `--decoding=auto|software` and
@@ -202,7 +203,7 @@ before relaunching if you need it for a bug report.
 6. MP3+CD+G renders Cdg lyrics.
 7. ZIP audio+CD+G renders  Cdg lyrics.
 8. Video plays.
-9. Video tempo affects BASS-processed audio and video stays synced.
+9. Video tempo affects the audio and video stays synced.
 10. Direct image files render as a still surface.
 11. Same-name and internal zip karaoke backgrounds appear under audio+Cdg.
 12. Seek bar supports click/drag testing for audio, Cdg, and video.

@@ -287,7 +287,7 @@ function Test-1 {
         if (@(Get-LogLines $r.Log 'with FFmpeg in').Count) { $how += 'converted by FFmpeg' }
         if (@(Get-LogLines $r.Log 'FatzAudio cannot decode').Count) { $how += 'FatzAudio handed it to FFmpeg' }
         if (@(Get-LogLines $r.Log 'opening it as audio').Count) { $how += 'video file played as audio' }
-        $errors = @(Get-LogLines $r.Log '[Diagnostic]' | Where-Object { $_ -match 'Error' } | Select-Object -First 2)
+        $errors = @(Get-LogLines $r.Log '[Diagnostic]' | Where-Object { $_ -match '\bError\b' } | Select-Object -First 2)
         $detail = ('loaded {0}, playing {1}{2}{3}' -f $loaded, $playing, $(if ($how) { ', ' + ($how -join ', ') } else { '' }), $(if ($errors) { '; ' + ($errors -join ' / ') } else { '' }))
         Add-Check $k ($loaded -and $playing) $detail
     }

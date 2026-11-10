@@ -9,7 +9,7 @@ subtitles and multi-screen output, with ready-made surfaces for WPF, Avalonia an
 | Start here | |
 |---|---|
 | [Overview](articles/getting-started/overview.md) | What the engine does, platforms and packages. |
-| [Installation](articles/getting-started/installation.md) and [native libraries](articles/getting-started/native-dependencies.md) | What to reference and which BASS and FFmpeg files to ship. |
+| [Installation](articles/getting-started/installation.md) and [native libraries](articles/getting-started/native-dependencies.md) | What to reference and which FFmpeg files to ship. |
 | Quick starts: [WPF](articles/getting-started/quickstart-wpf.md), [Avalonia](articles/getting-started/quickstart-avalonia.md), [WinForms](articles/getting-started/quickstart-winforms.md) | A window that plays a file, in a few lines. |
 | [Concepts](articles/concepts/architecture.md) | How the player, renderers, platforms and surfaces fit together. |
 | [Karaoke](articles/karaoke/overview.md) | CD+G, MIDI/KAR lyrics, backgrounds and the karaoke surfaces. |

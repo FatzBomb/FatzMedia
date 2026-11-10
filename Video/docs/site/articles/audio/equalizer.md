@@ -72,4 +72,4 @@ player.EqualizerChanged += (_, e) =>
 
 - The equalizer is stored on the player, so it stays when you load another item or switch the player mode.
 - It applies to audio the player outputs. A video without a sound stream, CD+G graphics and images have nothing to filter.
-- The equalizer needs the BASS libraries, like all audio output. See [Supported formats](../playback/supported-formats.md).
+- The equalizer needs the audio engine, like all audio output. See [Supported formats](../playback/supported-formats.md).

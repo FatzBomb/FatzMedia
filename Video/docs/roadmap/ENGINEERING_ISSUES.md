@@ -55,6 +55,18 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges, these close with BASS and move
+to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
+half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
+
+### ENG-062 - Prepared-next analysis has no engine behind it
+
+Found: 2026-11-10 (037A slice 6). `PlayerCore.AnalyzeAsync` and prepared-next analysis go through the internal
+`IMediaFileAnalyzer`, which only the BASS engine implemented. The FatzAudio engine does not (it measures loudness
+itself and caches it by fingerprint, and finds silence at open), so with BASS gone `AnalyzeAsync` returns no
+analysis and prepared items reach Ready without one. Decide whether `AnalyzeAsync` should ask FatzAudio (loudness
+scan by path, `DetectSilence`) or be retired from the public API; either is its own change.
+
 ### ENG-061 - The first player start after a build loads its first video slowly
 
 Reported: 2026-11-07 (owner, 051A smoke test 1): the first WPF player start after a fresh build took

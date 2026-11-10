@@ -124,13 +124,7 @@ sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<
     {
         var platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
-        // FatzAudio plays everything: on --audio-device= when given, CD+G scaled with --cdg-scale.
-        configuration = configuration with
-        {
-            AudioOutputDeviceId = StartupOptions.Current.AudioDevice,
-            CdgScaling = StartupOptions.Current.CdgScaling,
-            AudioEngineDecodesSoundtracks = StartupOptions.Current.AudioEngineDecodesSoundtracks
-        };
+        configuration = StartupOptions.Current.ApplyAudioOptions(configuration);
         // Native loading blocks: CreateAsync runs it off the UI thread.
         return await global::FatzMedia.Video.Avalonia.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }

@@ -131,7 +131,7 @@ The constructor overload that takes the platform factory does the same as settin
 | --- | --- | --- |
 | `Source` | `null` | Path of the song to play. Changing it loads the new song; several changes in one turn load once. Setting `null` releases the player. |
 | `PlatformFactory` | `null` | How the control's player is built. Required before the first load. It can only be changed before the player exists; later changes throw `InvalidOperationException`. |
-| `NativeLibraryPaths` | `null` | Folders that hold the BASS and FFmpeg libraries. `null` uses the [`DLLPath` settings](../getting-started/native-dependencies.md#the-dllpath-settings) and the default folders. Read when the player is created. |
+| `NativeLibraryPaths` | `null` | Folders that hold the FFmpeg libraries. `null` uses the [`DLLPath` settings](../getting-started/native-dependencies.md#the-dllpath-settings) and the default folders. Read when the player is created. |
 | `AutoPlay` | `true` | Start the song when it has loaded. When `false`, call `PlayAsync` yourself. |
 | `AutoHide` | `true` | Hide the video surface until the first frame is drawn and again after stop, close, an error or the end of the song, so the canvas colour shows meanwhile. |
 | `IsContentVisible` | | Read-only. `true` while the song is drawn. `ContentVisibilityChanged` is raised when it changes. |

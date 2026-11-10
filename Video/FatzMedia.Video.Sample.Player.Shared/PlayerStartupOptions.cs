@@ -142,7 +142,6 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public bool LightweightSurfacesWindow { get; init; }
 
-
     /// <summary>
     /// Gets the FatzAudio output device (<c>--audio-device=</c>, its id or name; the Log lists the names when
     /// it is not found), or null for the system default.
@@ -157,6 +156,17 @@ public sealed record PlayerStartupOptions
 
     /// <summary>Gets whether FatzAudio decodes video soundtracks from FFmpeg's packets (<c>--video-audio=fatz</c>); FFmpeg decodes otherwise.</summary>
     public bool AudioEngineDecodesSoundtracks { get; init; }
+
+    /// <summary>
+    /// The audio options on <paramref name="configuration"/>: FatzAudio plays on <c>--audio-device=</c> when
+    /// given, CD+G scaled with <c>--cdg-scale</c>, soundtracks decoded with <c>--video-audio=fatz</c>.
+    /// </summary>
+    public MediaPlayerConfiguration ApplyAudioOptions(MediaPlayerConfiguration configuration) => configuration with
+    {
+        AudioOutputDeviceId = AudioDevice,
+        CdgScaling = CdgScaling,
+        AudioEngineDecodesSoundtracks = AudioEngineDecodesSoundtracks
+    };
 
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }

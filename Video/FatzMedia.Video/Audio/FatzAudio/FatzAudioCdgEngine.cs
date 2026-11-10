@@ -131,7 +131,6 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     public event EventHandler? Closed;
     public event EventHandler? PlaybackStarted;
 
-
     public void Load(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);

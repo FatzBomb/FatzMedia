@@ -26,5 +26,5 @@ criteria in `roadmap/active/`.
 - `CURRENT_ARCHITECTURE.md` — ownership boundaries and runtime flow
 - `VALIDATION.md` — manual smoke test checklist
 - `LOCAL_VERIFY_PROMPT.md` — paste-ready agent prompt to clean, verify, and smoke-test a branch on Windows
-- `NATIVE_DEPENDENCIES.md` — host-supplied BASS/FFmpeg distribution and update policy
+- `NATIVE_DEPENDENCIES.md` — host-supplied FFmpeg distribution and update policy
 - `PRIVATE_NATIVE_RUNNER.md` — secure self-hosted native smoke-runner provisioning

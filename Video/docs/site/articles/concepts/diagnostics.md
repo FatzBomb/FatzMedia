@@ -25,8 +25,8 @@ player.MediaDiagnostic += (_, e) =>
 
 | Level | Use it for | Examples |
 | --- | --- | --- |
-| `Info` | What the engine chose and did. No effect on playback. | The decode path, the Vulkan device, "BASS loaded successfully", a surface's presentation path. |
-| `Warning` | A non-fatal problem that may reduce quality or completeness. | A missing optional BASS add-on, a failed equalizer update, a device change, a handler that threw. |
+| `Info` | What the engine chose and did. No effect on playback. | The decode path, the Vulkan device, "Audio engine: FatzAudio", a surface's presentation path. |
+| `Warning` | A non-fatal problem that may reduce quality or completeness. | A failed equalizer update, a device change, a handler that threw. |
 | `Error` | A subsystem could not do what was asked. | A file that failed to load, a missing required FFmpeg library, a renderer that could not start. |
 
 Diagnostics are raised in Debug and Release builds. They are always on: the `EnableLogging`, `EnablePerformanceLogging` and `EnableVerboseLogging` switches in <xref:FatzMedia.Video.Core.Configuration.MediaPlayerConfiguration> add extra trace output for debugging and measurements, but do not turn the event on or off.
@@ -94,9 +94,9 @@ The category is a free-form string, and new ones appear as the engine grows, so 
 
 | Area | Categories | Typical content |
 | --- | --- | --- |
-| Native loading | `Bootstrap`, `LinuxBootstrap`, `BASS`, `FFmpeg` | Which libraries were found, loaded or are missing; "audio unavailable". |
-| Audio | `AudioEngine`, `AudioStreamManager`, `AudioNormalizer`, `AudioFilters`, `AudioFallback`, `VideoAudioEngine`, `AudioDeviceMonitor`, `LinuxAudioDeviceMonitor` | Opening audio, normalization, equalizer, the FFmpeg audio fallback, device changes. |
-| MIDI and karaoke | `BASSMIDI`, `MIDI` | Soundfont selection, "no soundfont found; MIDI playback will be silent". |
+| Native loading | `Bootstrap`, `LinuxBootstrap`, `FFmpeg` | Which libraries were found, loaded or are missing; "audio unavailable". |
+| Audio | `FatzAudioEngine`, `FatzAudioCdgEngine`, `FatzAudioVideoAudio`, `AudioFallback`, `AudioDeviceMonitor` | Opening audio, normalization, equalizer, the FFmpeg audio fallback, device changes. |
+| MIDI and karaoke | `MIDI` | Soundfont selection and MIDI loading problems. |
 | Video | `VideoPipeline`, `VideoDecoder`, `VideoCadence`, `PlaybackScheduler` | The decode path (hardware or software), display rate, scheduling problems. |
 | Network | `Network` | Waiting for the network, audio that did not open, retries. |
 | Compositing and rendering | `Composition`, `Presentation`, `D3D11`, `D3D11.DeviceLost`, `D3D11.Hdr`, `D3D11.HdrOutput`, `Vulkan`, `Subtitle`, `CdgEngine` | Device creation, present failures, HDR output, subtitle rasterization. |

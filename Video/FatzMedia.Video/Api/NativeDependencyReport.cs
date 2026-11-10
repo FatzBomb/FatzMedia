@@ -53,7 +53,6 @@ public sealed partial class NativeDependencyReport(IReadOnlyList<NativeLibraryCh
     /// <summary>The folders searched, in priority order.</summary>
     public IReadOnlyList<string> SearchPaths { get; } = searchPaths ?? throw new ArgumentNullException(nameof(searchPaths));
 
-
     /// <summary>True when every required library loaded.</summary>
     public bool RequiredLoaded => Libraries.Where(static library => library.IsRequired).All(static library => library.Status == NativeLibraryStatus.Loaded);
 

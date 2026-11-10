@@ -58,9 +58,16 @@ sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource engine) : IAudioD
 
     public void Dispose()
     {
-        Stop();
+        // One lock, so a Start racing the dispose cannot subscribe again after Stop.
         lock (_gate)
+        {
             _disposed = true;
+            if (_running)
+            {
+                _running = false;
+                engine.DeviceChanged -= OnDeviceChanged;
+            }
+        }
     }
 
     void OnDeviceChanged(object? sender, AudioDeviceChangeInfo info) => DeviceChanged?.Invoke(this, info);

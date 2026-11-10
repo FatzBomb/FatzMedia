@@ -199,7 +199,6 @@ public partial class PlayerCore
     void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
 
-
     void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
     {
         if (_disposed)

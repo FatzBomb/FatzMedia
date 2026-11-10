@@ -210,7 +210,6 @@ public readonly record struct MediaPlayerConfiguration
         EnablePerformanceLogging = false;
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
-
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
         SubtitleStyle = new SubtitleTextStyle();
         KaraokeStyle = new KaraokeTextStyle();

@@ -21,7 +21,7 @@ flowchart TB
 
     Platform["Platform package<br/>(Windows or Linux)<br/>native loading, timing,<br/>audio devices"]
     Renderer["Renderer<br/>(Direct3D11, Vulkan or Software)<br/>GPU or CPU composition"]
-    Native["BASS and FFmpeg<br/>(you supply)"]
+    Native["FFmpeg<br/>(you supply)"]
 
     UI --> Surface
     UI --> AdapterPlayer
@@ -65,7 +65,7 @@ You select a renderer by passing its factory (an <xref:FatzMedia.Video.Controlle
 
 ### Platform packages: the operating system
 
-`FatzMedia.Video.Windows` and `FatzMedia.Video.Linux` own what depends on the OS: finding and loading the BASS and FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzMedia.Video.IPlatformFactory> implementation (<xref:FatzMedia.Video.WindowsPlatformFactory>, <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
+`FatzMedia.Video.Windows` and `FatzMedia.Video.Linux` own what depends on the OS: finding and loading the FFmpeg libraries, high-resolution timing, audio output device monitoring, and the hardware-decode policy. Each provides an <xref:FatzMedia.Video.IPlatformFactory> implementation (<xref:FatzMedia.Video.WindowsPlatformFactory>, <xref:FatzMedia.Video.Linux.LinuxPlatformFactory>). A platform factory is constructed with the renderer factory, so the pair `(platform, renderer)` is chosen in one expression:
 
 ```csharp
 var platform = new WindowsPlatformFactory(new SoftwarePresentationCoordinatorFactory());
@@ -118,7 +118,7 @@ The consequences for you:
 
 ## Audio
 
-Audio output uses BASS behind an engine interface (<xref:FatzMedia.Video.Core.Abstractions.IAudioEngine>). Audio formats BASS has no add-on for fall back to FFmpeg decoding, which is played through the same BASS chain. Treat BASS as an implementation detail of the audio engine: the player API does not expose BASS types.
+Audio output uses FatzAudio behind an engine interface (<xref:FatzMedia.Video.Core.Abstractions.IAudioEngine>). Audio formats FatzAudio cannot decode fall back to FFmpeg decoding, which is played through the same FatzAudio chain. Treat FatzAudio as an implementation detail of the audio engine: the player API does not expose its types. See [Audio engine](../audio/audio-engine.md).
 
 ## What is not in scope
 
