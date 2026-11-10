@@ -12,7 +12,8 @@ namespace FatzMedia.Video.Linux.Tests;
 /// in-process HTTP server on 127.0.0.1. Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> to a folder of
 /// FFmpeg 9 shared libraries. Media default to <c>/opt/fatzbomb-native/media/h264_1080p.mp4</c> and
 /// <c>/opt/fatzbomb-native/media/hls/index.m3u8</c> (override the folder with
-/// <c>FATZBOMB_LINUX_MEDIA_DIR</c>). Without them the tests return immediately. No BASS is loaded,
+/// <c>FATZBOMB_LINUX_MEDIA_DIR</c>). Without them the tests return immediately. The audio engine is made
+/// unavailable (<see cref="UnavailableAudioEngineFactory"/>),
 /// so video plays its picture on the playback clock (ENG-033); the timings written to the test
 /// output are the 039A measurements.
 /// </summary>
@@ -148,7 +149,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     /// <summary>
-    /// Audio stream selection (it needs BASS to play, so this drives a demuxer directly): the audio
+    /// Audio stream selection (it needs an audio engine to play, so this drives a demuxer directly): the audio
     /// of the variant the picture plays, fetching that variant's segments only. Since slice 2 the
     /// player's audio shares the picture's read-ahead (<c>ReadAhead_FeedsPictureAndSound...</c>).
     /// </summary>
@@ -399,7 +400,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     [Fact]
-    public void AudioMode_WithoutBass_RejectsNetworkVideoClearly()
+    public void AudioMode_WithoutAudioEngine_RejectsNetworkVideoClearly()
     {
         if (!TryGetEnvironment(out var ffmpeg, out var media))
             return;
@@ -551,7 +552,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         return OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(ffmpeg) && File.Exists(Path.Combine(media, Mp4));
     }
 
-    /// <summary>A player with no BASS, the software renderer and a counting frame sink.</summary>
+    /// <summary>A player with no audio engine, the software renderer and a counting frame sink.</summary>
     sealed class PlayerSession : IDisposable
     {
         readonly string _appBase;
@@ -585,11 +586,11 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
         public static PlayerSession Create(string ffmpeg, MediaPlayerMode mode, NetworkRetryPolicy? retry = null, bool attachSurface = true, NetworkTlsPolicy? tls = null, NetworkReadAheadPolicy? readAhead = null)
         {
-            // An empty application folder: the only search path is the FFmpeg folder, so BASS is missing.
+            // An empty application folder: the only search path is the FFmpeg folder, and the audio engine cannot start, so the player has no audio.
             var appBase = Directory.CreateTempSubdirectory("fbm-net-video-").FullName;
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
             var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls, NetworkReadAhead = readAhead };
+            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls, NetworkReadAhead = readAhead, AudioEngineFactory = new UnavailableAudioEngineFactory() };
             var player = new PlayerCore(factory, configuration, [ffmpeg]);
             var sink = new CountingFrameSink();
             MediaPresentationFrameSinkHandle? handle = null;

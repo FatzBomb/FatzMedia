@@ -50,7 +50,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
     public IPlayerSession? Session => _playerController.Session;
 
     /// <summary>
-    /// Gets or sets the native library folders (BASS, FFmpeg) the control's player is created with;
+    /// Gets or sets the native library folders (FFmpeg) the control's player is created with;
     /// <see langword="null"/> (the default) uses <see cref="DLLPath"/> and the platform's default
     /// folders. Read when the player is created.
     /// </summary>

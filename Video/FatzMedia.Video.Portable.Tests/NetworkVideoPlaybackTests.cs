@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Media;
 using FatzMedia.Video.Core.Subtitle;
@@ -210,7 +211,7 @@ public sealed class NetworkVideoPlaybackTests
     }
 
     [Fact]
-    public void WithoutBass_FullModeStillOpensNetworkVideo()
+    public void WithoutAudio_FullModeStillOpensNetworkVideo()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };
         using var engine = CreateEngine(new TestAudioEngine(), video, audioAvailable: false);
@@ -219,7 +220,7 @@ public sealed class NetworkVideoPlaybackTests
     }
 
     [Fact]
-    public void AudioMode_WithoutBass_RejectsNetworkVideoAsAudioUnavailable()
+    public void AudioMode_WithoutAudio_RejectsNetworkVideoAsAudioUnavailable()
     {
         using var engine = CreateEngine(new TestAudioEngine(), new TestVideoEngine(), new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, audioAvailable: false);
         MediaErrorInfo? error = null;
@@ -270,6 +271,6 @@ public sealed class NetworkVideoPlaybackTests
     {
         public bool IsMidiFile(string path) => false;
 
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string path, TimeSpan transitionDuration) => null;
+        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string path, TimeSpan transitionDuration) => null;
     }
 }

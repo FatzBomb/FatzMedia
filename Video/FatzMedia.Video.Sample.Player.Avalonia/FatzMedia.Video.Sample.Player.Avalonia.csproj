@@ -30,7 +30,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
-    <ProjectReference Include="..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Avalonia\FatzMedia.Video.Avalonia.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
@@ -48,7 +47,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- BASS/FFmpeg binaries dropped into native/ (not tracked) are copied next to the app. -->
+    <!-- FFmpeg binaries dropped into native/ (not tracked) are copied next to the app. -->
     <None Update="native\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

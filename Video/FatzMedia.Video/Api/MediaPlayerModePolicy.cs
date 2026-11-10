@@ -76,7 +76,7 @@ static class MediaPlayerModePolicy
 
     /// <summary>
     /// Whether opening a network source through <paramref name="route"/> needs the audio engine
-    /// (ENG-033): network audio (BASS) and a soundtrack do; network video plays its picture on the
+    /// (ENG-033): network audio and a soundtrack do; network video plays its picture on the
     /// playback clock without one.
     /// </summary>
     public static bool NetworkNeedsAudioEngine(MediaModeRoute route, bool isVideo) =>
@@ -95,10 +95,10 @@ static class MediaPlayerModePolicy
     public static bool ForcesLoop(MediaPlayerMode mode) => mode == MediaPlayerMode.Background;
 
     /// <summary>
-    /// The error for a load that needs audio while the audio engine's native libraries (BASS) are
-    /// not loaded (ENG-033).
+    /// The error for a load that needs audio while the player has no audio engine (ENG-033): its
+    /// native library (FatzAudio) is missing or its output could not start.
     /// </summary>
-    public const string AudioUnavailableMessage = "Audio engine unavailable: BASS libraries not found";
+    public const string AudioUnavailableMessage = "Audio engine unavailable";
 
     /// <summary>
     /// Whether opening a file of <paramref name="type"/> through <paramref name="route"/> needs the

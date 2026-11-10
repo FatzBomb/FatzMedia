@@ -5,11 +5,11 @@ using Xunit.Abstractions;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// Opt-in player-mode checks (043A slices 1 and 2) with real BASS and FFmpeg, headless on a frame
+/// Opt-in player-mode checks (043A slices 1 and 2) with real FFmpeg and FatzAudio (null output), headless on a frame
 /// sink: what Background and Audio mode accept and refuse, and <c>SetModeAsync</c> keeping position,
 /// transport state, volume, tempo and pitch. Media from <c>scripts/setup-linux-native.sh</c>
-/// (<c>/opt/fatzbomb-native/media/formats</c>); needs <c>FATZBOMB_LINUX_BASS_DIR</c> and
-/// <c>FATZBOMB_LINUX_FFMPEG_DIR</c>; skips without them. The WPF and Avalonia surfaces during a switch
+/// (<c>/opt/fatzbomb-native/media/formats</c>); needs
+/// <c>FATZBOMB_LINUX_FFMPEG_DIR</c>; skips without it. The WPF and Avalonia surfaces during a switch
 /// are the owner's Windows smoke.
 /// </summary>
 [Collection("File type registry")]
@@ -24,10 +24,10 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
     [Fact]
     public void Background_RefusesAudio_ShowsAPicture_AndLoopsAVideoSilently()
     {
-        if (!TryGet(out var bass, out var ffmpeg))
+        if (!TryGet(out var ffmpeg))
             return;
 
-        using var session = Create(bass, ffmpeg, MediaPlayerMode.Background);
+        using var session = Create(ffmpeg, MediaPlayerMode.Background);
         Assert.False(session.Player.Load(Song));
         Assert.True(session.WaitForDiagnostic("Background mode does not accept"), Dump(session));
 
@@ -37,7 +37,7 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
         Assert.True(session.Player.Load(MusicVideo), Dump(session));
         Assert.True(session.Player.LoopMedia, "Background mode must loop");
         Assert.True(session.PlayUntil(0.5, TimeSpan.FromSeconds(10)), $"position {session.Player.Position}");
-        Assert.False(session.HasDiagnostic("Global BASS initialized"), "Background mode initialized audio output");
+        Assert.False(session.HasDiagnostic("FatzAudioEngine: Audio opened"), "Background mode initialized audio output");
         var frames = session.Sink.Frames;
         Assert.True(SpinWait.SpinUntil(() => session.Sink.Frames > frames + 10, TimeSpan.FromSeconds(10)), "no frames while looping");
         Assert.True(session.Sink.LastFrameHasContent);
@@ -46,10 +46,10 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
     [Fact]
     public void Audio_RefusesPicturesAndSilentVideo_AndPlaysAMusicVideosSound()
     {
-        if (!TryGet(out var bass, out var ffmpeg))
+        if (!TryGet(out var ffmpeg))
             return;
 
-        using var session = Create(bass, ffmpeg, MediaPlayerMode.Audio);
+        using var session = Create(ffmpeg, MediaPlayerMode.Audio);
         Assert.False(session.Player.Load(Picture));
         Assert.True(session.WaitForDiagnostic("Audio mode does not accept"), Dump(session));
         Assert.False(session.Player.Load(SilentVideo));
@@ -63,10 +63,10 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
     [Fact]
     public async Task SetModeAsync_FullToAudioAndBack_KeepsPositionStateAndEffects()
     {
-        if (!TryGet(out var bass, out var ffmpeg))
+        if (!TryGet(out var ffmpeg))
             return;
 
-        using var session = Create(bass, ffmpeg, MediaPlayerMode.Full);
+        using var session = Create(ffmpeg, MediaPlayerMode.Full);
         var player = session.Player;
         Assert.True(player.Load(MusicVideo), Dump(session));
         Assert.True(session.PlayUntil(1.0, TimeSpan.FromSeconds(10)));
@@ -104,10 +104,10 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
     [Fact]
     public async Task SetModeAsync_ToBackground_LoopsTheVideo_AndClosesAnAudioFile()
     {
-        if (!TryGet(out var bass, out var ffmpeg))
+        if (!TryGet(out var ffmpeg))
             return;
 
-        using var session = Create(bass, ffmpeg, MediaPlayerMode.Full);
+        using var session = Create(ffmpeg, MediaPlayerMode.Full);
         var player = session.Player;
         Assert.True(player.Load(MusicVideo), Dump(session));
         player.LoopMedia = false;
@@ -136,12 +136,12 @@ public sealed class LinuxPlayerModesNativeTests(ITestOutputHelper output)
         Assert.Equal(2, player.Effects.Pitch);
     }
 
-    static bool TryGet(out string bass, out string ffmpeg) =>
-        LinuxNativeTestPlayer.TryGetFolders(out bass, out ffmpeg)
+    static bool TryGet(out string ffmpeg) =>
+        LinuxNativeTestPlayer.TryGetFfmpegFolder(out ffmpeg)
         && File.Exists(MusicVideo) && File.Exists(SilentVideo) && File.Exists(Song) && File.Exists(Picture);
 
-    static LinuxNativeTestPlayer Create(string bass, string ffmpeg, MediaPlayerMode mode) =>
-        LinuxNativeTestPlayer.Create([bass, ffmpeg], new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode });
+    static LinuxNativeTestPlayer Create(string ffmpeg, MediaPlayerMode mode) =>
+        LinuxNativeTestPlayer.Create([ffmpeg], new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode });
 
     static string Dump(LinuxNativeTestPlayer session) => string.Join(" | ", session.Errors.Concat(session.Diagnostics.TakeLast(6)));
 }

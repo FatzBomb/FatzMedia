@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    The 037A hand tests (FatzAudio replacing BASS), as much of them automated as can be.
+    The 037A hand tests (the FatzAudio engine), as much of them automated as can be.
 
 .DESCRIPTION
     Part 1 runs by itself (about 3 minutes): it plays test tones through the video-audio path
@@ -139,7 +139,7 @@ if ($Part -in '2', 'both') {
         Quiet   = Select-Media 'a QUIET video or song (older or classical)' ($videoExt + @('.mp3', '.flac', '.m4a')) @('quiet', 'classical', 'old')
         Cdg     = Select-Media 'a karaoke song: MP3+G (pick the .mp3) or a ZIP' @('.mp3', '.zip') @('karaoke', 'cdg', 'sc')
         Kar     = Select-Media 'a MIDI karaoke file' @('.kar', '.mid') @('kar')
-        Song    = Select-Media 'any MP3 song (for the no-BASS check)' @('.mp3') @('song')
+        Song    = Select-Media 'any MP3 song (for the plain song check)' @('.mp3') @('song')
     }
     $Exe = @{ Wpf = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player' }
 
@@ -149,7 +149,7 @@ if ($Part -in '2', 'both') {
         if ($MediaKey -and -not $Media[$MediaKey]) { Add-Outcome $Id $Name 'manual' 'SKIP' 'no file chosen' ''; return }
         $a = (Read-Host 'Press Enter to start, or S to skip').Trim().ToLowerInvariant()
         if ($a -eq 's') { Add-Outcome $Id $Name 'manual' 'SKIP' 'skipped' ''; return }
-        $args2 = @('--audio=fatz') + $PlayerArgs
+        $args2 = @() + $PlayerArgs
         if ($MediaKey) { $args2 += $Media[$MediaKey] }
         $proc = Start-Player 'Wpf' $args2
         [void](Wait-Window $proc)
@@ -205,7 +205,7 @@ if ($Part -in '2', 'both') {
     Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
     $url = (Read-Host 'Paste an http:// or https:// radio stream URL (or press Enter to skip)').Trim()
     if ($url) {
-        $proc = Start-Player 'Wpf' @('--audio=fatz', "--url=$url")
+        $proc = Start-Player 'Wpf' @("--url=$url")
         [void](Wait-Window $proc)
         Say-Do @('It plays and the song title appears.')
         Ask-Outcome 'M10' 'network radio'
@@ -220,7 +220,7 @@ if ($Part -in '2', 'both') {
     Say-Info '  (a name FatzAudio does not know plays on the default, and the Log lists the names it knows)'
     $device = (Read-Host 'Type the name of a device that is NOT your default (a USB headset, HDMI), or Enter to skip').Trim()
     if ($device -and $Media['Song']) {
-        $proc = Start-Player 'Wpf' @('--audio=fatz', "--audio-device=$device", $Media['Song'])
+        $proc = Start-Player 'Wpf' @("--audio-device=$device", $Media['Song'])
         [void](Wait-Window $proc)
         Say-Do @(
             'The sound comes out of that device (the Log says "ready on the <name> output device").',
@@ -232,24 +232,19 @@ if ($Part -in '2', 'both') {
         if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|not found' 12 }
     } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
 
-    # M12: no BASS at all (the script prepares a copy without the BASS DLLs).
+    # M12: no BASS DLLs anywhere in the player folder, and a song still plays.
     Write-Host ''
-    Write-Host '--- M12 no BASS at all ---' -ForegroundColor Cyan
+    Write-Host '--- M12 no BASS DLLs, song plays ---' -ForegroundColor Cyan
     if ($Media['Song']) {
-        $copy = Join-Path $Repo '..\..\work\fatzmedia\Video\scratch\player-without-bass'
-        $copy = [IO.Path]::GetFullPath($copy)
-        if (Test-Path $copy) { Remove-Item $copy -Recurse -Force }
-        Copy-Item (Split-Path $Exe['Wpf']) $copy -Recurse
-        Get-ChildItem $copy -Recurse -Filter 'bass*.dll' | Remove-Item -Force
-        Say-Info "A copy of the player without any bass*.dll is in $copy (deleted after this check)."
-        $copyExe = Join-Path $copy (Split-Path $Exe['Wpf'] -Leaf)
-        $proc = Start-Process -FilePath $copyExe -ArgumentList ('--audio=fatz "' + $Media['Song'] + '"') -WorkingDirectory $copy -PassThru
+        $bassFiles = @(Get-ChildItem (Split-Path $Exe['Wpf']) -Recurse -Filter 'bass*.dll' -ErrorAction SilentlyContinue)
+        if ($bassFiles.Count -gt 0) { Say-Info ('Found BASS DLLs in the player folder: ' + (($bassFiles | ForEach-Object Name) -join ', ')) }
+        else { Say-Info 'The player folder contains no bass*.dll.' }
+        $proc = Start-Player 'Wpf' @($Media['Song'])
         [void](Wait-Window $proc)
         Say-Do @('The song plays with sound. Also open the music video from M1: it plays with sound.')
-        Ask-Outcome 'M12' 'no BASS DLLs at all'
+        Ask-Outcome 'M12' 'no BASS DLLs, song plays'
         Stop-Player $proc
-        Remove-Item $copy -Recurse -Force -ErrorAction SilentlyContinue
-    } else { Add-Outcome 'M12' 'no BASS DLLs at all' 'manual' 'SKIP' 'no song chosen' '' }
+    } else { Add-Outcome 'M12' 'no BASS DLLs, song plays' 'manual' 'SKIP' 'no song chosen' '' }
 }
 
 # ---------------------------------------------------------------------------------------------

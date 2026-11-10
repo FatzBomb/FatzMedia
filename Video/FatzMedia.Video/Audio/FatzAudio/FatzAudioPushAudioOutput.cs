@@ -78,9 +78,6 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
         }
     }
 
-    public int PlayHandle => 0;
-    public int SourceHandle => 0;
-
     public event EventHandler<double>? NormalizationGainChanged;
 
     /// <summary>The player's normalization switch: FatzAudio's normalization is per engine.</summary>
@@ -126,8 +123,6 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
                 return _equalizer;
         }
     }
-
-    public IMidiEventReader? GetMidiEventReader() => null;
 
     public bool Create(int sampleRate, int channels, string? sourcePath) =>
         OpenFeed(options => _engine.CreatePushStream(new Fa.AudioFormat(Fa.SampleFormat.Float32, sampleRate, channels), options), sourcePath);

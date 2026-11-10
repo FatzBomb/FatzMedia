@@ -131,11 +131,6 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     public event EventHandler? Closed;
     public event EventHandler? PlaybackStarted;
 
-    [Obsolete("The audio handle is BASS-specific and unused; call Load. Removed with BASS (037A).")]
-    public void LoadPaired(string filePath, int audioStreamHandle) => Load(filePath);
-
-    [Obsolete("The audio handle is BASS-specific and unused; call Load. Removed with BASS (037A).")]
-    public void LoadPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle) => Load(archiveEntry);
 
     public void Load(string filePath)
     {

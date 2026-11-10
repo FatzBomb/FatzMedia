@@ -22,7 +22,6 @@ public enum CdgSafetyZone
 /// smoothed and optionally outlined and shadowed, instead of the classic 300x216 picture scaled up on the GPU. Off by
 /// default (<c>default(CdgScalingOptions)</c>): the classic picture.
 /// </summary>
-/// <remarks>The BASS engine ignores it: its CD+G is always the classic picture.</remarks>
 public readonly record struct CdgScalingOptions
 {
     /// <summary>Gets whether CD+G is drawn scaled (otherwise the classic picture).</summary>

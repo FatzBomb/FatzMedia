@@ -124,8 +124,6 @@ public sealed class CdgPipelineSeekTests : IDisposable
             }
         }
 
-        public void LoadPaired(string filePath, int audioStreamHandle) { }
-        public void LoadPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle) { }
         public void Load(string filePath) { }
         public void Load(IArchiveEntryInfo archiveEntry) { }
         public void Play() { }

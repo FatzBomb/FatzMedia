@@ -1,3 +1,4 @@
+using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
@@ -8,9 +9,7 @@ using FatzMedia.Video.Pipeline;
 namespace FatzMedia.Video.Tests;
 
 /// <summary>
-/// 037A slice 1: internal consumers reach the audio engine through seams, never through the BASS
-/// handles on <see cref="IAudioEngine"/>. The engine double here throws on either handle, so any
-/// remaining handle read fails the test.
+/// Internal consumers reach the audio engine through its seams (MIDI reader, fades, filters, trim).
 /// </summary>
 public sealed class AudioEngineSeamTests : IDisposable
 {
@@ -21,13 +20,12 @@ public sealed class AudioEngineSeamTests : IDisposable
     public void Dispose() => File.Delete(_karPath);
 
     [Fact]
-    public void EngineWithoutTheReaderSeam_IsReadThroughItsSourceHandle_AsBefore()
+    public void EngineWithoutTheReaderSeam_HasNoMidiLyrics()
     {
-        // Handle 0 (no BASS channel) reads as no reader, as handle 0 did before the seam.
         Assert.Null(PlaybackCoordinator.GetMidiEventReader(new TestAudioEngine()));
         Assert.Null(PlaybackCoordinator.GetMidiEventReader(null));
 
-        using var coordinator = CreateCoordinator(new TestAudioEngine(), new BassMidiLyricProvider());
+        using var coordinator = CreateCoordinator(new TestAudioEngine(), new MidiLyricProvider());
         Assert.True(coordinator.OpenAudio(_karPath));
         Assert.Empty(coordinator.SubtitleTracks);
     }
@@ -36,8 +34,8 @@ public sealed class AudioEngineSeamTests : IDisposable
     public void MidiLyrics_ComeFromTheEngineReader_WhenTheEngineHasOne()
     {
         var reader = new RecordingMidiReader(new KaraokeMidiReader());
-        var engine = new HandlelessReaderAudioEngine(reader);
-        using var coordinator = CreateCoordinator(engine, new BassMidiLyricProvider());
+        var engine = new ReaderSeamAudioEngine(reader);
+        using var coordinator = CreateCoordinator(engine, new MidiLyricProvider());
 
         // No such file: the cues can only come from the engine's reader.
         Assert.True(coordinator.OpenAudio("missing/song.kar"));
@@ -47,49 +45,27 @@ public sealed class AudioEngineSeamTests : IDisposable
     }
 
     [Fact]
-    public void HostSuppliedProvider_StillGetsTheSourceHandle()
+    public void AudioEngines_ProvideTheMidiReaderEffectAndTrimSeams()
     {
-        var provider = new RecordingHandleProvider();
-        using var coordinator = CreateCoordinator(new TestAudioEngine(), provider);
-
-        Assert.True(coordinator.OpenAudio(_karPath));
-
-        Assert.Equal([(0, _karPath)], provider.Calls);
-    }
-
-    [Fact]
-    public void BassEngines_ProvideTheMidiReaderSeam()
-    {
-        // Not constructed: BASS is absent here. The BASS engines read their source channel as before.
-        Assert.True(typeof(IMidiEventReaderSource).IsAssignableFrom(typeof(AudioEngine)));
-        Assert.True(typeof(IMidiEventReaderSource).IsAssignableFrom(typeof(VideoAudioEngine)));
-        Assert.True(typeof(IMidiEventReaderSource).IsAssignableFrom(typeof(SoundtrackAudioEngine)));
-        Assert.True(typeof(IMidiLyricReaderProvider).IsAssignableFrom(typeof(BassMidiLyricProvider)));
-        Assert.Null(BassMidiEventReader.ForHandle(0));
-    }
-
-    [Fact]
-    public void BassEngines_ImplementTheEffectAndTrimSeams()
-    {
-        foreach (var engine in new[] { typeof(AudioEngine), typeof(VideoAudioEngine), typeof(SoundtrackAudioEngine) })
+        Assert.True(typeof(IMidiEventReaderSource).IsAssignableFrom(typeof(FatzAudioEngine)));
+        foreach (var engine in new[] { typeof(FatzAudioEngine), typeof(VideoAudioEngine), typeof(SoundtrackAudioEngine) })
         {
             Assert.True(typeof(IAudioFadeGainTarget).IsAssignableFrom(engine), engine.Name);
             Assert.True(typeof(IAudioFilterHost).IsAssignableFrom(engine), engine.Name);
         }
 
-        Assert.True(typeof(IAudioTrimWindowProvider).IsAssignableFrom(typeof(AudioEngine)));
-        Assert.True(typeof(IAudioAnalysisOpenControl).IsAssignableFrom(typeof(AudioEngine)));
+        Assert.True(typeof(IAudioTrimWindowProvider).IsAssignableFrom(typeof(FatzAudioEngine)));
+        Assert.True(typeof(IAudioAnalysisOpenControl).IsAssignableFrom(typeof(FatzAudioEngine)));
     }
-
     [Fact]
-    public void CueBuilder_ReadsInThePreSeamBassOrder()
+    public void CueBuilder_ReadsInAFixedOrder()
     {
         var reader = new RecordingMidiReader(new KaraokeMidiReader());
 
         Assert.NotNull(MidiLyricCueBuilder.ExtractLyrics(reader, "song.kar", TimeSpan.FromSeconds(1)));
 
-        // Before the seam on BASS: StreamGetMarks(Lyric), StreamGetMarks(Text), ChannelGetLength +
-        // Bytes2Seconds, the metadata marks and tempo events, then Bytes2Seconds per lyric.
+        // The lyric and text marks, the length, the metadata marks and tempo events, then one
+        // position per lyric.
         Assert.Equal(
             [
                 "Marks:Lyric", "Marks:Text", "Duration",
@@ -100,16 +76,13 @@ public sealed class AudioEngineSeamTests : IDisposable
     }
 
     [Fact]
-    public void CueBuilder_WithNoReader_ReturnsNull_AsHandleZeroDid()
-    {
+    public void CueBuilder_WithNoReader_ReturnsNull() =>
         Assert.Null(MidiLyricCueBuilder.ExtractLyrics(null, "song.kar"));
-        Assert.Null(MidiLyricCueBuilder.ExtractLyrics(0, "song.kar"));
-    }
 
     [Fact]
-    public async Task Fades_RunOnAHandlelessEngine()
+    public async Task Fades_RunThroughTheGainSeam()
     {
-        var engine = new HandlelessAudioEngine();
+        var engine = new SeamAudioEngine();
         var runner = new AudioFadeRunner(static (_, _) => Task.CompletedTask);
 
         Assert.True(await runner.RunAsync(engine, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(1), 0, CancellationToken.None));
@@ -118,9 +91,9 @@ public sealed class AudioEngineSeamTests : IDisposable
     }
 
     [Fact]
-    public void TrimAndEqualizer_RunOnAHandlelessEngine()
+    public void TrimAndEqualizer_RunThroughTheirSeams()
     {
-        var engine = new HandlelessAudioEngine
+        var engine = new SeamAudioEngine
         {
             Duration = 100,
             ActiveTrimWindow = new MediaAnalysisResult(100, 5, 95, 90, [new SilenceRegion(0, 5), new SilenceRegion(95, 100)], 1),
@@ -146,8 +119,8 @@ public sealed class AudioEngineSeamTests : IDisposable
             MediaPlayerConfiguration.Auto,
             audioAvailable: false);
 
-    /// <summary>An engine with no BASS handles: reading either throws.</summary>
-    class HandlelessAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IAudioFadeGainTarget, IAudioFilterHost
+    /// <summary>A minimal engine with the analysis, trim, fade and filter seams.</summary>
+    class SeamAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IAudioFadeGainTarget, IAudioFilterHost
     {
         int _fadeSession;
 
@@ -157,8 +130,7 @@ public sealed class AudioEngineSeamTests : IDisposable
         public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
 
         public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
-        public int PlayHandle => throw new InvalidOperationException("No BASS handle");
-        public int SourceHandle => throw new InvalidOperationException("No BASS handle");
+
         public bool Normalize { get; set; }
         public double NormalizationGain => 1;
         public bool IsNormalizationReady => true;
@@ -209,13 +181,12 @@ public sealed class AudioEngineSeamTests : IDisposable
         }
     }
 
-    /// <summary>The handleless engine with its own MIDI reader, as a second audio engine would have.</summary>
-    sealed class HandlelessReaderAudioEngine(IMidiEventReader reader) : HandlelessAudioEngine, IMidiEventReaderSource
+    /// <summary>The engine with its own MIDI reader.</summary>
+    sealed class ReaderSeamAudioEngine(IMidiEventReader reader) : SeamAudioEngine, IMidiEventReaderSource
     {
         public IMidiEventReader? GetMidiEventReader() => reader;
     }
 
-    /// <summary>Records the order of reads, which on BASS are the native calls.</summary>
     /// <summary>
     /// A small .kar as a MIDI reader would report it: 480 ticks per quarter note, 120 bpm until tick
     /// 1920 then 240 bpm, positions in ticks.
@@ -270,19 +241,6 @@ public sealed class AudioEngineSeamTests : IDisposable
         {
             Calls.Add($"Seconds:{position}");
             return inner.PositionToSeconds(position);
-        }
-    }
-
-    sealed class RecordingHandleProvider : IMidiLyricProvider
-    {
-        public List<(int Handle, string Path)> Calls { get; } = [];
-
-        public bool IsMidiFile(string path) => MidiLyricCueBuilder.IsMidiFile(path);
-
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string sourcePath, TimeSpan transitionDuration)
-        {
-            Calls.Add((sourceHandle, sourcePath));
-            return null;
         }
     }
 

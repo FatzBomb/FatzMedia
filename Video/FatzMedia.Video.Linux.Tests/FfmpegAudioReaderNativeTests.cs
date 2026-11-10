@@ -4,15 +4,15 @@ using FatzMedia.Video.Linux.Runtime;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// Opt-in native check of the FFmpeg audio paths of Stage 033A: video-audio normalization and
-/// the unsupported-format conversion.
+/// Opt-in native check of the FFmpeg audio paths of Stage 033A: reading PCM and the unsupported-format
+/// conversion.
 /// Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> as for <see cref="LinuxNativeSmokeTests"/>; the test
 /// writes its own WAV, so no sample file is needed. Without the variable it returns immediately.
 /// </summary>
 public sealed class FfmpegAudioReaderNativeTests
 {
     [Fact]
-    public void RealFfmpeg_ReadsPcmAndFindsTheKnownPeak()
+    public void RealFfmpeg_ReadsPcm()
     {
         var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
@@ -22,8 +22,8 @@ public sealed class FfmpegAudioReaderNativeTests
         var wav = Path.Combine(Path.GetTempPath(), $"fatzbomb-peak-{Guid.NewGuid():N}.wav");
         try
         {
-            // 20 s of a 440 Hz tone at half scale, with one louder 0.9 burst at 15 s that only the
-            // deep pass (which samples the whole file) can see.
+            // 20 s of a 440 Hz tone at half scale, with one louder burst at 15 s.
+
             WriteStereoTone(wav, sampleRate: 44100, seconds: 20, amplitude: 0.5, burstAtSeconds: 15, burstAmplitude: 0.9);
 
             using var reader = FfmpegAudioReader.Open(wav);
@@ -32,12 +32,6 @@ public sealed class FfmpegAudioReaderNativeTests
             Assert.Equal(2, reader.Channels);
             Assert.InRange(reader.DurationSeconds, 19.9, 20.1);
 
-            var quickPeak = FfmpegAudioPeakScanner.ScanQuick(reader, CancellationToken.None);
-            Assert.InRange(quickPeak, 0.49, 0.51);
-
-            var deepPeak = FfmpegAudioPeakScanner.ScanDeep(reader, CancellationToken.None);
-            Assert.InRange(deepPeak, 0.89, 0.91);
-            Assert.InRange(AudioNormalizer.CalculateGainFromPeak(deepPeak), 0.87, 0.91);
         }
         finally
         {
@@ -135,7 +129,6 @@ public sealed class FfmpegAudioReaderNativeTests
             Assert.Equal(48000, reader.SampleRate);
             Assert.Equal(2, reader.Channels);
             Assert.InRange(reader.DurationSeconds, 2.99, 3.01);
-            Assert.InRange(FfmpegAudioPeakScanner.ScanDeep(reader, CancellationToken.None), 0.74, 0.76);
         }
     }
 

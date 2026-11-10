@@ -17,13 +17,11 @@ sealed partial class VideoPipeline(
     IClockSource clock,
     MediaState state,
     MediaPlayerConfiguration configuration,
-    int bassDeviceIndex,
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
     RendererVideoDecodeServices hardwareAccelerationServices,
-    bool usesAudio,
-    Func<IPushAudioOutput>? createAudioOutput = null) : IVideoEngine, IVideoOpenOutcome, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
+    Func<IPushAudioOutput>? createAudioOutput) : IVideoEngine, IVideoOpenOutcome, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
     readonly HoldableClock _clock = new(clock ?? throw new ArgumentNullException(nameof(clock)));
@@ -34,12 +32,10 @@ sealed partial class VideoPipeline(
     readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
     readonly RendererVideoDecodeServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
-    // False in Background mode (043A) and without BASS (ENG-033): picture only, on the playback clock.
-    readonly bool _usesAudio = usesAudio;
+    // Where video audio plays: the audio engine's device. Null in Background mode (043A) and without an audio
+    // engine (ENG-033): picture only, on the playback clock.
+    readonly Func<IPushAudioOutput>? _createAudioOutput = createAudioOutput;
     readonly AudioPresentationClock _presentationClock = new();
-    // Where video audio plays: the player's FatzAudio device (037A slice 5), else BASS on the player's device.
-    readonly Func<IPushAudioOutput> _createAudioOutput = createAudioOutput
-        ?? (() => new BassPushAudioOutput(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex));
     readonly Lock _decodeLock = new();
     readonly PlaybackScheduler _decodeScheduler = new("VideoDecode");
     readonly PlaybackScheduler _presentationScheduler = new("VideoPresentation");
@@ -64,7 +60,7 @@ sealed partial class VideoPipeline(
     bool _loopPreSeekActive;
     // Tracks the last VideoAudioEngine.CompletedLoopCount value the video side has caught up
     // to. When the audio engine's count advances (it wraps its own decoder and never stops
-    // its BASS channel - see VideoAudioEngine.LoopPlayback), CommitAudioLoopWrap catches the
+    // its audio output - see VideoAudioEngine.LoopPlayback), CommitAudioLoopWrap catches the
     // video side up with no audio calls at all.
     int _lastObservedAudioLoopCount;
     double? _overrideRefreshHz;
@@ -304,10 +300,10 @@ sealed partial class VideoPipeline(
         // E-AC-3). SeekCore still repositions both cursors to the same target. A network video
         // shares the picture's cursor, so its read-ahead downloads the source once (slice 2,
         // ENG-034); SeekCore's container seek then repositions both.
-        // Background mode (043A), and any mode without BASS (ENG-033), decodes the picture only
-        // and runs on the playback clock.
-        _audioEngine = _usesAudio
-            ? new VideoAudioEngine(_createAudioOutput(), network is not null ? _sharedDemuxer : null)
+        // Background mode (043A), and any mode without an audio engine (ENG-033), decodes the picture
+        // only and runs on the playback clock.
+        _audioEngine = _createAudioOutput is { } createOutput
+            ? new VideoAudioEngine(createOutput(), network is not null ? _sharedDemuxer : null)
             : null;
         if (_audioEngine is null)
         {
@@ -444,7 +440,7 @@ sealed partial class VideoPipeline(
                 if (!_audioEngine!.Play() && _configuration.EnableLogging)
                     Debug.WriteLine("[VideoPipeline] audio Play() returned false during transport start");
                 _presentationClock.Start(presentationStartPosition);
-                if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Playback started using BASS video-audio clock.");
+                if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Playback started using the video-audio clock.");
             }
             else
             {
@@ -557,7 +553,7 @@ sealed partial class VideoPipeline(
     }
 
     // Gapless audio-backed loop wrap-commit. The audio engine already wrapped its own
-    // decoder and never stopped its BASS channel (VideoAudioEngine.LoopPlayback /
+    // decoder and never stopped its audio output (VideoAudioEngine.LoopPlayback /
     // CompletedLoopCount - the channel plays continuously across the boundary), so by the
     // time this fires the audio is already playing the next lap without interruption. This
     // just catches the video side up: flush any stale tail frames left in the queue by
@@ -1212,7 +1208,7 @@ sealed partial class VideoPipeline(
                             : PresentFrameForCurrentPosition();
 
                         // Gapless audio-backed loop: the audio engine wraps its own decoder
-                        // and never stops its BASS channel (VideoAudioEngine.LoopPlayback /
+                        // and never stops its audio output (VideoAudioEngine.LoopPlayback /
                         // CompletedLoopCount). When it reports a new completed loop, catch the
                         // video side up - no audio Seek/Play calls needed. Gated on
                         // LoopPlayback (not _loopPreSeekActive) so a failed/missed video

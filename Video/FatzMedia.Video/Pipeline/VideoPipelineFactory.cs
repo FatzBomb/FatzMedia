@@ -20,8 +20,8 @@ sealed class VideoPipelineFactory : IVideoEngineFactory
     /// <param name="platformServices">The platform's timing and device services for the pipeline.</param>
     /// <param name="hardwareAccelerationServices">What the renderer offers for decoding on its own device.</param>
     /// <param name="audioAvailable">
-    /// False when the audio engine's native libraries (BASS) did not load: video then plays its
-    /// picture on the playback clock, as in Background mode, and never touches BASS.
+    /// False when the player has no audio engine: video then plays its picture on the playback
+    /// clock, as in Background mode.
     /// </param>
     public VideoPipelineFactory(
         IPrecisionWaiterFactory precisionWaiterFactory,
@@ -35,7 +35,7 @@ sealed class VideoPipelineFactory : IVideoEngineFactory
         _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
     }
 
-    /// <summary>Whether video plays its own audio: not in Background mode (043A) and not without BASS (ENG-033).</summary>
+    /// <summary>Whether video plays its own audio: not in Background mode (043A) and not without an audio engine (ENG-033).</summary>
     internal static bool UsesVideoAudio(MediaPlayerMode mode, bool audioAvailable) =>
         audioAvailable && MediaPlayerModePolicy.UsesAudioOutput(mode);
 
@@ -46,20 +46,20 @@ sealed class VideoPipelineFactory : IVideoEngineFactory
         MediaPlayerConfiguration configuration,
         PlaybackSyncState sync)
     {
-        var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
-            ? deviceProvider.BassDeviceIndex
-            : configuration.AudioOutputDeviceIndex;
+        // Video audio plays on the audio engine's device; an engine without one leaves video silent.
+        Func<IPushAudioOutput>? createAudioOutput = UsesVideoAudio(configuration.Mode, _audioAvailable)
+            && audioEngine is IPushAudioOutputSource outputSource
+                ? outputSource.CreatePushAudioOutput
+                : null;
 
         return new VideoPipeline(
             clock,
             state,
             configuration,
-            bassDeviceIndex,
             sync,
             _precisionWaiterFactory,
             _platformServices,
             _hardwareAccelerationServices,
-            UsesVideoAudio(configuration.Mode, _audioAvailable),
-            audioEngine is IPushAudioOutputSource outputSource ? outputSource.CreatePushAudioOutput : null);
+            createAudioOutput);
     }
 }

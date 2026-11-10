@@ -40,7 +40,6 @@ $SmokeName = 'backlog'
 
 $GenDir = Join-Path $OutDir 'media'
 New-Item -ItemType Directory -Force -Path $GenDir | Out-Null
-$FallbackTemp = Join-Path $env:TEMP 'FatzMediaVideo'
 $CacheDir = Join-Path $env:LOCALAPPDATA 'FatzMedia.Video\AudioCache'
 $Totals = @{ Pass = 0; Fail = 0; Info = 0 }
 
@@ -247,7 +246,7 @@ function Test-HasEncoder([string]$Name) {
 
 # 1. Formats on both engines (ENG-043, 033A slice 2, FatzAudio's format answer)
 function Test-1 {
-    if (-not (Start-Step 1 'Audio formats on BASS and FatzAudio' 'ENG-043 (ALAC, M4R, audio-only MP4/TS), the FFmpeg fallback (033A slice 2) and what FatzAudio decodes. Fully automatic.' '12')) { return }
+    if (-not (Start-Step 1 'Audio formats on FatzAudio' 'ENG-043 (ALAC, M4R, audio-only MP4/TS), the FFmpeg fallback (033A slice 2) and what FatzAudio decodes. Fully automatic.' '6')) { return }
     if (-not $script:FfmpegExe) { Add-Info 'skipped: no FFmpeg'; return }
     Say 'Making the test files...'
     $files = [ordered]@{}
@@ -278,46 +277,31 @@ function Test-1 {
     $files['MPG (MPEG-2, MP2 audio)'] = New-Media 'mpeg2-mp2.mpg' ($Pic + $Tone + @('-c:v', 'mpeg2video', '-c:a', 'mp2', '-f', 'mpeg'))
     $files['MP4 video (MPEG-4, AAC)'] = New-Media 'video-aac.mp4' ($Pic + $Tone + @('-c:v', 'mpeg4', '-c:a', 'aac'))
 
-    foreach ($engine in @('bass', 'fatz')) {
-        Add-Result ''
-        Add-Result "  -- engine: $engine --"
-        foreach ($k in $files.Keys) {
-            $f = $files[$k]
-            if (-not $f) { Add-Info "$k ($engine): not made by this FFmpeg build"; continue }
-            $r = Invoke-Run 'Wpf' @("--audio=$engine", $f) ("fmt-$engine-" + ($k -replace '[^A-Za-z0-9]+', '-')) -Seconds 4
-            $loaded = @(Get-LogLines $r.Log '[Status]' | Where-Object { $_ -match 'Loaded:' }).Count -gt 0
-            $playing = @(Get-LogLines $r.Log '[Stats]' | Where-Object { $_ -match ' Playing \|' }).Count -gt 0
-            $how = @()
-            if (@(Get-LogLines $r.Log 'with FFmpeg in').Count) { $how += 'converted by FFmpeg' }
-            if (@(Get-LogLines $r.Log 'FatzAudio cannot decode').Count) { $how += 'FatzAudio handed it to FFmpeg' }
-            if (@(Get-LogLines $r.Log 'opening it as audio').Count) { $how += 'video file played as audio' }
-            $errors = @(Get-LogLines $r.Log '[Diagnostic]' | Where-Object { $_ -match '\bError\b' } | Select-Object -First 2)
-            $detail = ('loaded {0}, playing {1}{2}{3}' -f $loaded, $playing, $(if ($how) { ', ' + ($how -join ', ') } else { '' }), $(if ($errors) { '; ' + ($errors -join ' / ') } else { '' }))
-            Add-Check "$k on $engine" ($loaded -and $playing) $detail
-        }
-    }
-
-    # The long-file fallback writes a temp WAV and removes it on close (033A slice 2 step 4).
-    $long = New-Media 'long-10min.wv' @('-f', 'lavfi', '-i', 'sine=frequency=330:duration=600:sample_rate=48000', '-ac', '2', '-c:a', 'wavpack')
-    if ($long) {
-        $r = Invoke-Run 'Wpf' @($long) 'fmt-long-wavpack' -Seconds 4
-        $temp = @(Get-LogLines $r.Log 'temp file').Count -gt 0
-        Start-Sleep -Seconds 2
-        $left = @(Get-ChildItem -Path $FallbackTemp -Filter '*.wav' -ErrorAction SilentlyContinue)
-        Add-Check '10-minute WavPack on BASS goes through a temp file' $temp ''
-        Add-Check 'Its temp WAV is gone after the player closed' ($left.Count -eq 0) ("WAVs left in $FallbackTemp" + ": " + $left.Count)
+    foreach ($k in $files.Keys) {
+        $f = $files[$k]
+        if (-not $f) { Add-Info "${k}: not made by this FFmpeg build"; continue }
+        $r = Invoke-Run 'Wpf' @($f) ('fmt-' + ($k -replace '[^A-Za-z0-9]+', '-')) -Seconds 4
+        $loaded = @(Get-LogLines $r.Log '[Status]' | Where-Object { $_ -match 'Loaded:' }).Count -gt 0
+        $playing = @(Get-LogLines $r.Log '[Stats]' | Where-Object { $_ -match ' Playing \|' }).Count -gt 0
+        $how = @()
+        if (@(Get-LogLines $r.Log 'with FFmpeg in').Count) { $how += 'converted by FFmpeg' }
+        if (@(Get-LogLines $r.Log 'FatzAudio cannot decode').Count) { $how += 'FatzAudio handed it to FFmpeg' }
+        if (@(Get-LogLines $r.Log 'opening it as audio').Count) { $how += 'video file played as audio' }
+        $errors = @(Get-LogLines $r.Log '[Diagnostic]' | Where-Object { $_ -match 'Error' } | Select-Object -First 2)
+        $detail = ('loaded {0}, playing {1}{2}{3}' -f $loaded, $playing, $(if ($how) { ', ' + ($how -join ', ') } else { '' }), $(if ($errors) { '; ' + ($errors -join ' / ') } else { '' }))
+        Add-Check $k ($loaded -and $playing) $detail
     }
 }
 
 # 2. Loudness normalization on FatzAudio (037A normalization)
 function Test-2 {
-    if (-not (Start-Step 2 'Loudness normalization (FatzAudio)' 'The 037A normalization smoke: first play scans, later plays use the cache, levels match, BASS unchanged.' '8')) { return }
+    if (-not (Start-Step 2 'Loudness normalization (FatzAudio)' 'The 037A normalization smoke: first play scans, later plays use the cache, levels match.' '8')) { return }
     if (-not (Need-Media @('loud', 'quiet'))) { return }
     if (Test-Path $CacheDir) { Remove-Item $CacheDir -Recurse -Force }
     Add-Info "cleared $CacheDir"
     foreach ($k in @('loud', 'quiet', 'tagged')) {
         if (-not $Media[$k]) { continue }
-        $r = Invoke-Run 'Wpf' @('--audio=fatz', $Media[$k]) "norm-first-$k" -Seconds 10
+        $r = Invoke-Run 'Wpf' @($Media[$k]) "norm-first-$k" -Seconds 10
         $line = @(Get-LogLines $r.Log 'Loudness ' | Where-Object { $_ -match 'LUFS' }) | Select-Object -First 1
         $ok = [bool]$line
         if ($k -eq 'tagged') { $ok = $ok -and ($line -match '\(Tags\)') }
@@ -326,12 +310,12 @@ function Test-2 {
     $entries = @(Get-ChildItem -Path $CacheDir -File -ErrorAction SilentlyContinue)
     Add-Check 'The cache folder holds entries' ($entries.Count -gt 0) ("$CacheDir, " + $entries.Count + ' file(s): ' + (($entries | ForEach-Object { '{0} ({1} B)' -f $_.Name, $_.Length }) -join ', '))
     foreach ($k in @('loud', 'quiet')) {
-        $r = Invoke-Run 'Wpf' @('--audio=fatz', $Media[$k]) "norm-again-$k" -Seconds 6
+        $r = Invoke-Run 'Wpf' @($Media[$k]) "norm-again-$k" -Seconds 6
         $line = @(Get-LogLines $r.Log 'Loudness ' | Where-Object { $_ -match 'LUFS' }) | Select-Object -First 1
         Add-Check "A new run reads the $k song from the cache" ($line -match '\(Cache\)') ($line -replace '^.*\[Diagnostic\]\s*', '')
     }
     Say 'Now the listening part. The script starts the FatzAudio player with the loud song.'
-    $p = Start-Player 'Wpf' @('--audio=fatz', $Media.loud)
+    $p = Start-Player 'Wpf' @($Media.loud)
     [void](Wait-Window $p)
     Set-Clipboard -Value $Media.quiet
     Say-Do @('Listen to the loud song for a few seconds.',
@@ -343,12 +327,11 @@ function Test-2 {
     Add-Answer 'Both songs sound about equally loud' 'Did the two songs sound about equally loud?'
     Add-Answer 'Normalize off/on changes the level smoothly' 'Did Normalize off make the quiet song quieter, and on bring it back smoothly with no click?'
     Add-Answer 'No clipping or crackle' 'Was there no clipping or crackle on loud parts?'
-    $r = Test-Run 'BASS keeps its peak rule' 'Wpf' @($Media.quiet) -Expect @('Deep normalization complete') -Seconds 10
 }
 
 # 3. Network sources (039A_3)
 function Test-3 {
-    if (-not (Start-Step 3 'Network sources' '039A follow-ups: certificate checks, live radio, http through BASS, HLS, a non-faststart MP4. Needs internet. Mostly automatic.' '8')) { return }
+    if (-not (Start-Step 3 'Network sources' '039A follow-ups: certificate checks, live radio, plain http, HLS, a non-faststart MP4. Needs internet. Mostly automatic.' '8')) { return }
     foreach ($u in @('https://expired.badssl.com/stream.mp3', 'https://self-signed.badssl.com/stream.mp3', 'https://wrong.host.badssl.com/stream.mp3')) {
         $null = Test-Run "Bad certificate refused: $u" 'Wpf' @("--url=$u", '--net-retries=3') -Expect @('certificate verification failed') -Seconds 4
     }
@@ -361,7 +344,7 @@ function Test-3 {
     $log = Save-RunLog 'Wpf' 'net-https-radio'
     Add-Check 'https radio plays' ((Get-LastStats $log) -match ' Playing \|') (Get-LastStats $log)
     Add-Answer 'https radio sounds right and controls respond' 'Did the station play, with volume/EQ/Pause/Play responding at once?'
-    $null = Test-Run 'Plain http radio plays through BASS' 'Wpf' @('--url=http://ice2.somafm.com/groovesalad-128-mp3') -Expect @('AudioEngine') -Seconds 12
+    $null = Test-Run 'Plain http radio plays' 'Wpf' @('--url=http://ice2.somafm.com/groovesalad-128-mp3') -Expect @('Audio engine: FatzAudio') -Seconds 12
     $null = Test-Run 'HLS in Background mode plays' 'Wpf' @('--mode=background', '--url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8') -Seconds 15 -Shot
     if ($script:FfmpegExe) {
         $slow = New-Media 'moov-at-end.mp4' ($Pic + $Tone + @('-c:v', 'mpeg4', '-c:a', 'aac'))
@@ -443,13 +426,13 @@ function Test-5 {
     $silent = New-Media 'silent-video.mp4' ($Pic + @('-c:v', 'mpeg4'))
     $mp3 = New-Media 'song.mp3' ($Tone + @('-c:a', 'libmp3lame'))
     $jpg = New-Media 'picture.jpg' @('-f', 'lavfi', '-i', 'testsrc2=size=1280x720', '-frames:v', '1')
-    $null = Test-Run 'Background mode: a music video loops silently, no audio set-up' 'Wpf' @('--mode=background', $mv) -Reject @('Global BASS initialized') -Seconds 6
+    $null = Test-Run 'Background mode: a music video loops silently, no audio set-up' 'Wpf' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened', 'Audio engine: FatzAudio') -Seconds 6
     $null = Test-Run 'Background mode: an MP3 is refused' 'Wpf' @('--mode=background', $mp3) -Expect @('Background mode does not accept') -Seconds 3
     $null = Test-Run 'Background mode: a picture shows' 'Wpf' @('--mode=background', $jpg) -Seconds 3 -Shot
     $null = Test-Run 'Audio mode: a music video plays its sound, no surface' 'Wpf' @('--mode=audio', $mv) -Expect @('Audio mode has no presentation') -Seconds 6
     $null = Test-Run 'Audio mode: a picture is refused' 'Wpf' @('--mode=audio', $jpg) -Expect @('Audio mode does not accept') -Seconds 3
     $null = Test-Run 'Audio mode: a silent video is refused' 'Wpf' @('--mode=audio', $silent) -Expect @('no playable audio stream') -Seconds 3
-    $null = Test-Run 'Background mode on Avalonia' 'Ava' @('--mode=background', $mv) -Reject @('Global BASS initialized') -Seconds 6
+    $null = Test-Run 'Background mode on Avalonia' 'Ava' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened', 'Audio engine: FatzAudio') -Seconds 6
     Say 'Now mode switching on the fly. The script starts the WPF player with the music video.'
     $p = Start-Player 'Wpf' @($mv)
     [void](Wait-Window $p)
@@ -547,30 +530,23 @@ function Test-8 {
     }
 }
 
-# 9. Without BASS, and without the BASS FLAC plug-in (ENG-039 batches 1 and 5)
+# 9. Without fatzaudio.dll (ENG-039 batches 1 and 5)
 function Test-9 {
-    if (-not (Start-Step 9 'Native libraries missing' 'ENG-039: players start without BASS (FFmpeg only); a FLAC plays through FFmpeg when bassflac.dll is missing. Fully automatic.' '3')) { return }
-    # The player always searches its own native folder too, so --native cannot hide BASS: run copies of
-    # the WPF player's folder with BASS (or only BASSFLAC) removed instead.
+    if (-not (Start-Step 9 'Native libraries missing' 'The players start without fatzaudio.dll: video plays without sound and the log warns that the audio engine could not start. Fully automatic.' '2')) { return }
+    # fatzaudio.dll comes from the build, next to the player. The player always searches its own folder too,
+    # so run a copy of the WPF player's folder with fatzaudio.dll removed instead.
     $playerDir = Split-Path $Exe.Wpf
     $exeName = Split-Path $Exe.Wpf -Leaf
-    foreach ($v in @(@{ Kind = 'NoBass'; Dir = 'player-no-bass'; Pattern = '^bass.*\.dll$'; Label = 'WPF player without BASS' },
-                     @{ Kind = 'NoFlac'; Dir = 'player-no-bassflac'; Pattern = '^bassflac\.dll$'; Label = 'WPF player without BASSFLAC' })) {
-        $copy = Join-Path $OutDir $v.Dir
-        if (-not (Test-Path $copy)) {
-            Say-Info "Copying the WPF player to $copy ..."
-            Copy-Item -Path $playerDir -Destination $copy -Recurse -Force
-            Get-ChildItem -Path $copy -Recurse -File | Where-Object { $_.Name -match $v.Pattern } | Remove-Item -Force
-        }
-        $Exe[$v.Kind] = Join-Path $copy $exeName
-        $LogNames[$v.Kind] = $LogNames.Wpf
-        $PlayerNames[$v.Kind] = $v.Label
+    $copy = Join-Path $OutDir 'player-no-fatzaudio'
+    if (-not (Test-Path $copy)) {
+        Say-Info "Copying the WPF player to $copy ..."
+        Copy-Item -Path $playerDir -Destination $copy -Recurse -Force
+        Get-ChildItem -Path $copy -Recurse -File | Where-Object { $_.Name -match '^fatzaudio\.dll$' } | Remove-Item -Force
     }
-    $null = Test-Run 'Two players start without BASS, each with a warning' 'NoBass' @('--players=2') -Expect @('without BASS') -Seconds 4 -Shot
-    if ($script:FfmpegExe) {
-        $flac = New-Media 'long-flac-4min.flac' @('-f', 'lavfi', '-i', 'sine=frequency=500:duration=240:sample_rate=48000', '-ac', '2', '-c:a', 'flac')
-        $null = Test-Run 'FLAC without bassflac.dll plays through FFmpeg' 'NoFlac' @($flac) -Expect @('with FFmpeg in') -Seconds 4
-    }
+    $Exe['NoFatzAudio'] = Join-Path $copy $exeName
+    $LogNames['NoFatzAudio'] = $LogNames.Wpf
+    $PlayerNames['NoFatzAudio'] = 'WPF player without fatzaudio.dll'
+    $null = Test-Run 'Two players start without fatzaudio.dll, each with a warning' 'NoFatzAudio' @('--players=2') -Expect @('could not start') -Seconds 4 -Shot
 }
 
 # 10. The player set: counts, renderers, full screen (ENG-039 batch 4a) - guided
@@ -681,10 +657,9 @@ $Exe = @{
 }
 foreach ($k in $Exe.Keys) {
     $dir = Split-Path $Exe[$k]
-    $hasBass = [bool](Get-ChildItem -Path $dir -Recurse -Filter 'bass.dll' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $hasFfmpeg = [bool](Get-ChildItem -Path $dir -Recurse -Filter 'avcodec*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1)
-    if (-not ($hasBass -and $hasFfmpeg)) {
-        Say-Warn ("{0}: BASS found = {1}, FFmpeg found = {2}. Put the DLLs in its native\ folder and rebuild if a test fails." -f $PlayerNames[$k], $hasBass, $hasFfmpeg)
+    if (-not $hasFfmpeg) {
+        Say-Warn ("{0}: FFmpeg DLLs not found. Put them in its native\ folder and rebuild if a test fails (fatzaudio.dll comes from the build)." -f $PlayerNames[$k])
     }
 }
 
@@ -692,7 +667,7 @@ $all = 1..12
 if (-not $Steps) {
     Write-Host ''
     Write-Host 'Tests (A = automatic, G = guided; L = Claude also runs the cross-platform part on Linux):' -ForegroundColor Cyan
-    Write-Host '   1  A  L Audio formats on BASS and FatzAudio (ENG-043, 033A)          ~12 min'
+    Write-Host '   1  A  L Audio formats on FatzAudio (ENG-043, 033A)                   ~6 min'
     Write-Host '   2  AG   Loudness normalization on FatzAudio (037A)                   ~8 min'
     Write-Host '   3  A  L Network sources (039A_3; certificates only here)             ~8 min'
     Write-Host '   4  AG   HDR tone mapping and HDR output (042A)                       ~10 min'
@@ -700,7 +675,7 @@ if (-not $Steps) {
     Write-Host '   6  A    Avalonia shared GPU image and second screen (027A)           ~8 min'
     Write-Host '   7  A    Vulkan tests on your GPU (026A)                              ~3 min'
     Write-Host '   8  AG   Text on Software and Vulkan (ENG-040, ENG-039 4c)            ~5 min'
-    Write-Host '   9  A  L Native libraries missing (ENG-039)                           ~3 min'
+    Write-Host '   9  A  L Native libraries missing (ENG-039)                           ~2 min'
     Write-Host '  10  G    Player set, full screen, closing (ENG-039 4a)                ~10 min'
     Write-Host '  11  AG   Audit tests: GPU reset, resize, ... (runs smoke-audit.ps1)   ~25 min'
     Write-Host '  12  G    Remaining guided checks (ENG-039 1, 4b, 4c, 5; 026B)         ~15 min'

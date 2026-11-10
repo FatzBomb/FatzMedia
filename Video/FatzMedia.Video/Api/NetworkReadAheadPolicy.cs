@@ -7,7 +7,7 @@ namespace FatzMedia.Video;
 /// <see cref="MaxBytes"/> of packets, whichever is reached first, so a short network stall does
 /// not interrupt playback. The buffer only reads forward: a seek inside it is served without a
 /// network request, any other seek empties it and refills from the new position. Local files are
-/// not affected. Network audio played through BASS (014A) keeps BASS's own buffer.
+/// not affected.
 /// </summary>
 public sealed record NetworkReadAheadPolicy
 {

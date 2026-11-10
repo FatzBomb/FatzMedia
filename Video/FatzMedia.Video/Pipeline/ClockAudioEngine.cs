@@ -11,8 +11,6 @@ sealed class ClockAudioEngine(IClockSource clock) : IAudioEngine, IAudioLoopCont
     readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
-    public int PlayHandle => 0;
-    public int SourceHandle => 0;
     public bool Normalize { get; set; }
     public double NormalizationGain => 1.0;
     public bool IsNormalizationReady => true;

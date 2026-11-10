@@ -1040,7 +1040,6 @@ public partial class PlayerCore : IPlayerSession
         try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
         try { _presentationCoordinator.DeviceRecoveryFailed -= OnPresentationDeviceRecoveryFailed; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
-        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)
@@ -1134,9 +1133,6 @@ public partial class PlayerCore : IPlayerSession
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-        // Background mode has no audio output, so the output watchdog's reports are not its own.
-        if (MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode))
-            BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset

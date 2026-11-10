@@ -6,18 +6,12 @@ static partial class Bootstrap
 {
     // Serializes loading: a concurrent caller waits for the load in progress and gets its result
     // instead of failing with an empty message. A failed load is retried by the next caller.
-    // FFmpeg is required; BASS is optional (ENG-033): without it the player starts with no audio,
-    // and a later caller with other paths retries BASS while the loaded FFmpeg stays as it is.
+    // FFmpeg is the only native library the platform loads; the audio engine (FatzAudio) loads its own.
     static readonly Lock InitGate = new();
     static volatile bool _isInitialized;
-    // The search paths of the last load that found FFmpeg but not BASS: the next player with the
-    // same paths keeps that outcome instead of scanning them for BASS again (ENG-039 P5-8). Other
-    // paths still retry BASS.
-    static List<string>? _withoutBassSearchPaths;
 
-    internal static bool IsBassLoaded { get; private set; }
     internal static bool IsFfmpegLoaded { get; private set; }
-    /// <summary>True once FFmpeg and BASS both loaded: nothing is left to load.</summary>
+    /// <summary>True once FFmpeg loaded: nothing is left to load.</summary>
     public static bool IsInitialized => _isInitialized;
     public static string Message { get; set; } = string.Empty;
     public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
@@ -25,7 +19,7 @@ static partial class Bootstrap
     public static bool EnsureInitialized(string? userLibraryPath = null) =>
         EnsureInitialized(ToNativeLibraryPathArray(userLibraryPath));
 
-    /// <summary>Loads the native libraries; true when FFmpeg loaded (BASS may still be missing: see <see cref="IsBassLoaded"/>).</summary>
+    /// <summary>Loads the native libraries; true when FFmpeg loaded.</summary>
     public static bool EnsureInitialized(IReadOnlyList<string> nativeLibraryPaths) => Initialize(nativeLibraryPaths);
     static List<string> _searchPaths = [];
     static readonly List<string> _nativeLoadMessages = [];
@@ -55,41 +49,24 @@ static partial class Bootstrap
                         candidatePaths.Add(defaultPath);
                 }
 
-                if (IsFfmpegLoaded && _withoutBassSearchPaths is { } scanned && scanned.SequenceEqual(candidatePaths, StringComparer.OrdinalIgnoreCase))
-                {
-                    // This player's diagnostics still say that audio is unavailable.
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Bootstrap", Message);
-                    return true;
-                }
-
-                // Each loader replaces its own checks, so a BASS retry keeps the FFmpeg ones.
                 _nativeLoadMessages.Clear();
                 _searchPaths = candidatePaths;
 
-
-                IsBassLoaded = LoadBass();
                 IsFfmpegLoaded = LoadFfmpeg();
-
-                _isInitialized = IsBassLoaded && IsFfmpegLoaded;
-                _withoutBassSearchPaths = IsFfmpegLoaded && !IsBassLoaded ? candidatePaths : null;
-                Message = !IsFfmpegLoaded
-                    ? BuildFailureMessage()
-                    : !IsBassLoaded
-                        ? $"Native libraries loaded without BASS: audio is unavailable. {string.Join(" ", NativeLoadMessages)}".TrimEnd()
-                        : string.Empty;
+                _isInitialized = IsFfmpegLoaded;
+                Message = IsFfmpegLoaded ? string.Empty : BuildFailureMessage();
             }
             catch (Exception ex)
             {
                 Message = $"[Bootstrap] ❌ Exception during initialization: {ex.Message}";
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Exception during initialization: {ex.Message}", innerException: ex);
                 _isInitialized = false;
-                _withoutBassSearchPaths = null;
                 return false;
             }
             finally
             {
                 // Recorded even when a load step throws, so the report never goes stale.
-                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. _searchPaths]) { IsAudioAvailable = IsBassLoaded };
+                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. _searchPaths]);
             }
 
             return IsFfmpegLoaded;

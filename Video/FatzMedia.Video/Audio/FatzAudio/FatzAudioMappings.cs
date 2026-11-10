@@ -15,8 +15,8 @@ static class FatzAudioMappings
 
     /// <summary>
     /// Maps the equalizer to FatzAudio's built-in bands: one peaking band per band at its centre
-    /// and gain, with the bandwidth in octaves turned into Q (one octave is Q 1.414, as BASS_FX's
-    /// PEAKEQ). A disabled or all-flat equalizer is an empty list, which turns FatzAudio's off.
+    /// and gain, with the bandwidth in octaves turned into Q (one octave is Q 1.414, the usual
+    /// peaking-filter rule). A disabled or all-flat equalizer is an empty list, which turns FatzAudio's off.
     /// </summary>
     public static Fa.EqualizerBand[] ToEqualizerBands(AudioEqualizerSettings settings)
     {
@@ -117,7 +117,7 @@ static class FatzAudioMappings
 
     /// <summary>
     /// A FatzAudio CD+G palette as the ARGB colours our renderers look indices up in, with the
-    /// presentation settings applied as the BASS path's <c>CdgColorManager</c> applies them: colour 0,
+    /// presentation settings applied as our <c>CdgColorManager</c> applies them: colour 0,
     /// the border colour and the background colour take <paramref name="backgroundOverride"/>'s colour
     /// when set, and their alpha is the override's alpha (else 255) times <paramref name="opacityAlpha"/>;
     /// every other colour is opaque.
@@ -142,7 +142,7 @@ static class FatzAudioMappings
     }
 
     /// <summary>
-    /// The full-viewport background wash for a FatzAudio CD+G frame, as the BASS path's
+    /// The full-viewport background wash for a FatzAudio CD+G frame, as our
     /// <c>CdgColorManager</c> works it out: transparent until the first screen clear unless an
     /// override is set, then the background colour (or the override's) at the override's alpha (else
     /// 255) times <paramref name="opacityAlpha"/>.

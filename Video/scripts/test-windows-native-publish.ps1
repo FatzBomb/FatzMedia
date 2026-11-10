@@ -22,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($NativeLibraryPath)) {
-    throw 'Supply -NativeLibraryPath or set FATZBOMB_MEDIA_NATIVE_PATH to one host-owned directory containing the Windows x64 BASS and FFmpeg DLL set.'
+    throw 'Supply -NativeLibraryPath or set FATZBOMB_MEDIA_NATIVE_PATH to one host-owned directory containing the Windows x64 FFmpeg DLL set.'
 }
 
 $resolvedNativePath = (Resolve-Path -LiteralPath $NativeLibraryPath).Path
@@ -32,7 +32,7 @@ if (-not (Test-Path -LiteralPath $resolvedNativePath -PathType Container)) {
 
 $manifestPath = Join-Path $root 'FatzMedia.Video.Windows\runtimes\win-x64\native\native-assets.manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$requiredFiles = @($manifest.bass.requiredFiles) + @($manifest.ffmpeg.requiredFiles)
+$requiredFiles = @($manifest.ffmpeg.requiredFiles)
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $resolvedNativePath $requiredFile) -PathType Leaf)) {
         throw "Native smoke test input is missing required file: $requiredFile"

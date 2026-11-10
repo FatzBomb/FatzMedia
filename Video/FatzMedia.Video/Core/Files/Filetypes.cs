@@ -13,8 +13,8 @@ public static class FileTypes
 
     /// <summary>
     /// Audio-only extensions FFmpeg can decode. Filled by <see cref="RegisterFfmpegAudio"/> once
-    /// FFmpeg loads. Extensions also in <see cref="Audio"/> play through BASS; the rest are
-    /// decoded by FFmpeg and played through the same BASS chain (Stage 033A).
+    /// FFmpeg loads. Extensions also in <see cref="Audio"/> are decoded by the audio engine; the rest
+    /// are decoded by FFmpeg and played through the same engine (Stage 033A).
     /// </summary>
     public static readonly HashSet<string> FfmpegAudio = new(StringComparer.OrdinalIgnoreCase);
     public static readonly HashSet<string> Archive = new(StringComparer.OrdinalIgnoreCase) { ".7z", ".rar", ".zip", ".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2" };
@@ -25,7 +25,7 @@ public static class FileTypes
 
     public static bool IsAudio(string filename) => Audio.Contains(Path.GetExtension(filename));
 
-    /// <summary>True when a BASS plugin or the FFmpeg fallback can play the audio file.</summary>
+    /// <summary>True when the audio engine or the FFmpeg fallback can play the audio file.</summary>
     public static bool IsPlayableAudio(string filename)
     {
         var extension = Path.GetExtension(filename);

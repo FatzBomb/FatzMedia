@@ -1,4 +1,3 @@
-using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Configuration;
 using FatzMedia.Video.Sample.Player.Shared;
@@ -107,17 +106,14 @@ sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayer
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         var platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
-        // --audio=fatz (037A): FatzAudio plays everything, on --audio-device= when given, CD+G scaled with --cdg-scale;
-        // BASS stays the default.
-        if (options.AudioEngine == PlayerAudioEngine.FatzAudio)
-            configuration = configuration with
-            {
-                AudioEngineFactory = new FatzAudioEngineFactory(),
-                AudioOutputDeviceId = options.AudioDevice,
-                CdgScaling = options.CdgScaling,
-                AudioEngineDecodesSoundtracks = options.AudioEngineDecodesSoundtracks
-            };
-        // Loading BASS and FFmpeg blocks: CreateAsync runs it off the UI thread.
+        // FatzAudio plays everything: on --audio-device= when given, CD+G scaled with --cdg-scale.
+        configuration = configuration with
+        {
+            AudioOutputDeviceId = options.AudioDevice,
+            CdgScaling = options.CdgScaling,
+            AudioEngineDecodesSoundtracks = options.AudioEngineDecodesSoundtracks
+        };
+        // Loading FFmpeg and FatzAudio blocks: CreateAsync runs it off the UI thread.
         return await global::FatzMedia.Video.WinForms.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
 

@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// Opt-in native check for ENG-045 (owner smoke 2026-11-05: "the embedded subtitle choice returns to the
 /// default track"): with an MKV of two embedded text tracks, a chosen track and Off stay chosen after the
 /// background scan, over time and across a seek; Off chosen right after an open survives the scan.
-/// Needs <c>FATZBOMB_LINUX_BASS_DIR</c>, <c>FATZBOMB_LINUX_FFMPEG_DIR</c> and
+/// Needs <c>FATZBOMB_LINUX_FFMPEG_DIR</c> and
 /// <c>/opt/fatzbomb-native/media/subtitles2.mkv</c> (<c>scripts/setup-linux-native.sh</c>).
 /// </summary>
 [Collection("File type registry")]
@@ -17,10 +17,10 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
     [Fact]
     public void ChosenTrackAndOff_StayChosen_AfterTheScanAndASeek()
     {
-        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(Media))
+        if (!LinuxNativeTestPlayer.TryGetFfmpegFolder(out var ffmpeg) || !File.Exists(Media))
             return;
 
-        using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
+        using var test = LinuxNativeTestPlayer.Create([ffmpeg]);
         var player = test.Player;
         var scans = 0;
         player.SubtitleTracksChanged += (_, _) => Interlocked.Increment(ref scans);
@@ -44,10 +44,10 @@ public sealed class LinuxSubtitleSelectionNativeTests(ITestOutputHelper output)
     [Fact]
     public void Off_ChosenRightAfterTheOpen_SurvivesTheScan()
     {
-        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(Media))
+        if (!LinuxNativeTestPlayer.TryGetFfmpegFolder(out var ffmpeg) || !File.Exists(Media))
             return;
 
-        using var test = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
+        using var test = LinuxNativeTestPlayer.Create([ffmpeg]);
         var player = test.Player;
         Assert.True(player.Load(Media));
         Assert.True(player.SelectSubtitleTrack(null));

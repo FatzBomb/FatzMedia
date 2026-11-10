@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Subtitle;
@@ -92,6 +93,6 @@ public sealed class AudioOnlyVideoFallbackTests
     {
         public bool IsMidiFile(string path) => false;
 
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string path, TimeSpan transitionDuration) => null;
+        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string path, TimeSpan transitionDuration) => null;
     }
 }

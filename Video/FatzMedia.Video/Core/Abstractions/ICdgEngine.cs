@@ -19,14 +19,6 @@ public interface ICdgEngine : IDisposable
     /// </summary>
     uint BackgroundWashArgb { get; }
 
-    /// <summary>Loads CDG alongside audio. The BASS handle is not used: call <see cref="Load(string)"/>.</summary>
-    [Obsolete("The audio handle is BASS-specific and unused; call Load. Removed with BASS (037A).")]
-    void LoadPaired(string filePath, int audioStreamHandle);
-
-    /// <summary>Loads CDG alongside audio. The BASS handle is not used: call <see cref="Load(IArchiveEntryInfo)"/>.</summary>
-    [Obsolete("The audio handle is BASS-specific and unused; call Load. Removed with BASS (037A).")]
-    void LoadPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle);
-
     // Load CDG (no pairing metadata required)
     void Load(string filePath);
     void Load(IArchiveEntryInfo archiveEntry);

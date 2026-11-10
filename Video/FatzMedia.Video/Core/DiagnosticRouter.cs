@@ -7,7 +7,7 @@ namespace FatzMedia.Video;
 /// public <see cref="IPlayerSession.MediaDiagnostic"/> event.
 /// </summary>
 /// <remarks>
-/// May fire from background threads (BASS callbacks, decode loops, presentation
+/// May fire from background threads (audio engine callbacks, decode loops, presentation
 /// loop, etc.). Subscribers must marshal to the consuming thread as needed.
 /// </remarks>
 public static class DiagnosticRouter

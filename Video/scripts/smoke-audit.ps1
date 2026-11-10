@@ -405,10 +405,9 @@ $Exe = @{
 }
 foreach ($k in $Exe.Keys) {
     $dir = Split-Path $Exe[$k]
-    $hasBass = [bool](Get-ChildItem -Path $dir -Recurse -Filter 'bass.dll' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $hasFfmpeg = [bool](Get-ChildItem -Path $dir -Recurse -Filter 'avcodec*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1)
-    if (-not ($hasBass -and $hasFfmpeg)) {
-        Say-Warn ("{0}: BASS found = {1}, FFmpeg found = {2}. Put the DLLs in its native\ folder and rebuild if a test fails." -f $PlayerNames[$k], $hasBass, $hasFfmpeg)
+    if (-not $hasFfmpeg) {
+        Say-Warn ("{0}: FFmpeg DLLs not found. Put them in its native\ folder and rebuild if a test fails (fatzaudio.dll comes from the build)." -f $PlayerNames[$k])
     }
 }
 

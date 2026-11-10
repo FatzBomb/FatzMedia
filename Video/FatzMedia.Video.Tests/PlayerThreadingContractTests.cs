@@ -108,7 +108,7 @@ public sealed class PlayerThreadingContractTests
         var openEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var factory = new SwitchTestPlatformFactory
         {
-            // Like a BASS connect attempt in progress: it does not see the cancellation.
+            // Like a native connect attempt in progress: it does not see the cancellation.
             ConfigureEngine = (_, engine) => engine.BeforeOpen = () =>
             {
                 openEntered.TrySetResult();

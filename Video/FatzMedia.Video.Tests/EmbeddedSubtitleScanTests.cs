@@ -1,5 +1,6 @@
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Pipeline;
@@ -248,7 +249,7 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     {
         public bool IsMidiFile(string path) => false;
 
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string sourcePath, TimeSpan transitionDuration) => null;
+        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string sourcePath, TimeSpan transitionDuration) => null;
     }
 
     sealed class ScanTestPlatformFactory(TestMediaEngine engine) : IPlatformFactory

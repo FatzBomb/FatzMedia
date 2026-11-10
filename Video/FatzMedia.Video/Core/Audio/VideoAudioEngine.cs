@@ -11,11 +11,11 @@ namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
 /// Plays the audio of a video file, a soundtrack or network audio: FFmpeg demuxes and decodes it, and an
-/// <see cref="IPushAudioOutput"/> plays the PCM (BASS by default, FatzAudio with the FatzAudio engine;
+/// <see cref="IPushAudioOutput"/> plays the PCM (a FatzAudio push or packet stream on the player's device;
 /// 037A slice 5). Seeks, gapless loops, the push throttle and the position bookkeeping live here, the
 /// same for every output.
 /// </summary>
-sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
+sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide
 {
     const double AudioBufferHighWatermarkSeconds = 4.0;
     const double AudioBufferLowWatermarkSeconds = 2.0;
@@ -87,12 +87,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     }
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
-    public int PlayHandle => _output.PlayHandle;
-    public int SourceHandle => _output.SourceHandle;
-
-    /// <summary>The output's MIDI source (the BASS push stream, as before 037A slice 1); none for FatzAudio.</summary>
-    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => _output.GetMidiEventReader();
-
     public bool Normalize
     {
         get
@@ -168,20 +162,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     public bool Init(int device = -1, int sampleRate = 44100) => true;
 
     internal int AudioStreamIndex { get; private set; } = -1;
-
-    public VideoAudioEngine() : this(new BassOutputLatencyProvider())
-    {
-    }
-
-    public VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider)
-        : this(outputLatencyProvider, AudioOutputDeviceInfo.PrimaryDeviceIndex)
-    {
-    }
-
-    internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
-        : this(new BassPushAudioOutput(outputLatencyProvider, bassDeviceIndex), null)
-    {
-    }
 
     /// <param name="output">Where the audio plays; the engine owns and disposes it.</param>
     /// <param name="sharedDemuxer">The picture's cursor of a network video, or null for a cursor of its own.</param>
@@ -513,32 +493,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         return success;
     }
 
-    int IBassOutputClient.PlayingHandle => State == AudioEngineState.Playing ? PlayHandle : 0;
-
-    /// <summary>
-    /// True while BASS has parked the channel because its output device was lost (ENG-032); always
-    /// false for an output that is not BASS (FatzAudio follows the device itself).
-    /// </summary>
-    internal bool IsChannelPausedByDevice() => _output is BassPushAudioOutput bass && bass.IsChannelPausedByDevice();
-
-    bool IBassOutputClient.ResumeChannelPausedByDevice()
-    {
-        lock (_sync)
-        {
-            if (_disposed || State != AudioEngineState.Playing || _output is not BassPushAudioOutput bass
-                || !bass.IsChannelPausedByDevice())
-            {
-                return true;
-            }
-
-            // Not restarted: the channel carries on from its position, and the snapshot the video
-            // clock reads restarts from the real position instead of the stalled one.
-            var resumed = bass.ResumeIfPausedByDevice();
-            PublishPositionSnapshot(GetPositionCore());
-            return resumed;
-        }
-    }
-
     public bool Pause()
     {
         lock (_sync)
@@ -786,7 +740,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
     public void Dispose()
     {
-        BassOutputWatchdog.Unregister(this);
         Close();
         if (_ownsDemuxer)
             _demuxer.Dispose();
@@ -1053,12 +1006,6 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
             return;
 
         State = state;
-
-        // The output watchdog looks after the channel only while it should be playing.
-        if (state == AudioEngineState.Playing)
-            BassOutputWatchdog.Register(this);
-        else
-            BassOutputWatchdog.Unregister(this);
 
         StateChanged?.Invoke(this, state);
     }

@@ -3,7 +3,7 @@ namespace FatzMedia.Video.Core.Threading;
 /// <summary>
 /// The cancellation of the load that is opening media on the current flow (ENG-024). The player
 /// sets it around the engine's open, so a long open (a network connect's retry delays) can stop
-/// early without a token on every engine interface. An attempt already in progress (one BASS
+/// early without a token on every engine interface. An attempt already in progress (one native
 /// connect) is not interrupted.
 /// </summary>
 static class MediaOpenCancellation

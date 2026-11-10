@@ -5,10 +5,10 @@ namespace FatzMedia.Video.Core.Network;
 /// source, and the capability row of one opened through FFmpeg.
 /// </summary>
 /// <remarks>
-/// BASS (Stage 014A) does not verify https certificates and has no setting for it, so https
-/// audio opens through FFmpeg's network path, where <see cref="NetworkTlsPolicy"/> applies as it
-/// does for network video; FFmpeg decodes it and the audio engine's output plays it. Plain http
-/// stays on BASS. HLS playlists (<c>.m3u8</c>) open through FFmpeg too: BASS has no HLS support.
+/// https audio opens through FFmpeg's network path, where <see cref="NetworkTlsPolicy"/> applies as
+/// it does for network video; FFmpeg decodes it and the audio engine's output plays it. HLS
+/// playlists (<c>.m3u8</c>) open through FFmpeg too. Plain http goes to an audio engine that opens
+/// URLs itself, else through FFmpeg as well (the FatzAudio engine opens none).
 /// </remarks>
 static class NetworkAudioPolicy
 {

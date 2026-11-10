@@ -199,10 +199,6 @@ public partial class PlayerCore
     void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
 
-    // The BASS output watchdog is process-wide and raises its own diagnostic, so every player
-    // forwards the event without adding a second warning (ENG-032).
-    void OnAudioOutputAvailabilityChanged(AudioDeviceChangeInfo info) =>
-        _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChanged(info));
 
     void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
     {

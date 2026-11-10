@@ -14,7 +14,7 @@ namespace FatzMedia.Video.Audio;
 /// line) and the line ends of lyric events are taken off the text and given as flags. They are put
 /// back as <c>\</c> and <c>/</c> prefixes, which <see cref="MidiLyricCueBuilder"/> reads as before.
 /// FatzAudio types the words of a .kar file as lyrics, so a .kar's words come through
-/// <see cref="MidiMarkKind.Lyric"/> where BASS gave them as text events; the builder takes lyric
+/// <see cref="MidiMarkKind.Lyric"/>, not as text events; the builder takes lyric
 /// events first and text events only when there are none, so it builds the same lines.
 /// </remarks>
 sealed class FatzAudioMidiEventReader : IMidiEventReader
@@ -43,7 +43,7 @@ sealed class FatzAudioMidiEventReader : IMidiEventReader
         MidiMarkKind.Text => Texts(Fa.MidiTextType.Text, withLayoutMarks: false),
         MidiMarkKind.TrackName => Texts(Fa.MidiTextType.TrackName, withLayoutMarks: false),
         MidiMarkKind.Copyright => Texts(Fa.MidiTextType.Copyright, withLayoutMarks: false),
-        // "sharps mode" and "numerator/denominator", as BASS writes them; FatzAudio has no MIDI
+        // "sharps mode" and "numerator/denominator", as the builder reads them; FatzAudio has no MIDI
         // clocks or 32nds per beat, so the standard 24 and 8 fill those (the builder reads only the
         // first word).
         MidiMarkKind.KeySignature => Marks(Fa.MidiMarkType.KeySignature, static mark => $"{mark.Value} {mark.Value2}"),
@@ -73,7 +73,7 @@ sealed class FatzAudioMidiEventReader : IMidiEventReader
         : text.Flags.HasFlag(Fa.MidiTextFlags.NewLine) ? "/" + text.Text
         : text.Text;
 
-    // Chronological, lowest track first at equal times (the order BASS returns marks in).
+    // Chronological, lowest track first at equal times (the order the builders expect).
     static IEnumerable<T> Order<T>(IEnumerable<T> items, Func<T, TimeSpan> position, Func<T, int> track) =>
         items.OrderBy(position).ThenBy(track);
 }

@@ -21,7 +21,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
-		<ProjectReference Include="..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj" />
 		<ProjectReference Include="..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj" />
 		<ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
 	</ItemGroup>

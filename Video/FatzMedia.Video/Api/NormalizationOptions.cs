@@ -8,7 +8,6 @@ namespace FatzMedia.Video;
 /// is the streaming-service standard: -14 LUFS, peaks limited to -1 dBTP.
 /// </summary>
 /// <remarks>
-/// The BASS engine ignores these options and keeps its peak rule until BASS is removed.
 /// FatzAudio does the measuring, gain and limiting. A song whose loudness is not known yet (its
 /// first play, without tags) starts on FatzAudio's running estimate and glides to the measured
 /// level when the scan finishes, a few hundred milliseconds for a typical song.

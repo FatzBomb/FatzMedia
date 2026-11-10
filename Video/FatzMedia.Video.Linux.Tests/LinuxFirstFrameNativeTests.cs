@@ -1,4 +1,3 @@
-using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
@@ -7,7 +6,7 @@ using Xunit.Abstractions;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// Opt-in native checks for Stage 051A with real FFmpeg and the software renderer (no BASS: picture
+/// Opt-in native checks for Stage 051A with real FFmpeg and the software renderer (Background mode: picture
 /// only). Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> and optionally <c>FATZBOMB_LINUX_SAMPLE_VIDEO</c>
 /// (default <c>/opt/fatzbomb-native/media/h264_1080p.mp4</c>); without them the tests return at once.
 /// </summary>
@@ -42,21 +41,14 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         Assert.True(player.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId));
     }
 
-    [Theory]
-    [InlineData("bass")]
-    [InlineData("fatz")]
-    public void FullMode_ALoadBeforeTheSurfaceAttaches_StillReachesIt(string engine)
+    [Fact]
+    public void FullMode_ALoadBeforeTheSurfaceAttaches_StillReachesIt()
     {
-        // The test players' startup media: Full mode, video with sound, BASS or FatzAudio. Needs
-        // FATZBOMB_LINUX_BASS_DIR and a sound server as well (LinuxNativeTestPlayer).
-        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !TryGetSample(out _, out var sample))
+        // The test players' startup media: Full mode, video with sound on FatzAudio's null output.
+        if (!LinuxNativeTestPlayer.TryGetFfmpegFolder(out var ffmpeg) || !TryGetSample(out _, out var sample))
             return;
 
-        var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
-        {
-            AudioEngineFactory = engine == "fatz" ? new FatzAudioEngineFactory(nullOutput: true) : null,
-        };
-        using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], configuration, attachSurface: false);
+        using var session = LinuxNativeTestPlayer.Create([ffmpeg], attachSurface: false);
         var player = session.Player;
         player.PlayOnLoad = false;
         using var tracker = new MediaSurfaceContentTracker { Session = player };
@@ -74,9 +66,8 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         var framesAtAttach = sink.Frames;
         Assert.True(session.PlayUntil(1, Timeout), $"position {player.Position}");
         Assert.True(sink.Frames > framesAtAttach);
-        Assert.True(player.NativeDependencies.IsAudioAvailable);
         Assert.Empty(session.Errors);
-        output.WriteLine($"{engine}: frames {sink.Frames}, first-frame load {tracker.FirstFrameLoad}");
+        output.WriteLine($"frames {sink.Frames}, first-frame load {tracker.FirstFrameLoad}");
         Assert.True(player.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId));
     }
 
@@ -134,7 +125,7 @@ public sealed class LinuxFirstFrameNativeTests(ITestOutputHelper output)
         return OperatingSystem.IsLinux() && Directory.Exists(ffmpeg) && File.Exists(sample);
     }
 
-    // Background mode: picture only, so no BASS is needed; the application folder is empty.
+    // Background mode: picture only, so no audio engine is needed; the application folder is empty.
     static PlayerCore CreatePlayer(string ffmpeg)
     {
         var appBase = Directory.CreateTempSubdirectory("fbm-first-frame-").FullName;

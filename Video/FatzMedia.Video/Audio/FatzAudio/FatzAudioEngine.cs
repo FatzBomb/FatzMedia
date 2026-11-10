@@ -11,9 +11,8 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Audio;
 
 /// <summary>
-/// Plays audio files and archive entries through FatzAudio (037A slice 2), behind the same
-/// contract and internal seams as the BASS <see cref="AudioEngine"/>. One FatzAudio engine, output
-/// device and mix bus per player.
+/// Plays audio files and archive entries through FatzAudio (037A), the player's audio engine. One
+/// FatzAudio engine, output device and mix bus per player.
 /// </summary>
 /// <remarks>
 /// <para>Gain stages: the stream's volume is the fade stage (<see cref="IAudioFadeGainTarget"/>,
@@ -85,6 +84,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         _diagnosticOwner = DiagnosticRouter.Owner;
         var cacheDirectory = EnsureCacheDirectory(FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory));
         _engine = Fa.AudioEngine.Create(new Fa.AudioEngineOptions { NullOutput = nullOutput, CacheDirectory = cacheDirectory });
+        FatzAudioFileTypes.Register();
         try
         {
             // FatzAudio's loudness normalization, with its limiter on while normalization is on.
@@ -123,9 +123,9 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
 
     /// <summary>
     /// Devices added and removed and every default change, each once, from a look at FatzAudio's device list each
-    /// <see cref="DeviceWatchInterval"/> while anyone listens (<c>ListDevices</c>: one enumeration, no format query;
-    /// BASS's monitor polled too) and from FatzAudio's notice that it moved the output (<see cref="FatzAudioDeviceEvents"/>).
-    /// The one device-event source of the player (<see cref="IAudioDeviceChangeSource.ReportsDeviceList"/>).
+    /// <see cref="DeviceWatchInterval"/> while anyone listens (<c>ListDevices</c>: one enumeration, no format query)
+    /// and from FatzAudio's notice that it moved the output (<see cref="FatzAudioDeviceEvents"/>). The player's one
+    /// device-event source.
     /// </summary>
     public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged
     {
@@ -157,7 +157,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         }
     }
 
-    bool IAudioDeviceChangeSource.ReportsDeviceList => true;
 
     /// <summary>How often the device list is read while someone listens to <see cref="DeviceChanged"/>.</summary>
     internal TimeSpan DeviceWatchInterval { get; set; } = TimeSpan.FromSeconds(1);
@@ -171,11 +170,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         }
     }
 
-    /// <summary>BASS-specific: always 0.</summary>
-    public int PlayHandle => 0;
-
-    /// <summary>BASS-specific: always 0.</summary>
-    public int SourceHandle => 0;
 
     public bool Normalize
     {
@@ -192,8 +186,8 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
 
     /// <summary>
     /// FatzAudio's gain for the open song as a multiplier (1 until its loudness is known, or with no
-    /// song). With normalization off it is the gain FatzAudio would apply, as the BASS engine reports
-    /// its measured gain whatever the switch says.
+    /// song). With normalization off it is the gain FatzAudio would apply: the measured gain whatever the
+    /// switch says.
     /// </summary>
     public double NormalizationGain
     {
@@ -356,7 +350,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         return OpenCore(
             OpenedSource.ForFile(filePath),
             filePath,
-            analyzeSilence && _silenceTrim.Enabled && !AudioStreamManager.IsTrackerFormat(filePath));
+            analyzeSilence && _silenceTrim.Enabled && !AudioSourceFiles.IsTrackerFormat(filePath));
     }
 
     public bool Open(IArchiveEntryInfo archiveEntry)
@@ -369,7 +363,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         int length;
         try
         {
-            (data, length) = AudioStreamManager.ReadArchiveEntry(archiveEntry);
+            (data, length) = AudioSourceFiles.ReadArchiveEntry(archiveEntry);
         }
         catch (Exception ex)
         {
@@ -377,7 +371,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
             return false;
         }
 
-        // Archive entries are never trimmed, as on BASS.
+        // Archive entries are never trimmed.
         return OpenCore(
             OpenedSource.ForMemory(data.AsMemory(0, length), archiveEntry.Key),
             archiveEntry.Key,
@@ -405,7 +399,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
                 && FfmpegAudioFallback.CanRetryWithFfmpeg(path))
             {
                 // A format FatzAudio does not decode (WMA off Windows, DTS, ...): FFmpeg converts it
-                // to a float WAV, as for BASS (archive entries through a temp file, as there).
+                // to a float WAV (archive entries through a temp file).
                 converted = (source.Path is null && archiveEntry is not null ? TakeArchiveConversion(archiveEntry) : FfmpegAudioFallback.Take(path, MediaOpenCancellation.Current))
                     ?? throw new InvalidOperationException($"FFmpeg could not convert '{path}'.", ex);
                 source = converted.IsInMemory
@@ -944,7 +938,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     });
 
-    // One event per wrap, raised as the BASS engine does: PlaybackEnded while still Playing.
+    // One event per wrap: PlaybackEnded while still Playing.
     void OnStreamLooped(object? sender, Fa.StreamEventArgs e) => OnStreamEvent(sender, "Loop", () =>
     {
         double start;
@@ -1040,17 +1034,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
     Fa.AudioDeviceInfo? SelectDevice(MediaPlayerConfiguration configuration)
     {
         if (string.IsNullOrWhiteSpace(configuration.AudioOutputDeviceId))
-        {
-            if (configuration.AudioOutputDeviceIndex >= 0)
-            {
-                DiagnosticRouter.Raise(
-                    MediaDiagnosticLevel.Warning,
-                    Category,
-                    $"Audio output device {configuration.AudioOutputDeviceIndex} is a BASS device index; the FatzAudio engine uses AudioOutputDeviceId and plays on the system default device.");
-            }
-
             return null;
-        }
 
         var devices = _engine.OutputDevices;
         if (FatzAudioDevices.Find(devices, configuration.AudioOutputDeviceId) is { } device)

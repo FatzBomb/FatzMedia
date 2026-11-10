@@ -3,8 +3,8 @@ namespace FatzMedia.Video.Core.Audio;
 /// <summary>
 /// Where <see cref="VideoAudioEngine"/>'s decoded audio plays (037A slice 5): FFmpeg demuxes and decodes,
 /// the output plays the interleaved float PCM it is given and owns everything after that (tempo, pitch,
-/// equalizer, fades, volume, normalization, the device). <see cref="BassPushAudioOutput"/> is the BASS push
-/// stream; the FatzAudio engine supplies a FatzAudio push stream through <see cref="IPushAudioOutputSource"/>.
+/// equalizer, fades, volume, normalization, the device). The FatzAudio engine supplies FatzAudio push and packet
+/// streams through <see cref="IPushAudioOutputSource"/>.
 /// Only plain PCM crosses: no FFmpeg object reaches the output.
 /// </summary>
 /// <remarks>
@@ -16,12 +16,6 @@ interface IPushAudioOutput : IDisposable
 {
     /// <summary>Whether a stream exists (between <see cref="Create"/> and <see cref="Release"/>).</summary>
     bool IsCreated { get; }
-
-    /// <summary>The BASS handles, for the BASS-only paths; 0 for other outputs.</summary>
-    int PlayHandle { get; }
-
-    /// <inheritdoc cref="PlayHandle"/>
-    int SourceHandle { get; }
 
     /// <summary>Creates the stream for one open, with the current volume, pitch, tempo and equalizer.</summary>
     /// <param name="sampleRate">Rate of the PCM that will be pushed.</param>
@@ -112,8 +106,6 @@ interface IPushAudioOutput : IDisposable
     /// <param name="temporaryCopy">The file is a copy the engine deletes when the song closes.</param>
     void StartNormalization(string filePath, string? cacheKey, double durationSeconds, bool temporaryCopy);
 
-    /// <summary>MIDI events of the stream (BASS only); null for other outputs.</summary>
-    IMidiEventReader? GetMidiEventReader();
 }
 
 /// <summary>A compressed audio track as FFmpeg's demuxer describes it: plain data, no FFmpeg object.</summary>
@@ -128,7 +120,7 @@ sealed record PacketCodecInfo(string Codec, int SampleRate, int Channels, byte[]
 
 /// <summary>
 /// An audio engine whose device also plays video soundtracks (037A slice 5): video audio, Audio-mode
-/// soundtracks and network audio through FFmpeg go to its outputs instead of BASS.
+/// soundtracks and network audio through FFmpeg go to its outputs.
 /// </summary>
 interface IPushAudioOutputSource
 {

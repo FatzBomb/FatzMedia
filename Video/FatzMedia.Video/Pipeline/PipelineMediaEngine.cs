@@ -293,8 +293,8 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
     /// <see cref="FileTypes"/> sets as local files (plus HLS <c>.m3u8</c>), selects audio or video.
     /// Video goes through FFmpeg's network path (Stage 039A), in Audio mode as its soundtrack only.
     /// Audio goes through the audio engine (Stage 014A) for plain http, and through FFmpeg's
-    /// network path into the soundtrack engine for https and HLS (ENG-034: BASS cannot verify
-    /// certificates; <see cref="NetworkAudioPolicy"/>).
+    /// network path into the soundtrack engine for https and HLS (ENG-034: certificates are verified there;
+    /// <see cref="NetworkAudioPolicy"/>).
     /// </summary>
     bool OpenNetwork(MediaInputSource source)
     {
@@ -529,8 +529,7 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
     }
 
     /// <summary>
-    /// Rejects a load that needs audio while the audio engine's native libraries (BASS) are not
-    /// loaded (ENG-033): an Error diagnostic and an error event.
+    /// Rejects a load that needs audio while the player has no audio engine (ENG-033): an Error diagnostic and an error event.
     /// </summary>
     bool RejectAudioUnavailable(string displayName, string? sourcePath)
     {
@@ -1020,7 +1019,7 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
     /// <summary>
     /// Shows the background video's first frame again and, when <paramref name="resume"/>, plays it
     /// from there. The work runs on the background scheduler's worker, the only thread that uses
-    /// the decoder after it opened: never on the caller's thread, which may be BASS's mixing
+    /// the decoder after it opened: never on the caller's thread, which may be the audio engine's event
     /// thread (an end or loop sync) and must not seek, decode or present.
     /// </summary>
     void RequestBackgroundRestart(bool resume)
@@ -1089,7 +1088,7 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
             BackgroundCleared?.Invoke(this, EventArgs.Empty);
     }
 
-    // May run on BASS's mixing thread (a trimmed end or loop sync): only queue work here.
+    // May run on the audio engine's event thread (a trimmed end or loop): only queue work here.
     // ENG-051 (owner 2026-11-06): by default a background video loops on its own while it is
     // shown, so the media's end or loop leaves it playing. With BackgroundFollowsMedia it shows its
     // first frame again at the end, and restarts with the media's loop, as before.

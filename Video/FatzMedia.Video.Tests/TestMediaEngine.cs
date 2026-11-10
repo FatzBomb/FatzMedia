@@ -351,8 +351,7 @@ sealed class TestCdgEngine : ICdgEngine
     public event EventHandler? Closed { add { } remove { } }
     public event EventHandler? PlaybackStarted { add { } remove { } }
 
-    public void LoadPaired(string filePath, int audioStreamHandle) { }
-    public void LoadPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle) { }
+
     public void Load(string filePath) { }
     public void Load(IArchiveEntryInfo archiveEntry) { }
     public void Play() { }
@@ -428,8 +427,6 @@ sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLo
     }
 
     public AudioEngineState State { get; private set; }
-    public int PlayHandle => 0;
-    public int SourceHandle => 0;
     public bool Normalize { get; set; } = true;
     public double NormalizationGain { get; set; } = 1;
     // Settable so a test can hold a PlayOnLoad start in its wait for the quick analysis.

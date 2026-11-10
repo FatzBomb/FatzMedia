@@ -80,7 +80,7 @@ public sealed class NetworkPipelineTests
     [InlineData("http://radio.example/live/index.m3u8")]
     public void HttpsAndHlsAudio_DoNotOpenThroughTheAudioEnginesOwnNetworkSupport(string address)
     {
-        // ENG-034: BASS cannot verify certificates (and has no HLS); these go through FFmpeg's
+        // ENG-034: certificates are verified on FFmpeg's path (and HLS is read there); these go through FFmpeg's
         // network path into the soundtrack engine. The portable tests load no FFmpeg, so the open
         // itself cannot succeed here (Linux native tests cover it); what matters is the route.
         var audio = new TestAudioEngine();
@@ -99,7 +99,7 @@ public sealed class NetworkPipelineTests
     }
 
     [Fact]
-    public void HttpsAudio_WithoutBass_IsRejectedAsAudioUnavailable()
+    public void HttpsAudio_WithoutAudio_IsRejectedAsAudioUnavailable()
     {
         var audio = new TestAudioEngine();
         using var engine = new PipelineMediaEngine(
@@ -157,15 +157,6 @@ public sealed class NetworkPipelineTests
         Assert.Null(engine.CurrentCapabilities);
     }
 
-    [Theory]
-    [InlineData(new[] { "HTTP/1.1 200 OK", "Content-Length: 4096" }, 4096L)]
-    [InlineData(new[] { "content-length:  12 " }, 12L)]
-    [InlineData(new[] { "Content-Length: 0" }, null)]
-    [InlineData(new[] { "Content-Length: abc" }, null)]
-    [InlineData(new[] { "icy-name: Radio" }, null)]
-    public void TryReadContentLength_ParsesHeader(string[] headers, long? expected) =>
-        Assert.Equal(expected, AudioStreamManager.TryReadContentLength(headers));
-
     internal static PipelineMediaEngine CreateEngine(TestAudioEngine audio) =>
         new(
             audio,
@@ -188,7 +179,7 @@ public sealed class NetworkPipelineTests
     {
         public bool IsMidiFile(string path) => false;
 
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(int sourceHandle, string sourcePath, TimeSpan transitionDuration) => null;
+        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string sourcePath, TimeSpan transitionDuration) => null;
     }
 }
 
@@ -220,7 +211,7 @@ public sealed class PlayerNetworkEventTests
     [Fact]
     public async Task NetworkAudioTitles_FromTheEngine_AreForwardedToHost()
     {
-        // ENG-034: https audio plays through FFmpeg; its titles come from the engine, not BASS.
+        // ENG-034: https audio plays through FFmpeg; its titles come from the soundtrack engine.
         var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
         using var player = new PlayerCore(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var metadata = new TaskCompletionSource<MediaStreamMetadataChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);

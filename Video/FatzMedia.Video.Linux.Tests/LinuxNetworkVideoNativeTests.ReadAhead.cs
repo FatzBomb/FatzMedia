@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// <summary>
 /// Stage 039A slice 2: the network read-ahead. Demuxer-level cases drive a
 /// <see cref="SharedDemuxer"/> directly (the caps, the memory it holds, and the sound fed from the
-/// picture's download, which needs BASS to play); player-level cases cover stalls, seeks inside
+/// picture's download, which needs an audio engine to play); player-level cases cover stalls, seeks inside
 /// and outside the buffer, and Pause, Stop and Close while the network hangs. The timings written
 /// to the output are the slice's measurements.
 /// </summary>

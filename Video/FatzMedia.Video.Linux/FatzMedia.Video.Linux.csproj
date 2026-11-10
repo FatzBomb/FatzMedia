@@ -9,7 +9,7 @@
     <PackageId>FatzMedia.Video.Linux</PackageId>
     <AssemblyName>FatzMedia.Video.Linux</AssemblyName>
     <RootNamespace>FatzMedia.Video.Linux</RootNamespace>
-    <Description>Linux platform services for FatzMedia.Video: host-supplied BASS/FFmpeg shared-library loading, precision waits, BASS device monitoring, and software video decode policy.</Description>
+    <Description>Linux platform services for FatzMedia.Video: host-supplied FFmpeg shared-library loading, precision waits and software video decode policy.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -25,9 +25,6 @@
 
   <ItemGroup>
     <PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
-    <PackageReference Include="ManagedBass" Version="4.0.2" />
-    <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
-    <PackageReference Include="ManagedBass.Midi" Version="4.0.2" />
   </ItemGroup>
 
   <ItemGroup>

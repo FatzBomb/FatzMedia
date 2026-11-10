@@ -6,10 +6,6 @@ namespace FatzMedia.Video;
 /// </summary>
 public static class DLLPath
 {
-    /// <summary>
-    /// Gets or sets the folder containing BASS native DLLs. Leave empty to use the default host native folder.
-    /// </summary>
-    public static string? Bass { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the folder containing FFmpeg native DLLs. Leave empty to use the default host native folder.
@@ -19,7 +15,7 @@ public static class DLLPath
     /// <summary>
     /// Gets the distinct configured native-library folders, excluding empty values.
     /// </summary>
-    public static IReadOnlyList<string> GetConfiguredNativeLibraryPaths() => [.. new[] { Bass, FFmpeg }
+    public static IReadOnlyList<string> GetConfiguredNativeLibraryPaths() => [.. new[] { FFmpeg }
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)];

@@ -396,7 +396,7 @@ public interface IPlayerSession : IDisposable
     /// Throws <see cref="InvalidOperationException"/> from inside a control call or its event handler.
     /// </remarks>
     /// <param name="configuration">New immutable configuration to apply (device, fallback mode, etc.).</param>
-    /// <param name="nativeLibraryPaths">Native-library search paths (BASS/FFmpeg).</param>
+    /// <param name="nativeLibraryPaths">Native-library search paths (FFmpeg).</param>
     /// <returns>True if the engine was successfully reinitialized.</returns>
     bool Reset(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths);
 
@@ -510,12 +510,11 @@ public interface IPlayerSession : IDisposable
     /// <summary>
     /// Raised when the active audio output device is lost, the system default device changes,
     /// or the audio device state otherwise changes. Core does not change playback state from
-    /// this notification; BASS/Windows remain responsible for active stream migration. Hosts
-    /// should surface a user-visible diagnostic when needed. When BASS loses the output (another
-    /// application takes the device exclusively, or it is unplugged), every player raises it with
-    /// <see cref="AudioDeviceChangeKind.DeviceRemoved"/> and a failure message while Core retries
-    /// once a second, then with <see cref="AudioDeviceChangeKind.DeviceAdded"/> once the output is
-    /// back and playing channels resumed. May fire from background threads;
+    /// this notification; the audio engine moves the output itself (to the default when the
+    /// device it plays on goes away). Hosts should surface a user-visible diagnostic when needed.
+    /// <see cref="AudioDeviceChangeKind.DeviceRemoved"/> is raised only for the device the player
+    /// plays on; another device going away is a <see cref="AudioDeviceChangeKind.DeviceStateChanged"/>.
+    /// May fire from background threads;
     /// hosts must marshal to the UI thread before touching view state.
     /// </summary>
     event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;

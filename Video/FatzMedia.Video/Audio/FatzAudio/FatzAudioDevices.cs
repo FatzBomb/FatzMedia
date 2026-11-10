@@ -4,8 +4,8 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Audio;
 
 /// <summary>
-/// The FatzAudio output devices a host can offer (037A, BASS retirement): what to pass as
-/// <c>MediaPlayerConfiguration.AudioOutputDeviceId</c>. Needs the FatzAudio native library, not BASS.
+/// The output devices a host can offer: what to pass as <c>MediaPlayerConfiguration.AudioOutputDeviceId</c>.
+/// Needs the FatzAudio native library.
 /// </summary>
 public static class FatzAudioOutputDevices
 {
@@ -28,16 +28,12 @@ static class FatzAudioDevices
     internal readonly record struct Snapshot(string Id, string Name, bool IsDefault);
 
     /// <summary>
-    /// The default entry, then each device in FatzAudio's order. A FatzAudio device is chosen by <see cref="AudioOutputDeviceInfo.Id"/>;
-    /// its <see cref="AudioOutputDeviceInfo.DeviceIndex"/> is the default's, so a host that passes it to BASS by mistake gets the default.
+    /// The default entry, then each device in FatzAudio's order, chosen by <see cref="AudioOutputDeviceInfo.Id"/>.
     /// </summary>
     public static IReadOnlyList<AudioOutputDeviceInfo> ToOutputDeviceInfos(IReadOnlyList<Fa.AudioDeviceInfo> devices) =>
     [
         AudioOutputDeviceInfo.Primary,
-        .. devices.Select(static device => new AudioOutputDeviceInfo(AudioOutputDeviceInfo.PrimaryDeviceIndex, device.Name, Driver: null, IsPrimary: false, IsEnabled: true, IsInitialized: false)
-        {
-            Id = device.Id,
-        }),
+        .. devices.Select(static device => new AudioOutputDeviceInfo(device.Id, device.Name, IsPrimary: false)),
     ];
 
     /// <summary>The device a configuration names: its id exactly, else its name ignoring case; null when none matches.</summary>
@@ -50,7 +46,7 @@ static class FatzAudioDevices
 }
 
 /// <summary>
-/// The player's device events from two FatzAudio sources, each change once (BASS retirement): looks at the device
+/// The player's device events from two FatzAudio sources, each change once: looks at the device
 /// list (<see cref="OnList"/>) and FatzAudio's own notice that it moved the output (<see cref="OnOutputMoved"/>),
 /// which also catches a move the list cannot see (a device unplugged and back within one look, an exclusive-mode
 /// reset). Kinds follow <c>IPlayerSession.AudioDeviceChanged</c>: <see cref="AudioDeviceChangeKind.DeviceRemoved"/>

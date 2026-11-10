@@ -7,38 +7,42 @@ using Xunit.Abstractions;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// Opt-in native check for ENG-033: a player starts and plays video with real FFmpeg and no BASS.
-/// Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> to a folder of FFmpeg 9 shared libraries and
-/// <c>FATZBOMB_LINUX_SAMPLE_VIDEO</c> to an H.264 clip (default:
+/// Opt-in native check for ENG-033: a player whose audio engine cannot start still starts and plays
+/// video, picture only, with real FFmpeg. Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> to a folder of FFmpeg 9
+/// shared libraries and <c>FATZBOMB_LINUX_SAMPLE_VIDEO</c> to an H.264 clip (default:
 /// <c>/opt/fatzbomb-native/media/h264_1080p.mp4</c>). Without them the tests return immediately.
 /// </summary>
 [Collection("File type registry")]
-public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
+public sealed class LinuxNoAudioEngineNativeTests(ITestOutputHelper output)
 {
     const string DefaultSample = "/opt/fatzbomb-native/media/h264_1080p.mp4";
 
     [Fact]
-    public void BackgroundMode_WithoutBass_PresentsFramesThroughTheSoftwareRenderer() =>
-        PlaysPictureWithoutBass(MediaPlayerMode.Background);
+    public void BackgroundMode_WithoutAudioEngine_PresentsFramesThroughTheSoftwareRenderer() =>
+        PlaysPictureWithoutAudioEngine(MediaPlayerMode.Background);
 
     [Fact]
-    public void FullMode_WithoutBass_PlaysPictureOnTheClockWithoutSound() =>
-        PlaysPictureWithoutBass(MediaPlayerMode.Full);
+    public void FullMode_WithoutAudioEngine_PlaysPictureOnTheClockWithoutSound() =>
+        PlaysPictureWithoutAudioEngine(MediaPlayerMode.Full);
 
-    void PlaysPictureWithoutBass(MediaPlayerMode mode)
+    void PlaysPictureWithoutAudioEngine(MediaPlayerMode mode)
     {
         var ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         var sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO") is { Length: > 0 } configured ? configured : DefaultSample;
         if (string.IsNullOrWhiteSpace(ffmpeg) || !File.Exists(sample) || !OperatingSystem.IsLinux())
             return;
 
-        // An empty application folder: the only search path is the FFmpeg folder, so BASS is missing.
-        var appBase = Directory.CreateTempSubdirectory("fbm-no-bass-").FullName;
+        // An empty application folder: the only search path is the FFmpeg folder.
+        var appBase = Directory.CreateTempSubdirectory("fbm-no-audio-").FullName;
         try
         {
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
             var factory = new LinuxPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode };
+            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
+            {
+                Mode = mode,
+                AudioEngineFactory = new UnavailableAudioEngineFactory(),
+            };
             var errors = new ConcurrentQueue<string>();
             var sink = new CountingFrameSink();
 
@@ -48,9 +52,7 @@ public sealed class LinuxNoBassNativeTests(ITestOutputHelper output)
             output.WriteLine(player.LastNativeLoadMessage);
             foreach (var line in player.NativeDependencies.Describe())
                 output.WriteLine(line);
-            Assert.False(player.NativeDependencies.IsAudioAvailable);
             Assert.True(player.NativeDependencies.RequiredLoaded, string.Join(" ", player.NativeDependencies.Describe()));
-            Assert.Contains("without BASS", player.LastNativeLoadMessage, StringComparison.Ordinal);
 
             using var handle = new MediaPresentationFrameSinkHandle(sink);
             Assert.True(player.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(

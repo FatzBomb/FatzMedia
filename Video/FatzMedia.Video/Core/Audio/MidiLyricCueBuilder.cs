@@ -5,10 +5,8 @@ namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
 /// Builds karaoke lyric cues from the events of a MIDI source, read through an engine-neutral
-/// <see cref="IMidiEventReader"/> (037A slice 1). Lyric events (MIDI meta event 5), or text
-/// events (meta event 1) when there are none, become <see cref="SubtitleCue"/> objects timed by
-/// the reader's positions. On BASS the reader is <see cref="BassMidiEventReader"/> on the open
-/// MIDI channel, which makes the same BASS marker calls this class made before.
+/// <see cref="IMidiEventReader"/>. Lyric events (MIDI meta event 5), or text events (meta event 1)
+/// when there are none, become <see cref="SubtitleCue"/> objects timed by the reader's positions.
 /// </summary>
 static class MidiLyricCueBuilder
 {
@@ -26,16 +24,6 @@ static class MidiLyricCueBuilder
 
     public static bool IsMidiFile(string path) =>
         MidiExtensions.Contains(Path.GetExtension(path));
-
-    /// <summary>
-    /// Extracts lyric cues from an open BASS MIDI channel (created via Bass.MusicLoad).
-    /// Returns null if the channel has no lyrics or is not a MIDI stream.
-    /// </summary>
-    public static IReadOnlyList<SubtitleCue>? ExtractLyrics(
-        int channelHandle,
-        string sourcePath,
-        TimeSpan? transitionDuration = null) =>
-        ExtractLyrics(BassMidiEventReader.ForHandle(channelHandle), sourcePath, transitionDuration);
 
     /// <summary>
     /// Extracts lyric cues from the MIDI events <paramref name="reader"/> reads. Returns null when

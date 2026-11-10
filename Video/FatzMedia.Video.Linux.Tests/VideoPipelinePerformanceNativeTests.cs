@@ -116,12 +116,11 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
             new PlaybackClock(),
             new MediaState(),
             new MediaPlayerConfiguration(VideoDecodingMethod.Software),
-            0,
             new PlaybackSyncState(),
             new SleepWaiterFactory(),
             new FixedRefresh(),
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
-            usesAudio: false);
+            createAudioOutput: null);
         Assert.True(pipeline.Open(path));
         pipeline.FrameTiming = VideoFrameTiming.DisplayLocked;
 

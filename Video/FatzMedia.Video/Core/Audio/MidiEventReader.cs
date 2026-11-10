@@ -23,9 +23,8 @@ enum MidiMarkKind
 }
 
 /// <summary>
-/// One text event of a MIDI source. <see cref="Position"/> is in the reader's own unit (bytes for
-/// BASS, ticks for a file); only its order and <see cref="IMidiEventReader.PositionToSeconds"/>
-/// give it meaning.
+/// One text event of a MIDI source. <see cref="Position"/> is in the reader's own unit (ticks for a
+/// file); only its order and <see cref="IMidiEventReader.PositionToSeconds"/> give it meaning.
 /// </summary>
 readonly record struct MidiMark(long Position, int Track, string? Text);
 
@@ -33,15 +32,10 @@ readonly record struct MidiMark(long Position, int Track, string? Text);
 readonly record struct MidiTempoEvent(long Position, int MicrosecondsPerQuarterNote);
 
 /// <summary>
-/// Engine-neutral reader of the text, signature and tempo events of one MIDI source (037A slice 1).
-/// The lyric cue and karaoke metadata builders read MIDI only through it, so they need no audio
-/// engine handle. <see cref="BassMidiEventReader"/> reads an open BASS MIDI channel (today's path);
-/// a FatzAudio engine will implement it with FatzAudio's MIDI event API (037A).
+/// Engine-neutral reader of the text, signature and tempo events of one MIDI source. The lyric cue
+/// and karaoke metadata builders read MIDI only through it, so they need no audio engine handle;
+/// the FatzAudio engine implements it with FatzAudio's MIDI event API.
 /// </summary>
-/// <remarks>
-/// The builders call the members in a fixed order and each at most as often as they did on BASS
-/// before this seam, so the BASS reader makes the same native calls in the same order.
-/// </remarks>
 interface IMidiEventReader
 {
     /// <summary>
@@ -61,8 +55,8 @@ interface IMidiEventReader
 }
 
 /// <summary>
-/// Audio-engine capability (037A slice 1): reads the MIDI events of the media the engine has open.
-/// An engine without it is read through its BASS source handle, as before this seam.
+/// Audio-engine capability: reads the MIDI events of the media the engine has open. An engine
+/// without it has no MIDI lyrics or metadata.
 /// </summary>
 interface IMidiEventReaderSource
 {
