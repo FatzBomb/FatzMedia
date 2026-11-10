@@ -2,6 +2,7 @@ using System.Globalization;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
+using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Threading;
@@ -28,7 +29,8 @@ namespace FatzMedia.Video.Audio;
 /// <para>Events arrive on FatzAudio's event thread; handlers re-enter the player's diagnostic owner.</para>
 /// </remarks>
 sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
-    IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource
+    IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource,
+    ICdgEngineSource
 {
     const string Category = "FatzAudioEngine";
 
@@ -275,6 +277,9 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
 
     /// <summary>The bus volume (the user volume), for tests.</summary>
     internal float OutputVolume => _bus.Volume;
+
+    /// <summary>CD+G drawn by FatzAudio on this engine (037A slice 3).</summary>
+    ICdgEngine ICdgEngineSource.CreateCdgEngine() => new FatzAudioCdgEngine(_engine);
 
     /// <summary>The engine is ready from construction (the factory opens the device).</summary>
     public bool Init(int device = -1, int sampleRate = 44100) => !_disposed;

@@ -54,7 +54,10 @@ public static class PlayerServiceProvider
             : new SilentAudioEngine());
         _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
             provider.GetRequiredService<IAudioEngine>() as IMediaFileAnalyzer ?? UnavailableMediaFileAnalyzer.Instance);
-        _ = services.AddSingleton<ICdgEngine, CdgEngine>();
+        // An engine that brings its own CD+G drawing (FatzAudio, 037A slice 3) supplies the CD+G engine.
+        _ = services.AddSingleton(provider => provider.GetRequiredService<IAudioEngine>() is ICdgEngineSource source
+            ? source.CreateCdgEngine()
+            : new CdgEngine());
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();
         _ = services.AddSingleton<IMidiLyricProvider, BassMidiLyricProvider>();

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
@@ -13,9 +14,8 @@ namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
 /// The FatzAudio engine (037A slice 2) on the real FatzAudio native library built from Audio/
-/// (FatzAudioNativeDir), playing to FatzAudio's null output device (this machine has no sound device). Timing
-/// is real time, so waits are generous. Linux only, like the rest of this project; Windows and a
-/// real device are the owner's smoke.
+/// (FatzAudioNativeDir), playing to FatzAudio's null output device. Timing is real time, so waits are
+/// generous. Linux and Windows (<see cref="FatzAudioNativeGroup.CanRun"/>); a real device is the owner's smoke.
 /// </summary>
 [Collection(FatzAudioNativeGroup.Name)]
 public sealed class FatzAudioEngineNativeTests : IDisposable
@@ -31,7 +31,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void OpenPlaySeekPauseStop_FollowTheClock()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "tone.wav", new FatzAudioTestMedia.Section(6));
@@ -73,7 +73,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void Loop_RaisesPlaybackEndedOncePerWrapWhilePlaying_ThenEndsWhenTurnedOff()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "short.wav", new FatzAudioTestMedia.Section(0.6));
@@ -103,7 +103,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void SilenceTrim_AppliesFromTheFirstOpen_AndEndsAtTheTrimmedEnd()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         // 2 s of silence with a 50 ms click at 0.5 s (shorter than the 200 ms minimum sound, so
@@ -145,7 +145,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void Equalizer_CutsTheBandItIsSetTo()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "1k.wav", new FatzAudioTestMedia.Section(8, Hz: 1000));
@@ -174,7 +174,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public async Task Fades_RampTheStreamVolume_AndAStaleSessionIsRejected()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "fade.wav", new FatzAudioTestMedia.Section(6));
@@ -206,7 +206,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public async Task Normalization_IsFatzAudiosLoudness_AtTheConfiguredTarget_AndCached()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         // A 1 kHz sine at 0.1 in both channels measures about -20 LUFS: +6 dB (x2) to reach -14.
@@ -263,7 +263,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void Karaoke_LyricsAndMetadata_ComeThroughTheMidiEventReader()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var soundFont = FatzAudioTestMedia.WriteSoundFont(_root);
@@ -295,7 +295,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void ArchiveEntry_OpensFromMemory()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var wav = FatzAudioTestMedia.WriteWav(_root, "entry.wav", new FatzAudioTestMedia.Section(2));
@@ -310,7 +310,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     [Fact]
     public void ServiceProvider_UsesTheFactoryEngine_AndItsDeviceMonitor()
     {
-        if (!OperatingSystem.IsLinux())
+        if (!FatzAudioNativeGroup.CanRun)
             return;
 
         var services = PlayerServiceProvider.Create(
@@ -321,6 +321,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         {
             _ = Assert.IsType<FatzAudioEngine>(services.GetRequiredService<IAudioEngine>());
             _ = Assert.IsType<AudioEngineDeviceMonitor>(services.GetRequiredService<IAudioDeviceMonitor>());
+            _ = Assert.IsType<FatzAudioCdgEngine>(services.GetRequiredService<ICdgEngine>());
             Assert.Same(UnavailableMediaFileAnalyzer.Instance, services.GetRequiredService<IMediaFileAnalyzer>());
         }
         finally
@@ -404,4 +405,11 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 public sealed class FatzAudioNativeGroup
 {
     public const string Name = "FatzAudio native";
+
+    /// <summary>
+    /// Linux (CI builds the native library from Audio/), and Windows when this machine built it (Windows CI does not:
+    /// the tests then return at once).
+    /// </summary>
+    public static bool CanRun => OperatingSystem.IsLinux()
+        || (OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native", "fatzaudio.dll")));
 }
