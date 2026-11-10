@@ -1043,6 +1043,47 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.All(second.SubtitleBgra.ToArray(), value => Assert.Equal(0x22, value));
     }
 
+    [Fact]
+    public void EngineDrawnLyrics_ReplaceTheCueRaster_AndAnUnchangedFrameIsNotPresentedAgain()
+    {
+        // 037A: an audio engine that draws MIDI lyrics itself (FatzAudio) puts its frames on the subtitle layer.
+        var subtitles = new FixedSubtitleEngine([new SubtitleCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(10), "cue text")]);
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle, Subtitle = subtitles };
+        var rasterizer = new CountingSubtitleRasterizer();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, engine, rasterizer: rasterizer);
+        TimeSpan? drawnAt = null;
+        var revision = 1;
+        var heldRevision = 0;
+        engine.TestAudio.DrawLyricsWith = (time, width, height, rent) =>
+        {
+            drawnAt = time;
+            var pixels = rent(8 * 2 * 4);
+            pixels.Span.Fill((byte)revision);
+            var changed = heldRevision != revision;
+            heldRevision = revision;
+            return (new SubtitleRasterResult(pixels, 8, 2, 32, 100, 900, width, height), changed);
+        };
+
+        Assert.True(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal(TimeSpan.FromSeconds(5), drawnAt);
+        Assert.Equal((0, 0), (rasterizer.TextCount, rasterizer.KaraokeCount));
+        Assert.False(coordinator.UpdateSubtitleOverlay(5));
+
+        revision = 2;
+        Assert.True(coordinator.UpdateSubtitleOverlay(5.5));
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        coordinator.RefreshCurrentPosition();
+        var presented = backend.PresentedFrames.Last();
+        Assert.Equal((8, 2, 100, 900, 1920, 1080), (presented.SubtitleWidth, presented.SubtitleHeight, presented.SubtitleCanvasLeft, presented.SubtitleCanvasTop, presented.SubtitleCanvasWidth, presented.SubtitleCanvasHeight));
+        Assert.All(presented.SubtitleBgra.ToArray(), value => Assert.Equal(2, value));
+
+        // Nothing to draw (the song closed): the overlay goes away once.
+        engine.TestAudio.DrawLyricsWith = (_, _, _, _) => (null, false);
+        Assert.True(coordinator.UpdateSubtitleOverlay(6));
+        Assert.False(coordinator.UpdateSubtitleOverlay(6));
+    }
+
     static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
     {
         var changed = false;

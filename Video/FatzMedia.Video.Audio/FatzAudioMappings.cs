@@ -1,4 +1,5 @@
 using FatzMedia.Video.Core.Audio;
+using FatzMedia.Video.Core.Configuration;
 using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Audio;
@@ -165,4 +166,20 @@ static class FatzAudioMappings
         var alpha = (backgroundOverride is { } o ? o >> 24 : 255u) * opacityAlpha / 255;
         return (alpha << 24) | rgb;
     }
+
+    /// <summary>
+    /// Our karaoke lyric look as a FatzAudio lyric style: FatzAudio's Classic preset (white, sung yellow, a black
+    /// outline and shadow, a cross-fading wipe: the look our own renderer draws) with our font, colours and the
+    /// opacity of the next line. Sizes stay the preset's, which are set for a 1080-pixel-high screen.
+    /// </summary>
+    public static Fa.LyricStyle ToLyricStyle(KaraokeTextStyle style) => Fa.LyricStyle.FromPreset(Fa.LyricPreset.Classic) with
+    {
+        FontFamily = string.IsNullOrWhiteSpace(style.FontFamily) ? null : style.FontFamily,
+        TextColor = ToColor(style.TextArgb),
+        SungColor = ToColor(style.WipeTextArgb),
+        NextLineOpacity = Math.Clamp(style.NextLineOpacity, 0, 1),
+    };
+
+    /// <summary>An ARGB colour as FatzAudio's straight-alpha colour.</summary>
+    public static Fa.CdgColor ToColor(uint argb) => new((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24));
 }

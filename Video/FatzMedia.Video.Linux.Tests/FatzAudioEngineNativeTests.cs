@@ -6,6 +6,7 @@ using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Audio.Fade;
 using FatzMedia.Video.Core.Configuration;
+using FatzMedia.Video.Core.Subtitle;
 using FatzMedia.Video.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 using Fa = global::FatzMedia.Audio;
@@ -290,6 +291,58 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         // It plays: the soundfont renders the notes.
         Assert.True(engine.Play());
         Assert.True(SpinUntil(() => engine.Position > 0.2));
+    }
+
+    [Fact]
+    public void Karaoke_LyricsAreDrawnByFatzAudio_OnTheSubtitleCanvas_OnlyTheChangeWhenTheBufferComesBack()
+    {
+        if (!FatzAudioNativeGroup.CanRun)
+            return;
+
+        var soundFont = FatzAudioTestMedia.WriteSoundFont(_root);
+        var kar = FatzAudioTestMedia.WriteKaraoke(_root);
+        var wav = FatzAudioTestMedia.WriteWav(_root, "plain.wav", new FatzAudioTestMedia.Section(2));
+        using var engine = CreateEngine(new MediaPlayerConfiguration { MidiSoundfontPath = soundFont });
+        IKaraokeLyricsSource lyrics = engine;
+
+        Assert.True(engine.Open(wav));
+        Assert.False(lyrics.DrawsLyrics);
+        Assert.True(engine.Open(kar));
+        Assert.True(lyrics.DrawsLyrics);
+
+        // One reusable buffer, as the overlay pool hands back when no composition holds it.
+        var buffer = new byte[1920 * 1080 * 4];
+        Memory<byte> Rent(int length) => buffer.AsMemory(0, length);
+        SubtitleRasterResult? frame = null;
+        Assert.True(SpinUntil(() => (frame = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)) is not null));
+        var drawn = frame!.Value;
+        Assert.Equal((1920, 1080), (drawn.CanvasWidth, drawn.CanvasHeight));
+        Assert.InRange(drawn.Width, 1, 1920);
+        Assert.InRange(drawn.CanvasLeft + drawn.Width, 1, 1920);
+        Assert.InRange(drawn.CanvasTop + drawn.Height, 1, 1080);
+
+        // The words are drawn: some pixels are not transparent.
+        Assert.True(SpinUntil(() =>
+        {
+            var f = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)!.Value;
+            var pixels = f.Pixels.Span;
+            for (var i = 3; i < pixels.Length; i += 4)
+            {
+                if (pixels[i] != 0)
+                    return true;
+            }
+
+            return false;
+        }));
+
+        // The same moment again into the same buffer: nothing new.
+        _ = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _);
+        _ = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out var changed);
+        Assert.False(changed);
+
+        engine.Close();
+        Assert.False(lyrics.DrawsLyrics);
+        Assert.Null(lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _));
     }
 
     [Fact]
