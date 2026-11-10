@@ -149,6 +149,8 @@ dotnet_diagnostic.IDE0046.severity = none             # if -> conditional expres
 dotnet_diagnostic.IDE0045.severity = none
 dotnet_diagnostic.IDE0010.severity = none             # add missing switch cases
 dotnet_diagnostic.IDE0072.severity = none
+dotnet_diagnostic.CA1716.severity = none              # names that are keywords in other languages (VB); no VB callers
+dotnet_diagnostic.CA1711.severity = none              # type name suffixes like Queue, Collection
 
 # ---- Tests: underscores in test method names are the naming convention
 [{**.Tests/**.cs,Tests/**.cs}]
