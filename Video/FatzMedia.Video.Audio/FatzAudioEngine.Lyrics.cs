@@ -12,7 +12,7 @@ namespace FatzMedia.Video.Audio;
 /// changed. The look starts from FatzAudio's Classic preset (our own lyric look) with the font and colours of
 /// <c>MediaPlayerConfiguration.KaraokeStyle</c>.
 /// </summary>
-sealed partial class FatzAudioEngine : IKaraokeLyricsSource
+sealed partial class FatzAudioEngine : IKaraokeOverlaySource
 {
     // Guarded by _gate: the open song's lyric surface, made on the first frame.
     bool _streamHasLyrics;
@@ -26,7 +26,7 @@ sealed partial class FatzAudioEngine : IKaraokeLyricsSource
         public ulong LayoutRevision;
     }
 
-    bool IKaraokeLyricsSource.DrawsLyrics
+    bool IKaraokeOverlaySource.DrawsOverlay
     {
         get
         {
@@ -35,7 +35,7 @@ sealed partial class FatzAudioEngine : IKaraokeLyricsSource
         }
     }
 
-    SubtitleRasterResult? IKaraokeLyricsSource.DrawLyrics(TimeSpan time, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels, out bool changed)
+    SubtitleRasterResult? IKaraokeOverlaySource.DrawOverlay(TimeSpan time, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels, out bool changed)
     {
         changed = false;
         Fa.LyricSurface surface;

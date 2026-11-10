@@ -104,7 +104,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     RetainedFrameBuffer? _subtitleBuffer;
     RetainedFrameBuffer? _subtitleOverlayBuffer;
     // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame. One pool per
-    // coordinator: an engine that draws lyrics into a returned buffer draws only the change (IKaraokeLyricsSource),
+    // coordinator: an engine that draws lyrics into a returned buffer draws only the change (IKaraokeOverlaySource),
     // so no other player may write into the arrays meanwhile.
     readonly ArrayPool<byte> _subtitleOverlayPool = ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
     readonly Func<int, Memory<byte>> _rentSubtitlePixels;
@@ -1573,8 +1573,11 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
 
-            if (_mediaEngine.Audio is IKaraokeLyricsSource { DrawsLyrics: true } engineLyrics)
-                return UpdateEngineLyricsOverlay(engineLyrics, TimeSpan.FromSeconds(subtitlePosition));
+            // A scaled CD+G picture (it draws the position the CD+G engine last rendered), else engine-drawn lyrics.
+            if (_attachedCdg is IKaraokeOverlaySource { DrawsOverlay: true } cdgPicture)
+                return UpdateEngineOverlay(cdgPicture, TimeSpan.FromSeconds(subtitlePosition));
+            if (_mediaEngine.Audio is IKaraokeOverlaySource { DrawsOverlay: true } engineLyrics)
+                return UpdateEngineOverlay(engineLyrics, TimeSpan.FromSeconds(subtitlePosition));
 
             var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
             var karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
@@ -1633,7 +1636,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     /// pooled overlay memory, only what changed when that memory still holds the previous frame. Caller holds
     /// _subtitleGate.
     /// </summary>
-    bool UpdateEngineLyricsOverlay(IKaraokeLyricsSource source, TimeSpan time)
+    bool UpdateEngineOverlay(IKaraokeOverlaySource source, TimeSpan time)
     {
         // The cue path's state no longer describes the overlay.
         _subtitleCues = [];
@@ -1641,7 +1644,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _subtitleProgressRevision = int.MinValue;
         try
         {
-            var overlay = source.DrawLyrics(time, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels, out var changed);
+            var overlay = source.DrawOverlay(time, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels, out var changed);
             if (overlay is null)
             {
                 if (_subtitleOverlay is null)

@@ -1,6 +1,7 @@
 using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Cdg;
+using FatzMedia.Video.Core.Subtitle;
 using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -151,6 +152,53 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
 
         Assert.Equal(PacketCount / 2 / 300.0, cdg.TotalDurationSeconds, 6);
         AssertSame(second, 1_000, cdg, opacity: 100, backgroundOverride: null);
+    }
+
+    [Fact]
+    public void Scaled_ThePictureIsTheOverlay_TheSnapshotOnlyTheWash()
+    {
+        if (!FatzAudioNativeGroup.CanRun)
+            return;
+
+        var bytes = CreateStream(PacketCount, seed: 9);
+        using var classic = new FatzAudioCdgEngine(_engine!);
+        using var scaled = new FatzAudioCdgEngine(_engine!, new CdgScalingOptions { Enabled = true, Smoothness = 4, EdgeBlend = true, Effects = true });
+        classic.Load(Write("classic.cdg", bytes));
+        scaled.Load(Write("scaled.cdg", bytes));
+        Assert.False(((IKaraokeOverlaySource)classic).DrawsOverlay);
+        IKaraokeOverlaySource overlay = scaled;
+        Assert.True(overlay.DrawsOverlay);
+
+        classic.RenderAtSeconds(TimeAt(3_000));
+        scaled.RenderAtSeconds(TimeAt(3_000));
+        Assert.True(classic.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var indexed));
+        Assert.True(scaled.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var washOnly));
+        Assert.True(washOnly.ColorIndices.IsEmpty && washOnly.IsWellFormed);
+        Assert.Equal(indexed.BackgroundWashArgb, washOnly.BackgroundWashArgb);
+
+        var buffer = new byte[1920 * 1080 * 4];
+        Memory<byte> Rent(int length) => buffer.AsMemory(0, length);
+        var frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out var changed)!.Value;
+        Assert.True(changed);
+        Assert.Equal((1920, 1080), (frame.CanvasWidth, frame.CanvasHeight));
+        Assert.Equal(1080, frame.Height); // Show at 1080 high: 5x, 1500 x 1080, centred
+        Assert.Equal(1500, frame.Width);
+        Assert.Equal(210, frame.CanvasLeft);
+        var visible = 0;
+        var pixels = frame.Pixels.Span;
+        for (var i = 3; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] != 0)
+                visible++;
+        }
+
+        Assert.True(visible > 1000, $"only {visible} visible pixels");
+        _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
+        Assert.False(changed);
+
+        scaled.RenderAtSeconds(TimeAt(6_000));
+        _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
+        Assert.True(changed);
     }
 
     // Mid-pack: our engine shows floor(t x 300) = packs there; the FatzAudio engine must show the same.

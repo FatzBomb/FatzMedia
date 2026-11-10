@@ -30,6 +30,21 @@ interface IPushAudioOutput : IDisposable
     /// (FatzAudio's loudness cache); null for a network source.</param>
     bool Create(int sampleRate, int channels, string? sourcePath);
 
+    /// <summary>
+    /// Creates the stream for compressed packets instead of PCM, when the output decodes <paramref name="codec"/>
+    /// itself (FatzAudio, when enabled); false otherwise, and the engine decodes with FFmpeg and uses
+    /// <see cref="Create"/>. Only plain data crosses: the codec's name, format and configuration bytes.
+    /// </summary>
+    /// <param name="codec">The track's codec, as FFmpeg's demuxer describes it.</param>
+    /// <param name="sourcePath">As for <see cref="Create"/>.</param>
+    bool CreateForPackets(PacketCodecInfo codec, string? sourcePath) => false;
+
+    /// <summary>Queues one compressed packet (after <see cref="CreateForPackets"/>).</summary>
+    /// <param name="data">The packet's bytes.</param>
+    /// <param name="continuousStartSeconds">Where the packet starts on the continuous timeline.</param>
+    /// <param name="durationSeconds">How long it plays; 0 when unknown.</param>
+    bool PushPacket(ReadOnlySpan<byte> data, double continuousStartSeconds, double durationSeconds) => false;
+
     /// <summary>Stops and frees the stream and ends any normalization work for it.</summary>
     void Release();
 
@@ -100,6 +115,16 @@ interface IPushAudioOutput : IDisposable
     /// <summary>MIDI events of the stream (BASS only); null for other outputs.</summary>
     IMidiEventReader? GetMidiEventReader();
 }
+
+/// <summary>A compressed audio track as FFmpeg's demuxer describes it: plain data, no FFmpeg object.</summary>
+/// <param name="Codec">FFmpeg's codec name (<c>aac</c>, <c>mp3</c>, <c>ac3</c>, ...).</param>
+/// <param name="SampleRate">Samples per second.</param>
+/// <param name="Channels">Channel count.</param>
+/// <param name="ExtraData">The codec configuration (an AAC config, an Opus header), or null.</param>
+/// <param name="BlockAlign">Block alignment, 0 when none.</param>
+/// <param name="BitsPerCodedSample">Bits per coded sample, 0 when unknown.</param>
+/// <param name="BitRate">Bits per second, 0 when unknown.</param>
+sealed record PacketCodecInfo(string Codec, int SampleRate, int Channels, byte[]? ExtraData, int BlockAlign, int BitsPerCodedSample, long BitRate);
 
 /// <summary>
 /// An audio engine whose device also plays video soundtracks (037A slice 5): video audio, Audio-mode

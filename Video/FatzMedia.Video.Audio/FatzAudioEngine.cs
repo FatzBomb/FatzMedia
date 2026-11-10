@@ -44,6 +44,8 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
     readonly SilenceTrimOptions _silenceTrim;
     readonly NormalizationOptions _normalization;
     readonly KaraokeTextStyle _karaokeStyle;
+    readonly CdgScalingOptions _cdgScaling;
+    readonly bool _decodesSoundtracks;
     readonly object? _diagnosticOwner;
 
     // Guards the open stream and everything bound to it; never held while raising events.
@@ -78,6 +80,8 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         _silenceTrim = configuration.SilenceTrim;
         _normalization = configuration.Normalization;
         _karaokeStyle = configuration.KaraokeStyle.Normalize();
+        _cdgScaling = configuration.CdgScaling;
+        _decodesSoundtracks = configuration.AudioEngineDecodesSoundtracks;
         _diagnosticOwner = DiagnosticRouter.Owner;
         var cacheDirectory = EnsureCacheDirectory(FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory));
         _engine = Fa.AudioEngine.Create(new Fa.AudioEngineOptions { NullOutput = nullOutput, CacheDirectory = cacheDirectory });
@@ -333,11 +337,11 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
     internal float OutputVolume => _bus.Volume;
 
     /// <summary>CD+G drawn by FatzAudio on this engine (037A slice 3).</summary>
-    ICdgEngine ICdgEngineSource.CreateCdgEngine() => new FatzAudioCdgEngine(_engine);
+    ICdgEngine ICdgEngineSource.CreateCdgEngine() => new FatzAudioCdgEngine(_engine, _cdgScaling);
 
     /// <summary>Video audio, soundtracks and network audio through FFmpeg on this engine's device (037A slice 5).</summary>
     IPushAudioOutput IPushAudioOutputSource.CreatePushAudioOutput() =>
-        new FatzAudioPushAudioOutput(this, _engine, OutputDevice, _normalization);
+        new FatzAudioPushAudioOutput(this, _engine, OutputDevice, _normalization, _decodesSoundtracks);
 
     /// <summary>The engine is ready from construction (the factory opens the device).</summary>
     public bool Init(int device = -1, int sampleRate = 44100) => !_disposed;

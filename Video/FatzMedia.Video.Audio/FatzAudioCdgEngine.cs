@@ -21,7 +21,7 @@ namespace FatzMedia.Video.Audio;
 /// <para>Colours: FatzAudio's palette, with our background opacity and override applied as
 /// <see cref="CdgEngine"/> applies them (<see cref="FatzAudioMappings.ToCdgPaletteArgb"/>).</para>
 /// </remarks>
-sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
+sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
 {
     const string Category = "FatzAudioCdgEngine";
     const int Width = CdgConstants.FrameWidth;
@@ -52,9 +52,12 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     bool _renderFailureReported;
     bool _disposed;
 
-    public FatzAudioCdgEngine(Fa.AudioEngine engine)
+    /// <param name="engine">The FatzAudio engine the graphics ride on.</param>
+    /// <param name="scaling">The scaled picture's options; off (the default) draws the classic picture.</param>
+    public FatzAudioCdgEngine(Fa.AudioEngine engine, CdgScalingOptions scaling = default)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _scaling = scaling;
         lock (_renderLock)
             ResetPictureLocked();
     }
@@ -152,6 +155,17 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var (carrier, surface, packs) = CreateCarrier(cdg, label);
+        Fa.CdgSurface? scaled;
+        try
+        {
+            scaled = carrier is null ? null : CreateScaledSurface(carrier, label);
+        }
+        catch
+        {
+            carrier?.Dispose();
+            throw;
+        }
+
         Fa.PushAudioStream? oldCarrier;
         bool washChanged;
         lock (_renderLock)
@@ -166,6 +180,8 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             oldCarrier = _carrier;
             _carrier = carrier;
             _surface = surface;
+            _scaledSurface = scaled;
+            _scaledFrames = [];
             _renderFailureReported = false;
             TotalDurationSeconds = packs / (double)CdgConstants.PacketsPerSecond;
             washChanged = ResetPictureLocked();
@@ -243,11 +259,12 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         var washChanged = false;
         lock (_renderLock)
         {
+            _lastTime = ToTime(seconds);
             if (_surface is { } surface && !_disposed)
             {
                 try
                 {
-                    changed = ApplyFrameLocked(surface.UpdateAt(ToTime(seconds)));
+                    changed = ApplyFrameLocked(surface.UpdateAt(_lastTime));
                 }
                 catch (ObjectDisposedException)
                 {
@@ -344,7 +361,8 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     {
         lock (_renderLock)
         {
-            snapshot = CreateSnapshotLocked(consumeDirtyRegions);
+            // Scaled: the picture is the overlay (DrawOverlay); the snapshot carries only the wash.
+            snapshot = _scaledSurface is null ? CreateSnapshotLocked(consumeDirtyRegions) : CreateWashOnlySnapshotLocked();
             return true;
         }
     }
@@ -397,6 +415,7 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         _borderIndex = -1;
         _surfacePaletteRevision = ulong.MaxValue; // the next frame's colours are taken whatever its revision
         _copyWholeFrame = true;
+        _lastTime = TimeSpan.Zero; // the scaled picture is blank too until the next render
         _dirtyRects.Clear();
         _dirtyRects.Add(CdgDirtyRect.FullFrame);
         RefreshPaletteLocked();
@@ -459,6 +478,7 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             carrier = _carrier;
             _carrier = null;
             _surface = null;
+            _scaledSurface = null;
             TotalDurationSeconds = 0;
             washChanged = ResetPictureLocked();
         }

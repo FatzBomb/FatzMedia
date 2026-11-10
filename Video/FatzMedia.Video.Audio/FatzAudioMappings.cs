@@ -210,4 +210,35 @@ static class FatzAudioMappings
 
     /// <summary>An ARGB colour as FatzAudio's straight-alpha colour.</summary>
     public static Fa.CdgColor ToColor(uint argb) => new((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24));
+
+    /// <summary>Our scaled CD+G options as FatzAudio's presentation: scaled, with the zone, smoothing and edge blend.</summary>
+    public static Fa.CdgPresentation ToCdgPresentation(CdgScalingOptions options) => new()
+    {
+        Scale = true,
+        SafetyZone = options.SafetyZone switch
+        {
+            CdgSafetyZone.Remove => Fa.SafetyZone.Remove,
+            CdgSafetyZone.Auto => Fa.SafetyZone.Auto,
+            CdgSafetyZone.Super => Fa.SafetyZone.Super,
+            _ => Fa.SafetyZone.Show,
+        },
+        Smoothness = options.Smoothness, // already 0..10 (CdgScalingOptions clamps it)
+        EdgeBlend = options.EdgeBlend,
+    };
+
+    /// <summary>The scaled CD+G effects (<see cref="CdgScalingOptions.Effects"/>): FatzAudio's default outline and a soft shadow.</summary>
+    public static Fa.SurfaceEffects CdgEffects { get; } = new()
+    {
+        Outline = new Fa.OutlineEffect(),
+        Shadow = new Fa.ShadowEffect { Size = 0.3f, Fade = 0.5f },
+    };
+
+    // Codecs FatzAudio decodes itself on every platform (no system decoder needed), by FFmpeg's names.
+    static readonly HashSet<string> PacketCodecs = new(StringComparer.Ordinal) { "mp3", "mp2", "aac", "ac3", "eac3", "flac", "opus", "vorbis" };
+
+    /// <summary>
+    /// Whether FatzAudio decodes a soundtrack of FFmpeg's <paramref name="codec"/> from its packets on every platform:
+    /// MP3, MP2, AAC, AC-3, E-AC-3, FLAC, Opus, Vorbis. Others (DTS, TrueHD, PCM in odd layouts...) stay decoded by FFmpeg.
+    /// </summary>
+    public static bool DecodesPackets(string codec) => PacketCodecs.Contains(codec);
 }

@@ -34,7 +34,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (classic CD+G drawn by FatzAudio with the FatzAudio engine) implemented, pending manual smoke
   (`updates/037A_3`). Slice 4 (MIDI, trackers, network: `updates/037A_4`) and slice 5 (video audio on
   FatzAudio's clock; a FatzAudio player needs no BASS: `updates/037A_5`) implemented, pending manual
-  smoke. Analysis:
+  smoke. Device choice and events, FatzAudio lyrics, scaled CD+G and packet soundtracks added 2026-11-10; BASS is
+  ready to retire after the owner's hand tests (`scripts/smoke-037A.ps1`): `updates/037A_6/Readiness.md`. Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules

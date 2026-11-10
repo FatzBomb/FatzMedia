@@ -183,6 +183,10 @@ if ($Part -in '2', 'both') {
         'Play it: the graphics wipe in time with the singing.',
         'Seek, pause and resume, and loop: the picture is right after each.',
         'A song you know scrolls smoothly should glide line by line.') 'Loaded CDG'
+    Run-Check 'M6b' 'scaled CD+G (smoothed, outlined)' 'Cdg' @('--cdg-scale=4', '--cdg-effects') @(
+        'The same song, now drawn by FatzAudio in full colour, smoothed, with an outline and shadow.',
+        'It fills the height of the window, sharp at any window size; seek and pause still show the right picture.',
+        'Pass if it looks right and stays in time (it is optional: the classic picture stays the default).') 'Loaded CDG|Scaled CD\+G'
     Run-Check 'M7' 'Audio-mode soundtrack' 'Video' @('--mode=audio') @(
         'The video plays as sound only: the position bar moves, seeks work.') ''
     Run-Check 'M8' 'MIDI karaoke' 'Kar' @() @(
@@ -192,6 +196,10 @@ if ($Part -in '2', 'both') {
         'Play this quiet file for a few seconds, then open the music video from M1 (Open button) and play it.',
         'Pass if both are about equally loud.') 'Loudness|loudness'
 
+    Run-Check 'M9b' 'soundtrack decoded by FatzAudio (optional switch)' 'Video' @('--video-audio=fatz') @(
+        'The same music video as M1, but FatzAudio decodes its sound (the Log says "FatzAudio decodes the soundtrack").',
+        'Watch lips or drum hits for 20 seconds, seek a few times, set tempo to 125%.',
+        'Pass if sync is as good as in M1 (this switch stays off by default until you say it is good).') 'decodes the soundtrack'
     # M10: network radio needs a URL.
     Write-Host ''
     Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
