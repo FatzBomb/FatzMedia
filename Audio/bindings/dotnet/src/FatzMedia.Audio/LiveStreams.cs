@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace FatzMedia.Audio;
 
 /// <summary>
-/// Fills a callback stream (<see cref="AudioEngine.OpenCallback"/>) with interleaved float samples.
+/// Fills a callback stream (<see cref="AudioEngine.OpenCallback(int, int, AudioCallback, StreamOptions?)"/>) with interleaved float samples.
 /// </summary>
 /// <param name="buffer">Room for some frames: <c>buffer.Length / channels</c> of them. Write from the start.</param>
 /// <returns>

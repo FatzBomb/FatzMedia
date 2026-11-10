@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- The binding, its tests and samples build with 0 warnings: a Release build fails on any warning.
+       Not the shared FatzBomb.Common.props yet: its analyzers and .editorconfig are a separate pass. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

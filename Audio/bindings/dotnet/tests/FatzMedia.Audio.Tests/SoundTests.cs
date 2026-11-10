@@ -121,7 +121,7 @@ public class SoundTests
     // Final audit T2: Dispose closed the voices under the sound's lock while an Ended handler waited for that lock in
     // Play, and closing a voice waits for its handlers: a deadlock.
     [Fact]
-    public void Dispose_WhileEndedHandlersPlay_DoesNotDeadlock()
+    public async Task Dispose_WhileEndedHandlersPlay_DoesNotDeadlock()
     {
         using var engine = CreateHeadless();
         using var output = engine.OpenOutput();
@@ -145,14 +145,14 @@ public class SoundTests
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (Volatile.Read(ref ended) < 8 && DateTime.UtcNow < deadline) Thread.Sleep(1);
             var dispose = Task.Run(sound.Dispose);
-            Assert.True(dispose.Wait(TimeSpan.FromSeconds(10)), $"Dispose hung in round {round}");
+            Assert.True(await Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(10))) == dispose, $"Dispose hung in round {round}");
         }
     }
 
     // Final audit T1: disposing voices on one thread while another plays the sound. A voice whose close had begun
     // could be handed out again and wrapped a second time, so it was closed twice.
     [Fact]
-    public void DisposingVoices_WhilePlaying_IsSafe()
+    public async Task DisposingVoices_WhilePlaying_IsSafe()
     {
         using var engine = CreateHeadless();
         using var output = engine.OpenOutput();
@@ -170,7 +170,7 @@ public class SoundTests
             v.Dispose();
             disposed++;
         }
-        player.Wait();
+        await player;
         Assert.True(disposed > 0);
         Assert.InRange(sound.VoiceCount, 0, 2);
         Assert.Equal(1.0f, sound.Play(output).Volume);

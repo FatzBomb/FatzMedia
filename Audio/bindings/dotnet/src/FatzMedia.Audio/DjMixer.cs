@@ -427,6 +427,8 @@ public sealed partial class DjMixer : IDisposable
     /// the measured time for that mic and mode (<see cref="Mic.MonitorLatency"/>, the vocals' recording alignment).
     /// Keep the mic until the task completes.
     /// </summary>
+    /// <param name="mic">The mic to measure, which must belong to this mixer.</param>
+    /// <param name="options">Which modes to measure and how; <see langword="null"/> measures the mixer's own mode.</param>
     /// <param name="cancellationToken">Cancels a check that has not begun. Once the test sounds play it runs to its end
     /// (the mixer must go back to its own mode), and so the token is then ignored.</param>
     /// <exception cref="OperationCanceledException">The token was cancelled before the check began.</exception>

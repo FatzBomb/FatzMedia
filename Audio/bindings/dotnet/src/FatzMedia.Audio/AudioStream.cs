@@ -2136,7 +2136,7 @@ public unsafe partial class AudioStream : IDisposable
     /// Adds a user DSP processor that changes the audio in place, after rate, tempo and pitch and before the
     /// equalizer, volume, fades and normalization. It runs where the stream is decoded, never on the audio thread, so
     /// a change is heard after the decode-ahead buffer: normally an engine worker, but the first 100 ms after a seek or
-    /// <see cref="PlayOn"/> are decoded on the calling thread, and decode-only streams decode inside <see cref="Read"/>.
+    /// <see cref="PlayOn(OutputDevice)"/> are decoded on the calling thread, and decode-only streams decode inside <see cref="Read"/>.
     /// Safe to add and remove while playing; once the handle is disposed it is never called again. It runs with the
     /// stream's locks held: don't use this stream (not even <see cref="Position"/>) from inside the processor, and
     /// don't wait there for a thread that might.
