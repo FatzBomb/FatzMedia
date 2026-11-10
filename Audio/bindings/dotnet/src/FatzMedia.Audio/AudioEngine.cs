@@ -216,6 +216,58 @@ public sealed partial class AudioEngine : IDisposable
     /// <exception cref="AudioException">The backend failed to enumerate devices.</exception>
     public IReadOnlyList<AudioDeviceInfo> InputDevices => EnumerateDevices(DeviceKind.Capture);
 
+    /// <summary>
+    /// The devices of a kind from one enumeration, cheap enough to call every second: to notice a device
+    /// plugged in or removed, or a new default, compare <see cref="AudioDeviceInfo.Id"/> and
+    /// <see cref="AudioDeviceInfo.IsDefault"/> with the previous call. Unlike <see cref="OutputDevices"/> it
+    /// does not query formats, so <see cref="AudioDeviceInfo.NativeSampleRate"/> and
+    /// <see cref="AudioDeviceInfo.NativeChannels"/> are 0.
+    /// </summary>
+    /// <param name="kind">Playback or capture.</param>
+    /// <returns>A fresh list.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is not a device kind.</exception>
+    /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
+    /// <exception cref="AudioException">The backend failed to enumerate devices.</exception>
+    /// <example>
+    /// <code>
+    /// var before = engine.ListDevices(DeviceKind.Playback);
+    /// // a second later
+    /// var now = engine.ListDevices(DeviceKind.Playback);
+    /// foreach (var added in now.Where(d => before.All(b => b.Id != d.Id)))
+    ///     Console.WriteLine($"Plugged in: {added.Name}");
+    /// </code>
+    /// </example>
+    public unsafe IReadOnlyList<AudioDeviceInfo> ListDevices(DeviceKind kind)
+    {
+        if (kind is not (DeviceKind.Playback or DeviceKind.Capture))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        var h = Handle;
+        // The list can grow between the two calls: retry with the new count until it fits.
+        var capacity = 16u;
+        while (true)
+        {
+            var infos = new FaDeviceInfo[capacity];
+            infos[0] = NativeSized.New<FaDeviceInfo>();
+            uint count;
+            fixed (FaDeviceInfo* p = infos)
+                AudioException.ThrowIfFailed(NativeMethods.fa_device_list(h, (int)kind, p, capacity, out count));
+            if (count > capacity)
+            {
+                capacity = count;
+                continue;
+            }
+
+            var list = new List<AudioDeviceInfo>((int)count);
+            for (var i = 0; i < count; i++)
+            {
+                var info = infos[i];
+                list.Add(new AudioDeviceInfo(NativeText.Read(info.Id), NativeText.Read(info.Name), (DeviceKind)info.Type,
+                    info.IsDefault != 0, 0, 0));
+            }
+            return list;
+        }
+    }
+
     unsafe List<AudioDeviceInfo> EnumerateDevices(DeviceKind kind)
     {
         var h = Handle;

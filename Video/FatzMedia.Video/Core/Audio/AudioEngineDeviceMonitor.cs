@@ -8,7 +8,10 @@ namespace FatzMedia.Video.Core.Audio;
 /// </summary>
 interface IAudioDeviceChangeSource
 {
-    /// <summary>Raised on the engine's own thread when its output moved to another device.</summary>
+    /// <summary>
+    /// Raised on a background thread (the engine's own, or its device-list watch) when its output moved to
+    /// another device, or, with <see cref="ReportsDeviceList"/>, when the device list changed.
+    /// </summary>
     event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
 
     /// <summary>

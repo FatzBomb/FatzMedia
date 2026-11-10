@@ -36,29 +36,55 @@ public sealed class FatzAudioDevicesTests
         Assert.Equal(("id-usb", "USB Audio"), (list[2].Id, list[2].Name));
     }
 
+    static readonly FatzAudioDevices.Snapshot A = new("a", "Speakers", true);
+    static readonly FatzAudioDevices.Snapshot B = new("b", "USB", false);
+    static readonly FatzAudioDevices.Snapshot C = new("c", "HDMI", false);
+
+    static (AudioDeviceChangeKind, string)[] Kinds(IReadOnlyList<AudioDeviceChangeInfo> changes) =>
+        [.. changes.Select(static change => (change.Kind, change.DeviceId!))];
+
     [Fact]
-    public void Diff_ReportsRemovedAddedAndANewDefault_InThatOrder()
+    public void Events_FromTheList_RemovedAddedThenANewDefault_RemovedOnlyForTheActiveDevice()
     {
-        FatzAudioDevices.Snapshot speakers = new("a", "Speakers", true);
-        FatzAudioDevices.Snapshot usb = new("b", "USB", false);
-        FatzAudioDevices.Snapshot hdmi = new("c", "HDMI", false);
+        var events = new FatzAudioDeviceEvents(explicitDeviceId: null);
+        Assert.Empty(events.OnList([A, B])); // the baseline
+        Assert.Empty(events.OnList([A, B]));
 
-        Assert.Empty(FatzAudioDevices.Diff([speakers, usb], [speakers, usb]));
-
-        var changes = FatzAudioDevices.Diff([speakers, usb], [speakers with { IsDefault = false }, hdmi with { IsDefault = true }]);
+        // Another device goes away and one arrives, which becomes the default.
         Assert.Equal(
-            [
-                (AudioDeviceChangeKind.DeviceRemoved, "b"),
-                (AudioDeviceChangeKind.DeviceAdded, "c"),
-                (AudioDeviceChangeKind.DefaultDeviceChanged, "c"),
-            ],
-            changes.Select(static change => (change.Kind, change.DeviceId!)));
+            [(AudioDeviceChangeKind.DeviceStateChanged, "b"), (AudioDeviceChangeKind.DeviceAdded, "c"), (AudioDeviceChangeKind.DefaultDeviceChanged, "c")],
+            Kinds(events.OnList([A with { IsDefault = false }, C with { IsDefault = true }])));
 
-        // The default device unplugged, the other one becomes the default.
-        changes = FatzAudioDevices.Diff([speakers, usb], [usb with { IsDefault = true }]);
+        // The default (the one playing) goes away.
         Assert.Equal(
-            [(AudioDeviceChangeKind.DeviceRemoved, "a"), (AudioDeviceChangeKind.DefaultDeviceChanged, "b")],
-            changes.Select(static change => (change.Kind, change.DeviceId!)));
+            [(AudioDeviceChangeKind.DeviceRemoved, "c"), (AudioDeviceChangeKind.DefaultDeviceChanged, "a")],
+            Kinds(events.OnList([A])));
+    }
+
+    [Fact]
+    public void Events_TheOutputsOwnNotice_IsReportedOnce_WithTheList()
+    {
+        // Playing on B by choice: B goes away, FatzAudio says so before the list does.
+        var events = new FatzAudioDeviceEvents(explicitDeviceId: "b");
+        Assert.Empty(events.OnList([A, B]));
+        Assert.Equal([(AudioDeviceChangeKind.DeviceRemoved, "b")], Kinds(events.OnOutputMoved(deviceWentAway: true, [A])));
+        Assert.Empty(events.OnList([A]));
+
+        // Now on the default: a new default reported by the notice is not reported again by the list.
+        Assert.Equal([(AudioDeviceChangeKind.DefaultDeviceChanged, "c")], Kinds(events.OnOutputMoved(deviceWentAway: false, [A with { IsDefault = false }, C with { IsDefault = true }])));
+        Assert.Equal([(AudioDeviceChangeKind.DeviceAdded, "c")], Kinds(events.OnList([A with { IsDefault = false }, C with { IsDefault = true }])));
+
+        // Unplugged and back within one look: only the notice sees it.
+        Assert.Equal([(AudioDeviceChangeKind.DeviceRemoved, "c")], Kinds(events.OnOutputMoved(deviceWentAway: true, null)));
+        Assert.Empty(events.OnList([A with { IsDefault = false }, C with { IsDefault = true }]));
+    }
+
+    [Fact]
+    public void Events_WithoutABaseline_TheFirstGoodLookIsTheBaseline()
+    {
+        var events = new FatzAudioDeviceEvents(explicitDeviceId: null);
+        Assert.Empty(events.OnOutputMoved(deviceWentAway: false, null));
+        Assert.Empty(events.OnList([A, B, C]));
     }
 
     [Fact]
@@ -77,8 +103,12 @@ public sealed class FatzAudioDevicesTests
         using (var engine = Create(new MediaPlayerConfiguration { AudioOutputDeviceId = chosen.Id }))
             Assert.Equal(chosen.Id, engine.OutputDeviceInfo?.Id);
 
-        using (var engine = Create(new MediaPlayerConfiguration { AudioOutputDeviceId = chosen.Name }))
+        // By name only when the name is unique here (by name, the first match wins).
+        if (devices.Count(device => string.Equals(device.Name, chosen.Name, StringComparison.OrdinalIgnoreCase)) == 1)
+        {
+            using var engine = Create(new MediaPlayerConfiguration { AudioOutputDeviceId = chosen.Name });
             Assert.Equal(chosen.Id, engine.OutputDeviceInfo?.Id);
+        }
 
         using (var engine = Create(new MediaPlayerConfiguration { AudioOutputDeviceId = "no such device" }))
             Assert.Null(engine.OutputDeviceInfo);
