@@ -476,7 +476,8 @@ on every pixel and palette entry except:
 - **Smooth scroll ignored.** `CdgStateMachine.ScrollUnsafe` never reads the horizontal (0-5) and
   vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
   glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
-  288x192 picture area when rendering (the border stays). Verified by test.
+  288x192 picture area when rendering (the border stays). Verified by test. With the FatzAudio engine
+  (037A slice 3, 2026-11-10) FatzAudio draws CD+G and applies the offsets; our engine (BASS) still does not.
 - **Memory preset with repeat != 0 never clears pixels** - **Fixed 2026-10-23, pending manual
   smoke with a CD+G that clears with repeat packs.** A repeat pack now clears unless the previous
   pack was a Memory Preset of the same colour (then it is skipped and reports unchanged). The

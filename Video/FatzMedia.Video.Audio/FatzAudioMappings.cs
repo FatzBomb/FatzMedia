@@ -113,4 +113,60 @@ static class FatzAudioMappings
 
     /// <summary>FatzAudio's normalization gain in dB as the linear multiplier <c>NormalizationGain</c> reports (1 when unknown).</summary>
     public static double GainFromDecibels(double gainDb) => double.IsFinite(gainDb) ? Math.Pow(10, gainDb / 20) : 1;
+
+    /// <summary>Our CD+G background opacity (0..100 %) as alpha 0..255, as <c>CdgColorManager</c> maps it (100 % is exactly 255).</summary>
+    public static byte ToCdgOpacityAlpha(byte percent) =>
+        percent >= 100 ? (byte)255 : (byte)Math.Round(percent * 255.0 / 100.0);
+
+    /// <summary>
+    /// A FatzAudio CD+G palette as the ARGB colours our renderers look indices up in, with the
+    /// presentation settings applied as the BASS path's <c>CdgColorManager</c> applies them: colour 0,
+    /// the border colour and the background colour take <paramref name="backgroundOverride"/>'s colour
+    /// when set, and their alpha is the override's alpha (else 255) times <paramref name="opacityAlpha"/>;
+    /// every other colour is opaque.
+    /// </summary>
+    public static void ToCdgPaletteArgb(ReadOnlySpan<Fa.CdgColor> colors, int backgroundIndex, int borderIndex, byte opacityAlpha, uint? backgroundOverride, Span<int> destination)
+    {
+        var count = Math.Min(colors.Length, destination.Length);
+        for (var i = 0; i < count; i++)
+        {
+            var color = colors[i];
+            var rgb = (uint)((color.R << 16) | (color.G << 8) | color.B);
+            var alpha = 255u;
+            if (i == 0 || i == borderIndex || i == backgroundIndex)
+            {
+                if (backgroundOverride is { } overrideArgb)
+                    rgb = overrideArgb & 0xFFFFFF;
+                alpha = (backgroundOverride is { } o ? o >> 24 : 255u) * opacityAlpha / 255;
+            }
+
+            destination[i] = (int)((alpha << 24) | rgb);
+        }
+    }
+
+    /// <summary>
+    /// The full-viewport background wash for a FatzAudio CD+G frame, as the BASS path's
+    /// <c>CdgColorManager</c> works it out: transparent until the first screen clear unless an
+    /// override is set, then the background colour (or the override's) at the override's alpha (else
+    /// 255) times <paramref name="opacityAlpha"/>.
+    /// </summary>
+    public static uint ToCdgBackgroundWashArgb(ReadOnlySpan<Fa.CdgColor> colors, int backgroundIndex, byte opacityAlpha, uint? backgroundOverride)
+    {
+        if (backgroundIndex < 0 && backgroundOverride is null)
+            return 0;
+
+        uint rgb;
+        if (backgroundOverride is { } overrideArgb)
+        {
+            rgb = overrideArgb & 0xFFFFFF;
+        }
+        else
+        {
+            var color = colors[backgroundIndex];
+            rgb = (uint)((color.R << 16) | (color.G << 8) | color.B);
+        }
+
+        var alpha = (backgroundOverride is { } o ? o >> 24 : 255u) * opacityAlpha / 255;
+        return (alpha << 24) | rgb;
+    }
 }

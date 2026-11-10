@@ -30,7 +30,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   files and archives in the new `FatzMedia.Video.Audio` package, pinned to
   1.0.0-rc.1; `--audio=fatz`) merged, owner smoke passed 2026-11-03 (`updates/037A_2`). Loudness
   (LUFS) normalization on the FatzAudio engine (`MediaPlayerConfiguration.Normalization`, -14 LUFS
-  default, per-user scan cache) implemented, pending manual smoke (`updates/037A_Normalization`). Analysis:
+  default, per-user scan cache) implemented, pending manual smoke (`updates/037A_Normalization`). Slice 3
+  (classic CD+G drawn by FatzAudio with the FatzAudio engine) implemented, pending manual smoke
+  (`updates/037A_3`). Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules

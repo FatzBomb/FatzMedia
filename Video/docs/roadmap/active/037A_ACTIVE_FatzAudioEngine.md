@@ -14,7 +14,11 @@ normalization on the FatzAudio engine implemented 2026-11-04, pending owner smok
 `docs/fatzaudio/2026-11-04_MediaControl_Request_NormalizationStart.md`). FatzAudio delivered
 requests 13 (loudness of fed audio, `source_identity`) and 14 (MP1/MP2; AVI, FLV and MPEG-PS/TS by
 path; DTS and TrueHD through the system decoder), listed under Unreleased in `Audio/CHANGELOG.md`
-(checked 2026-11-10): slice 5 no longer waits on FatzAudio.
+(checked 2026-11-10): slice 5 no longer waits on FatzAudio. Slice 3 (2026-11-10, pending owner
+smoke, `updates/037A_3`): with the FatzAudio engine, FatzAudio draws the classic CD+G picture on every
+renderer; scaled CD+G, effects and FatzAudio's lyric surface were not built (see the update for why).
+Since the move into the FatzMedia repository, Video uses `FatzMedia.Audio` by project reference (no
+package pin or feed token).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
