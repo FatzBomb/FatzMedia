@@ -26,8 +26,9 @@ Decisions:
   song plays from a file, an archive entry or an FFmpeg conversion.
 - **Same time, same pack.** The time is still the audio position plus our CD+G offset (the presentation loop
   is unchanged); FatzAudio's own CD+G offset stays 0. FatzAudio shows ceil(t x 300) packs and we show floor, so
-  the engine asks for one pack earlier: both engines show the same pack at the same position (A/B compares
-  like with like).
+  the engine takes our pack count and asks FatzAudio for the middle of that pack: both engines show the same
+  pack at every position (A/B compares like with like). A FatzAudio error while drawing keeps the last picture
+  and is logged once per song.
 - **Classic picture only.** Scaled presentation, effects, safety zones, the karaoke thread, render-ahead, the
   governor and the present-time draw (`GetClockAt`) belong with a scaled CD+G mode and its Player options; the
   classic picture costs about 0.3 ms per full frame and needs none of them. Not built.

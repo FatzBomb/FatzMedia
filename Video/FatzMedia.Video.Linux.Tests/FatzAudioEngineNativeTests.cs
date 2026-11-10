@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
@@ -410,5 +411,5 @@ public sealed class FatzAudioNativeGroup
     /// the tests then return at once).
     /// </summary>
     public static bool CanRun => OperatingSystem.IsLinux()
-        || (OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "fatzaudio.dll")));
+        || (OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native", "fatzaudio.dll")));
 }

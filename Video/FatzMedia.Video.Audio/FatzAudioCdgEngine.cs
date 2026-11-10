@@ -16,8 +16,8 @@ namespace FatzMedia.Video.Audio;
 /// FatzAudio replays from its checkpoints, so a seek costs at most 10 s of packs.</para>
 /// <para>The time comes from the player as before (the audio position plus our CD+G offset), passed
 /// to FatzAudio as an explicit time with its own offset at 0. FatzAudio counts packs with ceil, ours
-/// with floor (<see cref="ToTime"/> asks one pack earlier), so both engines show the same pack at the
-/// same position.</para>
+/// with floor (<see cref="ToTime"/> asks for the middle of our last pack), so both engines show the
+/// same pack at the same position.</para>
 /// <para>Colours: FatzAudio's palette, with our background opacity and override applied as
 /// <see cref="CdgEngine"/> applies them (<see cref="FatzAudioMappings.ToCdgPaletteArgb"/>).</para>
 /// </remarks>
@@ -49,6 +49,7 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     uint? _backgroundOverride;
     uint _backgroundWashArgb;
     CdgRenderSnapshot? _lastSnapshot;
+    bool _renderFailureReported;
     bool _disposed;
 
     public FatzAudioCdgEngine(Fa.AudioEngine engine)
@@ -77,7 +78,15 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             lock (_renderLock)
                 return _backgroundOpacity;
         }
-        set => SetPresentation(() => _backgroundOpacity = Math.Min(value, (byte)100));
+        set => SetPresentation(() =>
+        {
+            var opacity = Math.Min(value, (byte)100);
+            if (opacity == _backgroundOpacity)
+                return false;
+
+            _backgroundOpacity = opacity;
+            return true;
+        });
     }
 
     public uint? BackgroundOverrideArgb
@@ -87,7 +96,14 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             lock (_renderLock)
                 return _backgroundOverride;
         }
-        set => SetPresentation(() => _backgroundOverride = value);
+        set => SetPresentation(() =>
+        {
+            if (_backgroundOverride == value)
+                return false;
+
+            _backgroundOverride = value;
+            return true;
+        });
     }
 
     public double TotalDurationSeconds { get; private set; }
@@ -140,9 +156,17 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         bool washChanged;
         lock (_renderLock)
         {
+            if (_disposed)
+            {
+                // Disposed while the carrier was built: nothing will ever free it.
+                carrier?.Dispose();
+                throw new ObjectDisposedException(GetType().FullName);
+            }
+
             oldCarrier = _carrier;
             _carrier = carrier;
             _surface = surface;
+            _renderFailureReported = false;
             TotalDurationSeconds = packs / (double)CdgConstants.PacketsPerSecond;
             washChanged = ResetPictureLocked();
         }
@@ -229,6 +253,15 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
                 {
                     // The engine is closing.
                 }
+                catch (Fa.AudioException ex)
+                {
+                    // Never into the presentation loop: keep the last picture, say so once per song.
+                    if (!_renderFailureReported)
+                    {
+                        _renderFailureReported = true;
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"FatzAudio could not draw the CD+G ({ex.ErrorCode}); the picture holds.", innerException: ex);
+                    }
+                }
 
                 if (changed)
                     washChanged = RefreshWashLocked();
@@ -242,14 +275,18 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
 
     /// <summary>
     /// The time to ask FatzAudio for: it shows packs [0, ceil(t x 300)), we show floor(position x 300)
-    /// (<see cref="CdgEngine"/>), so one pack earlier gives the same pack (they differ only exactly on
-    /// a pack boundary, where FatzAudio shows one pack less). Before the start is the start.
+    /// (<see cref="CdgEngine.PacketCountAt"/>), so the middle of our last pack's slot gives the same
+    /// pack at every position, pack boundaries included. Before the start is the start.
     /// </summary>
     internal static TimeSpan ToTime(double seconds)
     {
-        var time = seconds - (1.0 / CdgConstants.PacketsPerSecond);
-        return double.IsFinite(time) && time > 0 ? TimeSpan.FromSeconds(Math.Min(time, 1e7)) : TimeSpan.Zero;
+        // Our pack count, then the middle of that pack's slot: ceil lands on the same count however
+        // the time rounds to TimeSpan ticks (100 ns), so no boundary case differs.
+        var packs = Math.Min(CdgEngine.PacketCountAt(seconds), MaxPacks);
+        return packs > 0 ? TimeSpan.FromSeconds((packs - 0.5) / CdgConstants.PacketsPerSecond) : TimeSpan.Zero;
     }
+
+    const long MaxPacks = 10_000_000L * CdgConstants.PacketsPerSecond; // 1e7 s, as CdgEngine caps a position
 
     /// <summary>Copies what changed into our frame; true when the picture or its colours changed.</summary>
     bool ApplyFrameLocked(Fa.CdgFrame frame)
@@ -367,12 +404,15 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         return RefreshWashLocked();
     }
 
-    void SetPresentation(Action apply)
+    /// <summary>Applies a presentation setting; <paramref name="apply"/> returns false when the value is already set.</summary>
+    void SetPresentation(Func<bool> apply)
     {
         bool washChanged;
         lock (_renderLock)
         {
-            apply();
+            if (!apply())
+                return;
+
             RefreshPaletteLocked();
             _revision++;
             washChanged = RefreshWashLocked();
@@ -409,6 +449,7 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     public void Dispose()
     {
         Fa.PushAudioStream? carrier;
+        bool washChanged;
         lock (_renderLock)
         {
             if (_disposed)
@@ -419,10 +460,11 @@ sealed class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             _carrier = null;
             _surface = null;
             TotalDurationSeconds = 0;
-            _ = ResetPictureLocked();
+            washChanged = ResetPictureLocked();
         }
 
         carrier?.Dispose();
+        NotifyBackgroundWashChanged(washChanged);
         State = CdgEngineState.Closed;
         Closed?.Invoke(this, EventArgs.Empty);
     }
