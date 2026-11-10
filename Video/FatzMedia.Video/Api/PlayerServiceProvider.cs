@@ -126,22 +126,23 @@ public static class PlayerServiceProvider
 
     /// <summary>
     /// With an <see cref="IAudioEngineFactory"/> engine, the device monitor also reports that
-    /// engine's own device moves (<see cref="IAudioDeviceChangeSource"/>), with the platform's monitor
-    /// when there is one (it watches the device list through BASS, when BASS loaded).
+    /// engine's own device events (<see cref="IAudioDeviceChangeSource"/>), with the platform's monitor
+    /// (it watches the device list through BASS, when BASS loaded) unless the engine watches the list itself.
     /// </summary>
     static void RegisterEngineDeviceMonitor(IServiceCollection services)
     {
         var platformMonitor = services.LastOrDefault(static descriptor => descriptor.ServiceType == typeof(IAudioDeviceMonitor));
         _ = services.AddSingleton<IAudioDeviceMonitor>(provider =>
         {
-            var platform = platformMonitor switch
+            var engine = provider.GetRequiredService<IAudioEngine>() as IAudioDeviceChangeSource;
+            var platform = engine is { ReportsDeviceList: true } ? null : platformMonitor switch
             {
                 { ImplementationFactory: { } create } => create(provider) as IAudioDeviceMonitor,
                 { ImplementationInstance: IAudioDeviceMonitor instance } => instance,
                 { ImplementationType: { } type } => ActivatorUtilities.CreateInstance(provider, type) as IAudioDeviceMonitor,
                 _ => null,
             };
-            return new AudioEngineDeviceMonitor(provider.GetRequiredService<IAudioEngine>() as IAudioDeviceChangeSource, platform);
+            return new AudioEngineDeviceMonitor(engine, platform);
         });
     }
 

@@ -132,6 +132,23 @@ public class EngineTests
     }
 
     [Fact]
+    public void ListDevices_MatchesTheFullList_WithoutFormats()
+    {
+        using var engine = AudioEngine.Create();
+        foreach (var kind in new[] { DeviceKind.Playback, DeviceKind.Capture })
+        {
+            var full = kind == DeviceKind.Playback ? engine.OutputDevices : engine.InputDevices;
+            var light = engine.ListDevices(kind);
+            Assert.Equal(full.Select(d => (d.Id, d.Name, d.Kind, d.IsDefault)), light.Select(d => (d.Id, d.Name, d.Kind, d.IsDefault)));
+            Assert.All(light, d => Assert.Equal((0, 0), (d.NativeSampleRate, d.NativeChannels)));
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => engine.ListDevices((DeviceKind)7));
+        engine.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => engine.ListDevices(DeviceKind.Playback));
+    }
+
+    [Fact]
     public void OpenOutput_Default_ControlsVolume()
     {
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });

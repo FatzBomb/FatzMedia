@@ -38,7 +38,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_Init | `fa_engine_create` + `fa_device_open` | `AudioEngine.Create()` + `engine.OpenOutput()` | ✅ |
 | BASS_Init with device 0 ("no sound") | `FA_ENGINE_NULL_OUTPUT` in `fa_engine_config.flags`: a silent output that still runs in real time ([devices](../features/devices.md#silent-output-for-tests-and-servers)) | `new AudioEngineOptions { NullOutput = true }` | ✅ |
 | BASS_Free | `fa_device_close` + `fa_engine_destroy` | `Dispose()` | ✅ |
-| BASS_GetDeviceInfo | `fa_device_count` + `fa_device_get_info` | `engine.OutputDevices` | ✅ |
+| BASS_GetDeviceInfo | `fa_device_count` + `fa_device_get_info`; `fa_device_list` to poll for changes | `engine.OutputDevices`; `engine.ListDevices` to poll | ✅ |
 | BASS_SetDevice / BASS_GetDevice | Not needed: pass the `fa_device*` | — | ➖ (by design) |
 | BASS_GetInfo | `fa_device_get_info`, `fa_device_get_latency` | `device.Latency` | ✅ (latency, rate, channels) |
 | BASS_Start / BASS_Stop | `fa_device_start` / `fa_device_stop` (both idempotent) | `device.Start()` / `Stop()` | ✅ |

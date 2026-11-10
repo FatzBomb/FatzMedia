@@ -214,7 +214,7 @@ public partial class PlayerCore
             "AudioDeviceMonitor",
             info.FailureMessage is { Length: > 0 }
                 ? info.FailureMessage
-                : $"Audio device change detected: kind={info.Kind}, name={info.DeviceName ?? "(unknown)"}; leaving playback under BASS/Windows control.",
+                : $"Audio device change detected: kind={info.Kind}, name={info.DeviceName ?? "(unknown)"}; the audio engine and the system handle playback.",
             innerException: null);
 
         RaiseAudioDeviceChanged(info);

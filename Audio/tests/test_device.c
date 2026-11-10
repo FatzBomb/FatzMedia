@@ -59,6 +59,24 @@ static void test_real_output(void)
                    di.is_default ? " (default)" : "");
     }
     CHECK(count > 0);
+    {
+        /* One enumeration gives the same ids, names and default, without formats. */
+        fa_device_info list[64];
+        uint32_t listed = 0;
+        list[0].struct_size = sizeof(list[0]);
+        CHECK_EQ(fa_device_list(g_engine, FA_DEVICE_PLAYBACK, NULL, 0, &listed), FA_OK);
+        CHECK_EQ(listed, count);
+        CHECK_EQ(fa_device_list(g_engine, FA_DEVICE_PLAYBACK, list, 64, &listed), FA_OK);
+        for (i = 0; i < count && i < 64; i++) {
+            fa_device_info di = { .struct_size = sizeof(di) };
+            CHECK_EQ(fa_device_get_info(g_engine, FA_DEVICE_PLAYBACK, i, &di), FA_OK);
+            CHECK(strcmp(list[i].id, di.id) == 0);
+            CHECK(strcmp(list[i].name, di.name) == 0);
+            CHECK_EQ(list[i].is_default, di.is_default);
+            CHECK_EQ(list[i].native_sample_rate, 0u);
+        }
+        CHECK_EQ(fa_device_list(g_engine, FA_DEVICE_PLAYBACK, NULL, 1, &listed), FA_ERROR_INVALID_ARG);
+    }
     CHECK(wav != NULL);
     CHECK_EQ(fa_device_open(g_engine, NULL, &d), FA_OK);
     printf("  opened at %u Hz\n", d->rate);

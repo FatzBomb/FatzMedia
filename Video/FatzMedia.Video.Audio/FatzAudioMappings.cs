@@ -1,4 +1,3 @@
-using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using Fa = global::FatzMedia.Audio;
 
@@ -71,9 +70,6 @@ static class FatzAudioMappings
         return regions;
     }
 
-    /// <summary>FatzAudio's <c>DeviceChanged</c> value as our device-change kind: 0 the default moved, 1 the device went away.</summary>
-    public static AudioDeviceChangeKind ToDeviceChangeKind(long value) =>
-        value == 0 ? AudioDeviceChangeKind.DefaultDeviceChanged : AudioDeviceChangeKind.DeviceRemoved;
     /// <summary>
     /// The folder FatzAudio keeps measured loudness (and its other analysis) in:
     /// <see langword="null"/> uses the per-user default, an empty or blank string turns the cache off

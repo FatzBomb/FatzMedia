@@ -126,9 +126,9 @@ sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<
     {
         var platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
-        // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
+        // --audio=fatz (037A): FatzAudio plays everything, on --audio-device= when given; BASS stays the default.
         if (StartupOptions.Current.AudioEngine == PlayerAudioEngine.FatzAudio)
-            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };
+            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory(), AudioOutputDeviceId = StartupOptions.Current.AudioDevice };
         // Native loading blocks: CreateAsync runs it off the UI thread.
         return await global::FatzMedia.Video.Avalonia.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }

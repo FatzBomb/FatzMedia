@@ -77,6 +77,35 @@ FA_API fa_result FA_CALL fa_device_get_info(fa_engine* engine, fa_device_type ty
     return FA_OK;
 }
 
+FA_API fa_result FA_CALL fa_device_list(fa_engine* engine, fa_device_type type, fa_device_info* out_infos, uint32_t capacity, uint32_t* out_count)
+{
+    ma_device_info* infos; ma_uint32 n, i; ma_result r;
+    uint32_t stride = 0;
+    if (!engine || !out_count || (type != FA_DEVICE_PLAYBACK && type != FA_DEVICE_CAPTURE)) return FA_ERROR_INVALID_ARG;
+    if (capacity > 0) {
+        if (!out_infos || out_infos->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+        stride = out_infos->struct_size;
+    }
+    ma_mutex_lock(&engine->lock);
+    r = list_devices(engine, type, &infos, &n);
+    if (r != MA_SUCCESS) { ma_mutex_unlock(&engine->lock); return FA_ERROR_DEVICE; }
+    for (i = 0; i < n && i < capacity; i++) {
+        fa_device_info info;
+        fa_device_info* dst = (fa_device_info*)((unsigned char*)out_infos + (size_t)i * stride);
+        memset(&info, 0, sizeof(info));
+        info.struct_size = sizeof(info);
+        encode_id(&infos[i].id, i, info.id, sizeof(info.id));
+        snprintf(info.name, sizeof(info.name), "%s", infos[i].name);
+        info.type = type;
+        info.is_default = infos[i].isDefault ? 1 : 0;
+        dst->struct_size = stride;
+        fa_copy_sized(dst, &info, sizeof(info));
+    }
+    ma_mutex_unlock(&engine->lock);
+    *out_count = n;
+    return FA_OK;
+}
+
 /* ---- The audio callback ------------------------------------------------------
  * Lock-free: it reads an immutable voice list published through an atomic
  * pointer and mixes each stream's pre-decoded ring buffer. `epoch` is odd while

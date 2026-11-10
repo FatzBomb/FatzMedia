@@ -36,6 +36,8 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- `fa_device_list` (.NET `AudioEngine.ListDevices`): every device of a type from one enumeration, without the format query, cheap enough to poll once a second to notice devices plugged in or removed and a new default. ([devices](docs/features/devices.md#watching-the-device-list))
+
 - WavPack: `.wv` files play built in (libwavpack 5.9.0, BSD-3-Clause, decoder only): lossless and hybrid (without the `.wvc`
   correction file), 8 to 32-bit integer, 32-bit float, up to 32 channels, and DSD64/DSD128 as PCM at 1/8 of its rate. Codec and
   container `wavpack`; exact seeks; tags from the APEv2 tag at the end.

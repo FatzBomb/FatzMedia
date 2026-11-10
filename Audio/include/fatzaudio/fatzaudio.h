@@ -286,6 +286,13 @@ typedef struct fa_device_info {
 
 FA_API fa_result FA_CALL fa_device_count(fa_engine* engine, fa_device_type type, uint32_t* out_count);
 FA_API fa_result FA_CALL fa_device_get_info(fa_engine* engine, fa_device_type type, uint32_t index, fa_device_info* out_info);
+/* Every device of a type from one enumeration, cheap enough to poll (to notice devices
+ * plugged in or removed, or a new default): id, name, type and is_default; no format
+ * query, so native_sample_rate and native_channels are 0 (fa_device_get_info has them).
+ * Fills up to `capacity` entries of `out_infos`, whose elements are each
+ * out_infos[0].struct_size bytes (set it on the first; capacity 0 and out_infos NULL just
+ * count). *out_count is the number of devices, which may exceed capacity. */
+FA_API fa_result FA_CALL fa_device_list(fa_engine* engine, fa_device_type type, fa_device_info* out_infos, uint32_t capacity, uint32_t* out_count);
 
 /* device_id NULL = system default; follows default-device changes where the system
  * reroutes (WASAPI, Core Audio). A started device that goes away (unplugged) is

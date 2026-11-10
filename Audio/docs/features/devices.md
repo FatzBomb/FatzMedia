@@ -112,6 +112,30 @@ using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true
 
 The latency can differ on the new output; `fa_device_get_latency` and the presentation clock pick it up at once. A device that comes back (the USB interface plugged in again) is not switched back to: reopen it with `fa_device_open` and move the streams with `fa_stream_attach` if you want it.
 
+## Watching the device list
+
+To notice devices plugged in or removed, or a new system default (to refresh a device picker), compare
+`fa_device_list` with its previous result about once a second. It enumerates once and does not query formats
+(`native_sample_rate` and `native_channels` are 0), so it is cheap enough to poll; `fa_device_get_info` gives the
+formats of one device. There is no notification callback: polling works the same on every backend.
+
+```c
+fa_device_info now[64];
+uint32_t count = 0;
+now[0].struct_size = sizeof(now[0]);          /* each element is this size */
+fa_device_list(engine, FA_DEVICE_PLAYBACK, now, 64, &count);
+/* count may exceed 64: call again with a larger array. Compare ids and is_default with the last look. */
+```
+
+```csharp
+var before = engine.ListDevices(DeviceKind.Playback);
+// a second later
+var now = engine.ListDevices(DeviceKind.Playback);
+foreach (var added in now.Where(d => before.All(b => b.Id != d.Id)))
+    Console.WriteLine($"Plugged in: {added.Name}");
+var newDefault = now.FirstOrDefault(d => d.IsDefault);
+```
+
 ## Pitfalls
 
 - Close every stream and device before `fa_engine_destroy`. In .NET the handles do this for you in any dispose order.

@@ -62,6 +62,12 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
     readonly Lock _stateGate = new();
     AudioEngineState _state = AudioEngineState.Stopped;
 
+    // The device-list watch (DeviceChanged): runs while anyone listens.
+    readonly Lock _deviceWatchGate = new();
+    EventHandler<AudioDeviceChangeInfo>? _deviceChanged;
+    Timer? _deviceWatch;
+    FatzAudioDeviceEvents? _deviceEvents;
+
     /// <summary>Creates the engine and opens the default output device.</summary>
     /// <param name="configuration">The player's configuration: soundfont, silence trim, normalization, device.</param>
     /// <param name="nullOutput">Plays to FatzAudio's null device (tests, machines without sound).</param>
@@ -83,17 +89,9 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
                 _engine.DefaultSoundFont = _soundFont;
             }
 
-            if (configuration.AudioOutputDeviceIndex >= 0)
-            {
-                DiagnosticRouter.Raise(
-                    MediaDiagnosticLevel.Warning,
-                    Category,
-                    $"Audio output device {configuration.AudioOutputDeviceIndex} is a BASS device index; the FatzAudio engine plays on the system default device and follows it.");
-            }
-
-            // The default device: FatzAudio follows default-device changes and reopens on the
-            // default when the device goes away.
-            _output = _engine.OpenOutput();
+            // The chosen device, else the default: FatzAudio follows default-device changes, and an
+            // output whose device goes away is reopened on the default.
+            _output = _engine.OpenOutput(nullOutput ? null : SelectDevice(configuration));
             _bus = _output.CreateBus();
         }
         catch
@@ -106,7 +104,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Info,
             Category,
-            $"FatzAudio {Fa.AudioEngine.NativeVersion} ready on the {(nullOutput ? "null" : "default")} output device; MIDI soundfont: {(_soundFont is null ? "system bank" : configuration.MidiSoundfontPath)}; normalization {_normalization.TargetLufs:0.#} LUFS, limiter {_normalization.TruePeakCeilingDbtp:0.#} dBTP, cache: {cacheDirectory ?? "off"}");
+            $"FatzAudio {Fa.AudioEngine.NativeVersion} ready on the {(nullOutput ? "null" : _output.Info?.Name ?? "default")} output device; MIDI soundfont: {(_soundFont is null ? "system bank" : configuration.MidiSoundfontPath)}; normalization {_normalization.TargetLufs:0.#} LUFS, limiter {_normalization.TruePeakCeilingDbtp:0.#} dBTP, cache: {cacheDirectory ?? "off"}");
     }
 
     public event EventHandler<AudioEngineState>? StateChanged;
@@ -115,7 +113,47 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
     public event EventHandler<double>? PositionChanged;
     public event EventHandler? PlaybackEnded;
     public event EventHandler<double>? NormalizationGainChanged;
-    public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
+
+    /// <summary>
+    /// Devices added and removed and every default change, each once, from a look at FatzAudio's device list each
+    /// <see cref="DeviceWatchInterval"/> while anyone listens (<c>ListDevices</c>: one enumeration, no format query;
+    /// BASS's monitor polled too) and from FatzAudio's notice that it moved the output (<see cref="FatzAudioDeviceEvents"/>).
+    /// The one device-event source of the player (<see cref="IAudioDeviceChangeSource.ReportsDeviceList"/>).
+    /// </summary>
+    public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged
+    {
+        add
+        {
+            lock (_deviceWatchGate)
+            {
+                _deviceChanged += value;
+                if (_deviceChanged is not null && _deviceWatch is null && !_disposed)
+                {
+                    _deviceEvents = new FatzAudioDeviceEvents(_output.Info?.Id);
+                    if (ReadDevices() is { } baseline)
+                        _ = _deviceEvents.OnList(baseline);
+                    _deviceWatch = new Timer(_ => WatchDevices(), null, DeviceWatchInterval, DeviceWatchInterval);
+                }
+            }
+        }
+        remove
+        {
+            Timer? stopped = null;
+            lock (_deviceWatchGate)
+            {
+                _deviceChanged -= value;
+                if (_deviceChanged is null)
+                    (stopped, _deviceWatch) = (_deviceWatch, null);
+            }
+
+            stopped?.Dispose();
+        }
+    }
+
+    bool IAudioDeviceChangeSource.ReportsDeviceList => true;
+
+    /// <summary>How often the device list is read while someone listens to <see cref="DeviceChanged"/>.</summary>
+    internal TimeSpan DeviceWatchInterval { get; set; } = TimeSpan.FromSeconds(1);
 
     public AudioEngineState State
     {
@@ -272,6 +310,19 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         {
             lock (_gate)
                 return _stream;
+        }
+    }
+
+    /// <summary>The device opened (null: the system default), for tests.</summary>
+    internal Fa.AudioDeviceInfo? OutputDeviceInfo => _output.Info;
+
+    /// <summary>Whether the device list is being watched, for tests.</summary>
+    internal bool IsWatchingDevices
+    {
+        get
+        {
+            lock (_deviceWatchGate)
+                return _deviceWatch is not null;
         }
     }
 
@@ -649,6 +700,10 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
             return;
 
         _disposed = true;
+        Timer? watch;
+        lock (_deviceWatchGate)
+            (watch, _deviceWatch) = (_deviceWatch, null);
+        watch?.Dispose();
         CloseStream();
         SetState(AudioEngineState.Stopped);
         _bus.Dispose();
@@ -899,7 +954,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         string? deviceName = null;
         try
         {
-            deviceName = _engine.OutputDevices.FirstOrDefault(static device => device.IsDefault)?.Name;
+            deviceName = _engine.ListDevices(Fa.DeviceKind.Playback).FirstOrDefault(static device => device.IsDefault)?.Name;
         }
         catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
         {
@@ -912,7 +967,20 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
             e.Value == 0
                 ? $"FatzAudio moved the output to the new default device {deviceName ?? "(unknown)"}."
                 : $"The output device went away; FatzAudio reopened the output on the default device {deviceName ?? "(unknown)"}.");
-        DeviceChanged?.Invoke(this, new AudioDeviceChangeInfo(FatzAudioMappings.ToDeviceChangeKind(e.Value), null, deviceName, null, 0));
+
+        // Also a change the list may not show (unplugged and back within one look, an exclusive-mode reset).
+        IReadOnlyList<AudioDeviceChangeInfo> changes;
+        EventHandler<AudioDeviceChangeInfo>? handlers;
+        lock (_deviceWatchGate)
+        {
+            if (_deviceWatch is null || _deviceEvents is null)
+                return;
+
+            changes = _deviceEvents.OnOutputMoved(e.Value != 0, ReadDevices());
+            handlers = _deviceChanged;
+        }
+
+        RaiseDeviceChanges(changes, handlers);
     });
 
     void OnStreamLoudnessFinal(object? sender, EventArgs e) => OnStreamEvent(sender, "Loudness", () =>
@@ -951,6 +1019,89 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"{what} handling failed: {ex.Message}", innerException: ex);
+        }
+    }
+
+    /// <summary>
+    /// The device <see cref="MediaPlayerConfiguration.AudioOutputDeviceId"/> names (id, else name), or null for the
+    /// default. A device that is not there: the default with a warning, or an error with
+    /// <see cref="AudioOutputFallbackMode.NoFallback"/>.
+    /// </summary>
+    Fa.AudioDeviceInfo? SelectDevice(MediaPlayerConfiguration configuration)
+    {
+        if (string.IsNullOrWhiteSpace(configuration.AudioOutputDeviceId))
+        {
+            if (configuration.AudioOutputDeviceIndex >= 0)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    Category,
+                    $"Audio output device {configuration.AudioOutputDeviceIndex} is a BASS device index; the FatzAudio engine uses AudioOutputDeviceId and plays on the system default device.");
+            }
+
+            return null;
+        }
+
+        var devices = _engine.OutputDevices;
+        if (FatzAudioDevices.Find(devices, configuration.AudioOutputDeviceId) is { } device)
+            return device;
+
+        var known = string.Join(", ", devices.Select(static d => $"'{d.Name}'"));
+        if (configuration.AudioOutputFallbackMode == AudioOutputFallbackMode.NoFallback)
+            throw new InvalidOperationException($"Audio output device '{configuration.AudioOutputDeviceId}' was not found. Devices: {known}.");
+
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            Category,
+            $"Audio output device '{configuration.AudioOutputDeviceId}' was not found; playing on the system default. Devices: {known}.");
+        return null;
+    }
+
+    IReadOnlyList<FatzAudioDevices.Snapshot>? ReadDevices()
+    {
+        try
+        {
+            return FatzAudioDevices.ToSnapshots(_engine.ListDevices(Fa.DeviceKind.Playback));
+        }
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>One look at the device list: each change since the last look becomes a <see cref="DeviceChanged"/>.</summary>
+    void WatchDevices()
+    {
+        using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        IReadOnlyList<AudioDeviceChangeInfo> changes;
+        EventHandler<AudioDeviceChangeInfo>? handlers;
+        // Held while reading, so Dispose (which takes it) never frees the engine under a read.
+        lock (_deviceWatchGate)
+        {
+            if (_deviceWatch is null || _deviceEvents is null || ReadDevices() is not { } now)
+                return;
+
+            // No baseline yet (the first read failed): this look is the baseline, not a burst of "added".
+            changes = _deviceEvents.OnList(now);
+            handlers = _deviceChanged;
+        }
+
+        RaiseDeviceChanges(changes, handlers);
+    }
+
+    void RaiseDeviceChanges(IReadOnlyList<AudioDeviceChangeInfo> changes, EventHandler<AudioDeviceChangeInfo>? handlers)
+    {
+        // The player logs each change it forwards (PlayerCore), so the engine does not log it too.
+        foreach (var change in changes)
+        {
+            try
+            {
+                handlers?.Invoke(this, change);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"Device change handling failed: {ex.Message}", innerException: ex);
+            }
         }
     }
 

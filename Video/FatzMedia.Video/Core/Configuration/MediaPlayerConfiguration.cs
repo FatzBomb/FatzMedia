@@ -101,6 +101,15 @@ public readonly record struct MediaPlayerConfiguration
     public int AudioOutputDeviceIndex { get; init; }
 
     /// <summary>
+    /// The output device of the FatzAudio engine (<see cref="AudioEngineFactory"/>): a device id from
+    /// <c>FatzAudioOutputDevices.Enumerate()</c> (<see cref="AudioOutputDeviceInfo.Id"/>) or its name (case ignored);
+    /// <see langword="null"/>, the default, plays on the system default and follows it. An explicit
+    /// device that goes away while playing moves to the default. A creation-time choice, like
+    /// <see cref="AudioOutputDeviceIndex"/>, which is BASS's and which the FatzAudio engine ignores.
+    /// </summary>
+    public string? AudioOutputDeviceId { get; init; }
+
+    /// <summary>
     /// Determines whether an unavailable explicit audio device falls back to Primary during initialization.
     /// </summary>
     public AudioOutputFallbackMode AudioOutputFallbackMode { get; init; }

@@ -55,6 +55,10 @@ static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_device_get_info(EngineHandle engine, int type, uint index, ref FaDeviceInfo info);
 
+    [LibraryImport(Lib)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe partial int fa_device_list(EngineHandle engine, int type, FaDeviceInfo* infos, uint capacity, out uint count);
+
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_device_open(EngineHandle engine, string? deviceId, out nint device);

@@ -113,6 +113,13 @@ public sealed class AudioEngineSelectionTests
     }
 
     [Theory]
+    [InlineData(new string[0], null)]
+    [InlineData(new[] { "--audio=fatz", "--audio-device=USB Audio" }, "USB Audio")]
+    [InlineData(new[] { "--audio-device=\"Speakers (Realtek)\"" }, "Speakers (Realtek)")]
+    public void PlayerOption_ParsesTheAudioDevice(string[] args, string? expected) =>
+        Assert.Equal(expected, PlayerStartupOptions.Parse(args).AudioDevice);
+
+    [Theory]
     [InlineData(new string[0], PlayerAudioEngine.Bass, null)]
     [InlineData(new[] { "--audio=fatz" }, PlayerAudioEngine.FatzAudio, null)]
     [InlineData(new[] { "--audio=FatzAudio" }, PlayerAudioEngine.FatzAudio, null)]
