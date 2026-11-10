@@ -97,8 +97,11 @@ public static class PlayerServiceProvider
     {
         // The BASS engine is created and BASS initialized on the configured device in every case:
         // video audio and soundtracks stay on BASS (037A slice 2), and it is the fallback.
-        var bassEngine = CreateBassAudioEngine(configuration, analysisCache);
-        if (configuration.AudioEngineFactory is not { } factory)
+        // The BASS MIDI soundfont (a DLS converted to SF2) is loaded only when BASS plays files:
+        // FatzAudio loads SF2, SF3 and DLS itself (037A slice 4).
+        var factory = configuration.AudioEngineFactory;
+        var bassEngine = CreateBassAudioEngine(configuration, analysisCache, loadMidiSoundfont: factory is null);
+        if (factory is null)
             return bassEngine;
 
         try
@@ -117,6 +120,7 @@ public static class PlayerServiceProvider
                 "Bootstrap",
                 $"Audio engine {factory.Name} could not start ({ex.Message}); using BASS.",
                 innerException: ex);
+            BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
             return bassEngine;
         }
     }
@@ -144,7 +148,8 @@ public static class PlayerServiceProvider
 
     static AudioEngine CreateBassAudioEngine(
         MediaPlayerConfiguration configuration,
-        MediaAnalysisCache analysisCache)
+        MediaAnalysisCache analysisCache,
+        bool loadMidiSoundfont)
     {
         var latencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
         var audioEngine = new AudioEngine(
@@ -175,7 +180,8 @@ public static class PlayerServiceProvider
         else
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Global BASS initialized successfully on device {audioEngine.BassDeviceIndex}");
-            BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
+            if (loadMidiSoundfont)
+                BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
         }
 
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
