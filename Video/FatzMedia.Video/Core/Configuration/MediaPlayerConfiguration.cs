@@ -187,10 +187,10 @@ public readonly record struct MediaPlayerConfiguration
     public MediaPlayerMode Mode { get; init; }
 
     /// <summary>
-    /// The engine for audio files and archive entries (037A slice 2). <see langword="null"/>, the
-    /// default, uses the built-in BASS engine. Set it to the FatzAudio engine package's factory to
-    /// opt in to FatzAudio; video audio stays on BASS. When the factory cannot create its engine,
-    /// the player warns and uses BASS.
+    /// The player's audio engine (037A). <see langword="null"/>, the default, uses the built-in BASS
+    /// engine. Set it to the FatzAudio engine package's factory to opt in to FatzAudio for files,
+    /// CD+G, video audio and soundtracks; BASS is then not used. When the factory cannot create its
+    /// engine, the player warns and uses BASS if BASS loaded.
     /// </summary>
     public IAudioEngineFactory? AudioEngineFactory { get; init; }
 

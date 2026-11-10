@@ -10,7 +10,7 @@ public enum PlayerAudioEngine
     /// <summary>The built-in BASS engine, the default (<c>--audio=bass</c>).</summary>
     Bass,
 
-    /// <summary>The opt-in FatzAudio engine for audio files and archives (<c>--audio=fatz</c>); video audio stays on BASS.</summary>
+    /// <summary>The opt-in FatzAudio engine (<c>--audio=fatz</c>): files, CD+G, video audio and soundtracks; no BASS.</summary>
     FatzAudio,
 }
 

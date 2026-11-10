@@ -1,4 +1,5 @@
 using FatzMedia.Video.Core.Abstractions;
+using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Threading;
 using FatzMedia.Video.Core.Video;
@@ -58,6 +59,7 @@ sealed class VideoPipelineFactory : IVideoEngineFactory
             _precisionWaiterFactory,
             _platformServices,
             _hardwareAccelerationServices,
-            UsesVideoAudio(configuration.Mode, _audioAvailable));
+            UsesVideoAudio(configuration.Mode, _audioAvailable),
+            audioEngine is IPushAudioOutputSource outputSource ? outputSource.CreatePushAudioOutput : null);
     }
 }

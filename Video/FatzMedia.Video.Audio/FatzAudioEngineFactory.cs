@@ -4,9 +4,9 @@ using FatzMedia.Video.Core.Configuration;
 namespace FatzMedia.Video.Audio;
 
 /// <summary>
-/// Opts a player in to the FatzAudio engine for audio files and archive entries (037A slice 2):
-/// set an instance as <see cref="MediaPlayerConfiguration.AudioEngineFactory"/>. Without it the
-/// player uses BASS, the default. Video audio stays on BASS.
+/// Opts a player in to the FatzAudio engine (037A): audio files and archive entries, CD+G, video
+/// audio and soundtracks; set an instance as <see cref="MediaPlayerConfiguration.AudioEngineFactory"/>.
+/// Without it the player uses BASS, the default.
 /// </summary>
 /// <example>
 /// <code>

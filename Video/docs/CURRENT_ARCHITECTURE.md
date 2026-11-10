@@ -1070,12 +1070,13 @@ The BASS effect stages, transport and device code keep their handles inside `Aud
 ## FatzAudio Engine (Stage 037A, slice 2, pending manual smoke)
 
 - **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory` in
-  Core). `null`, the default, is the BASS `AudioEngine`. `PlayerServiceProvider` always creates
-  the BASS engine first (it initializes BASS on the configured device, which video audio and the
-  soundtrack engine still need), then asks the factory; it disposes the BASS file engine (BASS stays
-  initialized) and uses the factory's engine, or warns (`Bootstrap`) and keeps BASS when the factory
-  throws. Audio availability is still BASS's (`IsAudioAvailable`): without BASS the player has no
-  audio, whichever engine is configured. The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
+  Core). `null`, the default, is the BASS `AudioEngine`. `PlayerServiceProvider` asks the factory
+  first and creates the BASS engine only without one, or when it throws (a `Bootstrap` warning; no
+  audio when BASS did not load either). Audio is available when either engine started. With the
+  FatzAudio engine BASS is never initialized (slice 5): CD+G comes from it through `ICdgEngineSource`
+  (slice 3), and video audio, soundtracks and network audio through FFmpeg play on its
+  `IPushAudioOutput`s through `IPushAudioOutputSource` (`VideoAudioEngine` keeps the FFmpeg side;
+  `BassPushAudioOutput` is the BASS side). The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
   to `FatzAudioEngineFactory` in their host engine factories.
 - **Package:** `FatzMedia.Video.Audio` references Core and the `FatzAudio`
   package only. It implements Core's internal seams, so it is Core's one non-test

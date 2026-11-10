@@ -42,10 +42,11 @@ The test players take `--audio=fatz` (and `--audio=bass`, the default).
   back to its restart order, so a module's length is fixed and silence trim is not applied to
   modules (as on BASS).
 
-Video audio, video soundtracks (Audio mode) and network audio stay on BASS in this slice, and BASS
-is still initialized on the configured device for them, so the BASS libraries are still needed.
-If the engine cannot start (for example the FatzAudio native library is missing), the player
-warns and uses BASS.
+CD+G is drawn by FatzAudio (037A slice 3). Video audio, video soundtracks (Audio mode) and network
+audio through FFmpeg play through FatzAudio too (slice 5): FFmpeg decodes, FatzAudio plays, and the
+picture follows FatzAudio's clock. A player with this engine uses no BASS and needs no BASS
+libraries. If the engine cannot start (for example the FatzAudio native library is missing), the
+player warns and uses BASS when BASS is there, otherwise it has no audio.
 
 ## Dependencies
 

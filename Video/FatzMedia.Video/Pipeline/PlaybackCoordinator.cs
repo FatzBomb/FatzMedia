@@ -51,7 +51,9 @@ sealed partial class PlaybackCoordinator : IDisposable
                 ? deviceProvider.BassDeviceIndex
                 : configuration.AudioOutputDeviceIndex;
             var soundtrack = new AudioPipeline(
-                new SoundtrackAudioEngine(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex),
+                new SoundtrackAudioEngine(audioEngine is IPushAudioOutputSource outputSource
+                    ? outputSource.CreatePushAudioOutput()
+                    : new BassPushAudioOutput(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex)),
                 _session.State,
                 ownsAudioEngine: true);
             soundtrack.PlaybackEnded += OnPlaybackEnded;
