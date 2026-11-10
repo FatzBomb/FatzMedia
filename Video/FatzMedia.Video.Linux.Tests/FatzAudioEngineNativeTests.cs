@@ -303,18 +303,18 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         var kar = FatzAudioTestMedia.WriteKaraoke(_root);
         var wav = FatzAudioTestMedia.WriteWav(_root, "plain.wav", new FatzAudioTestMedia.Section(2));
         using var engine = CreateEngine(new MediaPlayerConfiguration { MidiSoundfontPath = soundFont });
-        IKaraokeLyricsSource lyrics = engine;
+        IKaraokeOverlaySource lyrics = engine;
 
         Assert.True(engine.Open(wav));
-        Assert.False(lyrics.DrawsLyrics);
+        Assert.False(lyrics.DrawsOverlay);
         Assert.True(engine.Open(kar));
-        Assert.True(lyrics.DrawsLyrics);
+        Assert.True(lyrics.DrawsOverlay);
 
         // One reusable buffer, as the overlay pool hands back when no composition holds it.
         var buffer = new byte[1920 * 1080 * 4];
         Memory<byte> Rent(int length) => buffer.AsMemory(0, length);
         SubtitleRasterResult? frame = null;
-        Assert.True(SpinUntil(() => (frame = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)) is not null));
+        Assert.True(SpinUntil(() => (frame = lyrics.DrawOverlay(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)) is not null));
         var drawn = frame!.Value;
         Assert.Equal((1920, 1080), (drawn.CanvasWidth, drawn.CanvasHeight));
         Assert.InRange(drawn.Width, 1, 1920);
@@ -324,7 +324,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         // The words are drawn: some pixels are not transparent.
         Assert.True(SpinUntil(() =>
         {
-            var f = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)!.Value;
+            var f = lyrics.DrawOverlay(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _)!.Value;
             var pixels = f.Pixels.Span;
             for (var i = 3; i < pixels.Length; i += 4)
             {
@@ -336,13 +336,13 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         }));
 
         // The same moment again into the same buffer: nothing new.
-        _ = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _);
-        _ = lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out var changed);
+        _ = lyrics.DrawOverlay(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _);
+        _ = lyrics.DrawOverlay(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out var changed);
         Assert.False(changed);
 
         engine.Close();
-        Assert.False(lyrics.DrawsLyrics);
-        Assert.Null(lyrics.DrawLyrics(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _));
+        Assert.False(lyrics.DrawsOverlay);
+        Assert.Null(lyrics.DrawOverlay(TimeSpan.FromSeconds(2.2), 1920, 1080, Rent, out _));
     }
 
     [Fact]

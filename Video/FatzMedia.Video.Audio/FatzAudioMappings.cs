@@ -210,4 +210,26 @@ static class FatzAudioMappings
 
     /// <summary>An ARGB colour as FatzAudio's straight-alpha colour.</summary>
     public static Fa.CdgColor ToColor(uint argb) => new((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24));
+
+    /// <summary>Our scaled CD+G options as FatzAudio's presentation: scaled, with the zone, smoothing and edge blend.</summary>
+    public static Fa.CdgPresentation ToCdgPresentation(CdgScalingOptions options) => new()
+    {
+        Scale = true,
+        SafetyZone = options.SafetyZone switch
+        {
+            CdgSafetyZone.Remove => Fa.SafetyZone.Remove,
+            CdgSafetyZone.Auto => Fa.SafetyZone.Auto,
+            CdgSafetyZone.Super => Fa.SafetyZone.Super,
+            _ => Fa.SafetyZone.Show,
+        },
+        Smoothness = Math.Clamp(options.Smoothness, 0, 10),
+        EdgeBlend = options.EdgeBlend,
+    };
+
+    /// <summary>The scaled CD+G effects (<see cref="CdgScalingOptions.Effects"/>): FatzAudio's default outline and a soft shadow.</summary>
+    public static Fa.SurfaceEffects CdgEffects { get; } = new()
+    {
+        Outline = new Fa.OutlineEffect(),
+        Shadow = new Fa.ShadowEffect { Size = 0.3f, Fade = 0.5f },
+    };
 }

@@ -156,6 +156,12 @@ public readonly record struct MediaPlayerConfiguration
     public NormalizationOptions Normalization { get; init; }
 
     /// <summary>
+    /// The scaled, smoothed CD+G picture of the FatzAudio engine; off by default (the classic picture). The BASS
+    /// engine ignores it.
+    /// </summary>
+    public CdgScalingOptions CdgScaling { get; init; }
+
+    /// <summary>
     /// Whether a background video follows the media's transport (default <see langword="false"/>).
     /// <see langword="false"/>: the background loops on its own while it is shown, from the moment it
     /// appears, through the media's pause, stop, end and loop. <see langword="true"/>: it waits for

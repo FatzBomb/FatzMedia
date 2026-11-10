@@ -157,11 +157,32 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public string? AudioDevice { get; init; }
 
+    /// <summary>
+    /// Gets the scaled CD+G picture (<c>--cdg-scale</c> or <c>--cdg-scale=0..10</c>, the smoothness; <c>--cdg-effects</c>
+    /// adds an outline and a shadow); off (the classic picture) without it. Only with <c>--audio=fatz</c>.
+    /// </summary>
+    public CdgScalingOptions CdgScaling { get; init; }
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
     /// <summary>The most players a test player window shows.</summary>
     public const int MaxPlayers = 4;
+
+    static CdgScalingOptions ParseCdgScaling(IReadOnlyList<string> args)
+    {
+        var smoothness = Values(args, "--cdg-scale=").LastOrDefault();
+        if (smoothness is null && !args.Contains("--cdg-scale"))
+            return default;
+
+        return new CdgScalingOptions
+        {
+            Enabled = true,
+            Smoothness = int.TryParse(smoothness, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : 0,
+            EdgeBlend = true,
+            Effects = args.Contains("--cdg-effects"),
+        };
+    }
 
     /// <summary>Parses <paramref name="args"/>. Unknown flags are ignored.</summary>
     public static PlayerStartupOptions Parse(IReadOnlyList<string> args)
@@ -215,6 +236,7 @@ public sealed record PlayerStartupOptions
             AudioEngine = PlayerAudioEngineRules.Parse(audio) ?? PlayerAudioEngine.Bass,
             UnknownAudioEngine = audio is not null && PlayerAudioEngineRules.Parse(audio) is null ? audio : null,
             AudioDevice = Values(args, "--audio-device=").LastOrDefault(static value => !string.IsNullOrWhiteSpace(value)),
+            CdgScaling = ParseCdgScaling(args),
             SoftwareDecoding = IsValue(decoding, "software"),
             UnknownDecoding = decoding is null || IsValue(decoding, "software") || IsValue(decoding, "auto") ? null : decoding,
             SecondScreen = Values(args, "--second-screen=", trimQuotes: false)

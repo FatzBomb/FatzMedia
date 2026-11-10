@@ -365,14 +365,14 @@ sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzMedia.Video.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, FatzMedia.Video.Core.Subtitle.IKaraokeLyricsSource
+sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzMedia.Video.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, FatzMedia.Video.Core.Subtitle.IKaraokeOverlaySource
 {
     /// <summary>When set, the engine draws MIDI lyrics itself (as the FatzAudio engine does) with this.</summary>
     public Func<TimeSpan, int, int, Func<int, Memory<byte>>, (FatzMedia.Video.Core.Subtitle.SubtitleRasterResult? Frame, bool Changed)>? DrawLyricsWith { get; set; }
 
-    bool FatzMedia.Video.Core.Subtitle.IKaraokeLyricsSource.DrawsLyrics => DrawLyricsWith is not null;
+    bool FatzMedia.Video.Core.Subtitle.IKaraokeOverlaySource.DrawsOverlay => DrawLyricsWith is not null;
 
-    FatzMedia.Video.Core.Subtitle.SubtitleRasterResult? FatzMedia.Video.Core.Subtitle.IKaraokeLyricsSource.DrawLyrics(TimeSpan time, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels, out bool changed)
+    FatzMedia.Video.Core.Subtitle.SubtitleRasterResult? FatzMedia.Video.Core.Subtitle.IKaraokeOverlaySource.DrawOverlay(TimeSpan time, int canvasWidth, int canvasHeight, Func<int, Memory<byte>> rentPixels, out bool changed)
     {
         var (frame, didChange) = DrawLyricsWith!(time, canvasWidth, canvasHeight, rentPixels);
         changed = didChange;
