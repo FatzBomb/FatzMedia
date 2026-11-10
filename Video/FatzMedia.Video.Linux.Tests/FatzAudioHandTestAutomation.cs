@@ -36,12 +36,18 @@ public sealed class FatzAudioHandTestAutomation : IDisposable
 
     public void Dispose()
     {
-        _pump?.Cancel();
-        _pumpTask?.Wait();
-        _pump?.Dispose();
-        _audio?.Dispose();
-        _player?.Dispose();
-        try { Directory.Delete(_root, recursive: true); } catch { }
+        try
+        {
+            _pump?.Cancel();
+            _pumpTask?.Wait();
+        }
+        finally
+        {
+            _pump?.Dispose();
+            _audio?.Dispose();
+            _player?.Dispose();
+            try { Directory.Delete(_root, recursive: true); } catch { }
+        }
     }
 
     [Theory]
@@ -245,10 +251,7 @@ public sealed class FatzAudioHandTestAutomation : IDisposable
     {
         var line = JsonSerializer.Serialize(new { name, pass, detail, metrics, device = RealDevice ? "default output" : "null output" });
         if (Environment.GetEnvironmentVariable("FATZMEDIA_HANDTESTS_OUT") is { Length: > 0 } path)
-        {
-            lock (typeof(FatzAudioHandTestAutomation))
-                File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
-        }
+            File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8); // the collection runs one test at a time
     }
 
     /// <summary>

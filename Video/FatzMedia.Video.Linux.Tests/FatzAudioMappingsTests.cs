@@ -1,4 +1,5 @@
 using FatzMedia.Video.Audio;
+using FatzMedia.Video.Core.Configuration;
 using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Linux.Tests;
@@ -108,4 +109,36 @@ public sealed class FatzAudioMappingsTests
     [InlineData(double.NaN, 1)]
     public void NormalizationGain_IsTheDecibelGainAsAMultiplier(double gainDb, double gain) =>
         Assert.Equal(gain, FatzAudioMappings.GainFromDecibels(gainDb), 4);
+
+    [Fact]
+    public void LyricStyle_CarriesOurFontColoursOutlineAndShadow()
+    {
+        if (!FatzAudioNativeGroup.CanRun)
+            return; // the preset comes from the native library
+
+        var style = FatzAudioMappings.ToLyricStyle(new KaraokeTextStyle() with
+        {
+            FontFamily = "Arial",
+            TextArgb = 0xFF102030,
+            WipeTextArgb = 0xFFFF0000,
+            OutlineArgb = 0xFF00FF00,
+            OutlineWidth = 8.64f,      // 0.12 em at 72 px: size 1
+            ShadowOffsetX = 0,
+            ShadowOffsetY = 5.4f,      // 0.075 em straight down: distance 0.5, 270 degrees
+            NextLineOpacity = 0.5f,
+        });
+
+        Assert.Equal("Arial", style.FontFamily);
+        Assert.Equal(new Fa.CdgColor(0x10, 0x20, 0x30, 0xFF), style.TextColor);
+        Assert.Equal(new Fa.CdgColor(0xFF, 0, 0, 0xFF), style.SungColor);
+        Assert.Equal(0.5f, style.NextLineOpacity);
+        Assert.Equal(new Fa.CdgColor(0, 0xFF, 0, 0xFF), style.Effects!.Outline!.Color);
+        Assert.Equal(1f, style.Effects.Outline.Size, 3);
+        Assert.Equal(0.5f, style.Effects.Shadow!.Distance, 3);
+        Assert.Equal(-90f, style.Effects.Shadow.AngleDegrees, 3);
+
+        var plain = FatzAudioMappings.ToLyricStyle(new KaraokeTextStyle() with { OutlineWidth = 0, ShadowArgb = 0 });
+        Assert.Null(plain.Effects!.Outline);
+        Assert.Null(plain.Effects.Shadow);
+    }
 }

@@ -319,7 +319,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
     /// <summary>The device opened (null: the system default), for tests.</summary>
     internal Fa.AudioDeviceInfo? OutputDeviceInfo => OutputDevice.Info;
 
-
     /// <summary>Whether the device list is being watched, for tests.</summary>
     internal bool IsWatchingDevices
     {

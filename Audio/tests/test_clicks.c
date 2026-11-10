@@ -39,30 +39,16 @@ static uint8_t* make_sine_wav(uint32_t frames, double hz, uint32_t rate, size_t*
     return b;
 }
 
-/* Renders like the device would: without waiting for the streams to have audio. */
-static void render_now(int64_t frames)
-{
-    float out[PERIOD * 2];
-    while (frames > 0) {
-        uint32_t n = frames < PERIOD ? (uint32_t)frames : PERIOD, i;
-        fa_fetch_add64(&g_dev->epoch, 1);
-        fa_device_render(g_dev, out, n);
-        fa_fetch_add64(&g_dev->epoch, 1);
-        for (i = 0; i < n; i++)
-            if (g_rec_frames + i < MAX_REC) g_rec[g_rec_frames + i] = out[i * 2];
-        g_rec_frames += n;
-        frames -= n;
-    }
-}
-
-static void render(int64_t frames)
+/* Renders `frames` into the recording (the limiter's delay taken out). wait: first wait, per period,
+ * for the streams to have audio; else render as the device would, whatever they have. */
+static void render_frames(int64_t frames, int wait)
 {
     float out[PERIOD * 2];
     int64_t d = g_dev->limiter.delay;
     frames += d;
     while (frames > 0) {
         uint32_t n = frames < PERIOD ? (uint32_t)frames : PERIOD, i;
-        fa_voice_list* list = (fa_voice_list*)fa_load_ptr(&g_dev->voices);
+        fa_voice_list* list = wait ? (fa_voice_list*)fa_load_ptr(&g_dev->voices) : NULL;
         int64_t deadline = fa_monotonic_ns() + 10000000000LL;
         while (list && fa_monotonic_ns() < deadline) {
             int ready = 1;
@@ -84,6 +70,11 @@ static void render(int64_t frames)
         frames -= n;
     }
 }
+
+static void render(int64_t frames) { render_frames(frames, 1); }
+
+/* Renders like the device would: without waiting for the streams to have audio. */
+static void render_now(int64_t frames) { render_frames(frames, 0); }
 
 /* Prints the spikes in [from, to) for a tone of `hz` (the pitch the output has). */
 /* Seeks and wraps must not step: the residual stays under `thr`. */

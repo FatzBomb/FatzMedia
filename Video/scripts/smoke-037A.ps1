@@ -186,7 +186,8 @@ if ($Part -in '2', 'both') {
     Run-Check 'M7' 'Audio-mode soundtrack' 'Video' @('--mode=audio') @(
         'The video plays as sound only: the position bar moves, seeks work.') ''
     Run-Check 'M8' 'MIDI karaoke' 'Kar' @() @(
-        'It plays with lyrics on screen.') 'BASSMIDI|soundfont'
+        'It plays with lyrics on screen: white words wiping to yellow in time with the singing, the next line dimmer.',
+        'Seek and pause: the lyrics are right after each.') 'Lyrics drawn by FatzAudio|draw these lyrics|could not draw the lyrics|soundfont'
     Run-Check 'M9' 'loudness' 'Quiet' @() @(
         'Play this quiet file for a few seconds, then open the music video from M1 (Open button) and play it.',
         'Pass if both are about equally loud.') 'Loudness|loudness'

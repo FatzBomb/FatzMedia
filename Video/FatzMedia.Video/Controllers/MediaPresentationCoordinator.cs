@@ -31,9 +31,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     static readonly ArrayPool<byte> CompositionBackgroundPool =
         ArrayPool<byte>.Create(maxArrayLength: 64 * 1024 * 1024, maxArraysPerBucket: 4);
-    // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame.
-    static readonly ArrayPool<byte> SubtitleOverlayPool =
-        ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
 
     readonly IMediaEngine _mediaEngine;
     readonly MediaPlayerConfiguration _configuration;
@@ -106,6 +103,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     // (null when the rasterizer returned its own memory). Compositions take a reference to it.
     RetainedFrameBuffer? _subtitleBuffer;
     RetainedFrameBuffer? _subtitleOverlayBuffer;
+    // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame. One pool per
+    // coordinator: an engine that draws lyrics into a returned buffer draws only the change (IKaraokeLyricsSource),
+    // so no other player may write into the arrays meanwhile.
+    readonly ArrayPool<byte> _subtitleOverlayPool = ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
     readonly Func<int, Memory<byte>> _rentSubtitlePixels;
     bool _subtitleBufferRented;
     SubtitleCue[] _subtitleCues = [];
@@ -1706,7 +1707,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         if (buffer is null || !buffer.IsExclusive || buffer.Length < length)
         {
             buffer?.Release();
-            buffer = RetainedFrameBuffer.Rent(SubtitleOverlayPool, length);
+            buffer = RetainedFrameBuffer.Rent(_subtitleOverlayPool, length);
             _subtitleBuffer = buffer;
         }
 
