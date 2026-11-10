@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,12 +6,12 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Push streams, packet streams and the presentation clock (the FFmpeg hand-off).</summary>
 public class PushStreamTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static float[] Constant(int frames, int channels, float value)
+    static float[] Constant(int frames, int channels, float value)
     {
         var x = new float[frames * channels];
         Array.Fill(x, value);
@@ -42,16 +41,16 @@ public class PushStreamTests
     {
         using var engine = AudioEngine.Create();
         using var s = engine.CreatePushStream(AudioFormat.Float32(48000, 2), DecodeOnly);
-        const int frames = 2400; // 100 ms at 24 kHz
-        double* plane = (double*)NativeMemory.Alloc(frames, sizeof(double));
+        const int Frames = 2400; // 100 ms at 24 kHz
+        var plane = (double*)NativeMemory.Alloc(Frames, sizeof(double));
         try
         {
-            for (int i = 0; i < frames; i++) plane[i] = 0.5;
-            double** planes = stackalloc double*[1];
+            for (var i = 0; i < Frames; i++) plane[i] = 0.5;
+            var planes = stackalloc double*[1];
             planes[0] = plane;
             var fmt = new AudioFormat(SampleFormat.Float64Planar, 24000, 1);
-            s.PushFrame(fmt, (nint)planes, frames, 0, new Rational(1, 24000));
-            s.PushFrame(fmt, (nint)planes, frames); // no timestamp: follows on
+            s.PushFrame(fmt, (nint)planes, Frames, 0, new Rational(1, 24000));
+            s.PushFrame(fmt, (nint)planes, Frames); // no timestamp: follows on
         }
         finally
         {
@@ -80,12 +79,12 @@ public class PushStreamTests
         Assert.Equal(44100, s.Info.Format.SampleRate);
         Assert.Equal("pcm_s16le", s.Info.Codec);
         var bytes = new byte[4410 * 4];
-        for (int i = 0; i < bytes.Length; i += 2) BitConverter.TryWriteBytes(bytes.AsSpan(i), (short)16384);
+        for (var i = 0; i < bytes.Length; i += 2) BitConverter.TryWriteBytes(bytes.AsSpan(i), (short)16384);
         // odd sizes: a sample split across packets is carried over
         int at = 0, pts = 0;
-        foreach (int size in new[] { 1, 7, 1000, 3, bytes.Length })
+        foreach (var size in new[] { 1, 7, 1000, 3, bytes.Length })
         {
-            int n = Math.Min(size, bytes.Length - at);
+            var n = Math.Min(size, bytes.Length - at);
             if (n <= 0) break;
             s.PushPacket(bytes.AsSpan(at, n), pts);
             at += n;

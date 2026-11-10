@@ -6,10 +6,10 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>The numbers the binding repeats (event types, curve kinds, capture flags) against the C header.</summary>
 public class HeaderConstantsTests
 {
-    private static readonly string Header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fatzaudio.h"));
+    static readonly string Header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fatzaudio.h"));
 
     /// <summary>The values of <c>typedef enum name { ... }</c>, counting up from the last explicit value as C does.</summary>
-    private static Dictionary<string, long> Enum(string name)
+    static Dictionary<string, long> Enum(string name)
     {
         var m = Regex.Match(Header, (name == "" ? @"\nenum \{(.*?)\}" : @"typedef enum " + name + @" \{(.*?)\}"), RegexOptions.Singleline);
         Assert.True(m.Success, name);
@@ -21,7 +21,7 @@ public class HeaderConstantsTests
             var t = item.Trim();
             if (t.Length == 0) continue;
             var parts = t.Split('=');
-            if (parts.Length == 2) next = Convert.ToInt64(parts[1].Trim(), parts[1].Trim().StartsWith("0x") ? 16 : 10);
+            if (parts.Length == 2) next = Convert.ToInt64(parts[1].Trim(), parts[1].Trim().StartsWith("0x", StringComparison.Ordinal) ? 16 : 10);
             result[parts[0].Trim()] = next++;
         }
         return result;
@@ -75,15 +75,15 @@ public class HeaderConstantsTests
     [Fact]
     public void ErrorCodes_MatchTheHeader()
     {
-        var header = Enum("").Where(kv => kv.Key.StartsWith("FA_ERROR_") || kv.Key == "FA_OK").Select(kv => kv.Value).Order().ToArray();
+        var header = Enum("").Where(kv => kv.Key.StartsWith("FA_ERROR_", StringComparison.Ordinal) || kv.Key == "FA_OK").Select(kv => kv.Value).Order().ToArray();
         var binding = System.Enum.GetValues<ErrorCode>().Select(c => (long)c).Order().ToArray();
         Assert.Equal(header, binding);
     }
 
-    private static uint Flag(string name)
+    static uint Flag(string name)
     {
         var m = Regex.Match(Header, @"#define " + name + @"\s+\(1u << (\d+)\)");
         Assert.True(m.Success, name);
-        return 1u << int.Parse(m.Groups[1].Value);
+        return 1u << int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
     }
 }

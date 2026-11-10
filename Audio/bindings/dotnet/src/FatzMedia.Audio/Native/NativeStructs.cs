@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace FatzMedia.Audio.Native;
 
 // Versioned structs start with a uint StructSize (the C struct_size): a call reads or fills the struct up to it.
-internal static class NativeSized
+static class NativeSized
 {
     /// <summary>A zeroed <typeparamref name="T"/> with its leading StructSize set to its size.</summary>
     public static T New<T>() where T : unmanaged
@@ -15,7 +15,7 @@ internal static class NativeSized
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaAudioFormat
+struct FaAudioFormat
 {
     public int SampleFormat;
     public uint SampleRate;
@@ -24,7 +24,7 @@ internal struct FaAudioFormat
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaEqBand
+struct FaEqBand
 {
     public int Type;
     public float Frequency;
@@ -36,7 +36,7 @@ internal struct FaEqBand
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaEngineConfig
+unsafe struct FaEngineConfig
 {
     public uint StructSize;
     public uint MixSampleRate;
@@ -50,7 +50,7 @@ internal unsafe struct FaEngineConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaDeviceInfo
+unsafe struct FaDeviceInfo
 {
     public uint StructSize;
     public fixed byte Id[256];
@@ -62,7 +62,7 @@ internal unsafe struct FaDeviceInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaIoCallbacks
+unsafe struct FaIoCallbacks
 {
     public delegate* unmanaged[Cdecl]<void*, void*, nuint, long> Read;
     public delegate* unmanaged[Cdecl]<void*, long, int> Seek;
@@ -71,7 +71,7 @@ internal unsafe struct FaIoCallbacks
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaOpenOptions
+unsafe struct FaOpenOptions
 {
     public uint StructSize;
     public uint Flags;
@@ -90,7 +90,7 @@ internal unsafe struct FaOpenOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaNetOptions
+unsafe struct FaNetOptions
 {
     public uint StructSize;
     public byte* UserAgent;
@@ -106,7 +106,7 @@ internal unsafe struct FaNetOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMetadata
+unsafe struct FaMetadata
 {
     public uint StructSize;
     public fixed byte StreamTitle[1024];
@@ -123,7 +123,7 @@ internal unsafe struct FaMetadata
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaNetStatus
+unsafe struct FaNetStatus
 {
     public uint StructSize;
     public int Connected;
@@ -142,7 +142,7 @@ internal unsafe struct FaNetStatus
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaStreamInfo
+unsafe struct FaStreamInfo
 {
     public uint StructSize;
     public FaAudioFormat Format;
@@ -161,7 +161,7 @@ internal unsafe struct FaStreamInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaTagItem
+struct FaTagItem
 {
     public nint Key;
     public nint Value;
@@ -169,7 +169,7 @@ internal struct FaTagItem
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaTagPicture
+struct FaTagPicture
 {
     public int Type;
     public nint Mime;
@@ -180,7 +180,7 @@ internal struct FaTagPicture
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaFormatInfo
+unsafe struct FaFormatInfo
 {
     public fixed byte Name[32];
     public fixed byte Description[64];
@@ -189,7 +189,7 @@ internal unsafe struct FaFormatInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaRamp
+unsafe struct FaRamp
 {
     public int Curve;
     public float BezierX1, BezierY1, BezierX2, BezierY2;
@@ -199,7 +199,7 @@ internal unsafe struct FaRamp
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLoudness
+struct FaLoudness
 {
     public uint StructSize;
     public double IntegratedLufs;
@@ -211,7 +211,7 @@ internal struct FaLoudness
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLoudnessTagResult
+struct FaLoudnessTagResult
 {
     public uint StructSize;
     public int Result;
@@ -225,7 +225,7 @@ internal struct FaLoudnessTagResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaEvent
+unsafe struct FaEvent
 {
     public int Type;
     public void* Stream;
@@ -234,14 +234,14 @@ internal unsafe struct FaEvent
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaRational
+struct FaRational
 {
     public int Num;
     public int Den;
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaCodecParams
+unsafe struct FaCodecParams
 {
     public uint StructSize;
     public byte* Codec;
@@ -256,7 +256,7 @@ internal unsafe struct FaCodecParams
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaPacket
+unsafe struct FaPacket
 {
     public void* Data;
     public nuint Size;
@@ -265,7 +265,7 @@ internal unsafe struct FaPacket
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaAudioFrame
+unsafe struct FaAudioFrame
 {
     public FaAudioFormat Format;
     public void** Data;
@@ -275,7 +275,7 @@ internal unsafe struct FaAudioFrame
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaTempoOptions
+struct FaTempoOptions
 {
     public uint StructSize;
     public int Quality;
@@ -284,7 +284,7 @@ internal struct FaTempoOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaCdgSurfaceConfig
+struct FaCdgSurfaceConfig
 {
     public uint StructSize;
     public int PixelFormat;
@@ -295,7 +295,7 @@ internal struct FaCdgSurfaceConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaCdgFrame
+unsafe struct FaCdgFrame
 {
     public uint StructSize;
     public void* Pixels;
@@ -316,7 +316,7 @@ internal unsafe struct FaCdgFrame
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaSurfaceLayout
+unsafe struct FaSurfaceLayout
 {
     public uint StructSize;
     public uint Width, Height;
@@ -333,7 +333,7 @@ internal unsafe struct FaSurfaceLayout
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaSurfaceFrame
+unsafe struct FaSurfaceFrame
 {
     public uint StructSize;
     public ulong Revision;
@@ -355,7 +355,7 @@ internal unsafe struct FaSurfaceFrame
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaCdgPresentation
+struct FaCdgPresentation
 {
     public uint StructSize;
     public int Scale;
@@ -369,7 +369,7 @@ internal struct FaCdgPresentation
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaFxOutline
+struct FaFxOutline
 {
     public int On;
     public uint Color;
@@ -380,7 +380,7 @@ internal struct FaFxOutline
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaFxShadow
+struct FaFxShadow
 {
     public int On;
     public uint Color;
@@ -393,7 +393,7 @@ internal struct FaFxShadow
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaFxBevel
+struct FaFxBevel
 {
     public int On;
     public uint Highlight;
@@ -405,7 +405,7 @@ internal struct FaFxBevel
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSurfaceEffects
+struct FaSurfaceEffects
 {
     public uint StructSize;
     public FaFxShadow Shadow;
@@ -415,7 +415,7 @@ internal struct FaSurfaceEffects
 
 /// <summary>fa_lyric_style.</summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLyricStyle
+struct FaLyricStyle
 {
     public uint StructSize;
     public nint FontFamily;
@@ -480,7 +480,7 @@ internal struct FaLyricStyle
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaFingerprint
+struct FaFingerprint
 {
     public uint StructSize;
     public ulong Key;
@@ -488,7 +488,7 @@ internal struct FaFingerprint
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaScanOptions
+unsafe struct FaScanOptions
 {
     public uint StructSize;
     public FaFingerprint* Identity;
@@ -497,7 +497,7 @@ internal unsafe struct FaScanOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaCdgInfo
+struct FaCdgInfo
 {
     public uint StructSize;
     public int Source;
@@ -510,7 +510,7 @@ internal struct FaCdgInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaDiscDriveInfo
+unsafe struct FaDiscDriveInfo
 {
     public fixed byte Id[256];
     public fixed byte Name[128];
@@ -520,7 +520,7 @@ internal unsafe struct FaDiscDriveInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaDiscOptions
+struct FaDiscOptions
 {
     public uint StructSize;
     public int ReadOffset;
@@ -529,7 +529,7 @@ internal struct FaDiscOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaDiscStatus
+struct FaDiscStatus
 {
     public int State;
     public int Locked;
@@ -537,7 +537,7 @@ internal struct FaDiscStatus
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaDiscTrack
+struct FaDiscTrack
 {
     public int Number;
     public int IsAudio;
@@ -551,7 +551,7 @@ internal struct FaDiscTrack
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaDiscToc
+unsafe struct FaDiscToc
 {
     public uint StructSize;
     public const int MaxTracks = 99;
@@ -570,7 +570,7 @@ internal unsafe struct FaDiscToc
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaEncoderOptions
+unsafe struct FaEncoderOptions
 {
     public uint StructSize;
     public int Format;
@@ -590,7 +590,7 @@ internal unsafe struct FaEncoderOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaEncoderOutput
+unsafe struct FaEncoderOutput
 {
     public delegate* unmanaged[Cdecl]<void*, void*, nuint, int> Write;
     public delegate* unmanaged[Cdecl]<void*, long, int> Seek;
@@ -598,7 +598,7 @@ internal unsafe struct FaEncoderOutput
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaEncoderStatus
+struct FaEncoderStatus
 {
     public uint StructSize;
     public int State;
@@ -613,7 +613,7 @@ internal struct FaEncoderStatus
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaLameInfo
+unsafe struct FaLameInfo
 {
     public int Loaded;
     public fixed byte Version[32];
@@ -621,7 +621,7 @@ internal unsafe struct FaLameInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaSoundFontInfo
+unsafe struct FaSoundFontInfo
 {
     public uint StructSize;
     public fixed byte Name[256];
@@ -630,7 +630,7 @@ internal unsafe struct FaSoundFontInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaSoundFontPreset
+unsafe struct FaSoundFontPreset
 {
     public uint StructSize;
     public int Bank;
@@ -639,7 +639,7 @@ internal unsafe struct FaSoundFontPreset
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSoundFontStackEntry
+struct FaSoundFontStackEntry
 {
     public nint Font;
     public int Bank;
@@ -650,7 +650,7 @@ internal struct FaSoundFontStackEntry
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMidiText
+unsafe struct FaMidiText
 {
     public uint StructSize;
     public long Frame;
@@ -662,7 +662,7 @@ internal unsafe struct FaMidiText
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMidiMark
+unsafe struct FaMidiMark
 {
     public long Frame;
     public long Time;
@@ -674,7 +674,7 @@ internal unsafe struct FaMidiMark
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMidiEvent
+unsafe struct FaMidiEvent
 {
     public long Frame;
     public long Time;
@@ -688,7 +688,7 @@ internal unsafe struct FaMidiEvent
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaMidiStreamOptions
+struct FaMidiStreamOptions
 {
     public uint StructSize;
     public uint SampleRate;
@@ -696,7 +696,7 @@ internal struct FaMidiStreamOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaTrackerInfo
+unsafe struct FaTrackerInfo
 {
     public uint StructSize;
     public fixed byte Type[16];
@@ -711,7 +711,7 @@ internal unsafe struct FaTrackerInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMidiCredits
+unsafe struct FaMidiCredits
 {
     public uint StructSize;
     public int CodePage;
@@ -728,7 +728,7 @@ internal unsafe struct FaMidiCredits
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMidiInfo
+unsafe struct FaMidiInfo
 {
     public uint StructSize;
     public fixed byte Title[256];
@@ -743,7 +743,7 @@ internal unsafe struct FaMidiInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaAnalysisOptions
+struct FaAnalysisOptions
 {
     public uint StructSize;
     public uint Kinds;
@@ -758,7 +758,7 @@ internal struct FaAnalysisOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSilenceOptions
+struct FaSilenceOptions
 {
     public uint StructSize;
     public float ThresholdDb;
@@ -770,7 +770,7 @@ internal struct FaSilenceOptions
 
 // 4 bytes of padding after SampleRate and after MinSoundMs: Sequential layout inserts them, as the C compiler does.
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSilence
+struct FaSilence
 {
     public uint StructSize;
     public uint Flags;
@@ -788,14 +788,14 @@ internal struct FaSilence
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSilenceRegion
+struct FaSilenceRegion
 {
     public long Start;
     public long End;
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaAnalysisInfo
+struct FaAnalysisInfo
 {
     public uint StructSize;
     public uint Kinds;
@@ -806,7 +806,7 @@ internal struct FaAnalysisInfo
 
 // The uint StructSize is followed by 4 bytes of padding before the double: Sequential layout inserts it, as the C compiler does.
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaBeatGrid
+struct FaBeatGrid
 {
     public uint StructSize;
     public double Bpm;
@@ -820,7 +820,7 @@ internal struct FaBeatGrid
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaTempoSegment
+struct FaTempoSegment
 {
     public long Start;
     public double Bpm;
@@ -828,13 +828,13 @@ internal struct FaTempoSegment
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaWaveformPoint
+struct FaWaveformPoint
 {
     public float Peak, Low, Mid, High;
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaKeyInfo
+unsafe struct FaKeyInfo
 {
     public uint StructSize;
     public int Tonic;
@@ -845,7 +845,7 @@ internal unsafe struct FaKeyInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMixerConfig
+unsafe struct FaMixerConfig
 {
     public uint StructSize;
     public uint DeckCount;
@@ -858,7 +858,7 @@ internal unsafe struct FaMixerConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaCacheInfo
+unsafe struct FaCacheInfo
 {
     public uint StructSize;
     public byte* Directory;
@@ -867,7 +867,7 @@ internal unsafe struct FaCacheInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaEngineStats
+struct FaEngineStats
 {
     public uint StructSize;
     public float AudioLoad;
@@ -880,7 +880,7 @@ internal struct FaEngineStats
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaStreamStats
+struct FaStreamStats
 {
     public uint StructSize;
     public uint Underruns;
@@ -888,7 +888,7 @@ internal struct FaStreamStats
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaCaptureOptions
+unsafe struct FaCaptureOptions
 {
     public uint StructSize;
     public byte* DeviceId;
@@ -898,7 +898,7 @@ internal unsafe struct FaCaptureOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMicConfig
+unsafe struct FaMicConfig
 {
     public uint StructSize;
     public byte* DeviceId;
@@ -908,7 +908,7 @@ internal unsafe struct FaMicConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMixerLatency
+unsafe struct FaMixerLatency
 {
     public uint StructSize;
     public long Master;
@@ -920,7 +920,7 @@ internal unsafe struct FaMixerLatency
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaMicEffects
+struct FaMicEffects
 {
     public uint StructSize;
     public float ReverbSize;
@@ -931,7 +931,7 @@ internal struct FaMicEffects
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaDucking
+struct FaDucking
 {
     public uint StructSize;
     public float DepthDb;
@@ -942,7 +942,7 @@ internal struct FaDucking
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaMixerEvent
+unsafe struct FaMixerEvent
 {
     public int Type;
     public nint Mixer;
@@ -952,7 +952,7 @@ internal unsafe struct FaMixerEvent
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLatencyCheckConfig
+struct FaLatencyCheckConfig
 {
     public uint StructSize;
     public uint Flags;
@@ -961,7 +961,7 @@ internal struct FaLatencyCheckConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLatencyCheckMode
+struct FaLatencyCheckMode
 {
     public int Mode;
     public int Result;
@@ -973,7 +973,7 @@ internal struct FaLatencyCheckMode
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaLatencyCheck
+struct FaLatencyCheck
 {
     public uint StructSize;
     public uint Count;
@@ -985,7 +985,7 @@ internal struct FaLatencyCheck
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaDeckBeatInfo
+struct FaDeckBeatInfo
 {
     public uint StructSize;
     public double Bpm;
@@ -997,7 +997,7 @@ internal struct FaDeckBeatInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaAutomixOptions
+struct FaAutomixOptions
 {
     public uint StructSize;
     public long Length;
@@ -1009,7 +1009,7 @@ internal struct FaAutomixOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaSoundOptions
+unsafe struct FaSoundOptions
 {
     public uint StructSize;
     public uint MaxVoices;
@@ -1018,7 +1018,7 @@ internal unsafe struct FaSoundOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct FaSoundInfo
+struct FaSoundInfo
 {
     public uint StructSize;
     public uint SampleRate;
@@ -1032,7 +1032,7 @@ internal struct FaSoundInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaArchiveOptions
+unsafe struct FaArchiveOptions
 {
     public uint StructSize;
     public uint MemoryLimitMb;
@@ -1041,7 +1041,7 @@ internal unsafe struct FaArchiveOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct FaArchiveEntry
+unsafe struct FaArchiveEntry
 {
     public uint StructSize;
     public uint Index;

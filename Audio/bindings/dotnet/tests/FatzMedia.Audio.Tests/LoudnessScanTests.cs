@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,29 +5,29 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Loudness scans of audio the app feeds (<see cref="LoudnessScan"/>) and streams that name their song.</summary>
 public class LoudnessScanTests
 {
-    private const int Rate = 44100;
+    const int Rate = 44100;
 
-    private static AudioEngine Create(string? cache) =>
+    static AudioEngine Create(string? cache) =>
         AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
-    private static string TempDir() => Path.Combine(Path.GetTempPath(), $"fa-feed-{Guid.NewGuid():N}");
+    static string TempDir() => Path.Combine(Path.GetTempPath(), $"fa-feed-{Guid.NewGuid():N}");
 
-    private static void FeedPackets(LoudnessScan scan, byte[] wav, int from = 0, int to = -1)
+    static void FeedPackets(LoudnessScan scan, byte[] wav, int from = 0, int to = -1)
     {
         // 16-bit mono PCM after the 44-byte header, in 8 KB packets.
-        int end = to < 0 ? wav.Length : to;
-        for (int at = 44 + from; at < end; at += 8192)
+        var end = to < 0 ? wav.Length : to;
+        for (var at = 44 + from; at < end; at += 8192)
             Assert.True(scan.PushPacket(wav.AsSpan(at, Math.Min(8192, end - at))));
     }
 
-    private static CodecParameters Pcm16 => new("pcm_s16le", Rate, 1);
+    static CodecParameters Pcm16 => new("pcm_s16le", Rate, 1);
 
     [Fact]
     public void FedScan_MatchesScanByPath_AndSharesItsCacheEntry()
     {
-        string dir = TempDir();
-        string path = Path.Combine(Path.GetTempPath(), $"fa-feed-{Guid.NewGuid():N}.wav");
-        byte[] wav = TestAudio.SineWav(seconds: 20);
+        var dir = TempDir();
+        var path = Path.Combine(Path.GetTempPath(), $"fa-feed-{Guid.NewGuid():N}.wav");
+        var wav = TestAudio.SineWav(seconds: 20);
         File.WriteAllBytes(path, wav);
         try
         {
@@ -68,8 +67,8 @@ public class LoudnessScanTests
     [Fact]
     public async Task StreamNamingItsSong_GetsTheFedResult_FromAScanThatStartsAfterIt()
     {
-        string dir = TempDir();
-        byte[] wav = TestAudio.SineWav(seconds: 20);
+        var dir = TempDir();
+        var wav = TestAudio.SineWav(seconds: 20);
         var id = AudioFingerprint.Compute(wav);
         try
         {
@@ -87,18 +86,18 @@ public class LoudnessScanTests
             FeedPackets(scan, wav, from: Rate * 2 * 10);
             var fed = scan.Finish();
 
-            for (int i = 0; i < 400 && !stream.GetLoudness().IsFinal; i++) await Task.Delay(10);
+            for (var i = 0; i < 400 && !stream.GetLoudness().IsFinal; i++) await Task.Delay(10);
             var l = stream.GetLoudness();
             Assert.True(l.IsFinal);
             Assert.Equal(LoudnessSource.Scan, l.Source);
             Assert.Equal(fed.IntegratedLufs, l.IntegratedLufs, 6);
             Assert.Equal(-23.0 - fed.IntegratedLufs, l.GainDb, 2);
-            for (int i = 0; i < 200 && Volatile.Read(ref finals) == 0; i++) await Task.Delay(10);
+            for (var i = 0; i < 200 && Volatile.Read(ref finals) == 0; i++) await Task.Delay(10);
             Assert.Equal(1, Volatile.Read(ref finals));
 
             // A stream opened afterwards starts final, from the cache.
             using var late = engine.CreatePushStream(AudioFormat.Int16(Rate, 1), new StreamOptions { SourceIdentity = id });
-            for (int i = 0; i < 400 && !late.GetLoudness().IsFinal; i++) await Task.Delay(10);
+            for (var i = 0; i < 400 && !late.GetLoudness().IsFinal; i++) await Task.Delay(10);
             var cached = late.GetLoudness();
             Assert.True(cached.IsFinal);
             Assert.Equal(LoudnessSource.Cache, cached.Source);
@@ -120,12 +119,12 @@ public class LoudnessScanTests
         var id = new AudioFingerprint(1, 2);
         using var scan = engine.OpenLoudnessScan(AudioFormat.Float32(Rate, 1), id);
         var frame = new float[4096];
-        for (int i = 0; i < frame.Length; i++) frame[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * i / Rate));
+        for (var i = 0; i < frame.Length; i++) frame[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * i / Rate));
         fixed (float* p = frame)
         {
             void* planes = p;
-            nint planeArray = (nint)(&planes);
-            for (int i = 0; i < 20; i++) scan.PushFrame(AudioFormat.Float32(Rate, 1), planeArray, frame.Length);
+            var planeArray = (nint)(&planes);
+            for (var i = 0; i < 20; i++) scan.PushFrame(AudioFormat.Float32(Rate, 1), planeArray, frame.Length);
             Assert.Throws<InvalidOperationException>(() => scan.PushPacket(new byte[16]));
             var ex = Assert.Throws<AudioException>(() => scan.PushFrame(AudioFormat.Float32(48000, 1), planeArray, frame.Length));
             Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);

@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace FatzMedia.Audio.Native;
 
 /// <summary>Owns an <c>fa_engine*</c>. Children (devices, streams) add a reference so the engine outlives them.</summary>
-internal sealed class EngineHandle : SafeHandle
+sealed class EngineHandle : SafeHandle
 {
     public EngineHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -16,10 +16,10 @@ internal sealed class EngineHandle : SafeHandle
 }
 
 /// <summary>Owns an <c>fa_device*</c> and keeps its engine alive.</summary>
-internal sealed class DeviceHandle : SafeHandle
+sealed class DeviceHandle : SafeHandle
 {
-    private EngineHandle? _engine;
-    private readonly List<GCHandle> _pins = new();
+    EngineHandle? _engine;
+    readonly List<GCHandle> _pins = [];
 
     public DeviceHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -65,13 +65,13 @@ internal sealed class DeviceHandle : SafeHandle
 /// Owns an <c>fa_mic*</c> of a DJ mixer and keeps the mixer's device open, so the mic is always removed before the
 /// mixer goes (<c>fa_mixer_destroy</c> would free it).
 /// </summary>
-internal sealed class MicHandle : ChildHandle<DeviceHandle>
+sealed class MicHandle : ChildHandle<DeviceHandle>
 {
     protected override void Free(nint native) => NativeMethods.fa_mic_remove(native);
 }
 
 /// <summary>A surface whose native object goes with its stream (<see cref="StreamHandle.TrackSurface"/>).</summary>
-internal interface IStreamSurface
+interface IStreamSurface
 {
     /// <summary>Called right before the native stream is closed: destroy the native surface.</summary>
     void Orphan();
@@ -82,11 +82,11 @@ internal interface IStreamSurface
 /// the attached device so that native teardown always happens in a safe order
 /// (stream first, then device, then engine).
 /// </summary>
-internal sealed class StreamHandle : SafeHandle
+sealed class StreamHandle : SafeHandle
 {
-    private EngineHandle? _engine;
-    private DeviceHandle? _device;
-    private readonly List<GCHandle> _pins = new();
+    EngineHandle? _engine;
+    DeviceHandle? _device;
+    readonly List<GCHandle> _pins = [];
 
     public StreamHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -135,7 +135,7 @@ internal sealed class StreamHandle : SafeHandle
         previous?.DangerousRelease();
     }
 
-    private readonly List<IStreamSurface> _surfaces = new();
+    readonly List<IStreamSurface> _surfaces = [];
 
     /// <summary>Registers a surface (CD+G or lyrics): native surfaces are freed with the stream.</summary>
     public void TrackSurface(IStreamSurface surface)
@@ -148,8 +148,8 @@ internal sealed class StreamHandle : SafeHandle
         lock (_surfaces) _surfaces.Remove(surface);
     }
 
-    private Sound? _voiceOf;
-    private int _voiceClosing;
+    Sound? _voiceOf;
+    int _voiceClosing;
 
     /// <summary>Makes this a voice of <paramref name="sound"/>, which then learns when the voice's close starts
     /// and when it is over (<see cref="Sound.VoiceClosing"/>, <see cref="Sound.VoiceClosed"/>).</summary>
@@ -188,7 +188,7 @@ internal sealed class StreamHandle : SafeHandle
         return true;
     }
 
-    private SafeHandle? _owner;
+    SafeHandle? _owner;
 
     /// <summary>Keeps the object that owns the native stream (a sound, for its voices) open until the stream is
     /// closed.</summary>
@@ -196,13 +196,13 @@ internal sealed class StreamHandle : SafeHandle
 }
 
 /// <summary>Owns an <c>fa_bus*</c> and keeps its device (and so its engine) alive.</summary>
-internal sealed class BusHandle : ChildHandle<DeviceHandle>
+sealed class BusHandle : ChildHandle<DeviceHandle>
 {
     protected override void Free(nint native) => NativeMethods.fa_bus_destroy(native);
 }
 
 /// <summary>Owns an <c>fa_disc*</c>. Streams opened from the disc hold their own native reference.</summary>
-internal sealed class DiscHandle : SafeHandle
+sealed class DiscHandle : SafeHandle
 {
     public DiscHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -217,7 +217,7 @@ internal sealed class DiscHandle : SafeHandle
 }
 
 /// <summary>Owns one reference to an <c>fa_soundfont*</c>. Engines and streams using it hold their own native references.</summary>
-internal sealed class SoundFontHandle : SafeHandle
+sealed class SoundFontHandle : SafeHandle
 {
     public SoundFontHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -230,7 +230,7 @@ internal sealed class SoundFontHandle : SafeHandle
 }
 
 /// <summary>Owns an <c>fa_silence_detector*</c>.</summary>
-internal sealed class SilenceDetectorHandle : SafeHandle
+sealed class SilenceDetectorHandle : SafeHandle
 {
     public SilenceDetectorHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -246,22 +246,22 @@ internal sealed class SilenceDetectorHandle : SafeHandle
 
 /// <summary>Owns an <c>fa_sound*</c> and keeps its engine alive. Its voices' stream handles hold a reference to
 /// it, so the sound is closed only after every voice wrapper let go (<c>fa_sound_close</c> closes the voices left).</summary>
-internal sealed class SoundHandle : ChildHandle<EngineHandle>
+sealed class SoundHandle : ChildHandle<EngineHandle>
 {
     protected override void Free(nint native) => NativeMethods.fa_sound_close(native);
 }
 
 /// <summary>Owns an <c>fa_scan_feed*</c> and keeps its engine alive.</summary>
-internal sealed class ScanHandle : ChildHandle<EngineHandle>
+sealed class ScanHandle : ChildHandle<EngineHandle>
 {
     protected override void Free(nint native) => NativeMethods.fa_scan_close(native);
 }
 
 /// <summary>A native object that needs its parent (engine, device) open until it is closed: the parent gets a
 /// reference on <see cref="Initialize"/> and lets go after the child's own close function ran.</summary>
-internal abstract class ChildHandle<TParent> : SafeHandle where TParent : SafeHandle
+abstract class ChildHandle<TParent> : SafeHandle where TParent : SafeHandle
 {
-    private TParent? _parent;
+    TParent? _parent;
 
     protected ChildHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -284,13 +284,13 @@ internal abstract class ChildHandle<TParent> : SafeHandle where TParent : SafeHa
     }
 }
 
-internal static class HandleRef
+static class HandleRef
 {
     public static T AddRef<T>(T handle) where T : SafeHandle
     {
-        bool success = false;
+        var success = false;
         handle.DangerousAddRef(ref success);
-        if (!success) throw new ObjectDisposedException(typeof(T).Name);
+        ObjectDisposedException.ThrowIf(!success, typeof(T));
         return handle;
     }
 }
@@ -299,9 +299,9 @@ internal static class HandleRef
 /// Owns an <c>fa_encoder*</c> and the GC handle of its output callbacks. Releasing it completes the file
 /// (<c>fa_encoder_close</c>); the result is kept in <see cref="CloseResult"/>.
 /// </summary>
-internal sealed class EncoderHandle : SafeHandle
+sealed class EncoderHandle : SafeHandle
 {
-    private GCHandle _output;
+    GCHandle _output;
 
     public EncoderHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
@@ -309,7 +309,7 @@ internal sealed class EncoderHandle : SafeHandle
     /// <summary>What <c>fa_encoder_close</c> returned, once released.</summary>
     public int CloseResult { get; private set; }
 
-    private volatile bool _released;
+    volatile bool _released;
 
     /// <summary>True once <c>fa_encoder_close</c> has run.</summary>
     public bool IsReleased => _released;
@@ -331,9 +331,9 @@ internal sealed class EncoderHandle : SafeHandle
 
 
 /// <summary>Owns an <c>fa_archive*</c> and the GC handle of its I/O callbacks (freed after the native close, which calls them).</summary>
-internal sealed class ArchiveHandle : SafeHandle
+sealed class ArchiveHandle : SafeHandle
 {
-    private GCHandle _io;
+    GCHandle _io;
 
     /// <summary>Runs after the native close (frees the cancel flag the archive read).</summary>
     public Action? OnRelease;
@@ -357,9 +357,9 @@ internal sealed class ArchiveHandle : SafeHandle
 }
 
 /// <summary>Owns an <c>fa_archive_reader*</c> and keeps its archive alive.</summary>
-internal sealed class ArchiveReaderHandle : SafeHandle
+sealed class ArchiveReaderHandle : SafeHandle
 {
-    private ArchiveHandle? _archive;
+    ArchiveHandle? _archive;
 
     public ArchiveReaderHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;

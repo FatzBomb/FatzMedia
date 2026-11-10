@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,25 +6,25 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>CD+G graphics: loading (files, pairs, ZIP), surfaces and the clock.</summary>
 public class CdgTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     /// <summary>Colour table (0 black, 1 red, 2 green), then a red screen and a green border.</summary>
-    private static byte[] SimpleCdg(int emptyPacksFirst = 0)
+    static byte[] SimpleCdg(int emptyPacksFirst = 0)
     {
         var packs = new List<byte[]>();
-        for (int i = 0; i < emptyPacksFirst; i++) packs.Add(new byte[24]);
+        for (var i = 0; i < emptyPacksFirst; i++) packs.Add(new byte[24]);
         var colors = new byte[16];
         colors[2] = 15 << 2;              // colour 1: red
         colors[4] = 3; colors[5] = 3 << 4; // colour 2: green
         packs.Add(Pack(30, colors));
         packs.Add(Pack(1, [1]));
         packs.Add(Pack(2, [2]));
-        return packs.SelectMany(p => p).ToArray();
+        return [.. packs.SelectMany(p => p)];
     }
 
-    private static byte[] Pack(int instruction, byte[] data)
+    static byte[] Pack(int instruction, byte[] data)
     {
         var p = new byte[24];
         p[0] = 9;
@@ -34,7 +33,7 @@ public class CdgTests
         return p;
     }
 
-    private static TimeSpan AfterPacks(int n) => TimeSpan.FromTicks(n * 10_000_000L / 300 + 1);
+    static TimeSpan AfterPacks(int n) => TimeSpan.FromTicks(n * 10_000_000L / 300 + 1);
 
     [Fact]
     public void LoadCdg_SurfaceDrawsBgraPixels()
@@ -51,7 +50,7 @@ public class CdgTests
         Assert.Equal((300, 216, 1200), (frame.Width, frame.Height, frame.Stride));
         Assert.Equal(new CdgRect(0, 0, 300, 216), frame.Dirty);
         var px = frame.Pixels;
-        Assert.Equal(new byte[] { 0, 255, 0, 255 }, px.Slice(0, 4).ToArray());                // border, B G R A
+        Assert.Equal(new byte[] { 0, 255, 0, 255 }, px[..4].ToArray());                // border, B G R A
         Assert.Equal(new byte[] { 0, 0, 255, 255 }, px.Slice(100 * 1200 + 400, 4).ToArray()); // red picture
         Assert.Equal(new CdgColor(255, 0, 0, 255), frame.Palette[1]);
 
@@ -96,7 +95,7 @@ public class CdgTests
         Assert.Equal(255, f.Palette[2].A);    // the transparent-colour pack is ignored
 
         using var custom = song.CreateCdgSurface(new CdgSurfaceOptions
-            { BackgroundColor = new CdgColor(1, 2, 3, 255), BackgroundOpacity = 40 });
+        { BackgroundColor = new CdgColor(1, 2, 3, 255), BackgroundOpacity = 40 });
         f = custom.UpdateAt(AfterPacks(4));
         Assert.Equal(new CdgColor(1, 2, 3, 102), f.Palette[1]);
         Assert.Equal(f.Palette[1], f.Background);
@@ -131,7 +130,7 @@ public class CdgTests
         using var big = song.CreateCdgSurface(new CdgSurfaceOptions { Width = 576, Height = 384, HideBorder = true, PixelFormat = CdgPixelFormat.Rgba32 });
         var f = big.UpdateAt(AfterPacks(3));
         Assert.Equal((576, 384), (f.Width, f.Height));
-        Assert.Equal(new byte[] { 255, 0, 0, 255 }, f.Pixels.Slice(0, 4).ToArray());
+        Assert.Equal(new byte[] { 255, 0, 0, 255 }, f.Pixels[..4].ToArray());
 
         using var overlay = song.CreateCdgSurface(new CdgSurfaceOptions { Transparent = true, PixelFormat = CdgPixelFormat.Indexed8 });
         f = overlay.UpdateAt(AfterPacks(3));
@@ -162,14 +161,14 @@ public class CdgTests
     [Fact]
     public void OpenFile_FindsMatchingCdgAndZip()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            string mp3g = Path.Combine(dir, "Artist - Song.wav");
+            var mp3g = Path.Combine(dir, "Artist - Song.wav");
             File.WriteAllBytes(mp3g, TestAudio.SineWav());
             File.WriteAllBytes(Path.Combine(dir, "Artist - Song.cdg"), SimpleCdg());
-            string zip = Path.Combine(dir, "Artist - Song.zip");
+            var zip = Path.Combine(dir, "Artist - Song.zip");
             using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
             {
                 using (var e = z.CreateEntry("Artist - Song.cdg", CompressionLevel.Optimal).Open()) e.Write(SimpleCdg(1000));
@@ -196,13 +195,13 @@ public class CdgTests
     [Fact]
     public void OpenFile_BigCompressedZip_NeedsATempDirectory()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            byte[] wav = TestAudio.SineWav(20);
+            var wav = TestAudio.SineWav(20);
             Assert.True(wav.Length > 1 << 20);
-            string zip = Path.Combine(dir, "Big.zip");
+            var zip = Path.Combine(dir, "Big.zip");
             using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
             {
                 using (var e = z.CreateEntry("Big.cdg", CompressionLevel.Optimal).Open()) e.Write(SimpleCdg());
@@ -212,7 +211,7 @@ public class CdgTests
             using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, NoTempFiles = true }))
                 Assert.Equal(ErrorCode.TooLarge, Assert.Throws<AudioException>(() => inMemory.OpenFile(zip, DecodeOnly)).ErrorCode);
 
-            string temp = Path.Combine(dir, "temp");
+            var temp = Path.Combine(dir, "temp");
             using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, TempDirectory = temp });
             using (var song = engine.OpenFile(zip, DecodeOnly))
             {
@@ -231,11 +230,11 @@ public class CdgTests
     [Fact]
     public void OpenFile_CancellationToken_StopsAZipUnpack()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            string zip = Path.Combine(dir, "Big.zip");
+            var zip = Path.Combine(dir, "Big.zip");
             using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
             {
                 using var e = z.CreateEntry("Big.wav", CompressionLevel.Optimal).Open();
@@ -264,11 +263,11 @@ public class CdgTests
     [Fact]
     public void OpenFile_TempFileSong_GetsALoudnessScan()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            string zip = Path.Combine(dir, "Big.zip");
+            var zip = Path.Combine(dir, "Big.zip");
             using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
             {
                 using var e = z.CreateEntry("Big.wav", CompressionLevel.Optimal).Open();
@@ -277,7 +276,10 @@ public class CdgTests
 
             using var engine = AudioEngine.Create(new AudioEngineOptions
             {
-                NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, TempDirectory = Path.Combine(dir, "temp"),
+                NullOutput = true,
+                NoCache = true,
+                ZipMemoryLimitMb = 1,
+                TempDirectory = Path.Combine(dir, "temp"),
             });
             using var song = engine.OpenFile(zip);   // unpacked into a temp file
             var until = DateTime.UtcNow + TimeSpan.FromSeconds(15);
@@ -300,11 +302,11 @@ public class CdgTests
     public void LoneCdg_OpensAsASilentStreamThatPlays()
     {
         var cdg = SimpleCdg(emptyPacksFirst: 300).Concat(new byte[24 * 297]).ToArray();   // 600 packs: 2 s, red from 1 s
-        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            string path = Path.Combine(dir, "Song.cdg");
+            var path = Path.Combine(dir, "Song.cdg");
             File.WriteAllBytes(path, cdg);
             using var engine = CreateHeadless();
             using (var file = engine.OpenFile(path, DecodeOnly))
@@ -399,10 +401,10 @@ public class CdgTests
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         var tile = new byte[16];
         tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;      // colours 1 / 2, row 4, column 4
-        for (int i = 4; i < 16; i++) tile[i] = 0x01;
+        for (var i = 4; i < 16; i++) tile[i] = 0x01;
         song.LoadCdg([.. SimpleCdg(), .. Pack(6, tile)]);
         using var reference = song.CreateCdgSurface();
-        IKaraokeSurface surface = song.CreateCdgSurface();
+        var surface = song.CreateCdgSurface();
 
         var layout = surface.GetLayout();
         Assert.Equal((300, 216), (layout.Width, layout.Height));
@@ -413,12 +415,12 @@ public class CdgTests
         Assert.Equal("", layout.TextShaper);
         Assert.Equal(1UL, layout.LayoutRevision);
 
-        int stride = 300 * 4 + 8;
+        var stride = 300 * 4 + 8;
         var buffer = new byte[stride * 216];
         var first = surface.UpdateInto(buffer, stride, 300, 216, 0, AfterPacks(2));
         Assert.True(first.IsFullDraw);
         Assert.Equal(new PixelRect(0, 0, 300, 216), first.Dirty[0]);
-        ulong revision = first.Revision;
+        var revision = first.Revision;
         Assert.Equal(new CdgColor(255, 0, 0, 255), first.Palette[1]);
 
         var again = surface.UpdateInto(buffer, stride, 300, 216, revision, AfterPacks(2));
@@ -431,7 +433,7 @@ public class CdgTests
         Assert.True(next.DrawTime >= next.RenderTime);
 
         var frame = reference.UpdateAt(AfterPacks(3));
-        for (int y = 0; y < 216; y++)
+        for (var y = 0; y < 216; y++)
             Assert.True(frame.Pixels.Slice(y * frame.Stride, 1200).SequenceEqual(buffer.AsSpan(y * stride, 1200)));
 
         var error = Assert.Throws<AudioException>(() => surface.UpdateInto(buffer, stride, 299, 216, 0));
@@ -458,7 +460,7 @@ public class CdgTests
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         var tile = new byte[16];
         tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;      // colours 1 / 2, row 4, column 4
-        for (int i = 4; i < 16; i++) tile[i] = 0x01;              // the last pixel of each row green
+        for (var i = 4; i < 16; i++) tile[i] = 0x01;              // the last pixel of each row green
         song.LoadCdg([.. SimpleCdg(), .. Pack(6, tile)]);
         using var cdg = song.CreateCdgSurface();
         Assert.Null(cdg.Presentation);
@@ -473,7 +475,7 @@ public class CdgTests
         Assert.Equal(SafetyZone.Remove, layout.SafetyZone);
         Assert.True(layout.LayoutRevision > 1);
 
-        int stride = layout.Width * 4;
+        var stride = layout.Width * 4;
         var buffer = new byte[stride * layout.Height];
         var update = cdg.UpdateInto(buffer, stride, layout.Width, layout.Height, 0, AfterPacks(4));
         Assert.True(update.IsFullDraw);
@@ -509,7 +511,7 @@ public class CdgTests
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         var tile = new byte[16];
         tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;
-        for (int i = 4; i < 16; i++) tile[i] = 0x01;
+        for (var i = 4; i < 16; i++) tile[i] = 0x01;
         song.LoadCdg([.. SimpleCdg(), .. Pack(6, tile)]);
         var cdg = song.CreateCdgSurface();
         using var reference = song.CreateCdgSurface();
@@ -519,7 +521,7 @@ public class CdgTests
         cdg.PresentationSize = reference.PresentationSize = new PixelSize(900, 648);
         cdg.RenderAhead = true;
         var layout = cdg.GetLayout();
-        int stride = layout.Width * 4;
+        var stride = layout.Width * 4;
         var buffer = new byte[stride * layout.Height];
 
         // The first frame is never drawn on this thread: nothing new, then a worker's.
@@ -542,8 +544,8 @@ public class CdgTests
         // Disposed on another thread while this one keeps updating: ObjectDisposedException, never a crash.
         var disposer = new Thread(() => { Thread.Sleep(20); cdg.Dispose(); });
         disposer.Start();
-        ulong revision = update.Revision;
-        int n = 0;
+        var revision = update.Revision;
+        var n = 0;
         try
         {
             for (; n < 1_000_000; n++)
@@ -563,14 +565,14 @@ public class CdgTests
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         var tile = new byte[16];
         tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;
-        for (int i = 4; i < 16; i++) tile[i] = 0x01;              // a green line at screen x = 29, y 48..59
+        for (var i = 4; i < 16; i++) tile[i] = 0x01;              // a green line at screen x = 29, y 48..59
         song.LoadCdg([.. SimpleCdg(), .. Pack(6, tile)]);
         using var cdg = song.CreateCdgSurface();
         Assert.Null(cdg.Effects);
         cdg.Presentation = new CdgPresentation { Scale = true, SafetyZone = SafetyZone.Remove };
         cdg.PresentationSize = new PixelSize(1920, 1080);
         var layout = cdg.GetLayout();
-        int stride = layout.Width * 4;
+        var stride = layout.Width * 4;
         var buffer = new byte[stride * layout.Height];
         int x = layout.Content.X + (30 - 6) * 6 + 1, y = layout.Content.Y + (52 - 12) * 6 + 3;   // just right of the line
 

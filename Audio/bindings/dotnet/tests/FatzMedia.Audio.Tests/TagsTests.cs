@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,11 +5,11 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Tags, cover art and file properties, read from the tagged files of tests/data/tags.</summary>
 public class TagsTests
 {
-    private static string FindTestFile(string relative)
+    static string FindTestFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            string p = Path.Combine(dir.FullName, relative);
+            var p = Path.Combine(dir.FullName, relative);
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException(relative);
@@ -55,7 +54,7 @@ public class TagsTests
     [Fact]
     public void Read_OptionsSkipPicturesAndInfo()
     {
-        string path = FindTestFile("tests/data/tags/tags.m4a");
+        var path = FindTestFile("tests/data/tags/tags.m4a");
         var quick = Tags.Read(path, TagReadOptions.NoPictures | TagReadOptions.NoInfo);
         Assert.Equal("Song Title", quick.Title);
         Assert.Empty(quick.Pictures);
@@ -99,12 +98,12 @@ public class TagsTests
     [Fact]
     public void Read_Lyrics3AtTheEndOfAnMp3()
     {
-        byte[] body = System.Text.Encoding.Latin1.GetBytes("IND0000210" + "LYR00014Just the words" + "ETT00005Title");
+        var body = System.Text.Encoding.Latin1.GetBytes("IND0000210" + "LYR00014Just the words" + "ETT00005Title");
         var file = new List<byte> { 0xFF, 0xFB, 0x90, 0x00 };
         file.AddRange(new byte[200]);
         file.AddRange(System.Text.Encoding.Latin1.GetBytes("LYRICSBEGIN"));
         file.AddRange(body);
-        file.AddRange(System.Text.Encoding.Latin1.GetBytes((body.Length + 11).ToString("D6") + "LYRICS200"));
+        file.AddRange(System.Text.Encoding.Latin1.GetBytes((body.Length + 11).ToString("D6", System.Globalization.CultureInfo.InvariantCulture) + "LYRICS200"));
         var tags = Tags.Read(file.ToArray(), TagReadOptions.NoInfo);
         Assert.Equal("Just the words", tags.Lyrics);
         Assert.Equal("Title", tags.Title);
@@ -115,15 +114,15 @@ public class TagsTests
     public void Read_MidiFileGivesTagsAndLengthWithoutASoundfont()
     {
         byte[] track =
-        {
+        [
             0, 0xFF, 0x03, 4, (byte)'S', (byte)'o', (byte)'n', (byte)'g',
             0, 0x90, 60, 100, 0x83, 0x60, 0x80, 60, 0, 0, 0xFF, 0x2F, 0,
-        };
+        ];
         var file = new List<byte>();
         file.AddRange("MThd"u8.ToArray());
-        file.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0 });
+        file.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0]);
         file.AddRange("MTrk"u8.ToArray());
-        file.AddRange(new byte[] { 0, 0, 0, (byte)track.Length });
+        file.AddRange([0, 0, 0, (byte)track.Length]);
         file.AddRange(track);
         var tags = Tags.Read(file.ToArray());
         Assert.Equal("Song", tags.Title);

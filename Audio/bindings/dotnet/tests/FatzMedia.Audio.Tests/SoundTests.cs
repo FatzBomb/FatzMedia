@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,9 +5,9 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Sounds: overlapping voices, the voice limit and steal rules, voice reuse, on the null output.</summary>
 public class SoundTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static float[] Tone(int frames, float level = 0.2f)
+    static float[] Tone(int frames, float level = 0.2f)
     {
         var s = new float[frames];
         Array.Fill(s, level);
@@ -78,7 +77,7 @@ public class SoundTests
         using var output = engine.OpenOutput();
         using var sound = engine.CreateSound(Tone(96000), 48000, 1);
         var first = sound.Play(output);
-        for (int i = 0; i < 3; i++) sound.Play(output);
+        for (var i = 0; i < 3; i++) sound.Play(output);
         Assert.Equal(4, sound.VoiceCount);
         sound.MaxVoices = 1;
         Assert.Equal(StreamState.Stopped, first.State);   // retired: stopped, still usable
@@ -125,10 +124,10 @@ public class SoundTests
     {
         using var engine = CreateHeadless();
         using var output = engine.OpenOutput();
-        for (int round = 0; round < 20; round++)
+        for (var round = 0; round < 20; round++)
         {
             var sound = engine.CreateSound(Tone(96), 48000, 1, new SoundOptions { MaxVoices = 4 });   // 2 ms
-            int ended = 0;
+            var ended = 0;
             void Again(object? sender, EventArgs e)
             {
                 Interlocked.Increment(ref ended);
@@ -141,7 +140,7 @@ public class SoundTests
                 catch (ObjectDisposedException) { }
                 catch (AudioException) { }
             }
-            for (int i = 0; i < 4; i++) sound.Play(output).Ended += Again;
+            for (var i = 0; i < 4; i++) sound.Play(output).Ended += Again;
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (Volatile.Read(ref ended) < 8 && DateTime.UtcNow < deadline) Thread.Sleep(1);
             var dispose = Task.Run(sound.Dispose);
@@ -164,7 +163,7 @@ public class SoundTests
             while (DateTime.UtcNow < until) played.Add(sound.Play(output));
             played.CompleteAdding();
         });
-        int disposed = 0;
+        var disposed = 0;
         foreach (var v in played.GetConsumingEnumerable())
         {
             v.Dispose();
@@ -181,7 +180,7 @@ public class SoundTests
     {
         using var engine = AudioEngine.Create();
         Assert.Throws<ArgumentException>(() => engine.CreateSound(new float[3], 48000, 2));
-        Assert.Throws<ArgumentException>(() => engine.CreateSound(ReadOnlySpan<float>.Empty, 48000, 1));
+        Assert.Throws<ArgumentException>(() => engine.CreateSound([], 48000, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => engine.CreateSound(new float[4], 48000, 1, new SoundOptions { MaxVoices = 0 }));
         var e = Assert.Throws<AudioException>(() => engine.CreateSound(new float[4], 10, 1));
         Assert.Equal(ErrorCode.InvalidArgument, e.ErrorCode);

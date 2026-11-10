@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,9 +5,9 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Decoder registry, custom I/O and playback on the silent null output (works without audio hardware).</summary>
 public class CoreEngineTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void SupportedFormats_ListsBuiltInDecoders()
@@ -35,7 +34,7 @@ public class CoreEngineTests
     {
         using var engine = CreateHeadless();
         var junk = new byte[3000];
-        for (int i = 0; i < junk.Length; i++) junk[i] = (byte)(i * 7 + 3);
+        for (var i = 0; i < junk.Length; i++) junk[i] = (byte)(i * 7 + 3);
         var ex = Assert.Throws<AudioException>(() => engine.OpenMemory(junk));
         Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
     }
@@ -114,7 +113,7 @@ public class CoreEngineTests
         using var output = engine.OpenOutput();
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 10));
         s.PlayOn(output);
-        for (int i = 1; i <= 8; i++) s.RequestSeek(TimeSpan.FromSeconds(i * 0.5));   // a drag
+        for (var i = 1; i <= 8; i++) s.RequestSeek(TimeSpan.FromSeconds(i * 0.5));   // a drag
         Assert.Equal(TimeSpan.FromSeconds(4), s.Position);
         Assert.InRange(s.Clock.TotalSeconds, 3.999, 4.001);
 
@@ -142,7 +141,7 @@ public class CoreEngineTests
 /// <summary>Decode-ahead playback, ramps and events on the silent null output.</summary>
 public class PlaybackTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public async Task Ended_EventIsRaised()
@@ -221,7 +220,7 @@ public class PlaybackTests
     {
         using var engine = CreateHeadless();
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 1), new StreamOptions { DecodeOnly = true });
-        int channels = s.Info.Format.Channels;
+        var channels = s.Info.Format.Channels;
         var forward = new float[1000 * channels];
         s.PositionFrames = 1000;
         Assert.Equal(1000, s.Read(forward));
@@ -232,8 +231,8 @@ public class PlaybackTests
         var back = new float[1000 * channels];
         Assert.Equal(1000, s.Read(back));
         Assert.Equal(1000, s.PositionFrames);
-        for (int i = 0; i < 1000; i++)
-            for (int c = 0; c < channels; c++)
+        for (var i = 0; i < 1000; i++)
+            for (var c = 0; c < channels; c++)
                 Assert.Equal(forward[(999 - i) * channels + c], back[i * channels + c]);
         s.Reverse = false;
         Assert.False(s.Reverse);
@@ -329,7 +328,7 @@ public class PlaybackTests
         Assert.Throws<ArgumentOutOfRangeException>(() => s.GetClockAt(long.MinValue));
         s.PlayOn(output);
         await Task.Delay(300);
-        long now = AudioEngine.MonotonicTime;
+        var now = AudioEngine.MonotonicTime;
         // Same counter as Stopwatch on every platform.
         Assert.InRange(AudioEngine.MonotonicTimeFromStopwatch(System.Diagnostics.Stopwatch.GetTimestamp()) - now,
             0L, 50_000_000L);
@@ -340,7 +339,7 @@ public class PlaybackTests
         Assert.InRange((ahead - atNow).TotalMilliseconds, 90, 110);
         s.Pause();
         await Task.Delay(300);
-        long later = AudioEngine.MonotonicTime;
+        var later = AudioEngine.MonotonicTime;
         Assert.Equal(s.GetClockAt(later), s.GetClockAt(later + 100_000_000));   // paused: holds
     }
 

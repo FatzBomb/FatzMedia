@@ -148,10 +148,10 @@ public sealed record ArchiveEntry(int Index, string Name, long Size, long Compre
 /// </example>
 public sealed unsafe class Archive : IDisposable
 {
-    private readonly ArchiveHandle _handle;
-    private readonly ArchiveEntry[] _entries;
+    readonly ArchiveHandle _handle;
+    readonly ArchiveEntry[] _entries;
 
-    private Archive(ArchiveHandle handle, ArchiveEntry[] entries)
+    Archive(ArchiveHandle handle, ArchiveEntry[] entries)
     {
         _handle = handle;
         _entries = entries;
@@ -188,7 +188,7 @@ public sealed unsafe class Archive : IDisposable
         var o = NativeArchiveOptions.Create(options);
         try
         {
-            int rc = NativeMethods.fa_archive_open_path(path, o.Pointer, out nint native);
+            var rc = NativeMethods.fa_archive_open_path(path, o.Pointer, out var native);
             return Finish(rc, native, null, options, ref o);
         }
         finally { o.Dispose(); }
@@ -208,7 +208,7 @@ public sealed unsafe class Archive : IDisposable
         try
         {
             using var pin = data.Pin();
-            int rc = NativeMethods.fa_archive_open_memory(pin.Pointer, (nuint)data.Length, o.Pointer, out nint native);
+            var rc = NativeMethods.fa_archive_open_memory(pin.Pointer, (nuint)data.Length, o.Pointer, out var native);
             return Finish(rc, native, null, options, ref o);
         }
         finally { o.Dispose(); }
@@ -231,14 +231,14 @@ public sealed unsafe class Archive : IDisposable
         {
             var gc = GCHandle.Alloc(new IoState(source, leaveOpen));
             var io = IoState.Callbacks();
-            int rc = NativeMethods.fa_archive_open_io(&io, (void*)GCHandle.ToIntPtr(gc), o.Pointer, out nint native);
+            var rc = NativeMethods.fa_archive_open_io(&io, (void*)GCHandle.ToIntPtr(gc), o.Pointer, out var native);
             if (rc < 0) gc.Free();   // the native call has already closed the stream through the callbacks
             return Finish(rc, native, rc < 0 ? null : gc, options, ref o);
         }
         finally { o.Dispose(); }
     }
 
-    private static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o)
+    static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o)
     {
         AudioException.ThrowIfFailed(rc);
         var handle = new ArchiveHandle();
@@ -247,16 +247,16 @@ public sealed unsafe class Archive : IDisposable
         try { entries = ReadEntries(handle); }
         catch { handle.Dispose(); throw; }
         // The native archive reads the cancel flag until it closes (when the last stream read from it does).
-        int* flag = o.TakeCancel(out var registration);
-        nint flagAddress = (nint)flag;
+        var flag = o.TakeCancel(out var registration);
+        var flagAddress = (nint)flag;
         if (flag != null || registration != default)
             handle.OnRelease = () => { registration.Dispose(); if (flagAddress != 0) NativeMemory.Free((void*)flagAddress); };
         return new Archive(handle, entries);
     }
 
-    private static ArchiveEntry[] ReadEntries(ArchiveHandle handle)
+    static ArchiveEntry[] ReadEntries(ArchiveHandle handle)
     {
-        uint count = NativeMethods.fa_archive_get_entry_count(handle);
+        var count = NativeMethods.fa_archive_get_entry_count(handle);
         var entries = new ArchiveEntry[count];
         for (uint i = 0; i < count; i++)
         {
@@ -270,7 +270,7 @@ public sealed unsafe class Archive : IDisposable
         return entries;
     }
 
-    private static DateTimeOffset? Time(long ns) =>
+    static DateTimeOffset? Time(long ns) =>
         ns == long.MinValue ? null : DateTimeOffset.UnixEpoch.AddTicks(ns / 100);
 
     /// <summary>The kind of archive this is.</summary>
@@ -278,7 +278,7 @@ public sealed unsafe class Archive : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_format(Handle, out int f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_format(Handle, out var f));
             return (ArchiveFormat)f;
         }
     }
@@ -289,7 +289,7 @@ public sealed unsafe class Archive : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_filter(Handle, out int f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_archive_get_filter(Handle, out var f));
             return (ArchiveFilter)f;
         }
     }
@@ -311,7 +311,7 @@ public sealed unsafe class Archive : IDisposable
     public ArchiveEntry? Find(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        int rc = NativeMethods.fa_archive_find(Handle, name, out uint index);
+        var rc = NativeMethods.fa_archive_find(Handle, name, out var index);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         return _entries[index];
@@ -324,7 +324,7 @@ public sealed unsafe class Archive : IDisposable
     /// (<see cref="ErrorCode.ProtectedContent"/>).</exception>
     public (ArchiveEntry Audio, ArchiveEntry? Cdg) Pick()
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_archive_pick(Handle, out uint audio, out int cdg));
+        AudioException.ThrowIfFailed(NativeMethods.fa_archive_pick(Handle, out var audio, out var cdg));
         return (_entries[audio], cdg >= 0 ? _entries[cdg] : null);
     }
 
@@ -336,7 +336,7 @@ public sealed unsafe class Archive : IDisposable
     public byte[] ReadAllBytes(ArchiveEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        int rc = NativeMethods.fa_archive_read(Handle, (uint)entry.Index, out void* data, out nuint size);
+        var rc = NativeMethods.fa_archive_read(Handle, (uint)entry.Index, out var data, out var size);
         AudioException.ThrowIfFailed(rc);
         try { return new ReadOnlySpan<byte>(data, checked((int)size)).ToArray(); }
         finally { NativeMethods.fa_free(data); }
@@ -353,7 +353,7 @@ public sealed unsafe class Archive : IDisposable
     {
         ArgumentNullException.ThrowIfNull(entry);
         var archive = Handle;
-        AudioException.ThrowIfFailed(NativeMethods.fa_archive_open_reader(archive, (uint)entry.Index, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_archive_open_reader(archive, (uint)entry.Index, out var native));
         var reader = new ArchiveReaderHandle();
         reader.Initialize(native, archive);
         return new ArchiveEntryStream(reader);
@@ -364,11 +364,11 @@ public sealed unsafe class Archive : IDisposable
 }
 
 /// <summary>A read-only view of one archive entry (<see cref="Archive.OpenRead"/>).</summary>
-internal sealed unsafe class ArchiveEntryStream : Stream
+sealed unsafe class ArchiveEntryStream : Stream
 {
-    private readonly ArchiveReaderHandle _reader;
-    private long _position;
-    private readonly long _length;
+    readonly ArchiveReaderHandle _reader;
+    long _position;
+    readonly long _length;
 
     public ArchiveEntryStream(ArchiveReaderHandle reader)
     {
@@ -394,11 +394,11 @@ internal sealed unsafe class ArchiveEntryStream : Stream
         ObjectDisposedException.ThrowIf(_reader.IsClosed, this);
         if (buffer.IsEmpty) return 0;
         long got;
-        bool ok = false;
+        var ok = false;
         _reader.DangerousAddRef(ref ok);
         try
         {
-            NativeMethods.fa_archive_reader_seek(_reader.DangerousGetHandle(), _position);
+            _ = NativeMethods.fa_archive_reader_seek(_reader.DangerousGetHandle(), _position);
             fixed (byte* p = buffer) got = NativeMethods.fa_archive_reader_read(_reader.DangerousGetHandle(), p, (nuint)buffer.Length);
         }
         finally { _reader.DangerousRelease(); }
@@ -409,7 +409,7 @@ internal sealed unsafe class ArchiveEntryStream : Stream
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        long target = origin switch
+        var target = origin switch
         {
             SeekOrigin.Begin => offset,
             SeekOrigin.Current => _position + offset,
@@ -432,32 +432,31 @@ internal sealed unsafe class ArchiveEntryStream : Stream
 }
 
 /// <summary>Holds the native <c>fa_archive_options</c> for the duration of an open call.</summary>
-internal unsafe ref struct NativeArchiveOptions
+unsafe ref struct NativeArchiveOptions
 {
-    private FaArchiveOptions* _ptr;
-    private byte* _temp;
-    private int* _cancel;
-    private CancellationTokenRegistration _registration;
+    byte* _temp;
+    int* _cancel;
+    CancellationTokenRegistration _registration;
 
-    public readonly FaArchiveOptions* Pointer => _ptr;
+    public FaArchiveOptions* Pointer { get; private set; }
 
     public static NativeArchiveOptions Create(ArchiveOptions? options)
     {
         var o = new NativeArchiveOptions();
         if (options is null) return o;
-        o._ptr = (FaArchiveOptions*)NativeMemory.AllocZeroed((nuint)sizeof(FaArchiveOptions));
-        NativeMethods.fa_archive_options_init(o._ptr);
-        o._ptr->MemoryLimitMb = (uint)Math.Max(0, options.MemoryLimitMb);
+        o.Pointer = (FaArchiveOptions*)NativeMemory.AllocZeroed((nuint)sizeof(FaArchiveOptions));
+        NativeMethods.fa_archive_options_init(o.Pointer);
+        o.Pointer->MemoryLimitMb = (uint)Math.Max(0, options.MemoryLimitMb);
         if (options.TempDirectory is { } temp)
         {
             o._temp = (byte*)Marshal.StringToCoTaskMemUTF8(temp);
-            o._ptr->TempDirectory = o._temp;
+            o.Pointer->TempDirectory = o._temp;
         }
         if (options.CancellationToken.CanBeCanceled)
         {
             // The native archive reads this flag until it is closed: the Archive takes it over (TakeCancel).
             o._cancel = (int*)NativeMemory.AllocZeroed(sizeof(int));
-            o._ptr->Cancel = o._cancel;
+            o.Pointer->Cancel = o._cancel;
             o._registration = options.CancellationToken.Register(
                 static state => Volatile.Write(ref *(int*)(nint)state!, 1), (nint)o._cancel);
         }
@@ -467,7 +466,7 @@ internal unsafe ref struct NativeArchiveOptions
     /// <summary>The cancel flag and its registration now belong to the caller (the open succeeded).</summary>
     public int* TakeCancel(out CancellationTokenRegistration registration)
     {
-        int* flag = _cancel;
+        var flag = _cancel;
         registration = _registration;
         _cancel = null;
         _registration = default;
@@ -479,9 +478,9 @@ internal unsafe ref struct NativeArchiveOptions
         _registration.Dispose();
         if (_cancel != null) NativeMemory.Free(_cancel);
         if (_temp != null) Marshal.FreeCoTaskMem((nint)_temp);
-        if (_ptr != null) NativeMemory.Free(_ptr);
+        if (Pointer != null) NativeMemory.Free(Pointer);
         _cancel = null;
         _temp = null;
-        _ptr = null;
+        Pointer = null;
     }
 }

@@ -40,8 +40,8 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed unsafe class LoudnessScan : IDisposable
 {
-    private readonly ScanHandle _handle;
-    private readonly bool _packets;
+    readonly ScanHandle _handle;
+    readonly bool _packets;
 
     internal LoudnessScan(ScanHandle handle, bool packets)
     {
@@ -82,11 +82,11 @@ public sealed unsafe class LoudnessScan : IDisposable
         return PushPacketCore((void*)data, size);
     }
 
-    private bool PushPacketCore(void* data, int size)
+    bool PushPacketCore(void* data, int size)
     {
         if (!_packets) throw new InvalidOperationException("This scan takes decoded frames: use PushFrame.");
         var p = new FaPacket { Data = data, Size = (nuint)size, Pts = long.MinValue, Duration = 0 };
-        int rc = NativeMethods.fa_scan_push_packet(_handle, &p);
+        var rc = NativeMethods.fa_scan_push_packet(_handle, &p);
         if (rc == 0) return true;
         if (rc is (int)ErrorCode.InvalidArgument or (int)ErrorCode.UnsupportedFormat or (int)ErrorCode.OutOfMemory)
             throw new AudioException((ErrorCode)rc);
@@ -164,7 +164,7 @@ public sealed partial class AudioEngine
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Codec);
         var h = Handle;
-        byte* codec = (byte*)Marshal.StringToCoTaskMemUTF8(parameters.Codec);
+        var codec = (byte*)Marshal.StringToCoTaskMemUTF8(parameters.Codec);
         try
         {
             fixed (byte* extra = parameters.ExtraData)
@@ -204,7 +204,7 @@ public sealed partial class AudioEngine
         return OpenScan(h, false, null, &nf, identity, options);
     }
 
-    private static unsafe LoudnessScan OpenScan(EngineHandle h, bool packets, FaCodecParams* cp, FaAudioFormat* af,
+    static unsafe LoudnessScan OpenScan(EngineHandle h, bool packets, FaCodecParams* cp, FaAudioFormat* af,
         AudioFingerprint identity, LoudnessScanOptions? options)
     {
         var id = NativeSized.New<FaFingerprint>();
@@ -215,7 +215,7 @@ public sealed partial class AudioEngine
         so.Identity = &id;
         so.AudioTrack = options?.AudioTrack ?? -1;
         so.DurationSeconds = options?.Duration is { } d ? Math.Max(0, d.TotalSeconds) : 0;
-        int rc = packets ? NativeMethods.fa_scan_open_packets(h, cp, &so, out nint feed)
+        var rc = packets ? NativeMethods.fa_scan_open_packets(h, cp, &so, out var feed)
                          : NativeMethods.fa_scan_open_push(h, af, &so, out feed);
         AudioException.ThrowIfFailed(rc);
         var sh = new ScanHandle();

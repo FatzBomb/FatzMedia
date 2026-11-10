@@ -9,11 +9,11 @@ namespace FatzMedia.Audio.Native;
 /// <c>runtimes/&lt;rid&gt;/native</c> layout of NuGet packages) runs first; if it fails the application
 /// directory and the assembly directory are checked as well.
 /// </summary>
-internal static class NativeLoader
+static class NativeLoader
 {
-    private static readonly object Gate = new();
-    private static volatile bool _loaded, _versionChecked;
-    private static string? _versionError;
+    static readonly object Gate = new();
+    static volatile bool _loaded, _versionChecked;
+    static string? _versionError;
 
     /// <summary>
     /// Sets up loading and, on first use, checks that the native library has this binding's
@@ -75,14 +75,14 @@ internal static class NativeLoader
     /// (looked up by reflection, so the binding needs no reference to Mono.Android).
     /// </summary>
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, "Java.Interop.JniRuntime", "Java.Interop")]
-    private static void SetJavaVmFromRuntime()
+    static void SetJavaVmFromRuntime()
     {
         try
         {
             var runtimeType = Type.GetType("Java.Interop.JniRuntime, Java.Interop", throwOnError: false);
             var runtime = runtimeType?.GetProperty("CurrentRuntime", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
             var vm = runtime?.GetType().GetProperty("InvocationPointer", BindingFlags.Public | BindingFlags.Instance)?.GetValue(runtime);
-            if (vm is nint p && p != 0) NativeMethods.fa_android_set_java_vm(p);
+            if (vm is nint p && p != 0) _ = NativeMethods.fa_android_set_java_vm(p);
         }
         catch (Exception)
         {
@@ -90,13 +90,13 @@ internal static class NativeLoader
         }
     }
 
-    private static nint Resolve(string name, Assembly assembly, DllImportSearchPath? searchPath)
+    static nint Resolve(string name, Assembly assembly, DllImportSearchPath? searchPath)
     {
         if (name != "fatzaudio") return 0;
 
         if (NativeLibrary.TryLoad(name, assembly, searchPath, out var handle)) return handle;
 
-        string file = OperatingSystem.IsWindows() ? "fatzaudio.dll"
+        var file = OperatingSystem.IsWindows() ? "fatzaudio.dll"
                     : OperatingSystem.IsMacOS() ? "libfatzaudio.dylib"
                     : "libfatzaudio.so";
 
@@ -111,14 +111,14 @@ internal static class NativeLoader
         return 0; // let the runtime raise DllNotFoundException
     }
 
-    private static IEnumerable<string> CandidateDirectories(Assembly assembly)
+    static IEnumerable<string> CandidateDirectories(Assembly assembly)
     {
         var bases = new List<string> { AppContext.BaseDirectory };
         var asmDir = Path.GetDirectoryName(assembly.Location);
         if (!string.IsNullOrEmpty(asmDir)) bases.Add(asmDir);
 
-        string os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : "linux";
-        string arch = RuntimeInformation.ProcessArchitecture switch
+        var os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : "linux";
+        var arch = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "x64",
             Architecture.X86 => "x86",

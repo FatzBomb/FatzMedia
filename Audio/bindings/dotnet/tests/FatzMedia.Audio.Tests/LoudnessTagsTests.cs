@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,34 +6,34 @@ namespace FatzMedia.Audio.Tests;
 /// files of tests/data/tags in a temp folder.</summary>
 public class LoudnessTagsTests
 {
-    private static string FindTestFile(string relative)
+    static string FindTestFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            string p = Path.Combine(dir.FullName, relative);
+            var p = Path.Combine(dir.FullName, relative);
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException(relative);
     }
 
-    private static string CopyToTemp(string dir, string file)
+    static string CopyToTemp(string dir, string file)
     {
-        string to = Path.Combine(dir, file);
+        var to = Path.Combine(dir, file);
         File.Copy(FindTestFile("tests/data/tags/" + file), to);
         return to;
     }
 
-    private static string? Item(string path, string key) =>
+    static string? Item(string path, string key) =>
         Tags.Read(path, TagReadOptions.NoInfo).Items.FirstOrDefault(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase))?.Value;
 
     [Fact]
     public void Album_WritesTrackAndAlbumGain_AndKeepsOtherTags()
     {
-        string dir = Directory.CreateTempSubdirectory("fa-lt-").FullName;
+        var dir = Directory.CreateTempSubdirectory("fa-lt-").FullName;
         try
         {
-            string flac = CopyToTemp(dir, "tags.flac");
-            string mp3 = CopyToTemp(dir, "id3v24.mp3");
+            var flac = CopyToTemp(dir, "tags.flac");
+            var mp3 = CopyToTemp(dir, "id3v24.mp3");
             using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
             var results = engine.WriteLoudnessTags([flac, mp3], album: true);
             Assert.Equal(2, results.Count);
@@ -54,11 +53,11 @@ public class LoudnessTagsTests
     [Fact]
     public void UnsupportedFormat_IsLeftAlone_AndTheSingleFileCallThrows()
     {
-        string dir = Directory.CreateTempSubdirectory("fa-lt-").FullName;
+        var dir = Directory.CreateTempSubdirectory("fa-lt-").FullName;
         try
         {
-            string aiff = CopyToTemp(dir, "tags.aiff");
-            byte[] before = File.ReadAllBytes(aiff);
+            var aiff = CopyToTemp(dir, "tags.aiff");
+            var before = File.ReadAllBytes(aiff);
             using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
             var r = engine.WriteLoudnessTags([aiff])[0];
             Assert.False(r.Written);
@@ -67,7 +66,7 @@ public class LoudnessTagsTests
             Assert.Equal(before, File.ReadAllBytes(aiff));
             var ex = Assert.Throws<AudioException>(() => engine.WriteLoudnessTags(aiff));
             Assert.Equal(ErrorCode.UnsupportedFormat, ex.ErrorCode);
-            Assert.Throws<ArgumentException>(() => engine.WriteLoudnessTags(Array.Empty<string>()));
+            Assert.Throws<ArgumentException>(() => engine.WriteLoudnessTags([]));
         }
         finally { Directory.Delete(dir, true); }
     }

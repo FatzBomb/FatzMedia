@@ -4,7 +4,7 @@ namespace FatzMedia.Audio;
 /// The numbers the C header defines (<c>fa_event_type</c>, <c>fa_curve_kind</c>, <c>FA_CAPTURE_*</c>), named once. A
 /// test (<c>HeaderConstantsTests</c>) reads the header and checks every one, so a renumbered enum fails the build's tests.
 /// </summary>
-internal static class NativeConstants
+static class NativeConstants
 {
     // fa_event_type (the ones the binding delivers as stream events)
     public const int EventEnded = 0, EventPosition = 1, EventMarker = 2, EventMetadata = 3, EventStalled = 4,

@@ -110,7 +110,7 @@ public abstract class FeedAudioStream : AudioStream
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_buffered(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_buffered(Handle, out var ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -132,13 +132,11 @@ public abstract class FeedAudioStream : AudioStream
 /// </example>
 public sealed unsafe class PushAudioStream : FeedAudioStream
 {
-    private readonly AudioFormat _format;
-
     internal PushAudioStream(AudioEngine engine, StreamHandle handle, AudioFormat format)
-        : base(engine, handle, format) => _format = format;
+        : base(engine, handle, format) => Format = format;
 
     /// <summary>The stream's format: what <see cref="Push(ReadOnlySpan{float}, TimeSpan?)"/> accepts and what frames are converted to.</summary>
-    public AudioFormat Format => _format;
+    public AudioFormat Format { get; }
 
     /// <summary>Pushes interleaved 32-bit float frames. The stream must have been created with <see cref="SampleFormat.Float32"/>.</summary>
     /// <param name="samples">Interleaved samples; the length must be a multiple of the channel count.</param>
@@ -148,7 +146,7 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
     /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void Push(ReadOnlySpan<float> samples, TimeSpan? presentationTime = null)
     {
-        if (_format.SampleFormat != SampleFormat.Float32)
+        if (Format.SampleFormat != SampleFormat.Float32)
             throw new InvalidOperationException("This push stream was not created with SampleFormat.Float32.");
         fixed (float* p = samples) PushCore(p, samples.Length, presentationTime);
     }
@@ -161,17 +159,17 @@ public sealed unsafe class PushAudioStream : FeedAudioStream
     /// <exception cref="AudioException">The stream was ended (<see cref="ErrorCode.EndOfStream"/>) or more than 256 MB are queued (<see cref="ErrorCode.Busy"/>).</exception>
     public void Push(ReadOnlySpan<short> samples, TimeSpan? presentationTime = null)
     {
-        if (_format.SampleFormat != SampleFormat.Int16)
+        if (Format.SampleFormat != SampleFormat.Int16)
             throw new InvalidOperationException("This push stream was not created with SampleFormat.Int16.");
         fixed (short* p = samples) PushCore(p, samples.Length, presentationTime);
     }
 
-    private void PushCore(void* data, int sampleCount, TimeSpan? pts)
+    void PushCore(void* data, int sampleCount, TimeSpan? pts)
     {
-        if (_format.Channels <= 0 || sampleCount % _format.Channels != 0)
+        if (Format.Channels <= 0 || sampleCount % Format.Channels != 0)
             throw new ArgumentException("Sample count must be a multiple of the channel count.");
-        void* plane = data;
-        long frames = sampleCount / _format.Channels;
+        var plane = data;
+        long frames = sampleCount / Format.Channels;
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_pcm(Handle, &plane, frames, ToNativePts(pts)));
     }
 
@@ -266,7 +264,7 @@ public sealed unsafe class PacketAudioStream : FeedAudioStream
         PushCore((void*)data, size, pts, duration);
     }
 
-    private void PushCore(void* data, int size, long pts, long duration)
+    void PushCore(void* data, int size, long pts, long duration)
     {
         var p = new FaPacket { Data = data, Size = (nuint)size, Pts = pts, Duration = Math.Max(0, duration) };
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_push_packet(Handle, &p));

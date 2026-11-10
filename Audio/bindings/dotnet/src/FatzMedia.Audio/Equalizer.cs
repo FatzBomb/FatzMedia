@@ -72,7 +72,7 @@ public static class Equalizer
         uint n;
         if (NativeMethods.fa_eq_get_preset((int)preset, bands, &n) < 0) throw new ArgumentOutOfRangeException(nameof(preset));
         var result = new EqualizerBand[n];
-        for (int i = 0; i < n; i++) result[i] = bands[i].ToBand();
+        for (var i = 0; i < n; i++) result[i] = bands[i].ToBand();
         return result;
     }
 
@@ -81,7 +81,7 @@ public static class Equalizer
     public static unsafe string GetPresetName(EqualizerPreset preset)
     {
         NativeLoader.EnsureInitialized();
-        byte* p = NativeMethods.fa_eq_preset_name((int)preset);
+        var p = NativeMethods.fa_eq_preset_name((int)preset);
         if (p == null) throw new ArgumentOutOfRangeException(nameof(preset));
         return NativeText.Read(p);
     }

@@ -43,7 +43,7 @@ public sealed record SilenceOptions
 
     internal static uint ToMilliseconds(TimeSpan t)
     {
-        double ms = Math.Round(t.TotalMilliseconds);
+        var ms = Math.Round(t.TotalMilliseconds);
         return ms >= 0 && ms <= uint.MaxValue ? (uint)ms : 0; // out of range: the library rejects 0 (a length or window)
     }
 
@@ -57,7 +57,7 @@ public sealed record SilenceOptions
             o.MinLengthMs = ToMilliseconds(options.MinLength);
             o.Mode = (uint)options.Mode;
             o.WindowMs = ToMilliseconds(options.Window);
-            double sound = Math.Round(options.MinSound.TotalMilliseconds);
+            var sound = Math.Round(options.MinSound.TotalMilliseconds);
             o.MinSoundMs = sound >= 0 && sound <= uint.MaxValue ? (uint)sound : uint.MaxValue; // 0 is valid here: out of range is rejected as too long
         }
         return o;
@@ -91,7 +91,7 @@ public sealed class SilenceInfo
 {
     internal unsafe delegate int Getter(FaSilence* silence, FaSilenceRegion* regions, uint capacity, uint* count);
 
-    private SilenceInfo(FaSilence s, SilenceRegion[] regions)
+    SilenceInfo(FaSilence s, SilenceRegion[] regions)
     {
         IsComplete = (s.Flags & 1) != 0;   // FA_SILENCE_COMPLETE
         FromCache = (s.Flags & 2) != 0;    // FA_SILENCE_FROM_CACHE
@@ -206,7 +206,7 @@ public sealed class SilenceInfo
                 AudioException.ThrowIfFailed(get(&s, p, count, &count));
         }
         var regions = new SilenceRegion[Math.Min(count, (uint)native.Length)];
-        for (int i = 0; i < regions.Length; i++) regions[i] = new SilenceRegion(native[i].Start, native[i].End);
+        for (var i = 0; i < regions.Length; i++) regions[i] = new SilenceRegion(native[i].Start, native[i].End);
         return new SilenceInfo(s, regions);
     }
 }
@@ -227,7 +227,7 @@ public sealed class SilenceInfo
 /// </example>
 public sealed unsafe class SilenceDetector : IDisposable
 {
-    private readonly SilenceDetectorHandle _handle;
+    readonly SilenceDetectorHandle _handle;
 
     /// <summary>Creates a detector for PCM in <paramref name="format"/>.</summary>
     /// <param name="format">The format of the frames you will feed: any sample format, 1..32 channels.</param>
@@ -240,7 +240,7 @@ public sealed unsafe class SilenceDetector : IDisposable
         Format = format;
         var f = format.ToNative();
         var o = SilenceOptions.ToNative(options);
-        AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_create(&f, &o, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_create(&f, &o, out var native));
         _handle = new SilenceDetectorHandle();
         _handle.Initialize(native);
     }
@@ -287,11 +287,11 @@ public sealed unsafe class SilenceDetector : IDisposable
         AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, (void**)data, frames));
     }
 
-    private void FeedCore(void* data, int sampleCount)
+    void FeedCore(void* data, int sampleCount)
     {
         if (sampleCount % Format.Channels != 0)
             throw new ArgumentException("Sample count must be a multiple of the channel count.");
-        void* plane = data;
+        var plane = data;
         AudioException.ThrowIfFailed(NativeMethods.fa_silence_detector_feed(_handle, &plane, sampleCount / Format.Channels));
     }
 

@@ -1,5 +1,4 @@
 using System.Text;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,14 +6,14 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>MIDI files with a soundfont built in code (decode-only, no audio hardware needed).</summary>
 public class MidiTests
 {
-    private const int Rate = 44100;
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    const int Rate = 44100;
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
     // ---- a one-instrument SoundFont: a looped 440 Hz sine on bank 0 and bank 128 ----
 
-    private static void Chunk(BinaryWriter w, string id, byte[] body)
+    static void Chunk(BinaryWriter w, string id, byte[] body)
     {
         w.Write(Encoding.ASCII.GetBytes(id));
         w.Write(body.Length);
@@ -22,14 +21,14 @@ public class MidiTests
         if ((body.Length & 1) != 0) w.Write((byte)0);
     }
 
-    private static byte[] Build(Action<BinaryWriter> write)
+    static byte[] Build(Action<BinaryWriter> write)
     {
         using var ms = new MemoryStream();
         using (var w = new BinaryWriter(ms)) write(w);
         return ms.ToArray();
     }
 
-    private static void Name(BinaryWriter w, string s, int n)
+    static void Name(BinaryWriter w, string s, int n)
     {
         var b = new byte[n];
         Encoding.ASCII.GetBytes(s).CopyTo(b, 0);
@@ -38,7 +37,7 @@ public class MidiTests
 
     internal static byte[] SineSoundFont()
     {
-        const int len = 4410; // 100 periods of 440 Hz
+        const int Len = 4410; // 100 periods of 440 Hz
         var info = Build(w =>
         {
             w.Write("INFO"u8);
@@ -50,8 +49,8 @@ public class MidiTests
             w.Write("sdta"u8);
             Chunk(w, "smpl", Build(c =>
             {
-                for (int i = 0; i < len; i++) c.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000));
-                for (int i = 0; i < 46; i++) c.Write((short)0);
+                for (var i = 0; i < Len; i++) c.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000));
+                for (var i = 0; i < 46; i++) c.Write((short)0);
             }));
         });
         var pdta = Build(w =>
@@ -70,7 +69,7 @@ public class MidiTests
             Chunk(w, "imod", new byte[10]);
             Chunk(w, "igen", Build(c =>
             {
-                for (int k = 0; k < 2; k++)
+                for (var k = 0; k < 2; k++)
                 {
                     c.Write((ushort)54); c.Write((ushort)1);       // sampleModes: loop
                     c.Write((ushort)38); c.Write((short)-3600);    // releaseVolEnv: 125 ms
@@ -80,7 +79,7 @@ public class MidiTests
             }));
             Chunk(w, "shdr", Build(c =>
             {
-                Name(c, "Sine", 20); c.Write(0); c.Write(len); c.Write(0); c.Write(len); c.Write(Rate);
+                Name(c, "Sine", 20); c.Write(0); c.Write(Len); c.Write(0); c.Write(Len); c.Write(Rate);
                 c.Write((byte)69); c.Write((byte)0); c.Write((ushort)0); c.Write((ushort)1);
                 Name(c, "EOS", 46);
             }));
@@ -97,7 +96,7 @@ public class MidiTests
 
     // ---- a format 0 song: note 69 for 0.5 s, silence, note 69 from 1.5 s to 2 s; three lyrics ----
 
-    private static void VarLen(List<byte> t, int v)
+    static void VarLen(List<byte> t, int v)
     {
         var tmp = new Stack<byte>();
         tmp.Push((byte)(v & 0x7F));
@@ -105,13 +104,13 @@ public class MidiTests
         t.AddRange(tmp);
     }
 
-    private static void Meta(List<byte> t, int delta, byte type, string text)
+    static void Meta(List<byte> t, int delta, byte type, string text)
     {
         var b = Encoding.ASCII.GetBytes(text);
         VarLen(t, delta); t.Add(0xFF); t.Add(type); VarLen(t, b.Length); t.AddRange(b);
     }
 
-    private static void Ev(List<byte> t, int delta, params byte[] e) { VarLen(t, delta); t.AddRange(e); }
+    static void Ev(List<byte> t, int delta, params byte[] e) { VarLen(t, delta); t.AddRange(e); }
 
     internal static byte[] Song()
     {
@@ -126,14 +125,14 @@ public class MidiTests
         Ev(t, 480, 0x80, 69, 0);
         Ev(t, 960, 0xFF, 0x2F, 0); // the end of the track at 3 s, after the reverb has died away
         var f = new List<byte>();
-        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MThd"u8.ToArray()); f.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255]);
         f.AddRange("MTrk"u8.ToArray());
-        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange([(byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count]);
         f.AddRange(t);
-        return f.ToArray();
+        return [.. f];
     }
 
-    private static float[] ReadAll(AudioStream s, long frames)
+    static float[] ReadAll(AudioStream s, long frames)
     {
         var all = new float[frames * 2];
         int at = 0, n;
@@ -141,10 +140,10 @@ public class MidiTests
         return all;
     }
 
-    private static double Rms(float[] x, int from, int to)
+    static double Rms(float[] x, int from, int to)
     {
         double sum = 0;
-        for (int i = from * 2; i < to * 2; i++) sum += x[i] * (double)x[i];
+        for (var i = from * 2; i < to * 2; i++) sum += x[i] * (double)x[i];
         return Math.Sqrt(sum / ((to - from) * 2));
     }
 
@@ -184,7 +183,7 @@ public class MidiTests
         using (var a = SoundFont.FromMemory(SineSoundFont()))
         using (var b = SoundFont.FromMemory(SineSoundFont()))
         {
-            Assert.Equal(new[] { (0, 0), (128, 0) }, a.Presets.Select(p => (p.Bank, p.Program)));
+            Assert.Equal([(0, 0), (128, 0)], a.Presets.Select(p => (p.Bank, p.Program)));
             Assert.Equal("Sine", a.Presets[0].Name);
             stack = SoundFont.Stack(
                 new SoundFontStackEntry(a) { Bank = 0, Program = 0, ToProgram = 5, Volume = 0.5f },
@@ -196,7 +195,7 @@ public class MidiTests
         // The members were disposed: the stack keeps them.
         using (stack)
         {
-            Assert.Equal(new[] { (0, 0), (0, 5), (128, 0) }, stack.Presets.Select(p => (p.Bank, p.Program)));
+            Assert.Equal([(0, 0), (0, 5), (128, 0)], stack.Presets.Select(p => (p.Bank, p.Program)));
             Assert.Equal(2 * 2 * (4410 + 46), stack.Info.SampleMemory);
             using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = stack });
             s.MidiEffects = false;
@@ -218,24 +217,24 @@ public class MidiTests
         Assert.Equal(0, mi.Format);
         Assert.Equal(3, mi.LyricCount);
         var lyrics = s.MidiTexts.Where(t => t.Type == MidiTextType.Lyric).ToList();
-        Assert.Equal(new[] { "Hel", "lo ", "world" }, lyrics.Select(l => l.Text));
+        Assert.Equal(["Hel", "lo ", "world"], lyrics.Select(l => l.Text));
         Assert.Equal(MidiTextFlags.NewLine, lyrics[2].Flags);
         Assert.Equal(66150, lyrics[2].Frame);
         Assert.Equal(TimeSpan.FromSeconds(1.5), lyrics[2].Position);
     }
 
-    private static byte[] OneTrack(List<byte> t)
+    static byte[] OneTrack(List<byte> t)
     {
         Ev(t, 0, 0xFF, 0x2F, 0);
         var f = new List<byte>();
-        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MThd"u8.ToArray()); f.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255]);
         f.AddRange("MTrk"u8.ToArray());
-        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange([(byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count]);
         f.AddRange(t);
-        return f.ToArray();
+        return [.. f];
     }
 
-    private static void MetaBytes(List<byte> t, int delta, byte type, byte[] b)
+    static void MetaBytes(List<byte> t, int delta, byte type, byte[] b)
     {
         VarLen(t, delta); t.Add(0xFF); t.Add(type); VarLen(t, b.Length); t.AddRange(b);
     }
@@ -251,7 +250,7 @@ public class MidiTests
         using var font = SoundFont.FromMemory(SineSoundFont());
         using (var s = engine.OpenMemory(song, DecodeOnly with { SoundFont = font }))
         {
-            Assert.Equal(new[] { "さくら", "ソ表" }, s.MidiTexts.Where(x => x.Type == MidiTextType.Lyric).Select(x => x.Text));
+            Assert.Equal(["さくら", "ソ表"], s.MidiTexts.Where(x => x.Type == MidiTextType.Lyric).Select(x => x.Text));
             Assert.Equal(TextCodePage.ShiftJis, s.MidiCredits!.CodePage);
         }
         using (var s = engine.OpenMemory(song, DecodeOnly with { SoundFont = font, TextCodePage = TextCodePage.Windows1252 }))
@@ -281,7 +280,7 @@ public class MidiTests
         Assert.Equal("Ann Writer", c.Writer);
         Assert.Equal("1987", c.Year);
         Assert.Equal("120 bpm", c.Tempo);
-        Assert.Equal(new[] { "Arranged for karaoke" }, c.Other);
+        Assert.Equal(["Arranged for karaoke"], c.Other);
         Assert.Equal(TextCodePage.Utf8, c.CodePage);
     }
 
@@ -289,15 +288,15 @@ public class MidiTests
     public void TempoAndSignatures_AreListedWithTheirNumbers()
     {
         var t = new List<byte> { 0, 0xFF, 0x51, 3, 0x07, 0xA1, 0x20 };      // 500000 us: 120 bpm
-        t.AddRange(new byte[] { 0, 0xFF, 0x58, 4, 6, 3, 24, 8 });            // 6/8
-        t.AddRange(new byte[] { 0, 0xFF, 0x59, 2, 3, 1 });                   // 3 sharps, minor: F# minor
+        t.AddRange([0, 0xFF, 0x58, 4, 6, 3, 24, 8]);            // 6/8
+        t.AddRange([0, 0xFF, 0x59, 2, 3, 1]);                   // 3 sharps, minor: F# minor
         Ev(t, 0, 0x90, 69, 127);
         Ev(t, 480, 0x80, 69, 0);
         Ev(t, 0, 0xFF, 0x2F, 0);
         var f = new List<byte>();
-        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MThd"u8.ToArray()); f.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255]);
         f.AddRange("MTrk"u8.ToArray());
-        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange([(byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count]);
         f.AddRange(t);
 
         using var engine = CreateHeadless();
@@ -367,12 +366,12 @@ public class MidiTests
     {
         // One lyric at 1 s and the end of track at 2 s: nothing to sound, so no soundfont is needed.
         byte[] song =
-        {
+        [
             (byte)'M', (byte)'T', (byte)'h', (byte)'d', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0,
             (byte)'M', (byte)'T', (byte)'r', (byte)'k', 0, 0, 0, 12,
             0x87, 0x40, 0xFF, 0x05, 0x02, (byte)'A', (byte)'B',
             0x87, 0x40, 0xFF, 0x2F, 0x00,
-        };
+        ];
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
         using var s = engine.OpenMemory(song, DecodeOnly);
         Assert.False(s.MidiInfo!.HasNotes);
@@ -403,16 +402,16 @@ public class MidiTests
 
     // ---- a DLS bank: one instrument, one region, the same looped 440 Hz sine ----
 
-    private static byte[] List(string type, byte[] body) => Build(w => Chunk(w, "LIST", Build(b => { b.Write(Encoding.ASCII.GetBytes(type)); b.Write(body); })));
+    static byte[] List(string type, byte[] body) => Build(w => Chunk(w, "LIST", Build(b => { b.Write(Encoding.ASCII.GetBytes(type)); b.Write(body); })));
 
-    private static byte[] SineDls()
+    static byte[] SineDls()
     {
         var wave = List("wave", Build(w =>
         {
             Chunk(w, "fmt ", Build(b => { b.Write((short)1); b.Write((short)1); b.Write(Rate); b.Write(Rate * 2); b.Write((short)2); b.Write((short)16); }));
             // wsmp: unity note 69, a forward loop over the whole wave.
             Chunk(w, "wsmp", Build(b => { b.Write(20); b.Write((short)69); b.Write((short)0); b.Write(0); b.Write(0); b.Write(1); b.Write(16); b.Write(0); b.Write(0); b.Write(4410); }));
-            Chunk(w, "data", Build(b => { for (int i = 0; i < 4410; i++) b.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000)); }));
+            Chunk(w, "data", Build(b => { for (var i = 0; i < 4410; i++) b.Write((short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / Rate) * 32000)); }));
         }));
         var region = List("rgn ", Build(w =>
         {

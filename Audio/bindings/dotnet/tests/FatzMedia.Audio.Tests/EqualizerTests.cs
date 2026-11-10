@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,7 +5,7 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Equalizer, presets and user DSP.</summary>
 public class EqualizerTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void Presets_HaveTenOctaveBandsAndNames()
@@ -41,7 +40,7 @@ public class EqualizerTests
         Assert.True(s.EqualizerEnabled);
         s.EqualizerEnabled = false;
         Assert.False(s.EqualizerEnabled);
-        s.SetEqualizer(Array.Empty<EqualizerBand>());
+        s.SetEqualizer([]);
         Assert.Empty(s.GetEqualizer());
     }
 
@@ -50,11 +49,11 @@ public class EqualizerTests
     {
         using var engine = CreateHeadless();
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 1), new StreamOptions { DecodeOnly = true });
-        int rate = 0;
+        var rate = 0;
         using (s.AddDsp((samples, channels, sampleRate) => { rate = sampleRate; samples.Fill(0.25f); }))
         {
             var buf = new float[1024];
-            int n = s.Read(buf);
+            var n = s.Read(buf);
             Assert.True(n > 0);
             Assert.Equal(0.25f, buf[0]);
             Assert.Equal(44100, rate);

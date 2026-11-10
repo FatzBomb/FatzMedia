@@ -30,7 +30,7 @@ public readonly record struct DeckBeatInfo(double Bpm, double Beat, double Bar, 
 
 public sealed partial class DjDeck
 {
-    private const int ParamSyncRange = 7;
+    const int ParamSyncRange = 7;
 
     /// <summary>
     /// The most sync may move the deck's tempo away from 1: 0.01..1, default 0.16 (+-16%). Auto-mix uses
@@ -112,7 +112,7 @@ public sealed partial class DjDeck
         {
             var info = new FaDeckBeatInfo { StructSize = (uint)sizeof(FaDeckBeatInfo) };
             using var _ = _mixer.Lease();
-            int r = NativeMethods.fa_deck_get_beat_info(_deck, &info);
+            var r = NativeMethods.fa_deck_get_beat_info(_deck, &info);
             if (r == (int)ErrorCode.NotFound) return null;
             AudioException.ThrowIfFailed(r);
             return new DeckBeatInfo(info.Bpm, info.Beat, info.Bar, info.PhaseErrorMs, info.Locked != 0, info.Synced != 0);
@@ -184,8 +184,8 @@ public sealed class DeckEventArgs : EventArgs
 /// </example>
 public sealed class DjAutoMix
 {
-    private const int EvStarted = 18, EvDone = 19, EvDeckEmpty = 20;
-    private readonly DjMixer _mixer;
+    const int EvStarted = 18, EvDone = 19, EvDeckEmpty = 20;
+    readonly DjMixer _mixer;
 
     internal DjAutoMix(DjMixer mixer) => _mixer = mixer;
 

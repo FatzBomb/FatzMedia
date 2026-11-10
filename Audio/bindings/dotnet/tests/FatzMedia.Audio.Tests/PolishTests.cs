@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,7 +5,7 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>The additive .NET polish of final audit step 10: time companions, async opens, raw formats, error args.</summary>
 public class PolishTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void DeckTimes_FollowTheStreamsRate()
@@ -32,7 +31,7 @@ public class PolishTests
     [Fact]
     public void MidiEvent_FrameAndTime()
     {
-        long f = MidiEvent.FrameAt(TimeSpan.FromSeconds(0.5), 44100);
+        var f = MidiEvent.FrameAt(TimeSpan.FromSeconds(0.5), 44100);
         Assert.Equal(22050, f);
         Assert.Equal(TimeSpan.FromSeconds(0.5), MidiEvent.NoteOn(0, 60, 100, f).TimeAt(44100));
         Assert.Equal(TimeSpan.Zero, MidiEvent.NoteOn(0, 60, 100).TimeAt(44100));
@@ -106,7 +105,7 @@ public class PolishTests
         using var engine = CreateHeadless();
         using var output = engine.OpenOutput();
         var bytes = new byte[4410 * 2 * 2];   // 0.1 s of stereo 16-bit
-        for (int i = 0; i < bytes.Length; i += 2) BitConverter.TryWriteBytes(bytes.AsSpan(i), (short)8000);
+        for (var i = 0; i < bytes.Length; i += 2) BitConverter.TryWriteBytes(bytes.AsSpan(i), (short)8000);
         using var sound = engine.CreateSound(bytes, AudioFormat.Int16(44100, 2));
         Assert.Equal(4410, sound.Info.Frames);
         Assert.Equal(2, sound.Info.Channels);
@@ -119,15 +118,15 @@ public class PolishTests
     public void OpenCallback_Int16()
     {
         using var engine = CreateHeadless();
-        int calls = 0;
+        var calls = 0;
         using var s = engine.OpenCallback(AudioFormat.Int16(44100, 1), buffer =>
         {
             if (calls++ > 3) return AudioEngine.EndOfStream;
-            for (int i = 0; i < buffer.Length; i += 2) BitConverter.TryWriteBytes(buffer.Slice(i, 2), (short)16384);
+            for (var i = 0; i < buffer.Length; i += 2) BitConverter.TryWriteBytes(buffer.Slice(i, 2), (short)16384);
             return buffer.Length / 2;
         }, new StreamOptions { DecodeOnly = true });
         var buf = new float[1024];
-        int n = s.Read(buf);
+        var n = s.Read(buf);
         Assert.True(n > 0);
         Assert.Equal(0.5f, buf[0], 0.001f);
     }

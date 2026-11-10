@@ -22,9 +22,9 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed partial class AudioEngine : IDisposable
 {
-    private readonly EngineHandle _handle;
+    readonly EngineHandle _handle;
 
-    private AudioEngine(EngineHandle handle) => _handle = handle;
+    AudioEngine(EngineHandle handle) => _handle = handle;
 
     internal EngineHandle Handle
     {
@@ -56,7 +56,8 @@ public sealed partial class AudioEngine : IDisposable
         st.StructSize = (uint)sizeof(FaEngineStats);
         AudioException.ThrowIfFailed(NativeMethods.fa_engine_get_stats(Handle, &st));
         return new EngineStats(st.AudioLoad, st.AudioLoadPeak, st.WorkerLoad, (int)st.Workers, (int)st.Devices,
-            (int)st.AttachedStreams) { Underruns = st.Underruns };
+            (int)st.AttachedStreams)
+        { Underruns = st.Underruns };
     }
 
     /// <summary>Creates an engine.</summary>
@@ -169,7 +170,7 @@ public sealed partial class AudioEngine : IDisposable
     /// </example>
     public static long MonotonicTimeFromStopwatch(long timestamp)
     {
-        long f = System.Diagnostics.Stopwatch.Frequency;
+        var f = System.Diagnostics.Stopwatch.Frequency;
         return timestamp / f * 1_000_000_000L + timestamp % f * 1_000_000_000L / f;
     }
 
@@ -188,7 +189,7 @@ public sealed partial class AudioEngine : IDisposable
         get
         {
             NativeLoader.EnsureInitialized();
-            uint count = NativeMethods.fa_format_count();
+            var count = NativeMethods.fa_format_count();
             var list = new List<AudioFormatInfo>((int)count);
             for (uint i = 0; i < count; i++)
             {
@@ -215,10 +216,10 @@ public sealed partial class AudioEngine : IDisposable
     /// <exception cref="AudioException">The backend failed to enumerate devices.</exception>
     public IReadOnlyList<AudioDeviceInfo> InputDevices => EnumerateDevices(DeviceKind.Capture);
 
-    private unsafe IReadOnlyList<AudioDeviceInfo> EnumerateDevices(DeviceKind kind)
+    unsafe List<AudioDeviceInfo> EnumerateDevices(DeviceKind kind)
     {
         var h = Handle;
-        AudioException.ThrowIfFailed(NativeMethods.fa_device_count(h, (int)kind, out uint count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_count(h, (int)kind, out var count));
         var list = new List<AudioDeviceInfo>((int)count);
         for (uint i = 0; i < count; i++)
         {
@@ -246,7 +247,7 @@ public sealed partial class AudioEngine : IDisposable
         if (device is { Kind: not DeviceKind.Playback })
             throw new ArgumentException("Not a playback device.", nameof(device));
         var h = Handle;
-        AudioException.ThrowIfFailed(NativeMethods.fa_device_open(h, device?.Id, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_open(h, device?.Id, out var native));
         var dh = new DeviceHandle();
         dh.Initialize(native, h);
         return new OutputDevice(this, dh, device);
@@ -283,8 +284,8 @@ public sealed partial class AudioEngine : IDisposable
         c.CueChannel = (uint)options.Cue.FirstChannel;
         c.Latency = (int)options.Latency;
         c.Flags = options.Cue.Mode == 2 && !options.Cue.LineUp ? 1u : 0u;   // FA_MIXER_CUE_LOWEST_LATENCY
-        byte* id = options.Output?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
-        byte* cueId = options.Cue.Headphones?.Id is { } cueDev ? (byte*)Marshal.StringToCoTaskMemUTF8(cueDev) : null;
+        var id = options.Output?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
+        var cueId = options.Cue.Headphones?.Id is { } cueDev ? (byte*)Marshal.StringToCoTaskMemUTF8(cueDev) : null;
         nint native;
         try
         {
@@ -298,7 +299,7 @@ public sealed partial class AudioEngine : IDisposable
             if (cueId != null) Marshal.FreeCoTaskMem((nint)cueId);
         }
         // The mixer lives as long as its device: closing the device destroys it.
-        NativeMethods.fa_mixer_get_device(native, out nint device);
+        NativeMethods.fa_mixer_get_device(native, out var device);
         var dh = new DeviceHandle();
         dh.Initialize(device, h);
         var output = new OutputDevice(this, dh, options.Output);
@@ -330,7 +331,7 @@ public sealed partial class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(path);
         var h = Handle;
         using var opts = NativeOptions.Create(options);
-        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_path(h, path, opts.Pointer, out nint s), s, null);
+        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_path(h, path, opts.Pointer, out var s), s, null);
     }
 
     /// <summary>
@@ -385,7 +386,7 @@ public sealed partial class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(disc);
         var h = Handle;
         using var opts = NativeOptions.Create(options);
-        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_disc(h, disc.Handle, track, opts.Pointer, out nint s), s, null);
+        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_disc(h, disc.Handle, track, opts.Pointer, out var s), s, null);
     }
 
     /// <summary>
@@ -412,11 +413,11 @@ public sealed partial class AudioEngine : IDisposable
         var h = Handle;
         var a = archive.Handle;
         using var opts = NativeOptions.Create(options);
-        bool ok = false;
+        var ok = false;
         a.DangerousAddRef(ref ok);
         try
         {
-            int rc = NativeMethods.fa_stream_open_archive(h, a, entry?.Index ?? -1, opts.Pointer, out nint s);
+            var rc = NativeMethods.fa_stream_open_archive(h, a, entry?.Index ?? -1, opts.Pointer, out var s);
             return AudioStream.Wrap(this, rc, s, null);
         }
         finally { a.DangerousRelease(); }
@@ -437,7 +438,7 @@ public sealed partial class AudioEngine : IDisposable
         var h = Handle;
         using var opts = NativeOptions.Create(options);
         using var pin = data.Pin();
-        int rc = NativeMethods.fa_stream_open_memory(h, pin.Pointer, (nuint)data.Length, opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_memory(h, pin.Pointer, (nuint)data.Length, opts.Pointer, out var s);
         return AudioStream.Wrap(this, rc, s, null);
     }
 
@@ -463,7 +464,7 @@ public sealed partial class AudioEngine : IDisposable
         var o = Sound.ToNative(options);
         using var opts = NativeOptions.Create(options?.Open);
         o.Open = opts.Pointer;
-        return Sound.Wrap(this, NativeMethods.fa_sound_load_path(h, path, &o, out nint s), s);
+        return Sound.Wrap(this, NativeMethods.fa_sound_load_path(h, path, &o, out var s), s);
     }
 
     /// <summary>Loads a short sound from a file held in memory (decoded now; the bytes are not kept).</summary>
@@ -478,7 +479,7 @@ public sealed partial class AudioEngine : IDisposable
         using var opts = NativeOptions.Create(options?.Open);
         o.Open = opts.Pointer;
         using var pin = data.Pin();
-        return Sound.Wrap(this, NativeMethods.fa_sound_load_memory(h, pin.Pointer, (nuint)data.Length, &o, out nint s), s);
+        return Sound.Wrap(this, NativeMethods.fa_sound_load_memory(h, pin.Pointer, (nuint)data.Length, &o, out var s), s);
     }
 
     /// <summary>Makes a sound from your own samples (BASS_SampleCreate + BASS_SampleSetData). They are copied.</summary>
@@ -504,7 +505,7 @@ public sealed partial class AudioEngine : IDisposable
         var o = Sound.ToNative(options);
         var f = new FaAudioFormat { SampleFormat = 0, SampleRate = (uint)Math.Max(sampleRate, 0), Channels = (uint)channels };
         fixed (float* p = samples)
-            return Sound.Wrap(this, NativeMethods.fa_sound_load_pcm(h, &f, p, samples.Length / channels, &o, out nint s), s);
+            return Sound.Wrap(this, NativeMethods.fa_sound_load_pcm(h, &f, p, samples.Length / channels, &o, out var s), s);
     }
 
     /// <summary>
@@ -524,14 +525,14 @@ public sealed partial class AudioEngine : IDisposable
     public unsafe Sound CreateSound(ReadOnlySpan<byte> data, AudioFormat format, SoundOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(format);
-        int frameBytes = format.FrameBytes();
+        var frameBytes = format.FrameBytes();
         if (data.IsEmpty || data.Length % frameBytes != 0)
             throw new ArgumentException("The data must be a whole number of frames.", nameof(data));
         var h = Handle;
         var o = Sound.ToNative(options);
         var f = format.ToNative();
         fixed (byte* p = data)
-            return Sound.Wrap(this, NativeMethods.fa_sound_load_pcm(h, &f, p, data.Length / frameBytes, &o, out nint s), s);
+            return Sound.Wrap(this, NativeMethods.fa_sound_load_pcm(h, &f, p, data.Length / frameBytes, &o, out var s), s);
     }
 
     /// <summary>Opens a managed <see cref="Stream"/> as audio source via custom I/O callbacks.</summary>
@@ -557,7 +558,7 @@ public sealed partial class AudioEngine : IDisposable
         var state = new IoState(source, leaveOpen);
         var gc = GCHandle.Alloc(state);
         var io = IoState.Callbacks(seekable: source.CanSeek);
-        int rc = NativeMethods.fa_stream_open_io(h, &io, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_io(h, &io, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out var s);
         if (rc < 0)
         {
             gc.Free();
@@ -602,7 +603,7 @@ public sealed partial class AudioEngine : IDisposable
             opts.Pointer->Net->DownloadProc = &AudioStream.OnDownload;
             opts.Pointer->Net->DownloadUser = (void*)GCHandle.ToIntPtr(gc);
         }
-        int rc = NativeMethods.fa_stream_open_url(h, url, opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_url(h, url, opts.Pointer, out var s);
         if (rc < 0) download?.Free();
         if (rc == (int)ErrorCode.InvalidArgument) throw new ArgumentException("Not an absolute http or https URL.", nameof(url));
         var stream = AudioStream.Wrap(this, rc, s, download);
@@ -670,7 +671,7 @@ public sealed partial class AudioEngine : IDisposable
     }
 
     /// <summary>Runs an open on the thread pool with the token in its options (with the options' own, if any).</summary>
-    private static Task<AudioStream> OpenAsync(Func<StreamOptions, AudioStream> open, StreamOptions? options,
+    static Task<AudioStream> OpenAsync(Func<StreamOptions, AudioStream> open, StreamOptions? options,
         CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return Task.FromCanceled<AudioStream>(cancellationToken);
@@ -719,7 +720,7 @@ public sealed partial class AudioEngine : IDisposable
         var h = Handle;
         using var opts = NativeOptions.Create(options);
         var nf = format.ToNative();
-        int rc = NativeMethods.fa_stream_open_push(h, &nf, opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_push(h, &nf, opts.Pointer, out var s);
         AudioException.ThrowIfFailed(rc);
         var sh = new StreamHandle();
         sh.Initialize(s, h);
@@ -765,7 +766,7 @@ public sealed partial class AudioEngine : IDisposable
         var nf = AudioFormat.Float32(sampleRate, channels).ToNative();
         // Lives as long as the native stream (adopted by it below), freed here if the open fails.
         var gc = GCHandle.Alloc(new CallbackState(fill, channels));
-        int rc = NativeMethods.fa_stream_open_callback(h, &nf, &CallbackState.Fill, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_callback(h, &nf, &CallbackState.Fill, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out var s);
         if (rc < 0) gc.Free();
         return AudioStream.Wrap(this, rc, s, gc);
     }
@@ -785,13 +786,13 @@ public sealed partial class AudioEngine : IDisposable
     {
         ArgumentNullException.ThrowIfNull(format);
         ArgumentNullException.ThrowIfNull(fill);
-        int frameBytes = format.FrameBytes();
+        var frameBytes = format.FrameBytes();
         var h = Handle;
         using var opts = NativeOptions.Create(options);
         if (format.SampleRate <= 0 || format.Channels <= 0) throw new AudioException(ErrorCode.InvalidArgument);
         var nf = format.ToNative();
         var gc = GCHandle.Alloc(new CallbackState(fill, frameBytes));
-        int rc = NativeMethods.fa_stream_open_callback(h, &nf, &CallbackState.Fill, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out nint s);
+        var rc = NativeMethods.fa_stream_open_callback(h, &nf, &CallbackState.Fill, (void*)GCHandle.ToIntPtr(gc), opts.Pointer, out var s);
         if (rc < 0) gc.Free();
         return AudioStream.Wrap(this, rc, s, gc);
     }
@@ -821,7 +822,7 @@ public sealed partial class AudioEngine : IDisposable
     /// </example>
     public unsafe AudioStream OpenCapture(CaptureOptions? capture = null, StreamOptions? options = null)
     {
-        bool loopback = capture?.Loopback == true;
+        var loopback = capture?.Loopback == true;
         if (capture?.Device is { } dev && dev.Kind != (loopback ? DeviceKind.Playback : DeviceKind.Capture))
             throw new ArgumentException(loopback ? "Not an output device." : "Not an input device.", nameof(capture));
         var h = Handle;
@@ -831,11 +832,11 @@ public sealed partial class AudioEngine : IDisposable
         c.SampleRate = (uint)Math.Max(0, capture?.SampleRate ?? 0);
         c.Channels = (uint)Math.Max(0, capture?.Channels ?? 0);
         c.Flags = (capture?.KeepOsProcessing == true ? NativeConstants.CaptureOsProcessing : 0u) | (loopback ? NativeConstants.CaptureLoopback : 0u);
-        byte* id = capture?.Device?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
+        var id = capture?.Device?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
         try
         {
             c.DeviceId = id;
-            return AudioStream.Wrap(this, NativeMethods.fa_stream_open_capture(h, &c, opts.Pointer, out nint s), s, null);
+            return AudioStream.Wrap(this, NativeMethods.fa_stream_open_capture(h, &c, opts.Pointer, out var s), s, null);
         }
         finally
         {
@@ -868,7 +869,7 @@ public sealed partial class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(parameters.Codec);
         var h = Handle;
         using var opts = NativeOptions.Create(options);
-        byte* codec = (byte*)Marshal.StringToCoTaskMemUTF8(parameters.Codec);
+        var codec = (byte*)Marshal.StringToCoTaskMemUTF8(parameters.Codec);
         try
         {
             fixed (byte* extra = parameters.ExtraData)
@@ -884,7 +885,7 @@ public sealed partial class AudioEngine : IDisposable
                 p.BlockAlign = (uint)Math.Max(0, parameters.BlockAlign);
                 p.BitsPerCodedSample = (uint)Math.Max(0, parameters.BitsPerCodedSample);
                 p.TimeBase = parameters.TimeBase.ToNative();
-                int rc = NativeMethods.fa_stream_open_packets(h, &p, opts.Pointer, out nint s);
+                var rc = NativeMethods.fa_stream_open_packets(h, &p, opts.Pointer, out var s);
                 AudioException.ThrowIfFailed(rc);
                 var sh = new StreamHandle();
                 sh.Initialize(s, h);
@@ -1149,8 +1150,6 @@ public sealed partial class AudioEngine : IDisposable
         return TrackAnalysis.RunAsync(Handle, h => TrackAnalysis.Run(h, path, kinds, options), cancellationToken);
     }
 
-    private SoundFont? _defaultSoundFont;
-
     /// <summary>
     /// The soundfont for MIDI streams opened from now on (streams already open keep theirs); null removes it.
     /// The native engine keeps its own reference, so the <see cref="SoundFont"/> may be disposed after it is set
@@ -1166,7 +1165,7 @@ public sealed partial class AudioEngine : IDisposable
     /// <exception cref="ObjectDisposedException">The engine, or the soundfont being set, was disposed.</exception>
     public SoundFont? DefaultSoundFont
     {
-        get => _defaultSoundFont;
+        get;
         set
         {
             var engine = Handle;
@@ -1180,7 +1179,7 @@ public sealed partial class AudioEngine : IDisposable
                 try { AudioException.ThrowIfFailed(NativeMethods.fa_engine_set_soundfont(engine, font.DangerousGetHandle())); }
                 finally { font.DangerousRelease(); }
             }
-            _defaultSoundFont = value;
+            field = value;
         }
     }
 
@@ -1192,26 +1191,25 @@ public sealed partial class AudioEngine : IDisposable
 }
 
 /// <summary>Holds the native <c>fa_open_options</c> (unmanaged memory) for the duration of a call.</summary>
-internal unsafe ref struct NativeOptions
+unsafe ref struct NativeOptions
 {
-    private FaOpenOptions* _ptr;
-    private byte* _mime;
-    private byte* _archiveEntry;
-    private FaNetOptions* _net;
-    private byte* _userAgent, _headers, _proxy;
-    private SoundFontHandle? _font;
-    private int* _cancel;
-    private FaFingerprint* _identity;
-    private CancellationTokenRegistration _cancelRegistration;
+    byte* _mime;
+    byte* _archiveEntry;
+    FaNetOptions* _net;
+    byte* _userAgent, _headers, _proxy;
+    SoundFontHandle? _font;
+    int* _cancel;
+    FaFingerprint* _identity;
+    CancellationTokenRegistration _cancelRegistration;
 
-    public readonly FaOpenOptions* Pointer => _ptr;
+    public FaOpenOptions* Pointer { get; private set; }
 
     public static NativeOptions Create(StreamOptions? options)
     {
         var o = new NativeOptions();
         if (options is null) return o;
-        o._ptr = (FaOpenOptions*)NativeMemory.AllocZeroed((nuint)sizeof(FaOpenOptions));
-        NativeMethods.fa_open_options_init(o._ptr);
+        o.Pointer = (FaOpenOptions*)NativeMemory.AllocZeroed((nuint)sizeof(FaOpenOptions));
+        NativeMethods.fa_open_options_init(o.Pointer);
         uint flags = 0;
         if (options.DecodeOnly) flags |= 1u << 0;
         if (options.Loop) flags |= 1u << 1;
@@ -1219,25 +1217,25 @@ internal unsafe ref struct NativeOptions
         if (options.NoNormalize) flags |= 1u << 3;
         if (options.NoCdg) flags |= 1u << 4;
         if (options.MidiLyricsOnly) flags |= 1u << 5;
-        o._ptr->Flags = flags;
-        o._ptr->AudioTrack = options.AudioTrack;
-        o._ptr->DynamicRange = (int)options.DynamicRange;
-        o._ptr->DolbyDownmix = (int)options.DolbyDownmix;
-        o._ptr->TextCodePage = (int)options.TextCodePage;
-        o._ptr->DsdRate = (uint)Math.Max(0, options.DsdRate);
+        o.Pointer->Flags = flags;
+        o.Pointer->AudioTrack = options.AudioTrack;
+        o.Pointer->DynamicRange = (int)options.DynamicRange;
+        o.Pointer->DolbyDownmix = (int)options.DolbyDownmix;
+        o.Pointer->TextCodePage = (int)options.TextCodePage;
+        o.Pointer->DsdRate = (uint)Math.Max(0, options.DsdRate);
         if (options.SourceIdentity is { } identity)
         {
             o._identity = (FaFingerprint*)NativeMemory.AllocZeroed((nuint)sizeof(FaFingerprint));
             o._identity->StructSize = (uint)sizeof(FaFingerprint);
             o._identity->Key = identity.Key;
             o._identity->AudioBytes = identity.AudioBytes;
-            o._ptr->SourceIdentity = o._identity;
+            o.Pointer->SourceIdentity = o._identity;
         }
         if (options.CancellationToken.CanBeCanceled)
         {
             // The native open reads this flag while it unpacks; the token sets it from any thread.
             o._cancel = (int*)NativeMemory.AllocZeroed(sizeof(int));
-            o._ptr->Cancel = o._cancel;
+            o.Pointer->Cancel = o._cancel;
             o._cancelRegistration = options.CancellationToken.Register(
                 static state => Volatile.Write(ref *(int*)(nint)state!, 1), (nint)o._cancel);
         }
@@ -1245,19 +1243,19 @@ internal unsafe ref struct NativeOptions
         {
             // Held until the open call returns; the native stream takes its own reference.
             o._font = Native.HandleRef.AddRef(font.Handle);
-            o._ptr->SoundFont = o._font.DangerousGetHandle();
+            o.Pointer->SoundFont = o._font.DangerousGetHandle();
         }
         if (options.BufferLength is { } buffer)
-            o._ptr->BufferMs = (uint)Math.Clamp(buffer.TotalMilliseconds, 1, uint.MaxValue);
+            o.Pointer->BufferMs = (uint)Math.Clamp(buffer.TotalMilliseconds, 1, uint.MaxValue);
         if (options.ArchiveEntry is { } archiveEntry)
         {
             o._archiveEntry = (byte*)Marshal.StringToCoTaskMemUTF8(archiveEntry);
-            o._ptr->ArchiveEntry = o._archiveEntry;
+            o.Pointer->ArchiveEntry = o._archiveEntry;
         }
         if (options.MimeHint is { } mime)
         {
             o._mime = (byte*)Marshal.StringToCoTaskMemUTF8(mime);
-            o._ptr->MimeHint = o._mime;
+            o.Pointer->MimeHint = o._mime;
         }
         if (options.Network is { } net)
         {
@@ -1278,14 +1276,14 @@ internal unsafe ref struct NativeOptions
             if (!net.SongTitles) netFlags |= 1u << 1;
             o._net->Flags = netFlags;
             o._net->HlsMaxBandwidth = (uint)Math.Clamp(net.HlsMaxBandwidth, 0, int.MaxValue);
-            o._ptr->Net = o._net;
+            o.Pointer->Net = o._net;
         }
         return o;
     }
 
-    private static byte* Utf8(string? s) => (byte*)NativeText.Alloc(s);
+    static byte* Utf8(string? s) => (byte*)NativeText.Alloc(s);
 
-    private static uint Millis(TimeSpan? t) =>
+    static uint Millis(TimeSpan? t) =>
         t is { } v ? (uint)Math.Clamp(Math.Ceiling(v.TotalMilliseconds), 1, uint.MaxValue) : 0;
 
     public void Dispose()
@@ -1303,11 +1301,11 @@ internal unsafe ref struct NativeOptions
         if (_net != null) NativeMemory.Free(_net);
         if (_identity != null) NativeMemory.Free(_identity);
         _identity = null;
-        if (_ptr != null) NativeMemory.Free(_ptr);
+        if (Pointer != null) NativeMemory.Free(Pointer);
         _font?.DangerousRelease();
         _font = null;
         _mime = _userAgent = _headers = _proxy = null;
         _net = null;
-        _ptr = null;
+        Pointer = null;
     }
 }

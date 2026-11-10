@@ -73,7 +73,7 @@ Delivered:
 Pull first:
 
 ```
-cd D:\development\FatzBomb\FatzVideo
+cd D:\development\FatzBomb\FatzMedia\Video
 git pull
 ```
 

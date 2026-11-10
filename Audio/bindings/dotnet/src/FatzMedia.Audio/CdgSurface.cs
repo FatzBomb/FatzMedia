@@ -165,7 +165,7 @@ public readonly record struct CdgRect(int X, int Y, int Width, int Height)
 /// </summary>
 public readonly unsafe ref struct CdgFrame
 {
-    private readonly byte* _pixels;
+    readonly byte* _pixels;
 
     internal CdgFrame(FaCdgFrame f, ReadOnlySpan<CdgColor> palette, ReadOnlySpan<byte> transparency)
     {
@@ -262,23 +262,18 @@ public readonly unsafe ref struct CdgFrame
 /// </example>
 public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
 {
-    private readonly AudioStream _stream;
-    private readonly object _lock = new();
-    private readonly CdgColor[] _palette = new CdgColor[16];
-    private readonly byte[] _transparency = new byte[16];
-    private readonly PixelRect[] _dirty = new PixelRect[8];
-    private PixelSize _presentationSize;
-    private CdgPresentation? _presentation;
-    private bool _renderAhead;
-    private SurfaceEffects? _effects;
-    private nint _native;
-    private int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
+    readonly object _lock = new();
+    readonly CdgColor[] _palette = new CdgColor[16];
+    readonly byte[] _transparency = new byte[16];
+    readonly PixelRect[] _dirty = new PixelRect[8];
+    nint _native;
+    int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
 
     internal CdgSurface(AudioStream stream, CdgSurfaceOptions options)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(options.Width);
         ArgumentOutOfRangeException.ThrowIfNegative(options.Height);
-        _stream = stream;
+        Stream = stream;
         Options = options;
         FaCdgSurfaceConfig c;
         NativeMethods.fa_cdg_surface_config_init(&c);
@@ -301,7 +296,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             c.BackgroundOpacity = (uint)opacity;
         }
         var handle = stream.Handle;
-        int rc = NativeMethods.fa_cdg_surface_create(handle, &c, out _native);
+        var rc = NativeMethods.fa_cdg_surface_create(handle, &c, out _native);
         if (rc == (int)ErrorCode.InvalidArgument)
             throw new ArgumentException("Unsupported CD+G surface options (pixel format or size above 8192).", nameof(options));
         AudioException.ThrowIfFailed(rc);
@@ -330,8 +325,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     /// <exception cref="ArgumentOutOfRangeException">A value out of its range.</exception>
     public CdgPresentation? Presentation
     {
-        get => _presentation;
-        set
+        get; set
         {
             FaCdgPresentation p;
             NativeMethods.fa_cdg_presentation_init(&p);
@@ -354,7 +348,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 p.EdgeBlend = value.EdgeBlend ? 1 : 0;
                 p.Flags = value.TransparentBorder ? 1u : 0;
             }
-            var h = Enter(out bool added);
+            var h = Enter(out var added);
             try
             {
                 lock (_lock)
@@ -362,7 +356,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                     ObjectDisposedException.ThrowIf(_native == 0, this);
                     AudioException.ThrowIfFailed(
                         NativeMethods.fa_cdg_surface_set_presentation(_native, value is null ? null : &p));
-                    _presentation = value;
+                    field = value;
                 }
             }
             finally
@@ -373,14 +367,14 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <summary>The stream whose graphics this surface draws.</summary>
-    public AudioStream Stream => _stream;
+    public AudioStream Stream { get; }
 
     /// <summary>Called by the stream's handle right before the native stream is closed.</summary>
     void IStreamSurface.Orphan()
     {
         lock (_lock)
         {
-            nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+            var native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
             if (native != 0) NativeMethods.fa_cdg_surface_destroy(native);
         }
     }
@@ -397,10 +391,10 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     /// <exception cref="ObjectDisposedException">The surface or its stream was disposed.</exception>
     public CdgFrame UpdateAt(TimeSpan time) => Render(TimeConvert.ToNanoseconds(time));
 
-    private CdgFrame Render(long? time)
+    CdgFrame Render(long? time)
     {
-        var handle = _stream.Handle;
-        bool added = false;
+        var handle = Stream.Handle;
+        var added = false;
         // Holding a reference keeps the native stream (and so this surface) alive during the call.
         handle.DangerousAddRef(ref added);
         try
@@ -409,12 +403,12 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_native == 0, this);
-                int rc = time is { } t
+                var rc = time is { } t
                     ? NativeMethods.fa_cdg_surface_update_at(_native, t, &f)
                     : NativeMethods.fa_cdg_surface_update(_native, &f);
                 AudioException.ThrowIfFailed(rc);
             }
-            for (int i = 0; i < 16; i++)
+            for (var i = 0; i < 16; i++)
             {
                 _palette[i] = new CdgColor(f.Palette[i * 4], f.Palette[i * 4 + 1], f.Palette[i * 4 + 2], f.Palette[i * 4 + 3]);
                 _transparency[i] = f.Transparency[i];
@@ -430,14 +424,13 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     /// <inheritdoc/>
     public PixelSize PresentationSize
     {
-        get => _presentationSize;
-        set
+        get; set
         {
             ArgumentOutOfRangeException.ThrowIfNegative(value.Width, nameof(value));
             ArgumentOutOfRangeException.ThrowIfNegative(value.Height, nameof(value));
             if ((value.Width == 0) != (value.Height == 0))
                 throw new ArgumentException("Width and height must both be 0 (unset) or both positive.", nameof(value));
-            var h = Enter(out bool added);
+            var h = Enter(out var added);
             try
             {
                 lock (_lock)
@@ -451,17 +444,16 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             {
                 if (added) h.DangerousRelease();
             }
-            _presentationSize = SurfaceInterop.ClampPresentation(value);
+            field = SurfaceInterop.ClampPresentation(value);
         }
     }
 
     /// <inheritdoc/>
     public bool RenderAhead
     {
-        get => _renderAhead;
-        set
+        get; set
         {
-            var h = Enter(out bool added);
+            var h = Enter(out var added);
             try
             {
                 lock (_lock)
@@ -474,26 +466,25 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
             {
                 if (added) h.DangerousRelease();
             }
-            _renderAhead = value;
+            field = value;
         }
     }
 
     /// <inheritdoc/>
     public SurfaceEffects? Effects
     {
-        get => _effects;
-        set
+        get; set
         {
             FaSurfaceEffects e;
             SurfaceInterop.ToNative(value, &e);
-            var h = Enter(out bool added);
+            var h = Enter(out var added);
             try
             {
                 lock (_lock)
                 {
                     ObjectDisposedException.ThrowIf(_native == 0, this);
                     AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_effects(_native, value is null ? null : &e));
-                    _effects = value;
+                    field = value;
                 }
             }
             finally
@@ -508,7 +499,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     {
         FaSurfaceLayout l = default;
         l.StructSize = (uint)sizeof(FaSurfaceLayout);
-        var h = Enter(out bool added);
+        var h = Enter(out var added);
         try
         {
             lock (_lock)
@@ -533,11 +524,11 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         if (destination == 0) throw new ArgumentNullException(nameof(destination));
         FaSurfaceFrame f = default;
         f.StructSize = (uint)sizeof(FaSurfaceFrame);
-        long t = time is { } at ? TimeConvert.ToNanoseconds(at) : long.MinValue;
-        var h = Enter(out bool added);
+        var t = time is { } at ? TimeConvert.ToNanoseconds(at) : long.MinValue;
+        var h = Enter(out var added);
         try
         {
-            nint native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
+            var native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
             ObjectDisposedException.ThrowIf(native == 0, this);
             try
             {
@@ -553,10 +544,10 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         {
             if (added) h.DangerousRelease();
         }
-        int count = (int)Math.Min(f.DirtyCount, 8u);
-        for (int i = 0; i < count; i++)
+        var count = (int)Math.Min(f.DirtyCount, 8u);
+        for (var i = 0; i < count; i++)
             _dirty[i] = new PixelRect(f.Dirty[i * 4], f.Dirty[i * 4 + 1], f.Dirty[i * 4 + 2], f.Dirty[i * 4 + 3]);
-        for (int i = 0; i < 16; i++)
+        for (var i = 0; i < 16; i++)
         {
             _palette[i] = new CdgColor(f.Palette[i * 4], f.Palette[i * 4 + 1], f.Palette[i * 4 + 2], f.Palette[i * 4 + 3]);
             _transparency[i] = f.Transparency[i];
@@ -583,7 +574,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         // scaling on between this check and the draw (the pointer overload takes no lock and never waits).
         lock (_lock)
         {
-            int bpp = _presentation?.Scale != true ? 1 : 4;
+            var bpp = Presentation?.Scale != true ? 1 : 4;
             if (stride < width * bpp || destination.Length < (long)stride * (height - 1) + (long)width * bpp)
                 throw new ArgumentException("The span is smaller than height rows of stride bytes.", nameof(destination));
             fixed (byte* p = destination)
@@ -592,9 +583,9 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <summary>Holds the stream for a native call, which keeps the native stream (and so this surface) alive.</summary>
-    private StreamHandle Enter(out bool added)
+    StreamHandle Enter(out bool added)
     {
-        var handle = _stream.Handle;
+        var handle = Stream.Handle;
         added = false;
         handle.DangerousAddRef(ref added);
         return handle;
@@ -604,10 +595,10 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     public void Dispose()
     {
         StreamHandle handle;
-        bool added = false;
+        var added = false;
         try
         {
-            handle = _stream.Handle;
+            handle = Stream.Handle;
             handle.DangerousAddRef(ref added);
         }
         catch (ObjectDisposedException)
@@ -619,7 +610,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         {
             lock (_lock)
             {
-                nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+                var native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
                 if (native == 0) return;
                 NativeMethods.fa_cdg_surface_destroy(native);
             }

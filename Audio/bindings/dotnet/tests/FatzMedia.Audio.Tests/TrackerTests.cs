@@ -1,5 +1,4 @@
 using System.Text;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,29 +6,29 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Tracker modules: a 4-channel MOD built in code (decode-only, no audio hardware needed).</summary>
 public class TrackerTests
 {
-    private const int Rate = 44100;
-    private const double RowSeconds = 0.06;   // speed 3 at tempo 125
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    const int Rate = 44100;
+    const double RowSeconds = 0.06;   // speed 3 at tempo 125
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
-    private static void Cell(byte[] pat, int row, int ch, int sample, int period, int fx, int param)
+    static void Cell(byte[] pat, int row, int ch, int sample, int period, int fx, int param)
     {
-        int o = (row * 4 + ch) * 4;
+        var o = (row * 4 + ch) * 4;
         pat[o] = (byte)((sample & 0xF0) | (period >> 8));
         pat[o + 1] = (byte)(period & 0xFF);
         pat[o + 2] = (byte)(((sample & 0x0F) << 4) | fx);
         pat[o + 3] = (byte)param;
     }
 
-    private static void Name(BinaryWriter w, string s, int n)
+    static void Name(BinaryWriter w, string s, int n)
     {
         var b = new byte[n];
         Encoding.ASCII.GetBytes(s).CopyTo(b, 0);
         w.Write(b);
     }
 
-    private static void BE16(BinaryWriter w, int v) { w.Write((byte)(v >> 8)); w.Write((byte)v); }
+    static void BE16(BinaryWriter w, int v) { w.Write((byte)(v >> 8)); w.Write((byte)v); }
 
     /// <summary>
     /// "Test Module": sample 1 "Sine", two orders of 16 rows; order 0 plays on channel 0 (left), order 1 on channel 1
@@ -41,7 +40,7 @@ public class TrackerTests
         using (var w = new BinaryWriter(ms))
         {
             Name(w, "Test Module", 20);
-            for (int i = 0; i < 31; i++)
+            for (var i = 0; i < 31; i++)
             {
                 Name(w, i == 0 ? "Sine" : "", 22);
                 BE16(w, i == 0 ? 16 : 0);
@@ -56,7 +55,7 @@ public class TrackerTests
             orders[1] = 1;
             w.Write(orders);
             w.Write(Encoding.ASCII.GetBytes("M.K."));
-            for (int p = 0; p < 2; p++)
+            for (var p = 0; p < 2; p++)
             {
                 var pat = new byte[64 * 4 * 4];
                 Cell(pat, 0, p, 1, 428, 0, 0);
@@ -65,12 +64,12 @@ public class TrackerTests
                 Cell(pat, 15, 2, 0, 0, 0xD, 0);
                 w.Write(pat);
             }
-            for (int i = 0; i < 32; i++) w.Write((sbyte)Math.Round(Math.Sin(2 * Math.PI * i / 32) * 120));
+            for (var i = 0; i < 32; i++) w.Write((sbyte)Math.Round(Math.Sin(2 * Math.PI * i / 32) * 120));
         }
         return ms.ToArray();
     }
 
-    private static float[] ReadAll(AudioStream s, long frames)
+    static float[] ReadAll(AudioStream s, long frames)
     {
         var all = new float[frames * 2];
         int at = 0, n;
@@ -78,11 +77,11 @@ public class TrackerTests
         return all;
     }
 
-    private static double Rms(float[] x, double from, double to, int ch)
+    static double Rms(float[] x, double from, double to, int ch)
     {
         int a = (int)(from * Rate), b = (int)(to * Rate);
         double sum = 0;
-        for (int i = a; i < b; i++) sum += x[i * 2 + ch] * (double)x[i * 2 + ch];
+        for (var i = a; i < b; i++) sum += x[i * 2 + ch] * (double)x[i * 2 + ch];
         return Math.Sqrt(sum / (b - a));
     }
 
@@ -124,7 +123,7 @@ public class TrackerTests
     {
         using var engine = CreateHeadless();
         using var s = engine.OpenMemory(Module(), DecodeOnly);
-        Assert.Equal(new[] { 0, 1 }, s.GetTrackerOrders());
+        Assert.Equal([0, 1], s.GetTrackerOrders());
         Assert.Equal(125.0, s.TrackerTempo, 1);
         s.TrackerTempo = 250.0;
         Assert.Equal(250.0, s.TrackerTempo, 1);

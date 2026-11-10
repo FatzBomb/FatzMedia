@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using FatzMedia.Audio.Native;
 
 namespace FatzMedia.Audio;
@@ -49,7 +48,10 @@ public sealed record AudioFormat(SampleFormat SampleFormat, int SampleRate, int 
 
     internal FaAudioFormat ToNative() => new()
     {
-        SampleFormat = (int)SampleFormat, SampleRate = (uint)SampleRate, Channels = (uint)Channels, ChannelMask = ChannelMask,
+        SampleFormat = (int)SampleFormat,
+        SampleRate = (uint)SampleRate,
+        Channels = (uint)Channels,
+        ChannelMask = ChannelMask,
     };
 
     internal static AudioFormat FromNative(in FaAudioFormat f) =>
@@ -594,12 +596,12 @@ public sealed record AudioEngineOptions
 /// <param name="MimeTypes">MIME types of the format.</param>
 public sealed record AudioFormatInfo(string Name, string Description, IReadOnlyList<string> Extensions, IReadOnlyList<string> MimeTypes);
 
-internal static class SampleFormatSize
+static class SampleFormatSize
 {
     /// <summary>Bytes of one frame; throws for planar formats (the interleaved entry points do not take them).</summary>
     public static int FrameBytes(this AudioFormat f)
     {
-        int sample = f.SampleFormat switch
+        var sample = f.SampleFormat switch
         {
             SampleFormat.Float32 or SampleFormat.Int32 => 4,
             SampleFormat.Int16 => 2,
@@ -612,7 +614,7 @@ internal static class SampleFormatSize
     }
 }
 
-internal static class TimeConvert
+static class TimeConvert
 {
     public static TimeSpan FromNanoseconds(long ns) => TimeSpan.FromTicks(ns / 100);
     public static long ToNanoseconds(TimeSpan t) => t.Ticks * 100;
@@ -623,8 +625,8 @@ internal static class TimeConvert
     /// <summary>The checked arguments every Ramp method passes to the engine.</summary>
     public static (long DurationNs, long StartNs, Curve Curve) RampArgs(TimeSpan duration, TimeSpan? startAt, Curve? curve)
     {
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
-        if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
+        ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
+        if (startAt is { } start) ArgumentOutOfRangeException.ThrowIfLessThan(start, TimeSpan.Zero, nameof(startAt));
         return (ToNanoseconds(duration), StartTime(startAt), curve ?? Curve.Linear);
     }
 

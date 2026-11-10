@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using FatzMedia.Audio.Native;
 
 namespace FatzMedia.Audio;
@@ -88,7 +87,7 @@ public class AudioException : Exception
     /// <summary>The native error code that caused this exception.</summary>
     public ErrorCode ErrorCode { get; }
 
-    private static string DescribeNative(ErrorCode code)
+    static string DescribeNative(ErrorCode code)
     {
         try
         {

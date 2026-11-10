@@ -5,7 +5,7 @@ using FatzMedia.Audio.Native;
 namespace FatzMedia.Audio;
 
 /// <summary>Finds the managed object behind the <c>user</c> pointer a native callback receives.</summary>
-internal static unsafe class NativeUser
+static unsafe class NativeUser
 {
     /// <summary>The object a <see cref="GCHandle"/> pointer refers to; null for a null pointer or another type.</summary>
     public static T? From<T>(void* user) where T : class =>
@@ -13,11 +13,11 @@ internal static unsafe class NativeUser
 }
 
 /// <summary>Bridges a managed <see cref="Stream"/> to the native custom I/O callbacks.</summary>
-internal sealed unsafe class IoState
+sealed unsafe class IoState
 {
-    private readonly Stream _stream;
-    private readonly bool _leaveOpen;
-    private readonly object _lock = new();
+    readonly Stream _stream;
+    readonly bool _leaveOpen;
+    readonly object _lock = new();
 
     public IoState(Stream stream, bool leaveOpen)
     {
@@ -25,7 +25,7 @@ internal sealed unsafe class IoState
         _leaveOpen = leaveOpen;
     }
 
-    private static IoState? From(void* user) => NativeUser.From<IoState>(user);
+    static IoState? From(void* user) => NativeUser.From<IoState>(user);
 
     /// <summary>The native callback table for a managed stream (without Seek and Length when it cannot seek).</summary>
     public static FaIoCallbacks Callbacks(bool seekable = true, bool close = true)
@@ -48,7 +48,7 @@ internal sealed unsafe class IoState
         {
             var s = From(user);
             if (s is null) return (long)ErrorCode.Io;
-            int count = (int)Math.Min(bytes, (nuint)int.MaxValue);
+            var count = (int)Math.Min(bytes, int.MaxValue);
             lock (s._lock) return s._stream.Read(new Span<byte>(buffer, count));
         }
         catch

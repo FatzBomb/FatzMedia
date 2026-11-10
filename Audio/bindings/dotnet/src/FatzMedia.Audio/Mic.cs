@@ -111,16 +111,14 @@ public sealed class MicEventArgs : EventArgs
 /// </remarks>
 public sealed class Mic : IDisposable
 {
-    private const int ParamGainDb = 0, ParamMute = 1, ParamPan = 2, ParamGateDb = 3, ParamReverb = 4, ParamEcho = 5,
+    const int ParamGainDb = 0, ParamMute = 1, ParamPan = 2, ParamGateDb = 3, ParamReverb = 4, ParamEcho = 5,
         ParamMonitor = 6, ParamLowCut = 7;
-    private readonly DjMixer _mixer;
-    private readonly MicHandle _handle;
 
     internal Mic(DjMixer mixer, MicHandle handle)
     {
-        _mixer = mixer;
-        _handle = handle;
-        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_index(handle, out uint index));
+        Mixer = mixer;
+        Handle = handle;
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_index(handle, out var index));
         Index = (int)index;
     }
 
@@ -128,7 +126,7 @@ public sealed class Mic : IDisposable
     public int Index { get; }
 
     /// <summary>The mixer the mic is on.</summary>
-    public DjMixer Mixer => _mixer;
+    public DjMixer Mixer { get; }
 
     /// <summary>Gain in dB, -20..40 (default 0); changes glide over 5 ms.</summary>
     public float GainDb { get => Get(ParamGainDb); set => Set(ParamGainDb, value); }
@@ -167,8 +165,8 @@ public sealed class Mic : IDisposable
         ArgumentNullException.ThrowIfNull(bands);
         if (bands.Count > 16) throw new ArgumentException("At most 16 bands.", nameof(bands));
         var native = stackalloc FaEqBand[16];
-        for (int i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
-        AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_eq(_handle, native, (uint)bands.Count));
+        for (var i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_eq(Handle, native, (uint)bands.Count));
     }
 
     /// <summary>Sets the EQ to a built-in preset; <see cref="EqualizerPreset.LiveVocal"/> is made for mics.</summary>
@@ -178,9 +176,9 @@ public sealed class Mic : IDisposable
     public unsafe EqualizerBand[] GetEqualizer()
     {
         var native = stackalloc FaEqBand[16];
-        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_eq(_handle, native, 16, out uint n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_eq(Handle, native, 16, out var n));
         var result = new EqualizerBand[n];
-        for (int i = 0; i < n; i++) result[i] = native[i].ToBand();
+        for (var i = 0; i < n; i++) result[i] = native[i].ToBand();
         return result;
     }
 
@@ -192,7 +190,7 @@ public sealed class Mic : IDisposable
     public MicLevels GetLevels(TimeSpan? window = null)
     {
         AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_levels(
-            _handle, TimeConvert.ToNanoseconds(window ?? StreamLevels.DefaultWindow), out float peak, out float rms));
+            Handle, TimeConvert.ToNanoseconds(window ?? StreamLevels.DefaultWindow), out var peak, out var rms));
         return new MicLevels(peak, rms);
     }
 
@@ -201,7 +199,7 @@ public sealed class Mic : IDisposable
     {
         get
         {
-            var l = _mixer.ReadLatency();
+            var l = Mixer.ReadLatency();
             return DjMixer.MicNs(l.MicInput[Index]) ?? TimeSpan.Zero;
         }
     }
@@ -211,24 +209,24 @@ public sealed class Mic : IDisposable
     {
         get
         {
-            var l = _mixer.ReadLatency();
+            var l = Mixer.ReadLatency();
             return DjMixer.MicNs(l.MicMonitor[Index]) ?? TimeSpan.Zero;
         }
     }
 
-    internal nint NativeHandle => _handle.IsClosed ? 0 : _handle.DangerousGetHandle();
+    internal nint NativeHandle => Handle.IsClosed ? 0 : Handle.DangerousGetHandle();
 
-    internal MicHandle Handle => _handle;
+    internal MicHandle Handle { get; }
 
-    internal bool IsDisposed => _handle.IsClosed;
+    internal bool IsDisposed => Handle.IsClosed;
 
-    private float Get(int p)
+    float Get(int p)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_param(_handle, p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mic_get_param(Handle, p, out var v));
         return v;
     }
 
-    private void Set(int p, float v) => AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_param(_handle, p, v));
+    void Set(int p, float v) => AudioException.ThrowIfFailed(NativeMethods.fa_mic_set_param(Handle, p, v));
 
     /// <summary>
     /// Removes the mic, and closes its input device when no other mic uses it. Safe from an
@@ -236,7 +234,7 @@ public sealed class Mic : IDisposable
     /// </summary>
     public void Dispose()
     {
-        _mixer.Forget(this);
-        _handle.Dispose();
+        Mixer.Forget(this);
+        Handle.Dispose();
     }
 }

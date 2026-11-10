@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,13 +5,13 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decode natively, with the dynamic range modes.</summary>
 public class DolbyTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static string FindTestFile(string relative)
+    static string FindTestFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            string p = Path.Combine(dir.FullName, relative);
+            var p = Path.Combine(dir.FullName, relative);
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException(relative);
@@ -36,7 +35,7 @@ public class DolbyTests
     public void DynamicRange_OptionAndProperty()
     {
         using var engine = CreateHeadless();
-        string path = FindTestFile("tests/data/dolby/stereo.ec3");
+        var path = FindTestFile("tests/data/dolby/stereo.ec3");
         using var full = engine.OpenFile(path, new StreamOptions { DecodeOnly = true });
         Assert.Equal(DynamicRange.Full, full.DynamicRange);
         using var night = engine.OpenFile(path, new StreamOptions { DecodeOnly = true, DynamicRange = DynamicRange.Night });
@@ -55,7 +54,7 @@ public class DolbyTests
     {
         using var engine = CreateHeadless();
         using var output = engine.OpenOutput();
-        string path = FindTestFile("tests/data/dolby/mix_alt.ac3");
+        var path = FindTestFile("tests/data/dolby/mix_alt.ac3");
         using var auto = engine.OpenFile(path);
         Assert.Equal(DolbyDownmix.Auto, auto.DolbyDownmix);
         using var engineMix = engine.OpenFile(path, new StreamOptions { DolbyDownmix = DolbyDownmix.Engine });
@@ -79,7 +78,7 @@ public class DolbyTests
         engine.SetDialnorm(true);
         using var s = engine.OpenFile(FindTestFile("tests/data/dolby/mix_alt.ac3"));
         Loudness l = s.GetLoudness();
-        for (int i = 0; i < 400 && !l.IsFinal; i++)
+        for (var i = 0; i < 400 && !l.IsFinal; i++)
         {
             await Task.Delay(10);
             l = s.GetLoudness();

@@ -58,7 +58,7 @@ public sealed record LyricStyle
     public static LyricStyle FromPreset(LyricPreset preset) =>
         Enum.IsDefined(preset) ? new LyricStyle(Preset(preset)) : throw new ArgumentOutOfRangeException(nameof(preset));
 
-    private static unsafe FaLyricStyle Preset(LyricPreset preset)
+    static unsafe FaLyricStyle Preset(LyricPreset preset)
     {
         FaLyricStyle s;
         NativeMethods.fa_lyric_style_init(&s, (int)preset);
@@ -228,7 +228,7 @@ public sealed record LyricStyle
     /// <summary>The copyright.</summary>
     public CdgColor CopyrightColor { get; init; }
 
-    private unsafe LyricStyle(FaLyricStyle style)
+    unsafe LyricStyle(FaLyricStyle style)
     {
         var s = &style;
         FontFamily = NativeText.ReadOrNull(s->FontFamily);
@@ -300,7 +300,7 @@ public sealed record LyricStyle
         CopyrightColor = SurfaceInterop.FromArgb(s->CopyrightColor);
     }
 
-    private static int Ms(TimeSpan t, string name) =>
+    static int Ms(TimeSpan t, string name) =>
         t >= TimeSpan.Zero && t <= TimeSpan.FromMinutes(1)
             ? (int)Math.Round(t.TotalMilliseconds)
             : throw new ArgumentOutOfRangeException(name, t, "Out of range.");
@@ -370,10 +370,10 @@ public sealed record LyricStyle
         s.TitleColor = SurfaceInterop.Argb(TitleColor);
         s.InfoColor = SurfaceInterop.Argb(InfoColor);
         s.CopyrightColor = SurfaceInterop.Argb(CopyrightColor);
-        nint family = NativeText.Alloc(FontFamily);
-        nint path = NativeText.Alloc(FontPath);
-        nint fallback = NativeText.Alloc(FallbackTitle);
-        nint labels = NativeText.Alloc(Labels);
+        var family = NativeText.Alloc(FontFamily);
+        var path = NativeText.Alloc(FontPath);
+        var fallback = NativeText.Alloc(FallbackTitle);
+        var labels = NativeText.Alloc(Labels);
         try
         {
             s.FontFamily = family;
@@ -424,22 +424,19 @@ public sealed record LyricStyle
 /// </example>
 public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
 {
-    private readonly AudioStream _stream;
-    private readonly object _lock = new();
-    private readonly PixelRect[] _dirty = new PixelRect[8];
-    private PixelSize _presentationSize;
-    private bool _renderAhead;
-    private LyricStyle _style;
-    private nint _native;
-    private int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
+    readonly object _lock = new();
+    readonly PixelRect[] _dirty = new PixelRect[8];
+    LyricStyle _style;
+    nint _native;
+    int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
 
     internal LyricSurface(AudioStream stream, LyricStyle style)
     {
-        _stream = stream;
+        Stream = stream;
         var handle = stream.Handle;
         _native = style.WithNative(s =>
         {
-            int rc = NativeMethods.fa_lyric_surface_create(handle, (FaLyricStyle*)s, out nint native);
+            var rc = NativeMethods.fa_lyric_surface_create(handle, (FaLyricStyle*)s, out var native);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Not a MIDI stream, or a style value out of its range.", nameof(style));
             AudioException.ThrowIfFailed(rc);
@@ -450,7 +447,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <summary>The stream whose lyrics this surface draws.</summary>
-    public AudioStream Stream => _stream;
+    public AudioStream Stream { get; }
 
     /// <summary>
     /// The style. Setting it builds the lines again and draws the next frame in full (a new
@@ -464,23 +461,20 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            using (var held = Hold())
-            {
-                nint native = held.Native;
-                int rc = value.WithNative(s => NativeMethods.fa_lyric_surface_set_style(native, (FaLyricStyle*)s));
-                if (rc == (int)ErrorCode.InvalidArgument)
-                    throw new ArgumentException("A style value is out of its range.", nameof(value));
-                AudioException.ThrowIfFailed(rc);
-                _style = value;
-            }
+            using var held = Hold();
+            var native = held.Native;
+            var rc = value.WithNative(s => NativeMethods.fa_lyric_surface_set_style(native, (FaLyricStyle*)s));
+            if (rc == (int)ErrorCode.InvalidArgument)
+                throw new ArgumentException("A style value is out of its range.", nameof(value));
+            AudioException.ThrowIfFailed(rc);
+            _style = value;
         }
     }
 
     /// <inheritdoc/>
     public PixelSize PresentationSize
     {
-        get => _presentationSize;
-        set
+        get; set
         {
             ArgumentOutOfRangeException.ThrowIfNegative(value.Width, nameof(value));
             ArgumentOutOfRangeException.ThrowIfNegative(value.Height, nameof(value));
@@ -489,19 +483,18 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             using (var held = Hold())
                 AudioException.ThrowIfFailed(
                     NativeMethods.fa_surface_set_presentation_size(held.Native, (uint)value.Width, (uint)value.Height));
-            _presentationSize = SurfaceInterop.ClampPresentation(value);
+            field = SurfaceInterop.ClampPresentation(value);
         }
     }
 
     /// <inheritdoc/>
     public bool RenderAhead
     {
-        get => _renderAhead;
-        set
+        get; set
         {
             using (var held = Hold())
                 AudioException.ThrowIfFailed(NativeMethods.fa_surface_set_render_ahead(held.Native, value ? 1 : 0));
-            _renderAhead = value;
+            field = value;
         }
     }
 
@@ -539,11 +532,11 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         if (destination == 0) throw new ArgumentNullException(nameof(destination));
         FaSurfaceFrame f = default;
         f.StructSize = (uint)sizeof(FaSurfaceFrame);
-        long t = time is { } at ? TimeConvert.ToNanoseconds(at) : long.MinValue;
-        var handle = Enter(out bool added);
+        var t = time is { } at ? TimeConvert.ToNanoseconds(at) : long.MinValue;
+        var handle = Enter(out var added);
         try
         {
-            nint native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
+            var native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
             ObjectDisposedException.ThrowIf(native == 0, this);
             try
             {
@@ -559,8 +552,8 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         {
             if (added) handle.DangerousRelease();
         }
-        int count = (int)Math.Min(f.DirtyCount, 8u);
-        for (int i = 0; i < count; i++)
+        var count = (int)Math.Min(f.DirtyCount, 8u);
+        for (var i = 0; i < count; i++)
             _dirty[i] = new PixelRect(f.Dirty[i * 4], f.Dirty[i * 4 + 1], f.Dirty[i * 4 + 2], f.Dirty[i * 4 + 3]);
         return new SurfaceUpdate(f, _dirty.AsSpan(0, count), default, default, default);
     }
@@ -578,9 +571,9 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <summary>The stream held (which keeps the native surface alive) and the lock taken, for a native call.</summary>
-    private Held Hold()
+    Held Hold()
     {
-        var handle = Enter(out bool added);
+        var handle = Enter(out var added);
         Monitor.Enter(_lock);
         if (_native == 0)
         {
@@ -592,18 +585,18 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <summary>Holds the stream for a native call, which keeps the native stream (and so this surface) alive.</summary>
-    private StreamHandle Enter(out bool added)
+    StreamHandle Enter(out bool added)
     {
-        var handle = _stream.Handle;
+        var handle = Stream.Handle;
         added = false;
         handle.DangerousAddRef(ref added);
         return handle;
     }
 
-    private readonly ref struct Held
+    readonly ref struct Held
     {
-        private readonly LyricSurface _owner;
-        private readonly StreamHandle? _handle;
+        readonly LyricSurface _owner;
+        readonly StreamHandle? _handle;
 
         public Held(LyricSurface owner, StreamHandle? handle)
         {
@@ -624,7 +617,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     {
         lock (_lock)
         {
-            nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+            var native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
             if (native != 0) NativeMethods.fa_surface_destroy(native);
         }
     }
@@ -633,10 +626,10 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     public void Dispose()
     {
         StreamHandle handle;
-        bool added = false;
+        var added = false;
         try
         {
-            handle = _stream.Handle;
+            handle = Stream.Handle;
             handle.DangerousAddRef(ref added);
         }
         catch (ObjectDisposedException)
@@ -648,7 +641,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         {
             lock (_lock)
             {
-                nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+                var native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
                 if (native == 0) return;
                 NativeMethods.fa_surface_destroy(native);
             }

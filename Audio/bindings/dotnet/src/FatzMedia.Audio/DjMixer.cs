@@ -7,7 +7,7 @@ namespace FatzMedia.Audio;
 /// <summary>Where the headphone cue of a <see cref="DjMixer"/> goes.</summary>
 public sealed class CueOutput
 {
-    private CueOutput(int mode, int firstChannel, AudioDeviceInfo? headphones = null, bool lineUp = true)
+    CueOutput(int mode, int firstChannel, AudioDeviceInfo? headphones = null, bool lineUp = true)
     {
         Mode = mode;
         FirstChannel = firstChannel;
@@ -213,27 +213,25 @@ public readonly record struct DeckLoopTime(TimeSpan In, TimeSpan Out);
 /// </example>
 public sealed partial class DjMixer : IDisposable
 {
-    private readonly nint _mixer;
-    private readonly DjDeck[] _decks;
-    private readonly List<Mic> _mics = new();
-    private IReadOnlyList<Mic> _micsView = Array.Empty<Mic>();   // what Mics returns: made again only when a mic comes or goes
+    readonly DjDeck[] _decks;
+    readonly List<Mic> _mics = [];
 
     internal unsafe DjMixer(AudioEngine engine, nint mixer, OutputDevice output)
     {
         Engine = engine;
-        _mixer = mixer;
+        Native = mixer;
         Output = output;
         _decks = new DjDeck[2];
-        for (int i = 0; i < _decks.Length; i++)
+        for (var i = 0; i < _decks.Length; i++)
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_deck(mixer, (uint)i, out nint d));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_deck(mixer, (uint)i, out var d));
             _decks[i] = new DjDeck(this, i, d);
         }
         Crossfader = new DjCrossfader(this);
         AutoMix = new DjAutoMix(this);
         // The state lives until the device closes (fa_mixer_destroy waits for running callbacks).
         var gc = output.Handle.Pin(new EventState(this));
-        int rc = NativeMethods.fa_mixer_set_event_callback(mixer, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
+        var rc = NativeMethods.fa_mixer_set_event_callback(mixer, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
         if (rc < 0)
         {
             output.Handle.Unpin(gc);
@@ -276,7 +274,7 @@ public sealed partial class DjMixer : IDisposable
         set => Set(ParamCueTrimMs, (float)value.TotalMilliseconds);
     }
 
-    private const MixerParameter ParamCueTrimMs = (MixerParameter)4;   // FA_MIX_CUE_TRIM_MS: not rampable, so not public
+    const MixerParameter ParamCueTrimMs = (MixerParameter)4;   // FA_MIX_CUE_TRIM_MS: not rampable, so not public
 
     /// <summary>
     /// Second-device cue: opens other headphones, or the same again after <see cref="CueLost"/>. The cue is silent
@@ -291,10 +289,10 @@ public sealed partial class DjMixer : IDisposable
         if (headphones is { Kind: not DeviceKind.Playback })
             throw new ArgumentException("Not a playback device.", nameof(headphones));
         using var lease = Lease();
-        byte* id = headphones?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
+        var id = headphones?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
         try
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_cue_device(_mixer, id));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_cue_device(Native, id));
         }
         finally
         {
@@ -308,7 +306,7 @@ public sealed partial class DjMixer : IDisposable
         get
         {
             using var lease = Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_output_channels(_mixer, out uint ch, out _));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_output_channels(Native, out var ch, out _));
             return (int)ch;
         }
     }
@@ -322,7 +320,7 @@ public sealed partial class DjMixer : IDisposable
         get
         {
             using var lease = Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_output_channels(_mixer, out _, out int cue));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_output_channels(Native, out _, out var cue));
             return cue < 0 ? null : cue;
         }
     }
@@ -332,9 +330,11 @@ public sealed partial class DjMixer : IDisposable
     {
         get
         {
-            lock (_mics) return _micsView;
+            lock (_mics) return field;
         }
-    }
+
+        private set;
+    } = [];
 
     /// <summary>
     /// Adds a karaoke mic. It fades in once its input runs. Two mics can share a 2-input interface (channels 0 and 1).
@@ -357,14 +357,14 @@ public sealed partial class DjMixer : IDisposable
         c.Channel = options.Channel ?? -1;
         c.Monitor = options.Monitor ? 1 : 0;
         c.Flags = (options.DucksMusic ? 1u : 0u) | (options.KeepOsProcessing ? 2u : 0u);
-        byte* id = options.Device?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
+        var id = options.Device?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
         var handle = new MicHandle();
         using var lease = Lease();
         nint native;
         try
         {
             c.DeviceId = id;
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_add_mic(_mixer, &c, out native));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_add_mic(Native, &c, out native));
         }
         finally
         {
@@ -384,7 +384,7 @@ public sealed partial class DjMixer : IDisposable
         lock (_mics)
         {
             _mics.Add(mic);
-            _micsView = Array.AsReadOnly(_mics.ToArray());
+            Mics = Array.AsReadOnly(_mics.ToArray());
         }
         return mic;
     }
@@ -393,7 +393,7 @@ public sealed partial class DjMixer : IDisposable
     {
         lock (_mics)
         {
-            if (_mics.Remove(mic)) _micsView = Array.AsReadOnly(_mics.ToArray());
+            if (_mics.Remove(mic)) Mics = Array.AsReadOnly(_mics.ToArray());
         }
     }
 
@@ -409,13 +409,13 @@ public sealed partial class DjMixer : IDisposable
         get
         {
             using var lease = Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency_mode(_mixer, out int mode));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency_mode(Native, out var mode));
             return (LatencyMode)mode;
         }
         set
         {
             using var lease = Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_latency_mode(_mixer, (int)value));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_latency_mode(Native, (int)value));
         }
     }
 
@@ -456,7 +456,7 @@ public sealed partial class DjMixer : IDisposable
         return Task.Run(() => MeasureLatency(mic, options), cancellationToken);
     }
 
-    private unsafe LatencyCheck MeasureLatency(Mic mic, LatencyCheckOptions options)
+    unsafe LatencyCheck MeasureLatency(Mic mic, LatencyCheckOptions options)
     {
         FaLatencyCheckConfig c;
         FaLatencyCheck r = default;
@@ -465,9 +465,9 @@ public sealed partial class DjMixer : IDisposable
         c.MaxLevelDb = options.MaxLevelDb;
         c.MaxMonitor = TimeConvert.ToNanoseconds(options.MaxMonitor);
         r.StructSize = (uint)sizeof(FaLatencyCheck);
-        using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_measure_latency(_mixer, mic.Handle, &c, &r));
+        using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_measure_latency(Native, mic.Handle, &c, &r));
         var modes = new LatencyCheckMode[Math.Min(r.Count, 3)];
-        for (int i = 0; i < modes.Length; i++)
+        for (var i = 0; i < modes.Length; i++)
         {
             var m = i == 0 ? r.Mode0 : i == 1 ? r.Mode1 : r.Mode2;
             modes[i] = new LatencyCheckMode((LatencyMode)m.Mode, m.Result == 0 ? null : (ErrorCode)m.Result,
@@ -482,7 +482,7 @@ public sealed partial class DjMixer : IDisposable
     {
         FaMixerLatency l = default;
         l.StructSize = (uint)sizeof(FaMixerLatency);
-        using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(_mixer, &l));
+        using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(Native, &l));
         return l;
     }
 
@@ -497,7 +497,7 @@ public sealed partial class DjMixer : IDisposable
             var l = ReadLatency();
             var input = new TimeSpan?[2];
             var monitor = new TimeSpan?[2];
-            for (int i = 0; i < 2; i++)
+            for (var i = 0; i < 2; i++)
             {
                 input[i] = MicNs(l.MicInput[i]);
                 monitor[i] = MicNs(l.MicMonitor[i]);
@@ -514,7 +514,7 @@ public sealed partial class DjMixer : IDisposable
         {
             FaMicEffects e;
             NativeMethods.fa_mic_effects_init(&e);
-            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_mic_effects(_mixer, &e));
+            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_mic_effects(Native, &e));
             return new MicEffects
             {
                 ReverbSize = e.ReverbSize,
@@ -534,7 +534,7 @@ public sealed partial class DjMixer : IDisposable
             e.EchoTimeMs = (float)value.EchoTime.TotalMilliseconds;
             e.EchoFeedback = value.EchoFeedback;
             e.EchoTone = value.EchoTone;
-            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_mic_effects(_mixer, &e));
+            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_mic_effects(Native, &e));
         }
     }
 
@@ -548,7 +548,7 @@ public sealed partial class DjMixer : IDisposable
         {
             FaDucking d;
             NativeMethods.fa_ducking_init(&d);
-            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_ducking(_mixer, &d));
+            using (Lease()) AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_ducking(Native, &d));
             if (d.DepthDb == 0f) return null;
             return new Ducking
             {
@@ -564,7 +564,7 @@ public sealed partial class DjMixer : IDisposable
             using var lease = Lease();
             if (value is null)
             {
-                AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_ducking(_mixer, null));
+                AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_ducking(Native, null));
                 return;
             }
             FaDucking d;
@@ -574,7 +574,7 @@ public sealed partial class DjMixer : IDisposable
             d.Hold = TimeConvert.ToNanoseconds(value.Hold);
             d.Release = TimeConvert.ToNanoseconds(value.Release);
             d.ThresholdDb = value.ThresholdDb;
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_ducking(_mixer, &d));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_ducking(Native, &d));
         }
     }
 
@@ -603,13 +603,13 @@ public sealed partial class DjMixer : IDisposable
         if (startAt < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(startAt));
         var handles = new EncoderHandle[encoders.Count];
         var native = new nint[encoders.Count];
-        int added = 0;
+        var added = 0;
         try
         {
             for (; added < handles.Length; added++)
             {
                 var h = (encoders[added] ?? throw new ArgumentNullException(nameof(encoders))).Handle;
-                bool ok = false;
+                var ok = false;
                 h.DangerousAddRef(ref ok);
                 handles[added] = h;
                 native[added] = h.DangerousGetHandle();
@@ -617,13 +617,13 @@ public sealed partial class DjMixer : IDisposable
             using var lease = Lease();
             fixed (nint* p = native)
             {
-                AudioException.ThrowIfFailed(NativeMethods.fa_mixer_start_recording(_mixer, p, (uint)native.Length,
+                AudioException.ThrowIfFailed(NativeMethods.fa_mixer_start_recording(Native, p, (uint)native.Length,
                     startAt is { } t ? TimeConvert.ToNanoseconds(t) : 0, rawTiming ? 1u : 0u));
             }
         }
         finally
         {
-            for (int i = 0; i < added; i++) handles[i].DangerousRelease();
+            for (var i = 0; i < added; i++) handles[i].DangerousRelease();
         }
     }
 
@@ -639,14 +639,14 @@ public sealed partial class DjMixer : IDisposable
     /// </summary>
     public event EventHandler? CueLost;
 
-    private sealed class EventState
+    sealed class EventState
     {
         public EventState(DjMixer m) => Mixer = new WeakReference<DjMixer>(m);
         public WeakReference<DjMixer> Mixer { get; }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe void OnNativeEvent(FaMixerEvent* ev, void* user)
+    static unsafe void OnNativeEvent(FaMixerEvent* ev, void* user)
     {
         try
         {
@@ -660,11 +660,11 @@ public sealed partial class DjMixer : IDisposable
         }
     }
 
-    private void Raise(int type, uint index, nint native)
+    void Raise(int type, uint index, nint native)
     {
-        const int inputLost = 16, cueLost = 17;
+        const int InputLostType = 16, CueLostType = 17;
         if (AutoMix.Raise(type, index)) return;
-        if (type == cueLost)
+        if (type == CueLostType)
         {
             try
             {
@@ -676,7 +676,7 @@ public sealed partial class DjMixer : IDisposable
             }
             return;
         }
-        if (type != inputLost) return;
+        if (type != InputLostType) return;
         Mic? mic;
         lock (_mics) mic = _mics.Find(m => m.NativeHandle == native);
         if (mic is null) return;
@@ -703,7 +703,7 @@ public sealed partial class DjMixer : IDisposable
         var ramp = c.ToNative();
         using (Lease())
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_ramp_param(_mixer, (int)parameter, target,
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_ramp_param(Native, (int)parameter, target,
                 durationNs, startNs, &ramp));
         }
         GC.KeepAlive(c);
@@ -712,28 +712,28 @@ public sealed partial class DjMixer : IDisposable
     internal float Get(MixerParameter p)
     {
         using var _ = Lease();
-        AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_param(_mixer, (int)p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_param(Native, (int)p, out var v));
         return v;
     }
 
     internal void Set(MixerParameter p, float v)
     {
         using var _ = Lease();
-        AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_param(_mixer, (int)p, v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_mixer_set_param(Native, (int)p, v));
     }
 
-    internal nint Native => _mixer;
+    internal nint Native { get; }
 
     /// <summary>Keeps the native mixer alive (it lives as long as its device) for one call.</summary>
     internal DeviceLease Lease() => new(Output.Handle);
 
     internal readonly struct DeviceLease : IDisposable
     {
-        private readonly DeviceHandle _h;
+        readonly DeviceHandle _h;
 
         public DeviceLease(DeviceHandle h)
         {
-            bool ok = false;
+            var ok = false;
             h.DangerousAddRef(ref ok);
             if (!ok) throw new ObjectDisposedException(nameof(DjMixer));
             _h = h;
@@ -759,7 +759,7 @@ public sealed partial class DjMixer : IDisposable
 /// <summary>The crossfader of a <see cref="DjMixer"/>.</summary>
 public sealed class DjCrossfader
 {
-    private readonly DjMixer _mixer;
+    readonly DjMixer _mixer;
 
     internal DjCrossfader(DjMixer mixer) => _mixer = mixer;
 
@@ -772,7 +772,7 @@ public sealed class DjCrossfader
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_crossfader_curve(_mixer.Native, out int c));
+            AudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_crossfader_curve(_mixer.Native, out var c));
             return (CrossfaderCurve)c;
         }
         set
@@ -794,7 +794,7 @@ public sealed class DjCrossfader
 /// <summary>The isolator EQ of a <see cref="DjDeck"/>: three bands split at 250 Hz and 2.5 kHz, flat at 0 dB.</summary>
 public sealed class DeckEq
 {
-    private readonly DjDeck _deck;
+    readonly DjDeck _deck;
 
     internal DeckEq(DjDeck deck) => _deck = deck;
 
@@ -818,10 +818,9 @@ public sealed class DeckEq
 /// </summary>
 public sealed partial class DjDeck
 {
-    private const int ParamXfaderSide = 5, ParamCue = 6;
-    private readonly DjMixer _mixer;
-    private readonly nint _deck;
-    private AudioStream? _stream;
+    const int ParamXfaderSide = 5, ParamCue = 6;
+    readonly DjMixer _mixer;
+    readonly nint _deck;
 
     internal DjDeck(DjMixer mixer, int index, nint deck)
     {
@@ -846,10 +845,12 @@ public sealed partial class DjDeck
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_stream(_deck, out nint native));
-            if (_stream is not null && (native == 0 || _stream.IsDisposed || _stream.NativeHandle != native)) _stream = null;
-            return _stream;
+            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_stream(_deck, out var native));
+            if (field is not null && (native == 0 || field.IsDisposed || field.NativeHandle != native)) field = null;
+            return field;
         }
+
+        private set;
     }
 
     /// <summary>
@@ -868,7 +869,7 @@ public sealed partial class DjDeck
         using (_mixer.Lease())
         {
             var sh = stream?.Handle;
-            bool added = false;
+            var added = false;
             try
             {
                 // A reference for the call: a Dispose on another thread must not free the stream under it.
@@ -882,7 +883,7 @@ public sealed partial class DjDeck
         }
         old?.LeftDeck();
         stream?.JoinedDeck(_mixer.Output);
-        _stream = stream;
+        Stream = stream;
     }
 
     /// <summary>Takes the stream off the deck (it is detached, stays open, and its deck loop is cleared).</summary>
@@ -933,7 +934,7 @@ public sealed partial class DjDeck
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_cue_point(_deck, out long f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_cue_point(_deck, out var f));
             return f;
         }
         set
@@ -955,7 +956,7 @@ public sealed partial class DjDeck
         set => CuePoint = value is { } t ? RequireStream().TimeToFrames(t) : null;
     }
 
-    private AudioStream RequireStream() =>
+    AudioStream RequireStream() =>
         Stream ?? throw new InvalidOperationException("The deck is empty: load a stream first.");
 
     /// <summary>The CDJ cue button: pauses the deck and goes back to the <see cref="CuePoint"/>.</summary>
@@ -980,7 +981,7 @@ public sealed partial class DjDeck
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_loop(_deck, out long i, out long o));
+            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_loop(_deck, out var i, out var o));
             return o > i ? new DeckLoop(i, o) : null;
         }
         set
@@ -1019,7 +1020,7 @@ public sealed partial class DjDeck
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_slip(_deck, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_slip(_deck, out var on));
             return on != 0;
         }
         set
@@ -1035,7 +1036,7 @@ public sealed partial class DjDeck
         get
         {
             using var _ = _mixer.Lease();
-            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_slip_position(_deck, out long frame));
+            AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_slip_position(_deck, out var frame));
             return frame < 0 ? null : frame;   // FA_FRAMES_UNSET
         }
     }
@@ -1088,14 +1089,14 @@ public sealed partial class DjDeck
 
     internal void Set(DeckParameter p, float v) => SetRaw((int)p, v);
 
-    private float GetRaw(int p)
+    float GetRaw(int p)
     {
         using var _ = _mixer.Lease();
-        AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_param(_deck, p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_deck_get_param(_deck, p, out var v));
         return v;
     }
 
-    private void SetRaw(int p, float v)
+    void SetRaw(int p, float v)
     {
         using var _ = _mixer.Lease();
         AudioException.ThrowIfFailed(NativeMethods.fa_deck_set_param(_deck, p, v));

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,22 +6,22 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Silence detection: a stream's edge scan, the analysis kind and its cache, and the detector for pushed PCM.</summary>
 public class SilenceTests
 {
-    private const int Rate = 8000;
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    const int Rate = 8000;
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
     /// <summary>Mono float samples, silent except a 440 Hz tone at 0.5 in each [on, off) span (seconds).</summary>
-    private static float[] Tones(double seconds, params (double On, double Off)[] spans)
+    static float[] Tones(double seconds, params (double On, double Off)[] spans)
     {
         var x = new float[(int)Math.Round(seconds * Rate)];
         foreach (var (on, off) in spans)
         {
             int a = (int)Math.Round(on * Rate), b = (int)Math.Round(off * Rate);
-            for (int i = a; i < b && i < x.Length; i++) x[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * (i - a) / Rate + 0.3));
+            for (var i = a; i < b && i < x.Length; i++) x[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * (i - a) / Rate + 0.3));
         }
         return x;
     }
 
-    private static AudioEngine CreateHeadless(string? cache = null) =>
+    static AudioEngine CreateHeadless(string? cache = null) =>
         AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
     [Fact]
@@ -110,8 +109,8 @@ public class SilenceTests
         // A lone full-scale click at 1 s, four 20 ms ticks from 2 s, the song from 4 to 6 s.
         var x = Tones(7, (4.0, 6.0));
         x[Rate] = 1f;
-        for (int k = 0; k < 4; k++)
-            for (int i = 0; i < Rate / 50; i++)
+        for (var k = 0; k < 4; k++)
+            for (var i = 0; i < Rate / 50; i++)
                 x[(int)((2.0 + 0.5 * k) * Rate) + i] = (float)(0.5 * Math.Sin(2 * Math.PI * 1000 * i / Rate));
 
         using var rms = new SilenceDetector(AudioFormat.Float32(Rate, 1));
@@ -135,7 +134,7 @@ public class SilenceTests
     [Fact]
     public void DetectSilence_LongFile_LeadingAndTrailingOnly_AnalysisHasAll_ThenFromCache()
     {
-        string cache = Path.Combine(Path.GetTempPath(), $"fa-silence-{Guid.NewGuid():N}");
+        var cache = Path.Combine(Path.GetTempPath(), $"fa-silence-{Guid.NewGuid():N}");
         try
         {
             using var engine = CreateHeadless(cache);
@@ -178,7 +177,7 @@ public class SilenceTests
         var want = song.DetectSilence();
 
         using var detector = new SilenceDetector(AudioFormat.Float32(Rate, 1));
-        for (int at = 0; at < x.Length; at += 1234) detector.Feed(x.AsSpan(at, Math.Min(1234, x.Length - at)));
+        for (var at = 0; at < x.Length; at += 1234) detector.Feed(x.AsSpan(at, Math.Min(1234, x.Length - at)));
         var got = detector.GetResult();
         Assert.False(got.IsComplete);
         Assert.Equal(want.FirstAudible, got.FirstAudible);

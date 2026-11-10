@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -8,11 +7,11 @@ namespace FatzMedia.Audio.Tests;
 /// (decode-only, the sine soundfont of <see cref="MidiTests"/>).</summary>
 public class MidiEventTests
 {
-    private const int Rate = 44100;
+    const int Rate = 44100;
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
-    private static float[] ReadAll(AudioStream s, long frames, int piece = 4096)
+    static float[] ReadAll(AudioStream s, long frames, int piece = 4096)
     {
         var all = new float[frames * 2];
         int at = 0, n;
@@ -20,20 +19,20 @@ public class MidiEventTests
         return all;
     }
 
-    private static int FirstSound(float[] x, int from = 0)
+    static int FirstSound(float[] x, int from = 0)
     {
-        for (int i = from; i < x.Length / 2; i++) if (Math.Abs(x[i * 2]) > 1e-6f) return i;
+        for (var i = from; i < x.Length / 2; i++) if (Math.Abs(x[i * 2]) > 1e-6f) return i;
         return -1;
     }
 
-    private static double Rms(float[] x, int from, int to)
+    static double Rms(float[] x, int from, int to)
     {
         double sum = 0;
-        for (int i = from * 2; i < to * 2; i++) sum += x[i] * (double)x[i];
+        for (var i = from * 2; i < to * 2; i++) sum += x[i] * (double)x[i];
         return Math.Sqrt(sum / ((to - from) * 2));
     }
 
-    private static AudioStream OpenSynth(AudioEngine engine, SoundFont font)
+    static AudioStream OpenSynth(AudioEngine engine, SoundFont font)
     {
         var s = engine.OpenMidi(new MidiStreamOptions { SampleRate = Rate }, new StreamOptions { DecodeOnly = true, SoundFont = font });
         s.MidiEffects = false;
@@ -111,7 +110,7 @@ public class MidiEventTests
         using var s = OpenSynth(engine, font);
         // 8193 program changes (2 bytes each): more than FA_MIDI_QUEUE messages is InvalidArgument, not a full queue.
         var bytes = new byte[8193 * 2];
-        for (int i = 0; i < bytes.Length; i += 2) bytes[i] = 0xC0;
+        for (var i = 0; i < bytes.Length; i += 2) bytes[i] = 0xC0;
         var ex = Assert.Throws<AudioException>(() => s.SendMidiBytes(bytes));
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
         Assert.True(s.SendMidiBytes(bytes.AsSpan(0, 8192 * 2)));
