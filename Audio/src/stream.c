@@ -5171,6 +5171,9 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         (fa_load32(&s->eof) || fa_ring_readable(&s->ring) >= prebuffer_frames(s)) &&
         fa_cas32(&s->state, FA_STATE_BUFFERING, FA_STATE_PLAYING)) {
         state = FA_STATE_PLAYING;
+        /* Audio arriving after the ring ran dry (a stall, or a push stream played before its
+         * data came, as after an app's seek) starts with a fade-in, not a step. */
+        if (declick_on(s)) fa_store32(&s->dk_resume, 1);
         if (s->stalled) { s->stalled = 0; push_event(dev, s, FA_EVENT_RESUMED, 0); }
     }
     playing = state == FA_STATE_PLAYING && !norm_start_held(s);
@@ -5209,7 +5212,8 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         int64_t cut = frames_to_cue_out(s, played0);
         if (cut >= 0 && cut <= n) { n = cut; at_cue_out = 1; }
     }
-    if (fa_load32(&s->dk_resume) && fa_exchange32(&s->dk_resume, 0)) fi_n = declick_frames(dev->rate);
+    /* Spent only on a callback that has audio to fade in. */
+    if (n > 0 && fa_load32(&s->dk_resume) && fa_exchange32(&s->dk_resume, 0)) fi_n = declick_frames(dev->rate);
     if ((dk = fa_load32(&s->dk_req)) != 0) {
         dk_n = declick_frames(dev->rate);
         if (n > dk_n) n = dk_n;

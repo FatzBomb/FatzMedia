@@ -28,6 +28,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- Push, live and web streams: audio that arrives after the stream ran dry (a stall, or an app's seek: pause, flush, play, then push the new position) started with a step, a click. It now fades in over 1.5 ms, as a resume after a pause does; the resume fade is also no longer spent on a callback that had nothing to play.
 - Windows: a failed write of the analysis cache left a stray `.tmp` file next to a cache path with non-ASCII characters.
 - .NET `DjMixer`: a failed event-callback registration left its state pinned until the device closed.
 - Windows HTTPS: after a pooled connection the server had closed, the one retry could pick another stale connection and fail; the retry now starts from an empty connection pool.

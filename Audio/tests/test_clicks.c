@@ -39,6 +39,22 @@ static uint8_t* make_sine_wav(uint32_t frames, double hz, uint32_t rate, size_t*
     return b;
 }
 
+/* Renders like the device would: without waiting for the streams to have audio. */
+static void render_now(int64_t frames)
+{
+    float out[PERIOD * 2];
+    while (frames > 0) {
+        uint32_t n = frames < PERIOD ? (uint32_t)frames : PERIOD, i;
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_device_render(g_dev, out, n);
+        fa_fetch_add64(&g_dev->epoch, 1);
+        for (i = 0; i < n; i++)
+            if (g_rec_frames + i < MAX_REC) g_rec[g_rec_frames + i] = out[i * 2];
+        g_rec_frames += n;
+        frames -= n;
+    }
+}
+
 static void render(int64_t frames)
 {
     float out[PERIOD * 2];
@@ -236,6 +252,43 @@ int main(void)
                 fa_stream_close(s);
             }
         }
+    }
+    {
+        /* A push stream an app seeks: paused (it fades out), flushed and played again before the
+         * new position's audio is pushed, so the device plays it empty for a while. The resume
+         * fade-in must wait for that audio instead of being spent on callbacks with nothing in them. */
+        const double hz = 440.0;
+        const uint32_t rate = g_dev->rate == 44100 ? 48000 : 44100, chunk = rate / 5;   /* resampled, as video audio is */
+        fa_audio_format f;
+        fa_stream* s = NULL;
+        float* pcm = (float*)malloc(sizeof(float) * chunk);
+        const void* planes[1];
+        uint32_t i;
+        memset(&f, 0, sizeof(f));
+        f.sample_format = FA_FORMAT_F32;
+        f.sample_rate = rate;
+        f.channels = 1;
+        if (!pcm || fa_stream_open_push(g_engine, &f, NULL, &s) != FA_OK || fa_stream_attach(s, g_dev, NULL) != FA_OK) {
+            printf("push stream failed\n");
+            return 1;
+        }
+        planes[0] = pcm;
+        for (i = 0; i < chunk; i++) pcm[i] = (float)(0.5 * sin(6.283185307179586 * hz * i / rate));
+        fa_stream_push_pcm(s, planes, chunk, 0);
+        reset();
+        fa_stream_play(s);
+        render(4000);
+        pause_while_rendering(s);
+        fa_stream_push_flush(s);
+        fa_stream_play(s);
+        render_now(1536);
+        for (i = 0; i < chunk; i++) pcm[i] = (float)(0.5 * sin(6.283185307179586 * hz * (i + 777) / rate));
+        fa_stream_push_pcm(s, planes, chunk, 5000000000LL);   /* stamped at the seek target, as an app does */
+        render(4000);
+        if (fa_load32(&s->dk_timeouts) > 0) { g_starved++; report("push stream seek: pause, flush, play, push", hz, 64, g_rec_frames - 2048, thr); }
+        else expect(report("push stream seek: pause, flush, play, push", hz, 64, g_rec_frames - 2048, thr), thr);
+        fa_stream_close(s);
+        free(pcm);
     }
     fa_device_close(g_dev);
     fa_engine_destroy(g_engine);
