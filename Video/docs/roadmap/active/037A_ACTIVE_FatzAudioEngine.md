@@ -11,7 +11,10 @@ and `--audio=fatz`, pinned to `FatzAudio` `1.0.0-rc.1`) merged 2026-11-03, owner
 carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`). Loudness (LUFS)
 normalization on the FatzAudio engine implemented 2026-11-04, pending owner smoke
 (`updates/037A_Normalization`; FatzAudio request 12 for the first-play start,
-`docs/fatzaudio/2026-11-04_MediaControl_Request_NormalizationStart.md`).
+`docs/fatzaudio/2026-11-04_MediaControl_Request_NormalizationStart.md`). FatzAudio delivered
+requests 13 (loudness of fed audio, `source_identity`) and 14 (MP1/MP2; AVI, FLV and MPEG-PS/TS by
+path; DTS and TrueHD through the system decoder), listed under Unreleased in `Audio/CHANGELOG.md`
+(checked 2026-11-10): slice 5 no longer waits on FatzAudio.
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
@@ -96,11 +99,17 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
    0.75-1.5, seeks, loop wraps and pause/resume. Plan (owner 2026-11-05): FFmpeg demuxes every video
    file (AVI/DivX, MPG, TS included); the audio goes to FatzAudio as a packet stream when it decodes
-   the codec (MP3, AC-3, AAC, ...) and as a push stream of FFmpeg-decoded frames otherwise (MP2 until
-   request 14, DTS, TrueHD, ...). Never FFmpeg handles across the libraries. The same push path
+   the codec (MP3, AC-3, AAC, ...) and as a push stream of FFmpeg-decoded frames otherwise (DTS and
+   TrueHD where the system has no decoder, ...; MP2 decodes in FatzAudio since request 14). Never FFmpeg handles across the libraries. The same push path
    replaces the whole-file WAV conversion for audio files FatzAudio cannot decode (no open delay).
-   Normalization for these streams needs request 13 (scan from fed audio, source identity); FatzAudio
-   request 14 asks for MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path and DTS core
+   Normalization for these streams uses request 13 (delivered): open the stream with
+   `StreamOptions.SourceIdentity` (the original file's fingerprint) so FatzAudio's cache applies, and
+   feed a `LoudnessScan` from the demuxed packets in the background before the first play, skipped
+   when `WantsMore` is false (cached). A film's fed scan costs minutes of CPU and a second read of the
+   file, so for long files prefer tags, the cache or a library pre-scan, else the running estimate
+   and glide (FatzAudio `docs/features/normalization.md`, "Streams you feed"). Files FatzAudio now
+   opens by path (AVI, MPG, TS) can be scanned by path. Request 14 (delivered) covers MP1/MP2,
+   AVI/FLV and MPEG-PS/TS by path, and DTS/TrueHD through the system decoder
    (`docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`). FatzAudio suggests `BufferMs` 250
    for video soundtracks. Also the explicit output device for FatzAudio (owner 2026-11-03:
    `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event

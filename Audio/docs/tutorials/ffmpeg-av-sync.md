@@ -38,4 +38,21 @@ Pushing never blocks, so keep about a second queued (`Buffered`). When the queue
 
 Seek your demuxer, call `audio.Flush()`, and push from the new position. For DTS, TrueHD or anything else FatzMedia.Audio rejects, decode with FFmpeg and push frames with `engine.CreatePushStream(...)` and `PushFrame(...)`.
 
+## 4. Loudness for a stream you feed
+
+A packet or push stream has no file for FatzMedia.Audio to read again, so it plays on the running estimate unless you help. Name the song on the stream and feed a loudness scan from the same file, in the background, before its first play:
+
+```csharp
+var id = AudioFingerprint.Compute(path);                 // the original file
+using (var scan = engine.OpenLoudnessScan(p, id, new LoudnessScanOptions { Duration = duration }))
+{
+    while (scan.WantsMore && ReadNextAudioPacket(out var packet))   // false at once when cached
+        scan.PushPacket(packet);
+    scan.Finish();                                       // stored in the cache
+}
+using var audio = engine.OpenPackets(p, new StreamOptions { SourceIdentity = id });
+```
+
+A film's scan takes minutes of CPU, so for long files prefer tags, the cache or a pre-scan at library import. Details: [streams you feed](../features/normalization.md#streams-you-feed-packets-and-decoded-frames).
+
 Full details, the C calls and the error cases: [FFmpeg hand-off and A/V sync](../features/ffmpeg.md).
