@@ -31,17 +31,19 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     // A push whose start is this close to where the previous one ended continues it (no timestamp):
     // containers round frame times (Matroska to 1 ms), and contiguous PCM is never re-stamped for that.
     const double ContinuationToleranceSeconds = 0.02;
+    const int MicrosecondsPerSecond = 1_000_000;
 
     readonly FatzAudioEngine _owner;
     readonly Fa.AudioEngine _engine;
     readonly Fa.MixBus _bus;
     readonly NormalizationOptions _normalization;
+    readonly bool _decodesPackets;
     readonly object? _diagnosticOwner;
 
     // Guards the stream and everything bound to it: the engine calls most members under its own lock,
     // the fade runner and the equalizer come from other threads.
     readonly Lock _gate = new();
-    Fa.PushAudioStream? _stream;
+    Fa.FeedAudioStream? _stream;
     // Loudness scans still running; they cannot be cancelled. Close does not wait for them, Dispose does.
     readonly HashSet<Task> _scans = [];
     double _volume = 1;
@@ -55,9 +57,10 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     double _clockAtRestart;
     bool _disposed;
 
-    internal FatzAudioPushAudioOutput(FatzAudioEngine owner, Fa.AudioEngine engine, Fa.OutputDevice device, NormalizationOptions normalization)
+    internal FatzAudioPushAudioOutput(FatzAudioEngine owner, Fa.AudioEngine engine, Fa.OutputDevice device, NormalizationOptions normalization, bool decodesPackets = false)
     {
         _owner = owner;
+        _decodesPackets = decodesPackets;
         _engine = engine;
         _normalization = normalization;
         _diagnosticOwner = DiagnosticRouter.Owner;
@@ -124,7 +127,60 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
 
     public IMidiEventReader? GetMidiEventReader() => null;
 
-    public bool Create(int sampleRate, int channels, string? sourcePath)
+    public bool Create(int sampleRate, int channels, string? sourcePath) =>
+        OpenFeed(options => _engine.CreatePushStream(new Fa.AudioFormat(Fa.SampleFormat.Float32, sampleRate, channels), options), sourcePath);
+
+    /// <summary>
+    /// A packet stream when FatzAudio is to decode soundtracks (<c>MediaPlayerConfiguration.AudioEngineDecodesSoundtracks</c>)
+    /// and the codec is one it decodes on every platform; timestamps in microseconds of our continuous timeline.
+    /// </summary>
+    public bool CreateForPackets(PacketCodecInfo codec, string? sourcePath)
+    {
+        if (!_decodesPackets || !FatzAudioMappings.DecodesPackets(codec.Codec))
+            return false;
+
+        var parameters = new Fa.CodecParameters(codec.Codec, codec.SampleRate, codec.Channels)
+        {
+            ExtraData = codec.ExtraData,
+            BitRate = codec.BitRate,
+            BlockAlign = codec.BlockAlign,
+            BitsPerCodedSample = codec.BitsPerCodedSample,
+            TimeBase = new Fa.Rational(1, MicrosecondsPerSecond),
+        };
+        if (!OpenFeed(options => _engine.OpenPackets(parameters, options), sourcePath))
+            return false;
+
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"FatzAudio decodes the soundtrack ({codec.Codec}, {codec.SampleRate} Hz, {codec.Channels} channels); FFmpeg only demuxes.", sourcePath: sourcePath);
+        return true;
+    }
+
+    public bool PushPacket(ReadOnlySpan<byte> data, double continuousStartSeconds, double durationSeconds)
+    {
+        lock (_gate)
+        {
+            if (_stream is not Fa.PacketAudioStream stream || data.IsEmpty)
+                return false;
+
+            var stamp = _nextContinuousStart is { } expected && Math.Abs(continuousStartSeconds - expected) <= ContinuationToleranceSeconds
+                ? Fa.FeedAudioStream.NoTimestamp
+                : (long)Math.Round(Math.Max(0, continuousStartSeconds) * MicrosecondsPerSecond);
+            try
+            {
+                stream.PushPacket(data, stamp, (long)Math.Round(Math.Max(0, durationSeconds) * MicrosecondsPerSecond));
+            }
+            catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or ArgumentException)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Packet push failed: {ex.Message}", innerException: ex);
+                return false;
+            }
+
+            _nextContinuousStart = continuousStartSeconds + durationSeconds;
+            return true;
+        }
+    }
+
+    /// <summary>Opens a fed stream (PCM or packets) attached to this output's bus and paused, with the current settings.</summary>
+    bool OpenFeed(Func<Fa.StreamOptions, Fa.FeedAudioStream> open, string? sourcePath)
     {
         Fa.AudioFingerprint? identity = null;
         if (sourcePath is not null)
@@ -139,12 +195,10 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
             }
         }
 
-        Fa.PushAudioStream? stream = null;
+        Fa.FeedAudioStream? stream = null;
         try
         {
-            stream = _engine.CreatePushStream(
-                new Fa.AudioFormat(Fa.SampleFormat.Float32, sampleRate, channels),
-                new Fa.StreamOptions { SourceIdentity = identity });
+            stream = open(new Fa.StreamOptions { SourceIdentity = identity });
             stream.LoudnessFinal += OnLoudnessFinal;
             lock (_gate)
             {
@@ -165,7 +219,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
         }
         catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException or InvalidOperationException or ArgumentException)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"FatzAudio push stream failed: {ex.Message}", sourcePath: sourcePath, innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, Category, $"FatzAudio soundtrack stream failed: {ex.Message}", sourcePath: sourcePath, innerException: ex);
             if (stream is not null)
             {
                 stream.LoudnessFinal -= OnLoudnessFinal;
@@ -179,7 +233,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
 
     public void Release()
     {
-        Fa.PushAudioStream? stream;
+        Fa.FeedAudioStream? stream;
         lock (_gate)
         {
             stream = _stream;
@@ -200,7 +254,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     {
         lock (_gate)
         {
-            if (_stream is not { } stream || interleavedFloat.IsEmpty)
+            if (_stream is not Fa.PushAudioStream stream || interleavedFloat.IsEmpty)
                 return false;
 
             // Stamp the first push after a restart, and any jump; contiguous audio just continues.
@@ -375,7 +429,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
 
     // FatzAudio's cache keeps the result for the next play; the playing stream gets it now (a scan by
     // path does not reach a push stream by itself).
-    void Scan(Fa.PushAudioStream stream, string filePath)
+    void Scan(Fa.FeedAudioStream stream, string filePath)
     {
         using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         try
@@ -450,7 +504,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
 
     void OnLoudnessFinal(object? sender, EventArgs e)
     {
-        if (sender is Fa.PushAudioStream stream)
+        if (sender is Fa.FeedAudioStream stream)
             QueueNormalizationGainChanged(stream);
     }
 
@@ -459,7 +513,7 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
     /// handlers never run on the scan thread (which <see cref="Release"/> joins under the engine's lock) or
     /// on FatzAudio's event thread (which a stream's disposal may wait for).
     /// </summary>
-    void QueueNormalizationGainChanged(Fa.PushAudioStream stream)
+    void QueueNormalizationGainChanged(Fa.FeedAudioStream stream)
     {
         using var owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         _ = Task.Run(() =>
@@ -493,13 +547,13 @@ sealed class FatzAudioPushAudioOutput : IPushAudioOutput
         }
     }
 
-    bool Try(Action<Fa.PushAudioStream> action, string operation)
+    bool Try(Action<Fa.FeedAudioStream> action, string operation)
     {
         lock (_gate)
             return TryLocked(action, operation);
     }
 
-    bool TryLocked(Action<Fa.PushAudioStream> action, string operation)
+    bool TryLocked(Action<Fa.FeedAudioStream> action, string operation)
     {
         if (_stream is not { } stream)
             return false;

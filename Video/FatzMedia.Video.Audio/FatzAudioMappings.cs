@@ -232,4 +232,13 @@ static class FatzAudioMappings
         Outline = new Fa.OutlineEffect(),
         Shadow = new Fa.ShadowEffect { Size = 0.3f, Fade = 0.5f },
     };
+
+    // Codecs FatzAudio decodes itself on every platform (no system decoder needed), by FFmpeg's names.
+    static readonly HashSet<string> PacketCodecs = new(StringComparer.Ordinal) { "mp3", "mp2", "aac", "ac3", "eac3", "flac", "opus", "vorbis" };
+
+    /// <summary>
+    /// Whether FatzAudio decodes a soundtrack of FFmpeg's <paramref name="codec"/> from its packets on every platform:
+    /// MP3, MP2, AAC, AC-3, E-AC-3, FLAC, Opus, Vorbis. Others (DTS, TrueHD, PCM in odd layouts...) stay decoded by FFmpeg.
+    /// </summary>
+    public static bool DecodesPackets(string codec) => PacketCodecs.Contains(codec);
 }

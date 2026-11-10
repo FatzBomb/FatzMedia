@@ -163,6 +163,9 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
 
+    /// <summary>Gets whether FatzAudio decodes video soundtracks from FFmpeg's packets (<c>--video-audio=fatz</c>); FFmpeg decodes otherwise.</summary>
+    public bool AudioEngineDecodesSoundtracks { get; init; }
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
@@ -237,6 +240,7 @@ public sealed record PlayerStartupOptions
             UnknownAudioEngine = audio is not null && PlayerAudioEngineRules.Parse(audio) is null ? audio : null,
             AudioDevice = Values(args, "--audio-device=").LastOrDefault(static value => !string.IsNullOrWhiteSpace(value)),
             CdgScaling = ParseCdgScaling(args),
+            AudioEngineDecodesSoundtracks = Values(args, "--video-audio=").LastOrDefault() is { } videoAudio && IsValue(videoAudio, "fatz"),
             SoftwareDecoding = IsValue(decoding, "software"),
             UnknownDecoding = decoding is null || IsValue(decoding, "software") || IsValue(decoding, "auto") ? null : decoding,
             SecondScreen = Values(args, "--second-screen=", trimQuotes: false)

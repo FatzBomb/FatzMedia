@@ -120,6 +120,13 @@ public sealed class AudioEngineSelectionTests
         Assert.Equal(expected, PlayerStartupOptions.Parse(args).AudioDevice);
 
     [Theory]
+    [InlineData(new string[0], false)]
+    [InlineData(new[] { "--video-audio=fatz" }, true)]
+    [InlineData(new[] { "--video-audio=ffmpeg" }, false)]
+    public void PlayerOption_ParsesWhoDecodesSoundtracks(string[] args, bool engineDecodes) =>
+        Assert.Equal(engineDecodes, PlayerStartupOptions.Parse(args).AudioEngineDecodesSoundtracks);
+
+    [Theory]
     [InlineData(new string[0], false, 0, false)]
     [InlineData(new[] { "--cdg-scale" }, true, 0, false)]
     [InlineData(new[] { "--cdg-scale=6", "--cdg-effects" }, true, 6, true)]

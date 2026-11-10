@@ -196,6 +196,10 @@ if ($Part -in '2', 'both') {
         'Play this quiet file for a few seconds, then open the music video from M1 (Open button) and play it.',
         'Pass if both are about equally loud.') 'Loudness|loudness'
 
+    Run-Check 'M9b' 'soundtrack decoded by FatzAudio (optional switch)' 'Video' @('--video-audio=fatz') @(
+        'The same music video as M1, but FatzAudio decodes its sound (the Log says "FatzAudio decodes the soundtrack").',
+        'Watch lips or drum hits for 20 seconds, seek a few times, set tempo to 125%.',
+        'Pass if sync is as good as in M1 (this switch stays off by default until you say it is good).') 'decodes the soundtrack'
     # M10: network radio needs a URL.
     Write-Host ''
     Write-Host '--- M10 network radio ---' -ForegroundColor Cyan

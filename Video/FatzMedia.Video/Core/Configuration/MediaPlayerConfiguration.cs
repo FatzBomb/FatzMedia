@@ -162,6 +162,14 @@ public readonly record struct MediaPlayerConfiguration
     public CdgScalingOptions CdgScaling { get; init; }
 
     /// <summary>
+    /// With the FatzAudio engine: video soundtracks whose codec it decodes (MP3, MP2, AAC, AC-3, E-AC-3, FLAC, Opus,
+    /// Vorbis) are decoded by FatzAudio from FFmpeg's packets instead of by FFmpeg (only the packets cross). Off by
+    /// default: FFmpeg decodes every soundtrack. After a seek the packet that spans the target plays from its start
+    /// (20-40 ms early); FFmpeg's path trims to the sample. The BASS engine ignores it.
+    /// </summary>
+    public bool AudioEngineDecodesSoundtracks { get; init; }
+
+    /// <summary>
     /// Whether a background video follows the media's transport (default <see langword="false"/>).
     /// <see langword="false"/>: the background loops on its own while it is shown, from the moment it
     /// appears, through the media's pause, stop, end and loop. <see langword="true"/>: it waits for

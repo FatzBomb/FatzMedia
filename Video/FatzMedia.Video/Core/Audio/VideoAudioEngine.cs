@@ -43,6 +43,8 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
     double _streamStartSeconds;
     double? _discardAudioBeforeSeconds;
     double _positionBaseSeconds;
+    /// <summary>Whether the output decodes the compressed packets itself (FatzAudio); FFmpeg then only demuxes.</summary>
+    internal bool IsPacketMode { get; private set; }
     string? _tempPath;
     long _pushedAudioFrameCount;
     double _lastPushedAudioEndSeconds;
@@ -371,8 +373,11 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
         _audioStream = _demuxer.GetStream(AudioStreamIndex);
         _streamStartSeconds = GetStreamStartSeconds(_audioStream);
-        // A local file (analyzed) names its source so the output can recognize the song.
-        if (!InitializeDecoder() || !_output.Create(_sampleRate, _channels, analyzeNormalization ? filePath : null))
+        // A local file (analyzed) names its source so the output can recognize the song. An output that decodes
+        // the codec itself takes the packets; otherwise FFmpeg decodes.
+        var sourcePath = analyzeNormalization ? filePath : null;
+        IsPacketMode = TryCreatePacketOutput(sourcePath);
+        if (!IsPacketMode && (!InitializeDecoder() || !_output.Create(_sampleRate, _channels, sourcePath)))
         {
             CloseCore();
             return false;
@@ -703,6 +708,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
 
         _audioStream = null;
         AudioStreamIndex = -1;
+        IsPacketMode = false;
         _streamStartSeconds = 0;
         _discardAudioBeforeSeconds = null;
         _positionBaseSeconds = 0;
@@ -810,8 +816,65 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         return _audioBuffer != null;
     }
 
+    // Packet mode: the output decodes. Under _sync.
+    bool TryCreatePacketOutput(string? sourcePath)
+    {
+        var parameters = _audioStream->codecpar;
+        var channels = parameters->ch_layout.nb_channels;
+        if (parameters->sample_rate <= 0 || channels <= 0)
+            return false;
+
+        var codec = new PacketCodecInfo(
+            ffmpeg.avcodec_get_name(parameters->codec_id),
+            parameters->sample_rate,
+            channels,
+            parameters->extradata_size > 0 ? new ReadOnlySpan<byte>(parameters->extradata, parameters->extradata_size).ToArray() : null,
+            parameters->block_align,
+            parameters->bits_per_coded_sample,
+            parameters->bit_rate);
+        if (!_output.CreateForPackets(codec, sourcePath))
+            return false;
+
+        _sampleRate = codec.SampleRate;
+        _sourceChannels = _channels = codec.Channels;
+        return true;
+    }
+
+    /// <summary>
+    /// Queues a compressed packet for an output that decodes it, on the continuous timeline as decoded frames are.
+    /// After a seek, packets that end before the target are dropped; the one that spans it plays from its start
+    /// (at most one packet, 20-40 ms, early), and the clock reports where it starts.
+    /// </summary>
+    bool PushCompressedPacket(AVPacket* packet)
+    {
+        var timeBase = ffmpeg.av_q2d(_audioStream->time_base);
+        var timestamp = packet->pts != ffmpeg.AV_NOPTS_VALUE ? packet->pts : packet->dts;
+        var start = timestamp == ffmpeg.AV_NOPTS_VALUE ? _lastPushedAudioEndSeconds : Math.Max(0, (timestamp * timeBase) - _streamStartSeconds);
+        var duration = packet->duration > 0 ? packet->duration * timeBase : 0;
+        if (_discardAudioBeforeSeconds is { } target)
+        {
+            if (duration > 0 && start + duration <= target)
+                return false;
+            _discardAudioBeforeSeconds = null;
+        }
+
+        var end = start + duration;
+        if (!double.IsFinite(end) || end < _lastPushedAudioEndSeconds)
+            end = _lastPushedAudioEndSeconds + duration;
+
+        if (!_output.PushPacket(new ReadOnlySpan<byte>(packet->data, packet->size), end - duration, duration))
+            return false;
+
+        _pushedAudioFrameCount++;
+        _lastPushedAudioEndSeconds = end;
+        return true;
+    }
+
     bool ProcessAudioPacket(AVPacket* packet)
     {
+        if (IsPacketMode)
+            return PushCompressedPacket(packet);
+
         var processed = false;
         if (ffmpeg.avcodec_send_packet(_codecContext, packet) < 0)
             return false;
@@ -944,7 +1007,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         lock (_sync)
         {
             if (_codecContext != null)
-                ffmpeg.avcodec_flush_buffers(_codecContext);
+                ffmpeg.avcodec_flush_buffers(_codecContext);   // none in packet mode: the output decodes
 
             _discardAudioBeforeSeconds = seconds;
         }

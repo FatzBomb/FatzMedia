@@ -40,7 +40,13 @@ sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         // --audio=fatz (037A): FatzAudio plays everything, on --audio-device= when given, CD+G scaled with --cdg-scale;
         // BASS stays the default.
         if (App.StartupOptions.AudioEngine == PlayerAudioEngine.FatzAudio)
-            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory(), AudioOutputDeviceId = App.StartupOptions.AudioDevice, CdgScaling = App.StartupOptions.CdgScaling };
+            configuration = configuration with
+            {
+                AudioEngineFactory = new FatzAudioEngineFactory(),
+                AudioOutputDeviceId = App.StartupOptions.AudioDevice,
+                CdgScaling = App.StartupOptions.CdgScaling,
+                AudioEngineDecodesSoundtracks = App.StartupOptions.AudioEngineDecodesSoundtracks
+            };
         return await FatzMediaPlayer.CreateAsync(configuration, NativeLibraryPaths, _platformFactory).ConfigureAwait(false);
     }
 }
