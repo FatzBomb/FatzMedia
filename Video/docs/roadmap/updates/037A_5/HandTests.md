@@ -1,46 +1,37 @@
-# FatzAudio hand tests (037A slices 3-5)
+# FatzAudio hand tests (037A)
 
-For Keith, on the Windows PC with speakers and two screens. About 30 minutes. Each step: run it once with
-`--audio=fatz` and, where it says "compare", once without (BASS). Note pass or fail and anything odd.
-
-## Setup
+Run the script: it measures what it can by itself, then walks you through the rest.
 
 ```powershell
-cd D:\development\FatzBomb\FatzMedia
-git checkout main
-git pull
-dotnet build Video\FatzMedia.Video.sln -c Release
-dotnet run --project Video\FatzMedia.Video.Sample.Player -c Release -- --audio=fatz
+cd D:\development\FatzBomb\FatzMedia\Video
+powershell -ExecutionPolicy Bypass -File scripts\smoke-037A.ps1
 ```
 
-The Log should say `Audio engine: FatzAudio (files, video audio and CD+G; BASS is not used)`.
+About 30 minutes. It builds first, then:
 
-## Video sync (the main ones)
+- **Part 1, measured (about 3 minutes, nothing to do).** Test tones through the video-audio path (FFmpeg decode
+  into FatzAudio), on your default output device (quiet tones; `-SilentPart1` uses FatzAudio's null device
+  instead). It measures sync drift at tempo 0.75, 1.0, 1.25 and 1.5, seeks (landing on the target), loop wraps,
+  pause/resume and one steady minute, and records the output to count clicks and dropouts.
+- **Part 2, your eyes and ears.** For each check the script starts the WPF player with `--audio=fatz`, the right
+  flags and a file you picked, tells you what to look and listen for, and asks Pass, Fail or Skip. On a Fail you
+  can type a comment. It closes the player after each check.
+  1. sync at tempo 0.75 to 1.5 (lips or drum hits against the sound)
+  2. seeks
+  3. loops
+  4. pause and resume
+  5. two screens, 1080p, the first minute: no clicks
+  6. CD+G karaoke (FatzAudio draws it; smooth scrolling should glide)
+  7. Audio-mode soundtrack
+  8. MIDI karaoke (FatzAudio draws the lyrics now)
+  9. loudness (a quiet and a loud file about equally loud)
+  10. network radio (paste a URL)
+  11. output device (`--audio-device=`) and plugging devices in and out
+  12. no BASS at all: the script makes a copy of the player without any `bass*.dll` and plays from it
 
-- [ ] **Tempo 0.75 to 1.5.** Play a music video with clear lip sync or drum hits. Set tempo to 75%, 100%, 125% and
-  150% (pitch stays). At each, watch for 20 seconds: lips and hits stay on the sound, no drift. Compare with BASS.
-- [ ] **Seeks.** Click and drag on the position bar, forward and back, about ten times while playing. After each,
-  picture and sound restart together within a moment; no burst of old audio. Then pause, seek, and play: it starts
-  where you sought.
-- [ ] **Loops.** Turn loop on with a short video (under a minute). Let it wrap three times: no gap, no click at
-  the wrap, the picture wraps with the sound. Turn loop off: it ends once.
-- [ ] **Pause/resume.** Pause and resume ten times at random moments: no click, and sync holds after each resume.
-- [ ] **Two screens, 1080p, first minute.** Start with `--audio=fatz --second-screen=2` (the number of your second screen), play a 1080p video with sound on both screens. Listen to the whole first minute: no clicks, pops or
-  dropouts. (This is ENG-047's second case.)
+Results go to `D:\development\FatzBomb\work\fatzmedia\Video\test-results\FatzBomb-037A-<date>\`
+(`results.txt`, `results.json` and the player logs) and the summary is put on your clipboard: paste it into the
+chat.
 
-## Also
-
-- [ ] **CD+G.** An MP3+G and a ZIP karaoke song: graphics in time with the words; seek, pause and loop keep the
-  picture right. A song you know scrolls smoothly should now glide.
-- [ ] **Audio-mode soundtrack.** `--audio=fatz --mode=audio` with a video file: the sound plays, the position bar
-  moves, seeks work.
-- [ ] **Network audio.** A plain `http://` radio stream and an `https://` one: they play, song titles appear.
-- [ ] **MIDI.** A `.kar`: plays with lyrics; the Log has no `BASSMIDI` lines.
-- [ ] **Loudness.** A quiet and a loud music video one after the other: about the same loudness. The Log shows
-  `Soundtrack loudness ... LUFS`.
-- [ ] **No BASS at all.** Copy the player's output folder to `D:\development\FatzBomb\work\fatzmedia\Video\scratch`,
-  delete every `bass*.dll` from the copy, run the copy with `--audio=fatz`, and play an MP3, an MP3+G and a video
-  with sound. All play. (Without `--audio=fatz` the copy should start with no sound and say BASS was not found.)
-  Delete the copy afterwards.
-
-Report back with the list ticked, and for any fail: the file, what you heard or saw, and the Log lines around it.
+Part 1 was run on 2026-11-10 on this PC (null device): sync drift at most 11.7 ms over 12 s at any tempo, seeks
+landed on the target, loops and pause/resume and seeks had no clicks once the push-stream fade-in fix was in.

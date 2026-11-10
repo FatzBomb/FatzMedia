@@ -31,9 +31,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     static readonly ArrayPool<byte> CompositionBackgroundPool =
         ArrayPool<byte>.Create(maxArrayLength: 64 * 1024 * 1024, maxArraysPerBucket: 4);
-    // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame.
-    static readonly ArrayPool<byte> SubtitleOverlayPool =
-        ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
 
     readonly IMediaEngine _mediaEngine;
     readonly MediaPlayerConfiguration _configuration;
@@ -106,6 +103,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     // (null when the rasterizer returned its own memory). Compositions take a reference to it.
     RetainedFrameBuffer? _subtitleBuffer;
     RetainedFrameBuffer? _subtitleOverlayBuffer;
+    // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame. One pool per
+    // coordinator: an engine that draws lyrics into a returned buffer draws only the change (IKaraokeLyricsSource),
+    // so no other player may write into the arrays meanwhile.
+    readonly ArrayPool<byte> _subtitleOverlayPool = ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
     readonly Func<int, Memory<byte>> _rentSubtitlePixels;
     bool _subtitleBufferRented;
     SubtitleCue[] _subtitleCues = [];
@@ -1572,6 +1573,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
 
+            if (_mediaEngine.Audio is IKaraokeLyricsSource { DrawsLyrics: true } engineLyrics)
+                return UpdateEngineLyricsOverlay(engineLyrics, TimeSpan.FromSeconds(subtitlePosition));
+
             var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
             var karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
             var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
@@ -1624,6 +1628,53 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
     }
 
+    /// <summary>
+    /// The lyric screen the audio engine draws (FatzAudio, 037A) instead of the rasterized lyric cues: into the
+    /// pooled overlay memory, only what changed when that memory still holds the previous frame. Caller holds
+    /// _subtitleGate.
+    /// </summary>
+    bool UpdateEngineLyricsOverlay(IKaraokeLyricsSource source, TimeSpan time)
+    {
+        // The cue path's state no longer describes the overlay.
+        _subtitleCues = [];
+        _subtitleText = null;
+        _subtitleProgressRevision = int.MinValue;
+        try
+        {
+            var overlay = source.DrawLyrics(time, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels, out var changed);
+            if (overlay is null)
+            {
+                if (_subtitleOverlay is null)
+                    return false;
+
+                _subtitleOverlay = null;
+                _subtitleOverlayBuffer = null;
+                _subtitleRevision++;
+                return true;
+            }
+
+            var buffer = _subtitleBufferRented && _subtitleBuffer is { } rented && overlay.Value.Pixels.Span.Overlaps(rented.Memory.Span)
+                ? rented
+                : null;
+            if (!changed && ReferenceEquals(buffer, _subtitleOverlayBuffer) && _subtitleOverlay is not null)
+                return false;
+
+            _subtitleOverlay = overlay;
+            _subtitleOverlayBuffer = buffer;
+            _subtitleRevision++;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Lyric drawing failed: {ex.Message}", innerException: ex);
+            return false;
+        }
+        finally
+        {
+            _subtitleBufferRented = false;
+        }
+    }
+
     // Caller holds _subtitleGate.
     bool IsSameSubtitleCues(IReadOnlyList<SubtitleCue> activeCues)
     {
@@ -1656,7 +1707,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         if (buffer is null || !buffer.IsExclusive || buffer.Length < length)
         {
             buffer?.Release();
-            buffer = RetainedFrameBuffer.Rent(SubtitleOverlayPool, length);
+            buffer = RetainedFrameBuffer.Rent(_subtitleOverlayPool, length);
             _subtitleBuffer = buffer;
         }
 

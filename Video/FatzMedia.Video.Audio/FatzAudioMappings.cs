@@ -1,4 +1,5 @@
 using FatzMedia.Video.Core.Audio;
+using FatzMedia.Video.Core.Configuration;
 using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Audio;
@@ -165,4 +166,48 @@ static class FatzAudioMappings
         var alpha = (backgroundOverride is { } o ? o >> 24 : 255u) * opacityAlpha / 255;
         return (alpha << 24) | rgb;
     }
+
+    /// <summary>
+    /// Our karaoke lyric look as a FatzAudio lyric style: FatzAudio's Classic preset (white, sung yellow, a black
+    /// outline and shadow, a cross-fading wipe: the look our own renderer draws) with our font, colours, outline,
+    /// shadow and the opacity of the next line. Our pixel sizes are for <see cref="KaraokeTextStyle.FontSize"/> on a
+    /// 1080-pixel-high canvas; FatzAudio's effect sizes are fractions of the em (an outline of 1 = 0.12 em, a shadow
+    /// distance of 1 = 0.15 em), so they convert through the font size. A width or colour of 0 turns that effect off.
+    /// </summary>
+    public static Fa.LyricStyle ToLyricStyle(KaraokeTextStyle style)
+    {
+        var preset = Fa.LyricStyle.FromPreset(Fa.LyricPreset.Classic);
+        var em = style.FontSize > 0 ? style.FontSize : 72;
+        var outline = style.OutlineWidth > 0 && (style.OutlineArgb >> 24) > 0
+            ? new Fa.OutlineEffect
+            {
+                Color = ToColor(style.OutlineArgb),
+                SungColor = ToColor(style.WipeOutlineArgb),
+                Size = Math.Clamp(style.OutlineWidth / em / 0.12f, 0, 1),
+            }
+            : null;
+        var distance = MathF.Sqrt((style.ShadowOffsetX * style.ShadowOffsetX) + (style.ShadowOffsetY * style.ShadowOffsetY));
+        var shadow = (style.ShadowArgb >> 24) > 0 && distance > 0
+            ? new Fa.ShadowEffect
+            {
+                Color = ToColor(style.ShadowArgb),
+                SungColor = ToColor(style.WipeShadowArgb),
+                Opacity = 1,
+                Distance = Math.Clamp(distance / em / 0.15f, 0, 1),
+                // Ours is x right, y down; FatzAudio's angle is counter-clockwise from the right.
+                AngleDegrees = MathF.Atan2(-style.ShadowOffsetY, style.ShadowOffsetX) * 180 / MathF.PI,
+            }
+            : null;
+        return preset with
+        {
+            FontFamily = string.IsNullOrWhiteSpace(style.FontFamily) ? null : style.FontFamily,
+            TextColor = ToColor(style.TextArgb),
+            SungColor = ToColor(style.WipeTextArgb),
+            NextLineOpacity = Math.Clamp(style.NextLineOpacity, 0, 1),
+            Effects = (preset.Effects ?? new Fa.SurfaceEffects()) with { Outline = outline, Shadow = shadow },
+        };
+    }
+
+    /// <summary>An ARGB colour as FatzAudio's straight-alpha colour.</summary>
+    public static Fa.CdgColor ToColor(uint argb) => new((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24));
 }

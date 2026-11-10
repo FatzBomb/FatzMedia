@@ -28,7 +28,7 @@ namespace FatzMedia.Video.Audio;
 /// it natively.</para>
 /// <para>Events arrive on FatzAudio's event thread; handlers re-enter the player's diagnostic owner.</para>
 /// </remarks>
-sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
+sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
     IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource,
     ICdgEngineSource, IPushAudioOutputSource
 {
@@ -37,11 +37,13 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
     static readonly Fa.StreamOptions PlaybackOptions = new() { NoCdg = true };
 
     readonly Fa.AudioEngine _engine;
-    readonly Fa.OutputDevice _output;
+    /// <summary>The output device (measurements record what it plays).</summary>
+    internal Fa.OutputDevice OutputDevice { get; }
     readonly Fa.MixBus _bus;
     readonly Fa.SoundFont? _soundFont;
     readonly SilenceTrimOptions _silenceTrim;
     readonly NormalizationOptions _normalization;
+    readonly KaraokeTextStyle _karaokeStyle;
     readonly object? _diagnosticOwner;
 
     // Guards the open stream and everything bound to it; never held while raising events.
@@ -75,6 +77,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
     {
         _silenceTrim = configuration.SilenceTrim;
         _normalization = configuration.Normalization;
+        _karaokeStyle = configuration.KaraokeStyle.Normalize();
         _diagnosticOwner = DiagnosticRouter.Owner;
         var cacheDirectory = EnsureCacheDirectory(FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory));
         _engine = Fa.AudioEngine.Create(new Fa.AudioEngineOptions { NullOutput = nullOutput, CacheDirectory = cacheDirectory });
@@ -91,8 +94,8 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
 
             // The chosen device, else the default: FatzAudio follows default-device changes, and an
             // output whose device goes away is reopened on the default.
-            _output = _engine.OpenOutput(nullOutput ? null : SelectDevice(configuration));
-            _bus = _output.CreateBus();
+            OutputDevice = _engine.OpenOutput(nullOutput ? null : SelectDevice(configuration));
+            _bus = OutputDevice.CreateBus();
         }
         catch
         {
@@ -104,7 +107,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Info,
             Category,
-            $"FatzAudio {Fa.AudioEngine.NativeVersion} ready on the {(nullOutput ? "null" : _output.Info?.Name ?? "default")} output device; MIDI soundfont: {(_soundFont is null ? "system bank" : configuration.MidiSoundfontPath)}; normalization {_normalization.TargetLufs:0.#} LUFS, limiter {_normalization.TruePeakCeilingDbtp:0.#} dBTP, cache: {cacheDirectory ?? "off"}");
+            $"FatzAudio {Fa.AudioEngine.NativeVersion} ready on the {(nullOutput ? "null" : OutputDevice.Info?.Name ?? "default")} output device; MIDI soundfont: {(_soundFont is null ? "system bank" : configuration.MidiSoundfontPath)}; normalization {_normalization.TargetLufs:0.#} LUFS, limiter {_normalization.TruePeakCeilingDbtp:0.#} dBTP, cache: {cacheDirectory ?? "off"}");
     }
 
     public event EventHandler<AudioEngineState>? StateChanged;
@@ -129,7 +132,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
                 _deviceChanged += value;
                 if (_deviceChanged is not null && _deviceWatch is null && !_disposed)
                 {
-                    _deviceEvents = new FatzAudioDeviceEvents(_output.Info?.Id);
+                    _deviceEvents = new FatzAudioDeviceEvents(OutputDevice.Info?.Id);
                     if (ReadDevices() is { } baseline)
                         _ = _deviceEvents.OnList(baseline);
                     _deviceWatch = new Timer(_ => WatchDevices(), null, DeviceWatchInterval, DeviceWatchInterval);
@@ -314,7 +317,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
     }
 
     /// <summary>The device opened (null: the system default), for tests.</summary>
-    internal Fa.AudioDeviceInfo? OutputDeviceInfo => _output.Info;
+    internal Fa.AudioDeviceInfo? OutputDeviceInfo => OutputDevice.Info;
 
     /// <summary>Whether the device list is being watched, for tests.</summary>
     internal bool IsWatchingDevices
@@ -334,7 +337,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
 
     /// <summary>Video audio, soundtracks and network audio through FFmpeg on this engine's device (037A slice 5).</summary>
     IPushAudioOutput IPushAudioOutputSource.CreatePushAudioOutput() =>
-        new FatzAudioPushAudioOutput(this, _engine, _output, _normalization);
+        new FatzAudioPushAudioOutput(this, _engine, OutputDevice, _normalization);
 
     /// <summary>The engine is ready from construction (the factory opens the device).</summary>
     public bool Init(int device = -1, int sampleRate = 44100) => !_disposed;
@@ -416,6 +419,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
             stream.Looped += OnStreamLooped;
             stream.DeviceChanged += OnStreamDeviceChanged;
             stream.LoudnessFinal += OnStreamLoudnessFinal;
+            var hasLyrics = HasLyrics(stream);
             lock (_gate)
             {
                 // From here CloseStream owns the stream and a temp-file conversion. FatzAudio copies
@@ -430,6 +434,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
                 _duration = double.IsFinite(duration) ? duration : 0;
                 _activeTrimWindow = trimWindow;
                 _loudnessReported = false;
+                _streamHasLyrics = hasLyrics;
                 if (trimWindow is not null)
                 {
                     try
@@ -707,7 +712,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
         CloseStream();
         SetState(AudioEngineState.Stopped);
         _bus.Dispose();
-        _output.Dispose();
+        OutputDevice.Dispose();
         _soundFont?.Dispose();
         _engine.Dispose();
     }
@@ -839,6 +844,7 @@ sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOp
             _sampleRate = 0;
             _activeTrimWindow = null;
             _fadeSession = NextSession(_fadeSession);
+            ForgetLyricSurfaceLocked();
         }
 
         // Ends any peak query waiting on this song (not disposed: a query may still link to it).

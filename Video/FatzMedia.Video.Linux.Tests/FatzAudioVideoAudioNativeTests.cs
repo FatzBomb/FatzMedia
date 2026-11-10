@@ -163,10 +163,7 @@ public sealed class FatzAudioVideoAudioNativeTests : IDisposable
         if (!FatzAudioNativeGroup.CanRun || FfmpegDirectory() is not { } ffmpegDirectory)
             return null;
 
-        if (OperatingSystem.IsLinux())
-            FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpegDirectory);
-        else
-            FFmpeg.AutoGen.ffmpeg.RootPath = ffmpegDirectory;
+        ActivateFfmpeg(ffmpegDirectory);
         var wav = FatzAudioTestMedia.WriteWav(_root, $"tone-{Guid.NewGuid():N}.wav", new FatzAudioTestMedia.Section(seconds, Amplitude: amplitude));
         _player = (FatzAudioEngine)new FatzAudioEngineFactory(nullOutput: true).Create(new MediaPlayerConfiguration
         {
@@ -217,7 +214,15 @@ public sealed class FatzAudioVideoAudioNativeTests : IDisposable
         return (start, audio.Position, watch.Elapsed.TotalSeconds);
     }
 
-    static string? FfmpegDirectory()
+    internal static void ActivateFfmpeg(string directory)
+    {
+        if (OperatingSystem.IsLinux())
+            FfmpegAudioReaderNativeTests.ActivateFfmpeg(directory);
+        else
+            FFmpeg.AutoGen.ffmpeg.RootPath = directory;
+    }
+
+    internal static string? FfmpegDirectory()
     {
         foreach (var variable in new[] { "FATZBOMB_FFMPEG_DIR", "FATZBOMB_LINUX_FFMPEG_DIR" })
         {
