@@ -18,7 +18,7 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed class OutputDevice : IDisposable
 {
-    private readonly DeviceHandle _handle;
+    readonly DeviceHandle _handle;
 
     internal OutputDevice(AudioEngine engine, DeviceHandle handle, AudioDeviceInfo? info)
     {
@@ -50,7 +50,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_device_is_started(Handle, out int started));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_is_started(Handle, out var started));
             return started != 0;
         }
     }
@@ -63,7 +63,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_volume(Handle, out float v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_volume(Handle, out var v));
             return v;
         }
         set
@@ -82,7 +82,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_mute(Handle, out int m));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_mute(Handle, out var m));
             return m != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_device_set_mute(Handle, value ? 1 : 0));
@@ -157,7 +157,7 @@ public sealed class OutputDevice : IDisposable
         return GetSpectrumCore((uint)magnitudes.Length * 2, magnitudes, options);
     }
 
-    private unsafe float GetSpectrumCore(uint size, Span<float> bins, SpectrumOptions options)
+    unsafe float GetSpectrumCore(uint size, Span<float> bins, SpectrumOptions options)
     {
         float hz;
         fixed (float* p = bins)
@@ -174,7 +174,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_latency(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_latency(Handle, out var ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -197,7 +197,7 @@ public sealed class OutputDevice : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_time(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_device_get_time(Handle, out var ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -220,7 +220,7 @@ public sealed class OutputDevice : IDisposable
     public MixBus CreateBus()
     {
         var h = Handle;
-        AudioException.ThrowIfFailed(NativeMethods.fa_bus_create(h, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_create(h, out var native));
         var bh = new BusHandle();
         try
         {

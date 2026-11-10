@@ -1,0 +1,165 @@
+# Shared FatzBomb C# style. Master: D:\development\FatzBomb\shared\style\.editorconfig.
+# Copied into each repo by sync-style.ps1: edit the master, then sync. Only the "Repo overrides"
+# block at the end belongs to the repo. Rules at "warning" show in every build
+# (EnforceCodeStyleInBuild) and the build stays at 0 warnings; "suggestion" rules show in the IDE.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# EF Core migrations and other generated code: not ours to restyle.
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+[*.cs]
+# ---- Layout
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks = true
+# One-line ifs without braces are fine; multi-line bodies get braces.
+csharp_prefer_braces = when_multiline:silent
+
+# ---- Unnecessary code
+dotnet_diagnostic.IDE0005.severity = warning          # unnecessary using
+dotnet_diagnostic.IDE0004.severity = warning          # unnecessary cast
+dotnet_diagnostic.IDE0051.severity = warning          # unused private member
+dotnet_diagnostic.IDE0052.severity = warning          # unread private member
+dotnet_diagnostic.IDE0035.severity = warning          # unreachable code
+dotnet_diagnostic.IDE0100.severity = warning          # unnecessary equality with true / false
+dotnet_diagnostic.IDE0080.severity = warning          # unnecessary suppression operator
+csharp_style_unused_value_expression_statement_preference = discard_variable:suggestion
+csharp_style_unused_value_assignment_preference = discard_variable:suggestion
+dotnet_code_quality_unused_parameters = non_public:suggestion
+
+# ---- Modifiers and qualification (no "private", no "this.")
+dotnet_style_require_accessibility_modifiers = omit_if_default:warning
+dotnet_style_readonly_field = true:warning
+csharp_style_prefer_readonly_struct = true:suggestion
+csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,required,volatile,async:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+
+# ---- var and target-typed new
+csharp_style_var_for_built_in_types = true:warning
+csharp_style_var_when_type_is_apparent = true:warning
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_implicit_object_creation_when_type_is_apparent = true:warning
+
+# ---- Modern expressions
+dotnet_style_prefer_collection_expression = when_types_loosely_match:warning
+dotnet_style_collection_initializer = true:warning
+dotnet_style_object_initializer = true:warning
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_null_propagation = true:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+dotnet_style_prefer_conditional_expression_over_return = true:suggestion
+dotnet_style_prefer_compound_assignment = true:warning
+dotnet_style_prefer_simplified_interpolation = true:warning
+dotnet_style_prefer_simplified_boolean_expressions = true:warning
+dotnet_style_prefer_inferred_tuple_names = true:warning
+dotnet_style_prefer_inferred_anonymous_type_member_names = true:warning
+dotnet_style_prefer_auto_properties = true:warning
+dotnet_style_explicit_tuple_names = true:warning
+csharp_style_throw_expression = true:warning
+csharp_style_conditional_delegate_call = true:warning
+csharp_style_prefer_null_check_over_type_check = true:warning
+csharp_style_prefer_index_operator = true:warning
+csharp_style_prefer_range_operator = true:warning
+csharp_style_prefer_utf8_string_literals = true:suggestion
+csharp_style_prefer_tuple_swap = true:warning
+csharp_style_inlined_variable_declaration = true:warning
+csharp_style_deconstructed_variable_declaration = true:suggestion
+csharp_style_prefer_method_group_conversion = true:suggestion
+csharp_prefer_simple_default_expression = true:warning
+csharp_prefer_simple_using_statement = true:warning
+csharp_prefer_static_local_function = true:suggestion
+csharp_style_prefer_local_over_anonymous_function = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_simple_property_accessors = true:warning
+
+# ---- Pattern matching
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_not_pattern = true:warning
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_extended_property_pattern = true:warning
+
+# ---- Expression bodies (one-liners as arrows; longer members keep blocks)
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_constructors = false:silent
+csharp_style_expression_bodied_operators = when_on_single_line:silent
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_indexers = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+csharp_style_expression_bodied_lambdas = true:suggestion
+csharp_style_expression_bodied_local_functions = when_on_single_line:silent
+
+# ---- Naming: private fields _camelCase, private static fields too; constants PascalCase
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_symbols.constants.applicable_kinds = field, local
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_style.pascal.capitalization = pascal_case
+# Higher priority than the private-field rule: private static readonly fields used like constants read PascalCase.
+dotnet_naming_rule.static_readonly_pascal.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_pascal.style = pascal
+dotnet_naming_rule.static_readonly_pascal.severity = suggestion
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+# ---- Not enforced
+dotnet_diagnostic.IDE0130.severity = none             # namespace vs folder (namespaces are by area, e.g. TriviaBomb.Storage)
+dotnet_diagnostic.IDE0055.severity = suggestion       # formatting (aligned comments stay)
+dotnet_diagnostic.IDE0058.severity = none             # expression value never used
+dotnet_diagnostic.IDE0046.severity = none             # if -> conditional expression (often less readable)
+dotnet_diagnostic.IDE0045.severity = none
+dotnet_diagnostic.IDE0010.severity = none             # add missing switch cases
+dotnet_diagnostic.IDE0072.severity = none
+dotnet_diagnostic.CA1716.severity = none              # names that are keywords in other languages (VB); no VB callers
+dotnet_diagnostic.CA1711.severity = none              # type name suffixes like Queue, Collection
+
+# ---- Tests: underscores in test method names are the naming convention
+[{**.Tests/**.cs,Tests/**.cs}]
+dotnet_diagnostic.CA1707.severity = none
+
+# ---- Repo overrides (kept by sync-style.ps1; everything above comes from the master)
+[*]
+end_of_line = crlf
+
+# Public enum members named after sample formats (Int16, Float32, ...): renaming them would break the API.
+[src/FatzMedia.Audio/Types.cs]
+dotnet_diagnostic.CA1720.severity = none

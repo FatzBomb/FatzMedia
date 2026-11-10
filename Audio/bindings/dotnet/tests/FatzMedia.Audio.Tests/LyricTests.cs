@@ -1,5 +1,4 @@
 using System.Text;
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -7,19 +6,19 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>The MIDI lyric surface: styles and presets, layout, drawing, errors.</summary>
 public class LyricTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static string FindTestFile(string relative)
+    static string FindTestFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            string p = Path.Combine(dir.FullName, relative);
+            var p = Path.Combine(dir.FullName, relative);
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException(relative);
     }
 
-    private static void VarLen(List<byte> t, int v)
+    static void VarLen(List<byte> t, int v)
     {
         var tmp = new Stack<byte>();
         tmp.Push((byte)(v & 0x7F));
@@ -27,7 +26,7 @@ public class LyricTests
         t.AddRange(tmp);
     }
 
-    private static void Lyric(List<byte> t, int delta, string text)
+    static void Lyric(List<byte> t, int delta, string text)
     {
         var b = Encoding.ASCII.GetBytes(text);
         VarLen(t, delta); t.Add(0xFF); t.Add(0x05); VarLen(t, b.Length); t.AddRange(b);
@@ -35,7 +34,7 @@ public class LyricTests
 
     /// <summary>960 ticks a second; lyrics in the test font's letters (A B O V): "ABBA VO" at 1, 1.5, 2 s and "OBAV" at
     /// 3, 3.5 s.</summary>
-    private static byte[] Song(string? title = null, double endSeconds = 4.5)
+    static byte[] Song(string? title = null, double endSeconds = 4.5)
     {
         var t = new List<byte>();
         if (title != null)
@@ -43,23 +42,23 @@ public class LyricTests
             var b = Encoding.ASCII.GetBytes(title);
             VarLen(t, 0); t.Add(0xFF); t.Add(0x01); VarLen(t, b.Length); t.AddRange(b);
         }
-        VarLen(t, 0); t.AddRange(new byte[] { 0x90, 69, 1 });
+        VarLen(t, 0); t.AddRange([0x90, 69, 1]);
         Lyric(t, 960, "AB");
         Lyric(t, 480, "BA ");
         Lyric(t, 480, "VO");
         Lyric(t, 960, "\rOB");
         Lyric(t, 480, "AV");
-        VarLen(t, (int)(endSeconds * 960) - 3360); t.AddRange(new byte[] { 0x80, 69, 0 });
-        VarLen(t, 0); t.AddRange(new byte[] { 0xFF, 0x2F, 0 });
+        VarLen(t, (int)(endSeconds * 960) - 3360); t.AddRange([0x80, 69, 0]);
+        VarLen(t, 0); t.AddRange([0xFF, 0x2F, 0]);
         var f = new List<byte>();
-        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MThd"u8.ToArray()); f.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255]);
         f.AddRange("MTrk"u8.ToArray());
-        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange([(byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count]);
         f.AddRange(t);
-        return f.ToArray();
+        return [.. f];
     }
 
-    private static (AudioEngine, SoundFont, AudioStream) Open(byte[]? song = null)
+    static (AudioEngine, SoundFont, AudioStream) Open(byte[]? song = null)
     {
         var engine = CreateHeadless();
         var font = SoundFont.FromMemory(MidiTests.SineSoundFont());
@@ -67,7 +66,7 @@ public class LyricTests
         return (engine, font, s);
     }
 
-    private static LyricStyle TestFont(LyricPreset preset) =>
+    static LyricStyle TestFont(LyricPreset preset) =>
         LyricStyle.FromPreset(preset) with { FontPath = FindTestFile("tests/data/fonts/tt.ttf") };
 
     [Fact]
@@ -112,14 +111,14 @@ public class LyricTests
             Assert.Equal(1f, layout.Scale);
             Assert.InRange(layout.Width, (int)(0.85 * 1920), 1919);
             Assert.Equal(960, layout.BitmapX + layout.Width / 2, 1.0);
-            int stride = layout.Width * 4;
+            var stride = layout.Width * 4;
             var buffer = new byte[stride * layout.Height];
             // "AB" sung, "BA" half way: yellow and white pixels.
             var update = lyrics.UpdateInto(buffer, stride, layout.Width, layout.Height, 0, TimeSpan.FromSeconds(1.3));
             Assert.True(update.IsFullDraw);
             Assert.Equal(layout.LayoutRevision, update.LayoutRevision);
             int yellow = 0, white = 0;
-            for (int i = 0; i < buffer.Length; i += 4)
+            for (var i = 0; i < buffer.Length; i += 4)
             {
                 if (buffer[i + 3] < 240) continue;
                 if (buffer[i] < 16 && buffer[i + 1] > 240 && buffer[i + 2] > 240) yellow++;

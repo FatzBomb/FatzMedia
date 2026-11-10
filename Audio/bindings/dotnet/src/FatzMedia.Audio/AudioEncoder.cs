@@ -117,10 +117,10 @@ public sealed record EncoderStatus(EncoderState State, ErrorCode Error, bool IsP
 /// </example>
 public sealed unsafe class AudioEncoder : IDisposable
 {
-    private readonly EncoderHandle _handle;
-    private int _closed;
+    readonly EncoderHandle _handle;
+    int _closed;
 
-    private AudioEncoder(EncoderHandle handle) => _handle = handle;
+    AudioEncoder(EncoderHandle handle) => _handle = handle;
 
     internal EncoderHandle Handle
     {
@@ -146,7 +146,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         try
         {
             FaEncoderOptions o = native.Value;
-            AudioException.ThrowIfFailed(NativeMethods.fa_encoder_create_path(path, &o, out nint e));
+            AudioException.ThrowIfFailed(NativeMethods.fa_encoder_create_path(path, &o, out var e));
             var h = new EncoderHandle();
             h.Initialize(e, default);
             return new AudioEncoder(h);
@@ -182,7 +182,7 @@ public sealed unsafe class AudioEncoder : IDisposable
             cb.Write = &OutputState.Write;
             cb.Close = &OutputState.Close;
             if (output.CanSeek) cb.Seek = &OutputState.Seek;
-            int rc = NativeMethods.fa_encoder_create_output(&cb, (void*)GCHandle.ToIntPtr(gc), &o, out nint e);
+            var rc = NativeMethods.fa_encoder_create_output(&cb, (void*)GCHandle.ToIntPtr(gc), &o, out var e);
             AudioException.ThrowIfFailed(rc);
             var h = new EncoderHandle();
             h.Initialize(e, gc);
@@ -280,8 +280,8 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// another source (<see cref="ErrorCode.Busy"/>), or the error that stopped the encoder.</exception>
     public void Write(ReadOnlySpan<float> interleaved, int sampleRate, int channels)
     {
-        if (channels <= 0) throw new ArgumentOutOfRangeException(nameof(channels));
-        if (sampleRate <= 0) throw new ArgumentOutOfRangeException(nameof(sampleRate));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         if (interleaved.Length % channels != 0) throw new ArgumentException("The span must hold whole frames.", nameof(interleaved));
         fixed (float* p = interleaved)
         {
@@ -313,7 +313,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         }
     }
 
-    private static AudioFormat ToFormat(FaAudioFormat f) =>
+    static AudioFormat ToFormat(FaAudioFormat f) =>
         new((SampleFormat)f.SampleFormat, (int)f.SampleRate, (int)f.Channels, f.ChannelMask);
 
     /// <summary>Waits until the encoder is <see cref="EncoderState.Finished"/> or <see cref="EncoderState.Failed"/>.</summary>
@@ -322,16 +322,16 @@ public sealed unsafe class AudioEncoder : IDisposable
     /// <exception cref="ObjectDisposedException">The encoder was closed while waiting.</exception>
     public bool Wait(TimeSpan timeout)
     {
-        bool infinite = timeout == Timeout.InfiniteTimeSpan;
+        var infinite = timeout == Timeout.InfiniteTimeSpan;
         if (!infinite && timeout < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan or a positive time.");
         // Waits in slices so that Close from another thread is not held up by this call.
-        long deadline = infinite ? long.MaxValue : Environment.TickCount64 + (long)Math.Ceiling(timeout.TotalMilliseconds);
+        var deadline = infinite ? long.MaxValue : Environment.TickCount64 + (long)Math.Ceiling(timeout.TotalMilliseconds);
         while (true)
         {
-            long left = deadline - Environment.TickCount64;
-            long ms = Math.Clamp(left, 0, WaitSliceMs);
-            int rc = NativeMethods.fa_encoder_wait(Handle, ms * 1_000_000);
+            var left = deadline - Environment.TickCount64;
+            var ms = Math.Clamp(left, 0, WaitSliceMs);
+            var rc = NativeMethods.fa_encoder_wait(Handle, ms * 1_000_000);
             if (rc != (int)ErrorCode.Busy)
             {
                 AudioException.ThrowIfFailed(rc);
@@ -341,7 +341,7 @@ public sealed unsafe class AudioEncoder : IDisposable
         }
     }
 
-    private const long WaitSliceMs = 50;
+    const long WaitSliceMs = 50;
 
     /// <summary>
     /// Stops the source, encodes what is still queued, completes the file and closes it. Calling it again does
@@ -366,10 +366,10 @@ public sealed unsafe class AudioEncoder : IDisposable
     }
 
     /// <summary>The options as native memory (the strings are UTF-8 copies, freed by <see cref="Free"/>).</summary>
-    private struct NativeEncoderOptions
+    struct NativeEncoderOptions
     {
         public FaEncoderOptions Value;
-        private nint _title, _artist, _album, _genre, _date, _comment;
+        readonly nint _title, _artist, _album, _genre, _date, _comment;
 
         public NativeEncoderOptions(EncoderOptions? o)
         {
@@ -405,9 +405,9 @@ public sealed unsafe class AudioEncoder : IDisposable
     }
 
     /// <summary>Bridges a managed <see cref="Stream"/> to the native output callbacks.</summary>
-    private sealed class OutputState(Stream stream, bool leaveOpen)
+    sealed class OutputState(Stream stream, bool leaveOpen)
     {
-        private static OutputState? From(void* user) => NativeUser.From<OutputState>(user);
+        static OutputState? From(void* user) => NativeUser.From<OutputState>(user);
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
         public static int Write(void* user, void* data, nuint size)
@@ -493,7 +493,7 @@ public static unsafe class Lame
     public static bool Load(string? directory = null)
     {
         NativeLoader.EnsureInitialized();
-        int rc = NativeMethods.fa_lame_load(directory);
+        var rc = NativeMethods.fa_lame_load(directory);
         if (rc == (int)ErrorCode.ProviderMissing) return false;
         AudioException.ThrowIfFailed(rc);
         return true;

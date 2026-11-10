@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,11 +5,11 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>The public audio fingerprint: the same key from a file and its bytes, tags left out.</summary>
 public class FingerprintTests
 {
-    private static string FindTestFile(string relative)
+    static string FindTestFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            string p = Path.Combine(dir.FullName, relative);
+            var p = Path.Combine(dir.FullName, relative);
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException(relative);
@@ -19,14 +18,14 @@ public class FingerprintTests
     [Fact]
     public void Compute_FileAndBytesAgreeAndTagsAreLeftOut()
     {
-        string path = FindTestFile("tests/data/tags/id3v23.mp3");
-        byte[] bytes = File.ReadAllBytes(path);
+        var path = FindTestFile("tests/data/tags/id3v23.mp3");
+        var bytes = File.ReadAllBytes(path);
         var fromFile = AudioFingerprint.Compute(path);
         Assert.Equal(fromFile, AudioFingerprint.Compute(bytes));
         Assert.True(fromFile.AudioBytes > 0 && fromFile.AudioBytes < bytes.Length);   // the ID3v2 tag is left out
 
         // An ID3v1 tag added at the end: the same audio.
-        byte[] retagged = new byte[bytes.Length + 128];
+        var retagged = new byte[bytes.Length + 128];
         bytes.CopyTo(retagged, 0);
         "TAG"u8.CopyTo(retagged.AsSpan(bytes.Length));
         Assert.Equal(fromFile, AudioFingerprint.Compute(retagged));
@@ -37,8 +36,8 @@ public class FingerprintTests
     [Fact]
     public void Compute_ArchiveEntryMatchesItsBytes()
     {
-        byte[] bytes = File.ReadAllBytes(FindTestFile("tests/data/tags/id3v23.mp3"));
-        string zip = Path.Combine(Path.GetTempPath(), $"fa-fp-{Guid.NewGuid():N}.zip");
+        var bytes = File.ReadAllBytes(FindTestFile("tests/data/tags/id3v23.mp3"));
+        var zip = Path.Combine(Path.GetTempPath(), $"fa-fp-{Guid.NewGuid():N}.zip");
         try
         {
             using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
@@ -67,6 +66,6 @@ public class FingerprintTests
     {
         var ex = Assert.Throws<AudioException>(() => AudioFingerprint.Compute(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
-        Assert.Throws<ArgumentException>(() => AudioFingerprint.Compute(ReadOnlySpan<byte>.Empty));
+        Assert.Throws<ArgumentException>(() => AudioFingerprint.Compute([]));
     }
 }

@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,26 +5,26 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Track analysis: beat grids, keys, the waveform overview, and a stream's beat grid, on audio built in code.</summary>
 public class AnalysisTests
 {
-    private const int Rate = 44100;
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    const int Rate = 44100;
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless(string? cache = null) =>
+    static AudioEngine CreateHeadless(string? cache = null) =>
         AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, MixSampleRate = Rate, CacheDirectory = cache });
 
     /// <summary>A mono 32-bit float WAV of kick drums: 150 Hz sweeping down to 60 Hz with a fast decay, every <paramref name="beatSeconds"/>.</summary>
-    private static byte[] KickWav(double seconds, double beatSeconds = 0.5)
+    static byte[] KickWav(double seconds, double beatSeconds = 0.5)
     {
-        int frames = (int)(seconds * Rate);
+        var frames = (int)(seconds * Rate);
         var samples = new float[frames];
-        int kickLength = (int)(0.25 * Rate);
+        var kickLength = (int)(0.25 * Rate);
         for (double t0 = 0; t0 < seconds; t0 += beatSeconds)
         {
-            int start = (int)Math.Round(t0 * Rate);
+            var start = (int)Math.Round(t0 * Rate);
             double phase = 0;
-            for (int i = 0; i < kickLength && start + i < frames; i++)
+            for (var i = 0; i < kickLength && start + i < frames; i++)
             {
-                double t = (double)i / Rate;
-                double freq = 60 + 90 * Math.Exp(-t * 40);
+                var t = (double)i / Rate;
+                var freq = 60 + 90 * Math.Exp(-t * 40);
                 phase += 2 * Math.PI * freq / Rate;
                 samples[start + i] += (float)(Math.Sin(phase) * Math.Exp(-t * 14) * 0.9);
             }
@@ -33,9 +32,9 @@ public class AnalysisTests
         return TestAudio.FloatWav(samples, Rate);
     }
 
-    private static string TempFile(byte[] data, string extension = "wav")
+    static string TempFile(byte[] data, string extension = "wav")
     {
-        string path = Path.Combine(Path.GetTempPath(), $"fa-analysis-{Guid.NewGuid():N}.{extension}");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-analysis-{Guid.NewGuid():N}.{extension}");
         File.WriteAllBytes(path, data);
         return path;
     }
@@ -123,7 +122,7 @@ public class AnalysisTests
         Assert.Equal(1.0, grid.FrameToBeat(10_000 + Rate / 2), 9);
         Assert.Equal(-1.0, grid.FrameToBeat(10_000 - Rate / 2), 9);
         Assert.Equal(2.5, grid.FrameToBeat(10_000 + Rate * 5 / 4), 9);
-        foreach (double beat in new[] { -3.0, 0, 0.25, 7, 123.5 })
+        foreach (var beat in new[] { -3.0, 0, 0.25, 7, 123.5 })
             Assert.Equal(beat, grid.FrameToBeat(grid.BeatToFrame(beat)), 3);
     }
 
@@ -131,7 +130,7 @@ public class AnalysisTests
     public void TempoMap_ConvertsAcrossSegments()
     {
         // 120 BPM for four beats (2 s), then 60 BPM; the first beat is at frame 10 000.
-        long change = 10_000 + 2L * Rate;
+        var change = 10_000 + 2L * Rate;
         var grid = new BeatGrid(120, 10_000, Rate,
             [new TempoSegment(10_000, 120, 0), new TempoSegment(change, 60, 4)]);
         Assert.Equal(2, grid.Segments.Count);
@@ -146,7 +145,7 @@ public class AnalysisTests
         Assert.Equal(4.5, grid.FrameToBeat(change + Rate / 2), 9);
         Assert.Equal(3.0, grid.FrameToBeat(change - Rate / 2), 9);
         Assert.Equal(-1.0, grid.FrameToBeat(10_000 - Rate / 2), 9);
-        foreach (double beat in new[] { -2.0, 0, 3.75, 4, 4.5, 20 })
+        foreach (var beat in new[] { -2.0, 0, 3.75, 4, 4.5, 20 })
             Assert.Equal(beat, grid.FrameToBeat(grid.BeatToFrame(beat)), 3);
     }
 
@@ -178,7 +177,7 @@ public class AnalysisTests
         Assert.Equal(0, g.BarOffset);
         Assert.Equal(1f, g.Confidence);
         Assert.Equal(BeatGridFlags.Constant | BeatGridFlags.Edited, g.Flags);   // kept as given
-        Assert.Equal(new[] { new TempoSegment(1234, 128.5, 0) }, g.Segments);
+        Assert.Equal([new TempoSegment(1234, 128.5, 0)], g.Segments);
 
         // A tempo map, with a bar every three beats.
         var map = new BeatGrid(90, 500, Rate,
@@ -229,7 +228,7 @@ public class AnalysisTests
     [Fact]
     public void Analyze_FindsTheTempoOfKicks()
     {
-        string path = TempFile(KickWav(30));
+        var path = TempFile(KickWav(30));
         try
         {
             using var engine = CreateHeadless();
@@ -254,7 +253,7 @@ public class AnalysisTests
             Assert.Equal(grid.Bpm, seg.Bpm);
             Assert.Equal(0.0, seg.Beat);
             // The kicks fall on multiples of half a second: the first beat is on one of them.
-            double phase = grid.FirstBeatTime.TotalSeconds % 0.5;
+            var phase = grid.FirstBeatTime.TotalSeconds % 0.5;
             Assert.True(Math.Min(phase, 0.5 - phase) < 0.03, $"first beat at {grid.FirstBeatTime}");
 
             Assert.NotNull(t.Waveform);
@@ -277,8 +276,8 @@ public class AnalysisTests
     [Fact]
     public async Task AnalyzeAsync_AndStreamAnalyze_GiveTheSameTempo()
     {
-        byte[] wav = KickWav(30);
-        string path = TempFile(wav);
+        var wav = KickWav(30);
+        var path = TempFile(wav);
         try
         {
             using var engine = CreateHeadless();
@@ -307,8 +306,8 @@ public class AnalysisTests
     [Fact]
     public void Analyze_UsesTheCacheAndNoCacheSkipsIt()
     {
-        string dir = Path.Combine(Path.GetTempPath(), $"fa-cache-{Guid.NewGuid():N}");
-        string path = TempFile(KickWav(12));
+        var dir = Path.Combine(Path.GetTempPath(), $"fa-cache-{Guid.NewGuid():N}");
+        var path = TempFile(KickWav(12));
         try
         {
             using var engine = CreateHeadless(dir);
@@ -332,7 +331,7 @@ public class AnalysisTests
     public void Analyze_TempoRangeFoldsTheTempo()
     {
         // 120 BPM kicks with a range of 50..95 BPM read as half time.
-        string path = TempFile(KickWav(30));
+        var path = TempFile(KickWav(30));
         try
         {
             using var engine = CreateHeadless();
@@ -345,7 +344,7 @@ public class AnalysisTests
     [Fact]
     public void Analyze_SilenceHasNoBeatAndNoKey()
     {
-        string path = TempFile(TestAudio.FloatWav(new float[10 * Rate], Rate));
+        var path = TempFile(TestAudio.FloatWav(new float[10 * Rate], Rate));
         try
         {
             using var engine = CreateHeadless();
@@ -363,11 +362,11 @@ public class AnalysisTests
     {
         // An A minor triad (A, C, E) with a little of each overtone, held for 15 seconds.
         var samples = new float[15 * Rate];
-        foreach (double freq in new[] { 220.0, 261.63, 329.63 })
-            for (int h = 1; h <= 4; h++)
-                for (int i = 0; i < samples.Length; i++)
+        foreach (var freq in new[] { 220.0, 261.63, 329.63 })
+            for (var h = 1; h <= 4; h++)
+                for (var i = 0; i < samples.Length; i++)
                     samples[i] += (float)(Math.Sin(2 * Math.PI * freq * h * i / Rate) * 0.1 / h);
-        string path = TempFile(TestAudio.FloatWav(samples, Rate));
+        var path = TempFile(TestAudio.FloatWav(samples, Rate));
         try
         {
             using var engine = CreateHeadless();
@@ -396,7 +395,7 @@ public class AnalysisTests
             Assert.Throws<AudioException>(() => engine.Analyze("no-such-file.wav")).ErrorCode);
         Assert.Throws<ArgumentNullException>(() => engine.Analyze(null!));
 
-        string path = TempFile(KickWav(5));
+        var path = TempFile(KickWav(5));
         try
         {
             // The tempo range must span at least 1.9 times its start.
@@ -406,7 +405,7 @@ public class AnalysisTests
         }
         finally { File.Delete(path); }
 
-        string junk = TempFile(new byte[4096], "bin");
+        var junk = TempFile(new byte[4096], "bin");
         try
         {
             Assert.Equal(ErrorCode.UnsupportedFormat,
@@ -430,7 +429,7 @@ public class AnalysisTests
     [Fact]
     public async Task AnalyzeAsync_SurvivesDisposingTheOwnerMeanwhile()
     {
-        byte[] wav = KickWav(30);
+        var wav = KickWav(30);
         var engine = CreateHeadless();
         var stream = engine.OpenMemory(wav, DecodeOnly);
         var task = stream.AnalyzeAsync(AnalysisKinds.Beats);
@@ -451,7 +450,7 @@ public class AnalysisTests
 
     // ---- MIDI files: the grid is exact -----------------------------------------------------
 
-    private static void VarLen(List<byte> t, int v)
+    static void VarLen(List<byte> t, int v)
     {
         var tmp = new Stack<byte>();
         tmp.Push((byte)(v & 0x7F));
@@ -459,10 +458,10 @@ public class AnalysisTests
         t.AddRange(tmp);
     }
 
-    private static void Event(List<byte> t, int delta, params byte[] e) { VarLen(t, delta); t.AddRange(e); }
+    static void Event(List<byte> t, int delta, params byte[] e) { VarLen(t, delta); t.AddRange(e); }
 
     /// <summary>A 480-ticks-per-beat song in 3/4: 120 BPM for four beats (2 s), then 60 BPM for four more (4 s).</summary>
-    private static byte[] TempoChangeSong()
+    static byte[] TempoChangeSong()
     {
         var t = new List<byte>();
         Event(t, 0, 0xFF, 0x51, 3, 0x07, 0xA1, 0x20);          // 120 BPM
@@ -474,14 +473,14 @@ public class AnalysisTests
         Event(t, 480 * 4, 0x80, 69, 0);
         Event(t, 0, 0xFF, 0x2F, 0);
         var f = new List<byte>();
-        f.AddRange("MThd"u8.ToArray()); f.AddRange(new byte[] { 0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255 });
+        f.AddRange("MThd"u8.ToArray()); f.AddRange([0, 0, 0, 6, 0, 0, 0, 1, 480 >> 8, 480 & 255]);
         f.AddRange("MTrk"u8.ToArray());
-        f.AddRange(new[] { (byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count });
+        f.AddRange([(byte)(t.Count >> 24), (byte)(t.Count >> 16), (byte)(t.Count >> 8), (byte)t.Count]);
         f.AddRange(t);
-        return f.ToArray();
+        return [.. f];
     }
 
-    private static void AssertTempoChangeGrid(BeatGrid g)
+    static void AssertTempoChangeGrid(BeatGrid g)
     {
         Assert.Equal(BeatGridFlags.Exact | BeatGridFlags.Bars, g.Flags & (BeatGridFlags.Exact | BeatGridFlags.Bars));
         Assert.False(g.Flags.HasFlag(BeatGridFlags.Constant));
@@ -523,7 +522,7 @@ public class AnalysisTests
     [Fact]
     public async Task Midi_AnalyzeByPath_UsesTheEngineSoundFont()
     {
-        string path = TempFile(TempoChangeSong(), "mid");
+        var path = TempFile(TempoChangeSong(), "mid");
         try
         {
             using var engine = CreateHeadless();

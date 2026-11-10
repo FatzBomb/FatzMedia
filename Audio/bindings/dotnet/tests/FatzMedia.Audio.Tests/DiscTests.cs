@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,12 +5,12 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Audio CDs, through a .cue/.bin disc image (CI machines have no optical drive).</summary>
 public sealed class DiscTests : IDisposable
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "fatzaudio-disc-" + Guid.NewGuid().ToString("N"));
-    private readonly string _cue;
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    readonly string _dir = Path.Combine(Path.GetTempPath(), "fatzaudio-disc-" + Guid.NewGuid().ToString("N"));
+    readonly string _cue;
 
     /// <summary>Disc sample i, left channel; the right channel is its negative.</summary>
-    private static short Pattern(long i) => (short)(i % 20000 + 1);
+    static short Pattern(long i) => (short)(i % 20000 + 1);
 
     public DiscTests()
     {
@@ -51,7 +50,7 @@ public sealed class DiscTests : IDisposable
         Assert.Equal(20, toc[2]!.StartSector);
         Assert.Equal(TimeSpan.FromSeconds(50 / 75.0), toc.Duration);
         Assert.Equal(28, toc.MusicBrainzId.Length);
-        Assert.StartsWith(toc.FreedbId.ToString("x8"), toc.FreedbQuery);
+        Assert.StartsWith(toc.FreedbId.ToString("x8", System.Globalization.CultureInfo.InvariantCulture), toc.FreedbQuery);
         Assert.True(toc.HasCdText);
         Assert.Equal("Album", disc.GetText(0, DiscTextField.Title));
         Assert.Equal("Band", disc.GetText(0, DiscTextField.Performer));
@@ -80,9 +79,9 @@ public sealed class DiscTests : IDisposable
         Assert.Equal(44100, track.Info.Format.SampleRate);
         Assert.Equal(30 * 588, track.Info.LengthFrames);
         var buf = new float[2 * 1000];
-        int got = 0;
+        var got = 0;
         while (got < 1000) got += track.Read(buf.AsSpan(got * 2));
-        for (int i = 0; i < 1000; i++)
+        for (var i = 0; i < 1000; i++)
         {
             long abs = 20 * 588 + 6 + i;
             Assert.Equal(Pattern(abs) / 32768f, buf[i * 2]);
@@ -95,12 +94,12 @@ public sealed class DiscTests : IDisposable
     {
         // A 400-sector track whose .sub carries CD+G packs: the screen cleared to
         // colour 1, which is loaded as red.
-        const int sectors = 400;
-        File.WriteAllBytes(Path.Combine(_dir, "karaoke.bin"), new byte[sectors * 2352]);
-        var sub = new byte[sectors * 96];
-        for (int i = 0; i < 16; i++)
+        const int Sectors = 400;
+        File.WriteAllBytes(Path.Combine(_dir, "karaoke.bin"), new byte[Sectors * 2352]);
+        var sub = new byte[Sectors * 96];
+        for (var i = 0; i < 16; i++)
         {
-            int p = i * 24;
+            var p = i * 24;
             sub[p] = 0x09; sub[p + 1] = 1; sub[p + 4] = 1; sub[p + 5] = (byte)i;   // memory preset
         }
         sub[16 * 24] = 0x09; sub[16 * 24 + 1] = 30; sub[16 * 24 + 6] = 0x3C;      // colour 1 = red
@@ -116,7 +115,7 @@ public sealed class DiscTests : IDisposable
         while (track.Read(buf) > 0) { }
         Assert.True(track.HasCdg);
         var frame = surface.UpdateAt(TimeSpan.FromSeconds(1));
-        int at = frame.Height / 2 * frame.Stride + frame.Width / 2 * 4;
+        var at = frame.Height / 2 * frame.Stride + frame.Width / 2 * 4;
         Assert.Equal(new byte[] { 0, 0, 255 }, frame.Pixels.Slice(at, 3).ToArray());   // B, G, R
 
         using var plain = Disc.Open(cue, new DiscOptions { ReadCdg = false });

@@ -105,10 +105,9 @@ public delegate void DspProcessor(Span<float> samples, int channels, int sampleR
 /// </example>
 public unsafe partial class AudioStream : IDisposable
 {
-    private readonly StreamHandle _handle;
-    private int _sampleRate;
-    private int _channels;
-    private OutputDevice? _device;
+    readonly StreamHandle _handle;
+    int _sampleRate;
+    int _channels;
 
     internal AudioStream(AudioEngine engine, StreamHandle handle, GCHandle? ioHandle, AudioFormat? knownFormat = null)
     {
@@ -159,14 +158,14 @@ public unsafe partial class AudioStream : IDisposable
 
     // ---- Info ---------------------------------------------------------------
 
-    private void RefreshFormat()
+    void RefreshFormat()
     {
         var n = ReadNativeInfo();
         _sampleRate = (int)n.Format.SampleRate;
         _channels = (int)n.Format.Channels;
     }
 
-    private FaStreamInfo ReadNativeInfo()
+    FaStreamInfo ReadNativeInfo()
     {
         var n = NativeSized.New<FaStreamInfo>();
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_info(Handle, ref n));
@@ -176,16 +175,16 @@ public unsafe partial class AudioStream : IDisposable
     // The last info built, with the raw values it came from. Info compares the fresh native values against
     // these (cheap, no allocation) and only builds a new StreamInfo when something changed, so a stale
     // duration, length or bitrate (web and growing streams) is never returned.
-    private sealed class InfoSnapshot
+    sealed class InfoSnapshot
     {
         public InfoSnapshot(FaStreamInfo raw, StreamInfo info) { Raw = raw; Info = info; }
         public FaStreamInfo Raw;
         public readonly StreamInfo Info;
     }
 
-    private InfoSnapshot? _infoSnapshot;
+    InfoSnapshot? _infoSnapshot;
 
-    private StreamInfo ReadInfo()
+    StreamInfo ReadInfo()
     {
         var n = ReadNativeInfo();
         var snap = _infoSnapshot;
@@ -195,7 +194,7 @@ public unsafe partial class AudioStream : IDisposable
         return info;
     }
 
-    private static unsafe bool SameInfo(ref FaStreamInfo a, ref FaStreamInfo b)
+    static unsafe bool SameInfo(ref FaStreamInfo a, ref FaStreamInfo b)
     {
         if (a.Format.SampleFormat != b.Format.SampleFormat || a.Format.SampleRate != b.Format.SampleRate ||
             a.Format.Channels != b.Format.Channels || a.Format.ChannelMask != b.Format.ChannelMask) return false;
@@ -206,9 +205,9 @@ public unsafe partial class AudioStream : IDisposable
             return CStringEquals(ac, bc) && CStringEquals(ak, bk);
     }
 
-    private static unsafe bool CStringEquals(byte* a, byte* b)
+    static unsafe bool CStringEquals(byte* a, byte* b)
     {
-        for (int i = 0; i < 32; i++)
+        for (var i = 0; i < 32; i++)
         {
             if (a[i] != b[i]) return false;
             if (a[i] == 0) return true;
@@ -251,7 +250,7 @@ public unsafe partial class AudioStream : IDisposable
         get
         {
             var n = NativeSized.New<FaNetStatus>();
-            int rc = NativeMethods.fa_stream_get_net_status(Handle, &n);
+            var rc = NativeMethods.fa_stream_get_net_status(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             AudioException.ThrowIfFailed(rc);
             return new NetworkStatus(
@@ -268,18 +267,18 @@ public unsafe partial class AudioStream : IDisposable
     public unsafe string? GetHttpHeader(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        byte* buf = stackalloc byte[4096];
-        int rc = NativeMethods.fa_stream_get_http_header(Handle, name, buf, 4096);
+        var buf = stackalloc byte[4096];
+        var rc = NativeMethods.fa_stream_get_http_header(Handle, name, buf, 4096);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         return Marshal.PtrToStringUTF8((nint)buf);
     }
 
-    private readonly object _downloadLock = new();
-    private GCHandle? _download;
+    readonly object _downloadLock = new();
+    GCHandle? _download;
     // Names this stream to its download handlers (DownloadState.Stream). An open-time handler's token is made
     // before the open, since the handler gets bytes while the open still runs.
-    private object _downloadToken = new();
+    object _downloadToken = new();
 
     // The handle of NetworkOptions.Downloaded (already adopted by the stream handle), so a later
     // SetDownloadHandler frees it like any replaced handler.
@@ -319,7 +318,7 @@ public unsafe partial class AudioStream : IDisposable
         var h = Handle;
         // From inside this stream's handler the lock is skipped: another thread holding it waits in the native call
         // for the handler to return, and makes its change after this one, in the same order as the native side.
-        if (ReferenceEquals(t_inDownloadOf, _downloadToken))
+        if (ReferenceEquals(_inDownloadOf, _downloadToken))
         {
             SwapDownloadHandler(h, handler);
             return;
@@ -327,10 +326,10 @@ public unsafe partial class AudioStream : IDisposable
         lock (_downloadLock) SwapDownloadHandler(h, handler);
     }
 
-    private unsafe void SwapDownloadHandler(StreamHandle h, DownloadHandler? handler)
+    unsafe void SwapDownloadHandler(StreamHandle h, DownloadHandler? handler)
     {
         GCHandle? gc = handler is null ? null : _handle.Pin(new DownloadState(handler, _downloadToken));
-        int rc = NativeMethods.fa_stream_set_download_callback(h, gc is null ? null : &OnDownload,
+        var rc = NativeMethods.fa_stream_set_download_callback(h, gc is null ? null : &OnDownload,
             gc is { } g ? (void*)GCHandle.ToIntPtr(g) : null);
         if (rc < 0)
         {
@@ -343,7 +342,7 @@ public unsafe partial class AudioStream : IDisposable
         _download = gc;
     }
 
-    [ThreadStatic] private static object? t_inDownloadOf;   // the token of the stream whose handler runs here
+    [ThreadStatic] static object? _inDownloadOf;   // the token of the stream whose handler runs here
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnDownload(void* user, void* data, nuint size)
@@ -352,10 +351,10 @@ public unsafe partial class AudioStream : IDisposable
         {
             if (NativeUser.From<DownloadState>(user) is { } st)
             {
-                var outer = t_inDownloadOf;
-                t_inDownloadOf = st.Stream;
+                var outer = _inDownloadOf;
+                _inDownloadOf = st.Stream;
                 try { st.Handler(new ReadOnlySpan<byte>(data, checked((int)size))); }
-                finally { t_inDownloadOf = outer; }
+                finally { _inDownloadOf = outer; }
             }
         }
         catch
@@ -364,7 +363,7 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
-    private static ErrorCode? ToError(long value) => value is < 0 and >= int.MinValue ? (ErrorCode)(int)value : null;
+    static ErrorCode? ToError(long value) => value is < 0 and >= int.MinValue ? (ErrorCode)(int)value : null;
 
     internal TimeSpan FramesToTime(long frames) => TimeConvert.FromFrames(frames, _sampleRate);
     internal long TimeToFrames(TimeSpan time) => TimeConvert.ToFrames(time, _sampleRate);
@@ -372,7 +371,7 @@ public unsafe partial class AudioStream : IDisposable
     // ---- Transport ------------------------------------------------------------
 
     /// <summary>The output device this stream is attached to, or null.</summary>
-    public OutputDevice? Device => _device;
+    public OutputDevice? Device { get; private set; }
 
     /// <summary>
     /// Attaches the stream to <paramref name="device"/>, starts the device if necessary and starts playback.
@@ -420,17 +419,15 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>
     /// The bus this stream plays through, or null for the device's master mix (also after the bus was disposed).
     /// </summary>
-    public MixBus? Bus => _bus is { IsDisposed: false } b ? b : null;
+    public MixBus? Bus { get => field is { IsDisposed: false } b ? b : null; private set; }
 
-    private MixBus? _bus;
-
-    private void AttachTo(OutputDevice device, MixBus? bus)
+    void AttachTo(OutputDevice device, MixBus? bus)
     {
         var h = Handle;
         var dh = device.Handle;
         var bh = bus?.Handle;   // throws for a disposed bus
-        if (ReferenceEquals(_device, device) && ReferenceEquals(Bus, bus)) return;
-        bool added = false;
+        if (ReferenceEquals(Device, device) && ReferenceEquals(Bus, bus)) return;
+        var added = false;
         try
         {
             bh?.DangerousAddRef(ref added);
@@ -440,9 +437,9 @@ public unsafe partial class AudioStream : IDisposable
         {
             if (added) bh!.DangerousRelease();
         }
-        if (!ReferenceEquals(_device, device)) h.AttachDevice(dh);
-        _device = device;
-        _bus = bus;
+        if (!ReferenceEquals(Device, device)) h.AttachDevice(dh);
+        Device = device;
+        Bus = bus;
     }
 
     internal bool IsDisposed => _handle.IsClosed;
@@ -456,9 +453,9 @@ public unsafe partial class AudioStream : IDisposable
     internal void JoinedVoice(OutputDevice device, MixBus? bus)
     {
         var h = Handle;
-        if (!ReferenceEquals(_device, device)) h.AttachDevice(device.Handle);
-        _device = device;
-        _bus = bus;
+        if (!ReferenceEquals(Device, device)) h.AttachDevice(device.Handle);
+        Device = device;
+        Bus = bus;
     }
 
     // The deck let it go (unloaded: detached natively).
@@ -466,17 +463,17 @@ public unsafe partial class AudioStream : IDisposable
     {
         if (_handle.IsClosed) return;
         _handle.DetachDevice();
-        _device = null;
-        _bus = null;
+        Device = null;
+        Bus = null;
     }
 
     // The native side attached `other` to this stream's device (crossfade, queue): mirror it here.
-    private void AdoptDevice(AudioStream other)
+    void AdoptDevice(AudioStream other)
     {
-        if (_device is null || ReferenceEquals(other._device, _device)) return;
-        other.Handle.AttachDevice(_device.Handle);
-        other._device = _device;
-        other._bus = Bus;
+        if (Device is null || ReferenceEquals(other.Device, Device)) return;
+        other.Handle.AttachDevice(Device.Handle);
+        other.Device = Device;
+        other.Bus = Bus;
     }
 
     /// <summary>
@@ -495,8 +492,8 @@ public unsafe partial class AudioStream : IDisposable
         var h = Handle;
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_detach(h));
         h.DetachDevice();
-        _device = null;
-        _bus = null;
+        Device = null;
+        Bus = null;
     }
 
     /// <summary>
@@ -508,8 +505,8 @@ public unsafe partial class AudioStream : IDisposable
     public void Play()
     {
         var h = Handle;
-        if (_device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
-        _device.Start();
+        if (Device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
+        Device.Start();
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_play(h));
     }
 
@@ -533,10 +530,10 @@ public unsafe partial class AudioStream : IDisposable
     /// </example>
     public void PlayAt(TimeSpan deviceTime)
     {
-        if (deviceTime < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(deviceTime));
+        ArgumentOutOfRangeException.ThrowIfLessThan(deviceTime, TimeSpan.Zero);
         var h = Handle;
-        if (_device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
-        _device.Start();
+        if (Device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
+        Device.Start();
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_play_at(h, TimeConvert.ToNanoseconds(deviceTime)));
     }
 
@@ -554,7 +551,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_state(Handle, out int s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_state(Handle, out var s));
             return (StreamState)s;
         }
     }
@@ -567,7 +564,7 @@ public unsafe partial class AudioStream : IDisposable
         get => FramesToTime(PositionFrames);
         set
         {
-            if (value < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(value));
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, TimeSpan.Zero);
             PositionFrames = TimeToFrames(value);
         }
     }
@@ -579,12 +576,12 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_position(Handle, out long f));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_position(Handle, out var f));
             return f;
         }
         set
         {
-            if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
             AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek(Handle, value));
         }
     }
@@ -608,7 +605,7 @@ public unsafe partial class AudioStream : IDisposable
     /// position is past the end (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public void RequestSeek(TimeSpan position)
     {
-        if (position < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(position));
+        ArgumentOutOfRangeException.ThrowIfLessThan(position, TimeSpan.Zero);
         RequestSeekFrames(TimeToFrames(position));
     }
 
@@ -617,7 +614,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <exception cref="AudioException">The stream cannot seek or the frame is past the end.</exception>
     public void RequestSeekFrames(long frame)
     {
-        if (frame < 0) throw new ArgumentOutOfRangeException(nameof(frame));
+        ArgumentOutOfRangeException.ThrowIfNegative(frame);
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_async(Handle, frame));
     }
 
@@ -638,7 +635,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock(Handle, out var ns));
             return TimeConvert.FromNanoseconds(ns);
         }
     }
@@ -670,8 +667,8 @@ public unsafe partial class AudioStream : IDisposable
     /// </example>
     public TimeSpan GetClockAt(long monotonicNs)
     {
-        if (monotonicNs == long.MinValue) throw new ArgumentOutOfRangeException(nameof(monotonicNs));
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock_at(Handle, monotonicNs, out long ns));
+        ArgumentOutOfRangeException.ThrowIfEqual(monotonicNs, long.MinValue);
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_clock_at(Handle, monotonicNs, out var ns));
         return TimeConvert.FromNanoseconds(ns);
     }
 
@@ -758,7 +755,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_offset(Handle, out long ns));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_offset(Handle, out var ns));
             return TimeConvert.FromNanoseconds(ns);
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_cdg_offset(Handle, TimeConvert.ToNanoseconds(value)));
@@ -775,12 +772,12 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dynamic_range(Handle, out int mode));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dynamic_range(Handle, out var mode));
             return (DynamicRange)mode;
         }
         set
         {
-            int rc = NativeMethods.fa_stream_set_dynamic_range(Handle, (int)value);
+            var rc = NativeMethods.fa_stream_set_dynamic_range(Handle, (int)value);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown dynamic range.", nameof(value));
             AudioException.ThrowIfFailed(rc);
@@ -801,12 +798,12 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dolby_downmix(Handle, out int mode));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_dolby_downmix(Handle, out var mode));
             return (DolbyDownmix)mode;
         }
         set
         {
-            int rc = NativeMethods.fa_stream_set_dolby_downmix(Handle, (int)value);
+            var rc = NativeMethods.fa_stream_set_dolby_downmix(Handle, (int)value);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown Dolby downmix.", nameof(value));
             AudioException.ThrowIfFailed(rc);
@@ -836,32 +833,32 @@ public unsafe partial class AudioStream : IDisposable
         {
             if (!_trackerInfoRead)
             {
-                _trackerInfo = ReadTrackerInfo();
+                field = ReadTrackerInfo();
                 _trackerInfoRead = true;
             }
-            return _trackerInfo;
+            return field;
         }
     }
 
-    private TrackerInfo? _trackerInfo;
-    private bool _trackerInfoRead;
+    bool _trackerInfoRead;
 
-    private unsafe TrackerInfo? ReadTrackerInfo()
+    unsafe TrackerInfo? ReadTrackerInfo()
     {
         {
             FaTrackerInfo n = default;
             n.StructSize = (uint)sizeof(FaTrackerInfo);
-            int rc = NativeMethods.fa_stream_get_tracker_info(Handle, &n);
+            var rc = NativeMethods.fa_stream_get_tracker_info(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             AudioException.ThrowIfFailed(rc);
             return new TrackerInfo(NativeText.Read(n.Type), NativeText.Read(n.TypeName), NativeText.Read(n.Tracker), NativeText.Read(n.Title), NativeText.Read(n.Artist),
                 TrackerText(0, 0), (int)n.Channels, (int)n.Orders, (int)n.Patterns, n.RestartOrder, n.RestartRow,
                 TimeSpan.FromSeconds(n.Duration), TrackerTexts(1, n.Instruments), TrackerTexts(2, n.Samples),
-                TrackerTexts(3, n.Channels), TrackerTexts(4, n.Patterns), TrackerTexts(5, n.Subsongs)) { Subsong = n.Subsong };
+                TrackerTexts(3, n.Channels), TrackerTexts(4, n.Patterns), TrackerTexts(5, n.Subsongs))
+            { Subsong = n.Subsong };
         }
     }
 
-    private unsafe string TrackerText(int type, uint index)
+    unsafe string TrackerText(int type, uint index)
     {
         nuint len = 0;
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_text(Handle, type, index, null, 0, &len));
@@ -872,7 +869,7 @@ public unsafe partial class AudioStream : IDisposable
         return System.Text.Encoding.UTF8.GetString(bytes, 0, (int)len);
     }
 
-    private string[] TrackerTexts(int type, uint count)
+    string[] TrackerTexts(int type, uint count)
     {
         var list = new string[count];
         for (uint i = 0; i < count; i++) list[i] = TrackerText(type, i);
@@ -892,7 +889,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfNegative(order);
         ArgumentOutOfRangeException.ThrowIfNegative(row);
-        int rc = NativeMethods.fa_stream_get_tracker_time(Handle, (uint)order, (uint)row, out double s);
+        var rc = NativeMethods.fa_stream_get_tracker_time(Handle, (uint)order, (uint)row, out var s);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         return TimeSpan.FromSeconds(s);
@@ -911,13 +908,13 @@ public unsafe partial class AudioStream : IDisposable
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_seek_tracker(Handle, (uint)order, (uint)row));
     }
 
-    private int GetTrackerParam(int param)
+    int GetTrackerParam(int param)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_param(Handle, param, out int v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_param(Handle, param, out var v));
         return v;
     }
 
-    private void SetTrackerParam(int param, int value) =>
+    void SetTrackerParam(int param, int value) =>
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_tracker_param(Handle, param, value));
 
     /// <summary>Tracker modules: how samples are resampled. Live, heard after the decode-ahead buffer.</summary>
@@ -995,7 +992,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            int rc = NativeMethods.fa_stream_get_tracker_position(Handle, out uint order, out uint row);
+            var rc = NativeMethods.fa_stream_get_tracker_position(Handle, out var order, out var row);
             if (rc == (int)ErrorCode.NotFound) return null;
             AudioException.ThrowIfFailed(rc);
             return new TrackerPosition((int)order, (int)row);
@@ -1021,7 +1018,7 @@ public unsafe partial class AudioStream : IDisposable
     public bool IsTrackerChannelMuted(int channel)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_mute(Handle, (uint)channel, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_mute(Handle, (uint)channel, out var m));
         return m != 0;
     }
 
@@ -1069,7 +1066,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_tempo(Handle, out double v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_tempo(Handle, out var v));
             return v;
         }
         set
@@ -1091,7 +1088,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_speed(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_speed(Handle, out var v));
             return v;
         }
         set
@@ -1113,7 +1110,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_global_volume(Handle, out double v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_global_volume(Handle, out var v));
             return v;
         }
         set
@@ -1145,7 +1142,7 @@ public unsafe partial class AudioStream : IDisposable
     public double GetTrackerChannelVolume(int channel)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_volume(Handle, (uint)channel, out double v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_channel_volume(Handle, (uint)channel, out var v));
         return v;
     }
 
@@ -1170,7 +1167,7 @@ public unsafe partial class AudioStream : IDisposable
     public bool IsTrackerInstrumentMuted(int instrument)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(instrument);
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_instrument_mute(Handle, (uint)instrument, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_instrument_mute(Handle, (uint)instrument, out var m));
         return m != 0;
     }
 
@@ -1182,7 +1179,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public unsafe IReadOnlyList<int> GetTrackerOrders()
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, null, 0, out uint count));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, null, 0, out var count));
         var list = new int[count];
         fixed (int* p = list)
             AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tracker_orders(Handle, (uint*)p, count, out _));
@@ -1198,7 +1195,7 @@ public unsafe partial class AudioStream : IDisposable
         get
         {
             var n = NativeSized.New<FaMidiInfo>();
-            int rc = NativeMethods.fa_stream_get_midi_info(Handle, &n);
+            var rc = NativeMethods.fa_stream_get_midi_info(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             AudioException.ThrowIfFailed(rc);
             return new MidiInfo(NativeText.Read(n.Title), NativeText.Read(n.Artist), NativeText.Read(n.Copyright), n.Format, (int)n.Tracks,
@@ -1217,10 +1214,10 @@ public unsafe partial class AudioStream : IDisposable
         {
             FaMidiCredits n = default;
             n.StructSize = (uint)sizeof(FaMidiCredits);
-            int rc = NativeMethods.fa_stream_get_midi_credits(Handle, &n);
+            var rc = NativeMethods.fa_stream_get_midi_credits(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             AudioException.ThrowIfFailed(rc);
-            string other = NativeText.Read(n.Other);
+            var other = NativeText.Read(n.Other);
             return new MidiCredits((TextCodePage)n.CodePage, NativeText.Read(n.Title), NativeText.Read(n.Artist), NativeText.Read(n.Writer), NativeText.Read(n.Lyricist),
                 NativeText.Read(n.Year), NativeText.Read(n.Copyright), NativeText.Read(n.Key), NativeText.Read(n.Tempo), NativeText.Read(n.TimeSignature),
                 other.Length == 0 ? [] : other.Split('\n'));
@@ -1250,7 +1247,7 @@ public unsafe partial class AudioStream : IDisposable
             var info = MidiInfo;
             if (info is null) return [];
             var list = new List<MidiText>(info.TextCount);
-            for (int i = 0; i < info.TextCount; i++) list.Add(GetMidiText(i));
+            for (var i = 0; i < info.TextCount; i++) list.Add(GetMidiText(i));
             return list;
         }
     }
@@ -1284,7 +1281,7 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
-    private unsafe MidiText GetMidiText(int index)
+    unsafe MidiText GetMidiText(int index)
     {
         var t = NativeSized.New<FaMidiText>();
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_text(Handle, (uint)index, &t));
@@ -1332,7 +1329,7 @@ public unsafe partial class AudioStream : IDisposable
     /// </summary>
     /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
-    public SoundFont GetSoundFont() => SoundFont.FromNative(NativeMethods.fa_stream_get_soundfont(Handle, out nint native), native);
+    public SoundFont GetSoundFont() => SoundFont.FromNative(NativeMethods.fa_stream_get_soundfont(Handle, out var native), native);
 
     /// <summary>
     /// MIDI streams: semitones (-48..48) added to every note but the drums, from the next note on. The soundfont
@@ -1347,7 +1344,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_transpose(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_transpose(Handle, out var v));
             return v;
         }
         set
@@ -1368,7 +1365,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_effects(Handle, out int v));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_effects(Handle, out var v));
             return v != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_effects(Handle, value ? 1 : 0));
@@ -1399,7 +1396,7 @@ public unsafe partial class AudioStream : IDisposable
     public bool IsMidiChannelMuted(int channel)
     {
         if (channel is < 0 or > 15) throw new ArgumentOutOfRangeException(nameof(channel));
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_channel_mute(Handle, (uint)channel, out int m));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_channel_mute(Handle, (uint)channel, out var m));
         return m != 0;
     }
 
@@ -1411,7 +1408,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <param name="options">Pixel format, size and drawing options; null = BGRA, 300x216.</param>
     /// <exception cref="ArgumentException">An option is out of range (size above 8192, unknown pixel format).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
-    public CdgSurface CreateCdgSurface(CdgSurfaceOptions? options = null) => new CdgSurface(this, options ?? new CdgSurfaceOptions());
+    public CdgSurface CreateCdgSurface(CdgSurfaceOptions? options = null) => new(this, options ?? new CdgSurfaceOptions());
 
     /// <summary>
     /// Creates a surface that draws this MIDI or .kar stream's lyrics as a karaoke screen, in sync with the audio
@@ -1423,17 +1420,17 @@ public unsafe partial class AudioStream : IDisposable
     /// <see cref="LyricStyle.FontPath"/>, or no system font); <see cref="ErrorCode.UnsupportedFormat"/> for a file that
     /// is not a font.</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
-    public LyricSurface CreateLyricSurface(LyricStyle? style = null) => new LyricSurface(this, style ?? new LyricStyle());
+    public LyricSurface CreateLyricSurface(LyricStyle? style = null) => new(this, style ?? new LyricStyle());
 
     // ---- Parameters -----------------------------------------------------------
 
-    private float GetParam(AudioParameter p)
+    float GetParam(AudioParameter p)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_param(Handle, (int)p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_param(Handle, (int)p, out var v));
         return v;
     }
 
-    private void SetParam(AudioParameter p, float v) =>
+    void SetParam(AudioParameter p, float v) =>
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_param(Handle, (int)p, v));
 
     // ---- Equalizer ----------------------------------------------------------------
@@ -1453,7 +1450,7 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentNullException.ThrowIfNull(bands);
         if (bands.Count > 16) throw new ArgumentException("At most 16 bands.", nameof(bands));
         var native = stackalloc FaEqBand[16];
-        for (int i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
+        for (var i = 0; i < bands.Count; i++) native[i] = new FaEqBand(bands[i]);
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq(Handle, native, (uint)bands.Count));
     }
 
@@ -1464,9 +1461,9 @@ public unsafe partial class AudioStream : IDisposable
     public unsafe EqualizerBand[] GetEqualizer()
     {
         var native = stackalloc FaEqBand[16];
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq(Handle, native, 16, out uint n));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq(Handle, native, 16, out var n));
         var result = new EqualizerBand[n];
-        for (int i = 0; i < n; i++) result[i] = native[i].ToBand();
+        for (var i = 0; i < n; i++) result[i] = native[i].ToBand();
         return result;
     }
 
@@ -1483,7 +1480,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq_enabled(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_eq_enabled(Handle, out var on));
             return on != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_eq_enabled(Handle, value ? 1 : 0));
@@ -1501,7 +1498,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_mute(Handle, out int m));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_mute(Handle, out var m));
             return m != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_mute(Handle, value ? 1 : 0));
@@ -1519,7 +1516,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loop(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loop(Handle, out var on));
             return on != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loop(Handle, value ? 1 : 0));
@@ -1544,7 +1541,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_reverse(Handle, out int on));
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_reverse(Handle, out var on));
             return on != 0;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_reverse(Handle, value ? 1 : 0));
@@ -1602,7 +1599,7 @@ public unsafe partial class AudioStream : IDisposable
             o.Quality = (int)value.Quality;
             o.KeepFormants = value.KeepFormants ? 1 : 0;
             o.LatencyMs = (uint)Math.Clamp(Math.Round(value.Latency.TotalMilliseconds), 1, 60000);
-            int rc = NativeMethods.fa_stream_set_tempo_options(Handle, &o);
+            var rc = NativeMethods.fa_stream_set_tempo_options(Handle, &o);
             if (rc == (int)ErrorCode.InvalidArgument)
                 throw new ArgumentException("Unknown stretch quality.", nameof(value));
             AudioException.ThrowIfFailed(rc);
@@ -1670,11 +1667,12 @@ public unsafe partial class AudioStream : IDisposable
     /// song.Stop();
     /// </code>
     /// </example>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last", Justification = "Public API: moving the token ahead of startAt would break existing calls.")]
     public Task RampAsync(AudioParameter parameter, float target, TimeSpan duration, Curve? curve = null,
         CancellationToken cancellationToken = default, TimeSpan? startAt = null)
     {
         var (durationNs, startNs, c) = TimeConvert.RampArgs(duration, startAt, curve);
-        long tag = Interlocked.Increment(ref s_nextRampTag);
+        var tag = Interlocked.Increment(ref _nextRampTag);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_ramps) _ramps[tag] = tcs;
         try
@@ -1694,10 +1692,10 @@ public unsafe partial class AudioStream : IDisposable
         return tcs.Task.WaitAsync(cancellationToken);
     }
 
-    private readonly Dictionary<long, TaskCompletionSource> _ramps = new();
-    private static long s_nextRampTag; // unique across streams: a crossfade raises its tag on both
+    readonly Dictionary<long, TaskCompletionSource> _ramps = [];
+    static long _nextRampTag; // unique across streams: a crossfade raises its tag on both
 
-    private void CompleteRamp(long tag)
+    void CompleteRamp(long tag)
     {
         TaskCompletionSource? tcs;
         lock (_ramps)
@@ -1737,11 +1735,11 @@ public unsafe partial class AudioStream : IDisposable
     public Task CrossfadeTo(AudioStream next, TimeSpan duration, Curve? curve = null)
     {
         ArgumentNullException.ThrowIfNull(next);
-        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
+        ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
         var h = Handle;
         var nh = next.Handle;
-        if (_device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
-        long tag = Interlocked.Increment(ref s_nextRampTag);
+        if (Device is null) throw new InvalidOperationException("Call PlayOn(device) first.");
+        var tag = Interlocked.Increment(ref _nextRampTag);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_ramps) _ramps[tag] = tcs;
         try
@@ -1749,7 +1747,7 @@ public unsafe partial class AudioStream : IDisposable
             var c = curve ?? Curve.EqualPower;
             var ramp = c.ToNative();
             ramp.Tag = tag;
-            _device.Start();
+            Device.Start();
             AudioException.ThrowIfFailed(NativeMethods.fa_crossfade(h, nh, TimeConvert.ToNanoseconds(duration), &ramp));
             GC.KeepAlive(c);
         }
@@ -1809,12 +1807,12 @@ public unsafe partial class AudioStream : IDisposable
     public void QueueNext(AudioStream next, TimeSpan crossfade = default, Curve? curve = null)
     {
         ArgumentNullException.ThrowIfNull(next);
-        if (crossfade < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(crossfade));
+        ArgumentOutOfRangeException.ThrowIfLessThan(crossfade, TimeSpan.Zero);
         var h = Handle;
         var nh = next.Handle;
         var c = curve ?? Curve.EqualPower;
         var ramp = c.ToNative();
-        bool added = false;
+        var added = false;
         try
         {
             nh.DangerousAddRef(ref added);
@@ -1826,14 +1824,14 @@ public unsafe partial class AudioStream : IDisposable
         }
         GC.KeepAlive(c);
         AdoptDevice(next);
-        _queued = next;
+        Next = next;
     }
 
     /// <summary>Removes the stream queued with <see cref="QueueNext"/>; it goes back to stopped.</summary>
     public void ClearNext()
     {
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_next(Handle, 0, 0, null));
-        _queued = null;
+        Next = null;
     }
 
     /// <summary>The stream queued with <see cref="QueueNext"/> that has not started yet, or null.</summary>
@@ -1841,13 +1839,13 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_next(Handle, out nint n));
-            var q = _queued;
+            AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_next(Handle, out var n));
+            var q = field;
             return n != 0 && q is not null && !q._handle.IsClosed && q._handle.DangerousGetHandle() == n ? q : null;
         }
-    }
 
-    private AudioStream? _queued;
+        private set;
+    }
 
     /// <summary>
     /// Routes the source channels to the device's channels with your own gains: <c>weights[input, output]</c>
@@ -1893,12 +1891,12 @@ public unsafe partial class AudioStream : IDisposable
     /// </example>
     public int Read(Span<float> buffer)
     {
-        int channels = Math.Max(1, _channels);
+        var channels = Math.Max(1, _channels);
         long frames = buffer.Length / channels;
         if (frames == 0) return 0;
         fixed (float* p = buffer)
         {
-            int rc = NativeMethods.fa_stream_read(Handle, p, frames, out long got);
+            var rc = NativeMethods.fa_stream_read(Handle, p, frames, out var got);
             if (rc == (int)ErrorCode.EndOfStream) return 0; // native signals the end with FA_ERROR_END_OF_STREAM
             AudioException.ThrowIfFailed(rc);
             return (int)got;
@@ -1915,7 +1913,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <exception cref="AudioException">A decode-only stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public StreamLevels GetLevels(TimeSpan? window = null)
     {
-        int ch = _channels == 1 ? 1 : 2;
+        var ch = _channels == 1 ? 1 : 2;
         var peak = new float[ch];
         var rms = new float[ch];
         GetLevels(peak, rms, window);
@@ -1933,7 +1931,7 @@ public unsafe partial class AudioStream : IDisposable
     public int GetLevels(Span<float> peak, Span<float> rms, TimeSpan? window = null)
     {
         var handle = Handle;
-        int ch = _channels == 1 ? 1 : 2;
+        var ch = _channels == 1 ? 1 : 2;
         if (peak.Length < ch || rms.Length < ch) throw new ArgumentException($"Room for {ch} channel(s) is needed.", peak.Length < ch ? nameof(peak) : nameof(rms));
         fixed (float* pp = peak)
         fixed (float* pr = rms)
@@ -1986,7 +1984,7 @@ public unsafe partial class AudioStream : IDisposable
         return GetSpectrumCore((uint)magnitudes.Length * 2, magnitudes, options);
     }
 
-    private unsafe float GetSpectrumCore(uint size, Span<float> bins, SpectrumOptions options)
+    unsafe float GetSpectrumCore(uint size, Span<float> bins, SpectrumOptions options)
     {
         float hz;
         fixed (float* p = bins)
@@ -2123,7 +2121,7 @@ public unsafe partial class AudioStream : IDisposable
     /// (<see cref="ErrorCode.InvalidArgument"/>), or 64 are armed already (<see cref="ErrorCode.Busy"/>).</exception>
     public void AddPositionEvent(TimeSpan position)
     {
-        long frame = TimeToFrames(position);
+        var frame = TimeToFrames(position);
         // -1 would be FA_FRAMES_UNSET (remove all); any negative position is an invalid argument.
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_add_position_event(Handle, frame < 0 ? -2 : frame));
     }
@@ -2149,7 +2147,7 @@ public unsafe partial class AudioStream : IDisposable
         ArgumentNullException.ThrowIfNull(processor);
         var h = Handle;
         var gc = h.Pin(processor);
-        int rc = NativeMethods.fa_stream_add_dsp(h, &DspTrampoline, (void*)GCHandle.ToIntPtr(gc), priority, out uint id);
+        var rc = NativeMethods.fa_stream_add_dsp(h, &DspTrampoline, (void*)GCHandle.ToIntPtr(gc), priority, out var id);
         if (rc < 0)
         {
             h.Unpin(gc);
@@ -2159,7 +2157,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void DspTrampoline(float* frames, long count, uint channels, uint sampleRate, void* user)
+    static void DspTrampoline(float* frames, long count, uint channels, uint sampleRate, void* user)
     {
         try
         {
@@ -2172,11 +2170,11 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
-    private sealed class DspRegistration : IDisposable
+    sealed class DspRegistration : IDisposable
     {
-        private AudioStream? _owner;
-        private readonly uint _id;
-        private readonly GCHandle _gc;
+        AudioStream? _owner;
+        readonly uint _id;
+        readonly GCHandle _gc;
 
         public DspRegistration(AudioStream owner, uint id, GCHandle gc) { _owner = owner; _id = id; _gc = gc; }
 
@@ -2242,7 +2240,7 @@ public unsafe partial class AudioStream : IDisposable
             lock (_cdgEventLock)
             {
                 if (value == null) return;
-                bool first = _cdgChanged == null;
+                var first = _cdgChanged == null;
                 // The handler goes in first: the event thread can raise the first event
                 // (the whole screen) before fa_stream_set_cdg_events even returns.
                 _cdgChanged += value;
@@ -2262,8 +2260,8 @@ public unsafe partial class AudioStream : IDisposable
             }
         }
     }
-    private EventHandler<CdgChangedEventArgs>? _cdgChanged;
-    private readonly object _cdgEventLock = new();
+    EventHandler<CdgChangedEventArgs>? _cdgChanged;
+    readonly object _cdgEventLock = new();
 
     /// <summary>
     /// Raised when a <see cref="RequestSeek(TimeSpan)"/> could not be carried out (for example a web server refusing
@@ -2306,18 +2304,19 @@ public unsafe partial class AudioStream : IDisposable
     /// Always true: every stream delivers events. Kept for code written against early previews, when events could be
     /// missing; new code doesn't need to check it.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Public instance API kept for existing callers; a static member would break stream.EventsSupported.")]
     public bool EventsSupported => true;
 
-    private sealed class EventState
+    sealed class EventState
     {
         public EventState(AudioStream s) => Stream = new WeakReference<AudioStream>(s);
         public WeakReference<AudioStream> Stream { get; }
     }
 
-    private void RegisterEventCallback()
+    void RegisterEventCallback()
     {
         var gc = _handle.Pin(new EventState(this));
-        int rc = NativeMethods.fa_stream_set_event_callback(_handle, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
+        var rc = NativeMethods.fa_stream_set_event_callback(_handle, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
         if (rc < 0)
         {
             _handle.Unpin(gc);
@@ -2326,7 +2325,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OnNativeEvent(FaEvent* ev, void* user)
+    static void OnNativeEvent(FaEvent* ev, void* user)
     {
         try
         {
@@ -2340,7 +2339,7 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
-    private void Raise(int type, long frame, long value)
+    void Raise(int type, long frame, long value)
     {
         try
         {

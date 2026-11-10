@@ -29,8 +29,7 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed class StreamMarkers
 {
-    private readonly AudioStream _stream;
-    private Curve _fadeIn = Curve.EqualPower, _fadeOut = Curve.EqualPower;
+    readonly AudioStream _stream;
 
     internal StreamMarkers(AudioStream stream) => _stream = stream;
 
@@ -54,7 +53,7 @@ public sealed class StreamMarkers
     /// <returns>Its position, or null when it is not set.</returns>
     public TimeSpan? Get(MarkerKind kind)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_marker(_stream.Handle, (int)kind, out long frame));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_marker(_stream.Handle, (int)kind, out var frame));
         return frame < 0 ? null : _stream.FramesToTime(frame);
     }
 
@@ -65,22 +64,22 @@ public sealed class StreamMarkers
     public void Set(MarkerKind kind, TimeSpan? position)
     {
         if (position < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(position));
-        long frame = position is { } t ? _stream.TimeToFrames(t) : -1;
+        var frame = position is { } t ? _stream.TimeToFrames(t) : -1;
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_marker(_stream.Handle, (int)kind, frame));
     }
 
     /// <summary>Shape of the <see cref="FadeInEnd"/> fade-in. Defaults to <see cref="Curve.EqualPower"/>.</summary>
     /// <exception cref="ArgumentNullException">The value is null.</exception>
-    public Curve FadeInCurve { get => _fadeIn; set => _fadeIn = SetCurve(0, value); }
+    public Curve FadeInCurve { get; set => field = SetCurve(0, value); } = Curve.EqualPower;
 
     /// <summary>
     /// Shape of the <see cref="FadeOutStart"/> fade-out, described as a fade-in and played backwards.
     /// Defaults to <see cref="Curve.EqualPower"/>, so overlapping marker fades keep constant loudness.
     /// </summary>
     /// <exception cref="ArgumentNullException">The value is null.</exception>
-    public Curve FadeOutCurve { get => _fadeOut; set => _fadeOut = SetCurve(1, value); }
+    public Curve FadeOutCurve { get; set => field = SetCurve(1, value); } = Curve.EqualPower;
 
-    private unsafe Curve SetCurve(int fade, Curve curve)
+    unsafe Curve SetCurve(int fade, Curve curve)
     {
         ArgumentNullException.ThrowIfNull(curve);
         var r = curve.ToNative();

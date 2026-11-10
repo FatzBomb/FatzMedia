@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using FatzMedia.Audio;
 using FatzMedia.Audio.Archives;
 using Xunit;
 
@@ -8,11 +7,11 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>The archive API: list, pick, read, play, tags and fingerprints of ZIP entries.</summary>
 public class ArchiveTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static byte[] Zip(params (string Name, byte[] Data, CompressionLevel Level)[] entries)
+    static byte[] Zip(params (string Name, byte[] Data, CompressionLevel Level)[] entries)
     {
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
@@ -27,15 +26,15 @@ public class ArchiveTests
         return ms.ToArray();
     }
 
-    private static byte[] OneSecondCdg() => new byte[24 * 300];
+    static byte[] OneSecondCdg() => new byte[24 * 300];
 
     [Fact]
     public void Open_ListsEntriesFromPathMemoryAndStream()
     {
-        byte[] wav = TestAudio.SineWav(0.5);
-        byte[] zip = Zip(("Song.wav", wav, CompressionLevel.NoCompression), ("lyrics/words.txt", "la la"u8.ToArray(), CompressionLevel.Optimal),
+        var wav = TestAudio.SineWav(0.5);
+        var zip = Zip(("Song.wav", wav, CompressionLevel.NoCompression), ("lyrics/words.txt", "la la"u8.ToArray(), CompressionLevel.Optimal),
             ("song.cdg", OneSecondCdg(), CompressionLevel.Optimal));
-        string path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(path, zip);
         try
         {
@@ -68,8 +67,8 @@ public class ArchiveTests
     [Fact]
     public void Pick_FollowsThePairingRules()
     {
-        byte[] wav = TestAudio.SineWav(0.25);
-        byte[] zip = Zip(("other.wav", wav, CompressionLevel.NoCompression), ("Song.WAV", wav, CompressionLevel.Optimal),
+        var wav = TestAudio.SineWav(0.25);
+        var zip = Zip(("other.wav", wav, CompressionLevel.NoCompression), ("Song.WAV", wav, CompressionLevel.Optimal),
             ("song.cdg", OneSecondCdg(), CompressionLevel.NoCompression), ("__MACOSX/._Song.WAV", [1, 2, 3], CompressionLevel.NoCompression));
         using var a = Archive.Open(zip);
         var (audio, cdg) = a.Pick();
@@ -98,7 +97,7 @@ public class ArchiveTests
     [InlineData(CompressionLevel.Optimal)]
     public void ReadAllBytes_AndOpenRead_GiveTheEntry(CompressionLevel level)
     {
-        byte[] wav = TestAudio.SineWav(0.5);
+        var wav = TestAudio.SineWav(0.5);
         using var a = Archive.Open(Zip(("song.wav", wav, level)));
         Assert.Equal(wav, a.ReadAllBytes(a.Entries[0]));
         using var s = a.OpenRead(a.Entries[0]);
@@ -116,15 +115,15 @@ public class ArchiveTests
     [Fact]
     public void MemoryLimit_AndTempDirectory()
     {
-        byte[] wav = TestAudio.SineWav(10);   // 880 KB
-        byte[] zip = Zip(("big.wav", wav, CompressionLevel.Optimal));
+        var wav = TestAudio.SineWav(10);   // 880 KB
+        var zip = Zip(("big.wav", wav, CompressionLevel.Optimal));
         using (var a = Archive.Open(zip, new ArchiveOptions { MemoryLimitMb = 0 }))
             Assert.Equal(wav, a.ReadAllBytes(a.Entries[0]));
-        string temp = Path.Combine(Path.GetTempPath(), $"fa-archive-tmp-{Guid.NewGuid():N}");
+        var temp = Path.Combine(Path.GetTempPath(), $"fa-archive-tmp-{Guid.NewGuid():N}");
         try
         {
             // Read through the temp folder when the limit is too small: a limit of 0 MB means the default, so use a big entry.
-            byte[] big = TestAudio.SineWav(100);   // 8.8 MB, still under 1 MB? no: over the 1 MB limit
+            var big = TestAudio.SineWav(100);   // 8.8 MB, still under 1 MB? no: over the 1 MB limit
             using var b = Archive.Open(Zip(("big.wav", big, CompressionLevel.Optimal)), new ArchiveOptions { MemoryLimitMb = 1 });
             Assert.Equal(ErrorCode.TooLarge, Assert.Throws<AudioException>(() => b.ReadAllBytes(b.Entries[0])).ErrorCode);
             using var c = Archive.Open(Zip(("big.wav", big, CompressionLevel.Optimal)), new ArchiveOptions { MemoryLimitMb = 1, TempDirectory = temp });
@@ -143,7 +142,7 @@ public class ArchiveTests
     [Fact]
     public void Cancelled_UnpackStops()
     {
-        byte[] wav = TestAudio.SineWav(3);
+        var wav = TestAudio.SineWav(3);
         using var cts = new CancellationTokenSource();
         using var a = Archive.Open(Zip(("song.wav", wav, CompressionLevel.Optimal)), new ArchiveOptions { CancellationToken = cts.Token });
         cts.Cancel();
@@ -151,23 +150,23 @@ public class ArchiveTests
     }
 
     // A solid 7z (LZMA2, packed header) made by the test fixture writer: three songs-folder entries, a text file and an empty file.
-    private const string SevenZipBase64 =
+    const string SevenZipBase64 =
         "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";
 
     [Fact]
     public void SevenZip_ListsAndReads()
     {
-        byte[] file = Convert.FromBase64String(SevenZipBase64);
+        var file = Convert.FromBase64String(SevenZipBase64);
         Assert.Equal(ArchiveFormat.SevenZip, Archive.Detect(file));
         using var a = Archive.Open(file);
         Assert.Equal(ArchiveFormat.SevenZip, a.Format);
         Assert.True(a.Entries.Count >= 4);
         var notes = a.Entries.First(e => e.Name == "notes.txt");
-        byte[] text = a.ReadAllBytes(notes);
-        Assert.Equal((long)text.Length, notes.Size);
+        var text = a.ReadAllBytes(notes);
+        Assert.Equal(text.Length, notes.Size);
         // Reading an earlier entry after a later one restarts the decoder and still checks out.
         var first = a.Entries.First(e => e.Size > 0 && e.Name != "notes.txt");
-        Assert.Equal(first.Size, (long)a.ReadAllBytes(first).Length);
+        Assert.Equal(first.Size, a.ReadAllBytes(first).Length);
         Assert.Equal(text, a.ReadAllBytes(notes));
     }
 
@@ -191,9 +190,9 @@ public class ArchiveTests
     [InlineData(CompressionLevel.Optimal)]
     public void OpenArchiveEntry_PlaysTheSongWithItsGraphics(CompressionLevel level)
     {
-        byte[] wav = TestAudio.SineWav(0.5, sampleRate: 8000);
-        byte[] other = TestAudio.SineWav(0.25, sampleRate: 8000);
-        byte[] zip = Zip(("one.wav", other, level), ("Two.WAV", wav, level), ("two.cdg", OneSecondCdg(), level));
+        var wav = TestAudio.SineWav(0.5, sampleRate: 8000);
+        var other = TestAudio.SineWav(0.25, sampleRate: 8000);
+        var zip = Zip(("one.wav", other, level), ("Two.WAV", wav, level), ("two.cdg", OneSecondCdg(), level));
         using var engine = CreateHeadless();
         using var a = Archive.Open(zip);
         using (var picked = engine.OpenArchiveEntry(a, null, DecodeOnly))
@@ -215,7 +214,7 @@ public class ArchiveTests
         var named = new StreamOptions { DecodeOnly = true, ArchiveEntry = "one.WAV" };
         using (var m = engine.OpenMemory(zip, named)) Assert.Equal(2000, TestAudio.ReadAll(m));
         using (var s = engine.OpenStream(new MemoryStream(zip), named)) Assert.Equal(2000, TestAudio.ReadAll(s));
-        string path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(path, zip);
         try
         {
@@ -230,10 +229,10 @@ public class ArchiveTests
     [Fact]
     public void Tags_OfEntriesAndStreams()
     {
-        byte[] wav = TestAudio.SineWav(0.5, sampleRate: 8000);
-        byte[] other = TestAudio.SineWav(0.25, sampleRate: 8000);
-        byte[] zip = Zip(("one.wav", other, CompressionLevel.NoCompression), ("two.wav", wav, CompressionLevel.Optimal), ("two.cdg", OneSecondCdg(), CompressionLevel.NoCompression));
-        string path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
+        var wav = TestAudio.SineWav(0.5, sampleRate: 8000);
+        var other = TestAudio.SineWav(0.25, sampleRate: 8000);
+        var zip = Zip(("one.wav", other, CompressionLevel.NoCompression), ("two.wav", wav, CompressionLevel.Optimal), ("two.cdg", OneSecondCdg(), CompressionLevel.NoCompression));
+        var path = Path.Combine(Path.GetTempPath(), $"fa-archive-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(path, zip);
         try
         {
@@ -261,11 +260,11 @@ public class ArchiveTests
     [Fact]
     public void Fingerprint_OfEntryMatchesItsBytes()
     {
-        byte[] wav = TestAudio.SineWav(0.5, sampleRate: 8000);
+        var wav = TestAudio.SineWav(0.5, sampleRate: 8000);
         var expected = AudioFingerprint.Compute(wav);
         foreach (var level in new[] { CompressionLevel.NoCompression, CompressionLevel.Optimal })
         {
-            byte[] zip = Zip(("a.wav", TestAudio.SineWav(0.1), level), ("song.wav", wav, level), ("song.cdg", OneSecondCdg(), level));
+            var zip = Zip(("a.wav", TestAudio.SineWav(0.1), level), ("song.wav", wav, level), ("song.cdg", OneSecondCdg(), level));
             using var a = Archive.Open(zip);
             Assert.Equal(expected, AudioFingerprint.Compute(a, a.Find("song.wav")));
             Assert.Equal(expected, AudioFingerprint.Compute(a));             // the pick
@@ -273,7 +272,7 @@ public class ArchiveTests
         }
     }
 
-    private sealed class NonSeekable(byte[] data) : MemoryStream(data)
+    sealed class NonSeekable(byte[] data) : MemoryStream(data)
     {
         public override bool CanSeek => false;
     }

@@ -93,11 +93,11 @@ public sealed record StreamStats(long Underruns, TimeSpan Buffered);
 public readonly record struct LoudnessMeter(double Momentary, double ShortTerm);
 
 /// <summary>Bridges a managed <see cref="AudioCallback"/> to the native fa_stream_proc.</summary>
-internal sealed unsafe class CallbackState
+sealed unsafe class CallbackState
 {
-    private readonly AudioCallback? _fill;
-    private readonly RawAudioCallback? _raw;
-    private readonly int _unit;   // floats per frame (channels), or bytes per frame for a raw callback
+    readonly AudioCallback? _fill;
+    readonly RawAudioCallback? _raw;
+    readonly int _unit;   // floats per frame (channels), or bytes per frame for a raw callback
 
     public CallbackState(AudioCallback fill, int channels)
     {
@@ -117,7 +117,7 @@ internal sealed unsafe class CallbackState
         try
         {
             if (NativeUser.From<CallbackState>(user) is not { } s) return AudioEngine.EndOfStream;
-            int n = s._fill is { } f
+            var n = s._fill is { } f
                 ? f(new Span<float>(buffer, checked((int)(frames * s._unit))))
                 : s._raw!(new Span<byte>(buffer, checked((int)(frames * s._unit))));
             return n < 0 ? AudioEngine.EndOfStream : Math.Min(n, frames);

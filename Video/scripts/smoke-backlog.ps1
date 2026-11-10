@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Guided smoke tests for every stage waiting on a Windows run (the HANDOFF.md smoke backlog).
+    Guided smoke tests for every stage waiting on a Windows run (the smoke backlog in work\fatzmedia\Video\HANDOFF.md).
 
 .DESCRIPTION
     Runs the tests one at a time and does as much as it can itself: it builds the players, makes

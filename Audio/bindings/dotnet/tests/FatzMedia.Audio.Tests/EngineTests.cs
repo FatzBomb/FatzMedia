@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -17,7 +16,7 @@ public static class TestAudio
     /// <summary>A 32-bit float mono WAV file.</summary>
     public static byte[] FloatWav(float[] samples, int rate)
     {
-        int dataBytes = samples.Length * 4;
+        var dataBytes = samples.Length * 4;
         using var ms = new MemoryStream(44 + dataBytes);
         using var w = new BinaryWriter(ms);
         w.Write("RIFF"u8);
@@ -33,7 +32,7 @@ public static class TestAudio
         w.Write((short)32);
         w.Write("data"u8);
         w.Write(dataBytes);
-        foreach (float s in samples) w.Write(s);
+        foreach (var s in samples) w.Write(s);
         w.Flush();
         return ms.ToArray();
     }
@@ -41,7 +40,7 @@ public static class TestAudio
     /// <summary>Reads a stream to its end into one interleaved array (defaults to the stream's channel count).</summary>
     public static float[] ReadAllSamples(AudioStream s, int? channels = null, int piece = 4096)
     {
-        int ch = channels ?? s.Info.Format.Channels;
+        var ch = channels ?? s.Info.Format.Channels;
         var all = new List<float>();
         var buf = new float[piece * ch];
         int frames;
@@ -52,8 +51,8 @@ public static class TestAudio
     /// <summary>Generates a 16-bit mono PCM WAV file with a sine tone.</summary>
     public static byte[] SineWav(double seconds = 1.0, int sampleRate = 44100, double frequency = 440.0)
     {
-        int frames = (int)(seconds * sampleRate);
-        int dataBytes = frames * 2;
+        var frames = (int)(seconds * sampleRate);
+        var dataBytes = frames * 2;
         using var ms = new MemoryStream(44 + dataBytes);
         using var w = new BinaryWriter(ms);
         w.Write("RIFF"u8);
@@ -69,7 +68,7 @@ public static class TestAudio
         w.Write((short)16);
         w.Write("data"u8);
         w.Write(dataBytes);
-        for (int i = 0; i < frames; i++)
+        for (var i = 0; i < frames; i++)
             w.Write((short)(Math.Sin(2 * Math.PI * frequency * i / sampleRate) * short.MaxValue * 0.5));
         w.Flush();
         return ms.ToArray();
@@ -86,7 +85,7 @@ public static class TestAudio
 
 public class EngineTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
     [Fact]
     public void Engine_CreateAndDispose()
@@ -225,8 +224,8 @@ public class EngineTests
         var first = s.Info;
         Assert.Same(first, s.Info);
         Assert.Equal(22050, first.Format.SampleRate);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++) _ = s.Info;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++) _ = s.Info;
         Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1024);
     }
 
@@ -241,7 +240,7 @@ public class EngineTests
         s.PlayOn(output);
         // The null output can stall and then catch up in a burst, so poll until the 100 ms window is full of tone.
         var levels = s.GetLevels(TimeSpan.FromMilliseconds(100));
-        for (long deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && levels.Rms[0] < 0.30f; )
+        for (var deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && levels.Rms[0] < 0.30f;)
         {
             Thread.Sleep(50);
             levels = s.GetLevels(TimeSpan.FromMilliseconds(100));
@@ -252,7 +251,7 @@ public class EngineTests
         var spectrum = s.GetSpectrum(4096);
         Assert.Equal(2048, spectrum.Magnitudes.Length);
         Assert.True(spectrum.BinHz > 0);
-        int top = Array.IndexOf(spectrum.Magnitudes, spectrum.Magnitudes.Max());
+        var top = Array.IndexOf(spectrum.Magnitudes, spectrum.Magnitudes.Max());
         Assert.InRange(top * spectrum.BinHz, 1500 - spectrum.BinHz, 1500 + spectrum.BinHz);
         Assert.InRange(spectrum.Magnitudes[top], 0.35f, 0.55f);
         Assert.InRange(output.GetLevels().Peak[0], 0.3f, 0.6f);
@@ -261,7 +260,7 @@ public class EngineTests
         // The span overloads: same values, no allocation.
         Span<float> peak = stackalloc float[2], rms = stackalloc float[2];
         Assert.Equal(1, s.GetLevels(peak, rms, TimeSpan.FromMilliseconds(100)));   // a mono file
-        for (long deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && rms[0] < 0.30f; )
+        for (var deadline = Environment.TickCount64 + 2000; Environment.TickCount64 < deadline && rms[0] < 0.30f;)
         {
             Thread.Sleep(50);
             s.GetLevels(peak, rms, TimeSpan.FromMilliseconds(100));
@@ -271,22 +270,22 @@ public class EngineTests
         output.GetLevels(peak, rms);
         Assert.InRange(peak[0], 0.3f, 0.6f);
         Assert.Throws<ArgumentException>(() => output.GetLevels(new float[1], new float[2]));
-        Assert.Throws<ArgumentException>(() => s.GetLevels(Span<float>.Empty, Span<float>.Empty));
+        Assert.Throws<ArgumentException>(() => s.GetLevels([], []));
         Assert.False(s.HasCdg);
         Assert.Throws<AudioException>(() => s.GetSpectrum(1000));
         Assert.Throws<AudioException>(() => s.GetSpectrum(4097));
         // The span overload of a stream matches the array version and does not allocate.
         Span<float> sbins = stackalloc float[2048];
-        float hz = s.GetSpectrum(sbins);
+        var hz = s.GetSpectrum(sbins);
         Assert.Equal(spectrum.BinHz, hz);
         Assert.Throws<AudioException>(() => s.GetSpectrum(new float[1000]));
         // Warm up (JIT, tiering) so only steady-state allocations are counted; take the best of a few runs.
-        for (int i = 0; i < 50; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
-        long fewest = long.MaxValue;
-        for (int run = 0; run < 3; run++)
+        for (var i = 0; i < 50; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
+        var fewest = long.MaxValue;
+        for (var run = 0; run < 3; run++)
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 100; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 100; i++) { s.GetSpectrum(sbins); output.GetSpectrum(bins); }
             fewest = Math.Min(fewest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
         Assert.True(fewest < 1024);

@@ -21,11 +21,11 @@ public sealed class Curve : IEquatable<Curve>
     /// <summary>Most points a <see cref="Points"/> curve may have.</summary>
     public const int MaxPoints = 64;
 
-    private readonly int _kind;
-    private readonly float _x1, _y1, _x2, _y2;
-    private readonly float[]? _points; // pinned: the native call reads it in place
+    readonly int _kind;
+    readonly float _x1, _y1, _x2, _y2;
+    readonly float[]? _points; // pinned: the native call reads it in place
 
-    private Curve(int kind, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0, float[]? points = null)
+    Curve(int kind, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0, float[]? points = null)
     {
         _kind = kind; _x1 = x1; _y1 = y1; _x2 = x2; _y2 = y2; _points = points;
     }
@@ -74,7 +74,7 @@ public sealed class Curve : IEquatable<Curve>
         if (values.Length < 2 || values.Length > MaxPoints)
             throw new ArgumentException($"A point curve needs 2 to {MaxPoints} values.", nameof(values));
         var copy = GC.AllocateArray<float>(values.Length, pinned: true);
-        for (int i = 0; i < values.Length; i++)
+        for (var i = 0; i < values.Length; i++)
         {
             if (!float.IsFinite(values[i])) throw new ArgumentException("Curve values must be finite numbers.", nameof(values));
             copy[i] = values[i];
@@ -89,7 +89,11 @@ public sealed class Curve : IEquatable<Curve>
     // across the native call with GC.KeepAlive.
     internal unsafe FaRamp ToNative() => new()
     {
-        Curve = _kind, BezierX1 = _x1, BezierY1 = _y1, BezierX2 = _x2, BezierY2 = _y2,
+        Curve = _kind,
+        BezierX1 = _x1,
+        BezierY1 = _y1,
+        BezierX2 = _x2,
+        BezierY2 = _y2,
         Points = _points is null ? null : (float*)Marshal.UnsafeAddrOfPinnedArrayElement(_points, 0),
         PointCount = (uint)(_points?.Length ?? 0),
     };
@@ -108,8 +112,11 @@ public sealed class Curve : IEquatable<Curve>
     /// <inheritdoc/>
     public override string ToString() => _kind switch
     {
-        NativeConstants.CurveLinear => "Linear", NativeConstants.CurveEqualPower => "EqualPower",
-        NativeConstants.CurveLog => "Logarithmic", NativeConstants.CurveExp => "Exponential", NativeConstants.CurveSCurve => "SCurve",
+        NativeConstants.CurveLinear => "Linear",
+        NativeConstants.CurveEqualPower => "EqualPower",
+        NativeConstants.CurveLog => "Logarithmic",
+        NativeConstants.CurveExp => "Exponential",
+        NativeConstants.CurveSCurve => "SCurve",
         NativeConstants.CurveBezier => $"Bezier({_x1}, {_y1}, {_x2}, {_y2})",
         _ => $"Points({string.Join(", ", PointValues)})",
     };

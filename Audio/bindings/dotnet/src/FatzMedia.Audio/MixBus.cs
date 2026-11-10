@@ -26,7 +26,7 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed class MixBus : IDisposable
 {
-    private readonly BusHandle _handle;
+    readonly BusHandle _handle;
 
     internal MixBus(OutputDevice device, BusHandle handle)
     {
@@ -56,13 +56,13 @@ public sealed class MixBus : IDisposable
     /// <summary>Stereo pan of the bus from -1 (left) to 1 (right).</summary>
     public float Pan { get => Get(AudioParameter.Pan); set => Set(AudioParameter.Pan, value); }
 
-    private float Get(AudioParameter p)
+    float Get(AudioParameter p)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_bus_get_param(Handle, (int)p, out float v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_bus_get_param(Handle, (int)p, out var v));
         return v;
     }
 
-    private void Set(AudioParameter p, float v) =>
+    void Set(AudioParameter p, float v) =>
         AudioException.ThrowIfFailed(NativeMethods.fa_bus_set_param(Handle, (int)p, v));
 
     /// <summary>Ramps the bus volume or pan to a target over time and returns immediately.</summary>

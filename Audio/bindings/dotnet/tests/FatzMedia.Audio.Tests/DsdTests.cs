@@ -7,10 +7,10 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>DSD files (DSF, DSDIFF) through the binding: the output rate option and the DSDIFF tag format.</summary>
 public class DsdTests
 {
-    private const int DsdRate = 2822400;   // DSD64
+    const int DsdRate = 2822400;   // DSD64
 
     /// <summary>A stereo DSF of one block group (4096 bytes a channel) of the DSD idle pattern.</summary>
-    private static byte[] Dsf()
+    static byte[] Dsf()
     {
         var b = new byte[92 + 2 * 4096];
         Encoding.ASCII.GetBytes("DSD ").CopyTo(b, 0);
@@ -32,7 +32,7 @@ public class DsdTests
         return b;
     }
 
-    private static byte[] Chunk(string id, byte[] body)
+    static byte[] Chunk(string id, byte[] body)
     {
         var c = new byte[12 + body.Length + (body.Length & 1)];
         Encoding.ASCII.GetBytes(id).CopyTo(c, 0);
@@ -41,7 +41,7 @@ public class DsdTests
         return c;
     }
 
-    private static byte[] Text(string s)
+    static byte[] Text(string s)
     {
         var t = Encoding.ASCII.GetBytes(s);
         var b = new byte[4 + t.Length];
@@ -51,7 +51,7 @@ public class DsdTests
     }
 
     /// <summary>A stereo DSDIFF with a title and an artist in its DIIN chunk.</summary>
-    private static byte[] Dff()
+    static byte[] Dff()
     {
         var fs = new byte[4];
         BinaryPrimitives.WriteUInt32BigEndian(fs, DsdRate);
@@ -61,7 +61,7 @@ public class DsdTests
         var audio = new byte[2 * 4000];
         Array.Fill(audio, (byte)0x69);
         var diin = Chunk("DITI", Text("Master Title")).Concat(Chunk("DIAR", Text("Master Artist"))).ToArray();
-        var form = Encoding.ASCII.GetBytes("DSD ").Concat(Chunk("FVER", new byte[] { 1, 5, 0, 0 })).Concat(Chunk("PROP", prop))
+        var form = Encoding.ASCII.GetBytes("DSD ").Concat(Chunk("FVER", [1, 5, 0, 0])).Concat(Chunk("PROP", prop))
             .Concat(Chunk("DSD ", audio)).Concat(Chunk("DIIN", diin)).ToArray();
         return Chunk("FRM8", form);
     }

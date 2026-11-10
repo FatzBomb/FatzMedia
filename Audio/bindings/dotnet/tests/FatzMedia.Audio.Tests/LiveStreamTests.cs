@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,12 +5,12 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Callback streams, capture streams, loudness meters and engine stats, on the null output and input.</summary>
 public class LiveStreamTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     /// <summary>Waits until the output has played <paramref name="duration"/> more (its clock, not the wall clock).</summary>
-    private static async Task PlayFor(OutputDevice output, TimeSpan duration)
+    static async Task PlayFor(OutputDevice output, TimeSpan duration)
     {
         var start = output.Time;
         var deadline = DateTime.UtcNow + duration * 10;
@@ -27,8 +26,8 @@ public class LiveStreamTests
         {
             if (++calls % 2 == 1) return 0;          // nothing this time
             if (next >= 1000) return AudioEngine.EndOfStream;
-            int n = Math.Min(Math.Min(buffer.Length / 2, 1000 - next), 100);
-            for (int i = 0; i < n; i++)
+            var n = Math.Min(Math.Min(buffer.Length / 2, 1000 - next), 100);
+            for (var i = 0; i < n; i++)
             {
                 buffer[i * 2] = (next + i) / 1000f;
                 buffer[i * 2 + 1] = -(next + i) / 1000f;
@@ -38,12 +37,12 @@ public class LiveStreamTests
         }, DecodeOnly);
         Assert.Equal(22050, s.Info.Format.SampleRate);
         var buf = new float[512];
-        int total = 0;
-        for (int guard = 0; guard < 1000; guard++)
+        var total = 0;
+        for (var guard = 0; guard < 1000; guard++)
         {
-            int frames = s.Read(buf);
+            var frames = s.Read(buf);
             if (frames == 0 && next >= 1000) break;
-            for (int i = 0; i < frames; i++, total++)
+            for (var i = 0; i < frames; i++, total++)
             {
                 Assert.Equal(total / 1000f, buf[i * 2]);
                 Assert.Equal(-total / 1000f, buf[i * 2 + 1]);
@@ -71,7 +70,7 @@ public class LiveStreamTests
         double phase = 0, amp = Math.Pow(10, -23 / 20.0);
         using var tone = engine.OpenCallback(48000, 2, buffer =>
         {
-            for (int i = 0; i < buffer.Length; i += 2, phase += 2 * Math.PI * 997 / 48000)
+            for (var i = 0; i < buffer.Length; i += 2, phase += 2 * Math.PI * 997 / 48000)
                 buffer[i] = buffer[i + 1] = (float)(amp * Math.Sin(phase));
             return buffer.Length / 2;
         }, new StreamOptions { BufferLength = TimeSpan.FromSeconds(2) });   // a loaded runner must not run it dry
@@ -81,7 +80,7 @@ public class LiveStreamTests
         await PlayFor(output, TimeSpan.FromSeconds(3.5));
         var m = tone.GetLoudnessMeter();
         var d = output.GetLoudnessMeter();
-        for (int i = 0; i < 20 && (Math.Abs(m.Momentary + 23) > 0.2 || Math.Abs(m.ShortTerm + 23) > 0.2 || Math.Abs(d.ShortTerm + 23) > 0.2); i++)
+        for (var i = 0; i < 20 && (Math.Abs(m.Momentary + 23) > 0.2 || Math.Abs(m.ShortTerm + 23) > 0.2 || Math.Abs(d.ShortTerm + 23) > 0.2); i++)
         {
             // A gap from a stalled runner leaves the windows within a few seconds.
             await PlayFor(output, TimeSpan.FromSeconds(0.25));
@@ -114,23 +113,23 @@ public class LiveStreamTests
         Assert.Equal(48000, mic.Info.Format.SampleRate);
         Assert.Equal(2, mic.Info.Format.Channels);
         var buf = new float[1024];
-        int total = 0;
+        var total = 0;
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
         while (total < 4800 && DateTime.UtcNow < deadline)
         {
-            int frames = mic.Read(buf);
+            var frames = mic.Read(buf);
             total += frames;
             if (frames == 0) await Task.Delay(10);
         }
         Assert.True(total >= 4800, $"read {total} frames");
-        Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Device = engine.OutputDevices.FirstOrDefault() ?? throw new InvalidOperationException() }));
+        Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Device = engine.OutputDevices is [var output, ..] ? output : throw new InvalidOperationException() }));
     }
 
     [Fact]
     public void OpenCapture_Loopback_NeedsAnOutputAndWasapi()
     {
         using var engine = CreateHeadless();
-        var input = engine.InputDevices.FirstOrDefault() ?? throw new InvalidOperationException();
+        var input = engine.InputDevices is [var first, ..] ? first : throw new InvalidOperationException();
         Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true, Device = input }));
         // The headless engine runs on the null backend, which has no loopback (WASAPI only).
         var e = Assert.Throws<AudioException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true }));

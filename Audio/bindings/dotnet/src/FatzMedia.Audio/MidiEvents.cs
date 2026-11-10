@@ -103,24 +103,23 @@ public sealed class MidiStreamOptions
 }
 
 /// <summary>Native copies of events for one call: SysEx data pinned.</summary>
-internal unsafe ref struct NativeMidiEvents
+unsafe ref struct NativeMidiEvents
 {
-    private FaMidiEvent* _events;
-    private MemoryHandle[]? _pins;
+    MemoryHandle[]? _pins;
 
-    public readonly FaMidiEvent* Pointer => _events;
+    public FaMidiEvent* Pointer { get; private set; }
 
     public static NativeMidiEvents Create(ReadOnlySpan<MidiEvent> events, bool withTracks)
     {
         var n = new NativeMidiEvents();
         if (events.IsEmpty) return n;
-        n._events = (FaMidiEvent*)NativeMemory.AllocZeroed((nuint)events.Length, (nuint)sizeof(FaMidiEvent));
+        n.Pointer = (FaMidiEvent*)NativeMemory.AllocZeroed((nuint)events.Length, (nuint)sizeof(FaMidiEvent));
         try
         {
-            for (int i = 0; i < events.Length; i++)
+            for (var i = 0; i < events.Length; i++)
             {
                 var e = events[i];
-                var o = &n._events[i];
+                var o = &n.Pointer[i];
                 o->Frame = e.Frame;
                 o->Type = (int)e.Type;
                 o->Channel = e.Channel;
@@ -148,8 +147,8 @@ internal unsafe ref struct NativeMidiEvents
     {
         if (_pins is not null) foreach (var p in _pins) p.Dispose();
         _pins = null;
-        if (_events != null) NativeMemory.Free(_events);
-        _events = null;
+        if (Pointer != null) NativeMemory.Free(Pointer);
+        Pointer = null;
     }
 }
 
@@ -182,7 +181,7 @@ public sealed partial class AudioEngine
         var h = Handle;
         using var opts = NativeOptions.Create(options);
         var mo = (midi ?? new MidiStreamOptions()).ToNative();
-        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_midi(h, &mo, opts.Pointer, out nint s), s, null);
+        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_midi(h, &mo, opts.Pointer, out var s), s, null);
     }
 
     /// <summary><see cref="OpenMidi"/> on a worker thread (loading a big soundfont can take a moment).</summary>
@@ -227,7 +226,7 @@ public sealed partial class AudioEngine
         using var opts = NativeOptions.Create(options);
         using var native = NativeMidiEvents.Create(list, withTracks: true);
         var mo = (midi ?? new MidiStreamOptions()).ToNative();
-        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_midi_events(h, native.Pointer, (uint)list.Length, &mo, opts.Pointer, out nint s), s, null);
+        return AudioStream.Wrap(this, NativeMethods.fa_stream_open_midi_events(h, native.Pointer, (uint)list.Length, &mo, opts.Pointer, out var s), s, null);
     }
 }
 
@@ -256,7 +255,7 @@ public unsafe partial class AudioStream
     public bool SendMidi(ReadOnlySpan<MidiEvent> events)
     {
         using var native = NativeMidiEvents.Create(events, withTracks: false);
-        int r = NativeMethods.fa_stream_send_midi_events(Handle, native.Pointer, (uint)events.Length);
+        var r = NativeMethods.fa_stream_send_midi_events(Handle, native.Pointer, (uint)events.Length);
         if (r == (int)ErrorCode.Busy) return false;
         AudioException.ThrowIfFailed(r);
         return true;
@@ -274,7 +273,7 @@ public unsafe partial class AudioStream
     public bool TrySendMidi(ReadOnlySpan<MidiEvent> events, out ErrorCode? error)
     {
         using var native = NativeMidiEvents.Create(events, withTracks: false);
-        int r = NativeMethods.fa_stream_send_midi_events(Handle, native.Pointer, (uint)events.Length);
+        var r = NativeMethods.fa_stream_send_midi_events(Handle, native.Pointer, (uint)events.Length);
         error = r == 0 ? null : (ErrorCode)r;
         return r == 0;
     }
@@ -320,11 +319,11 @@ public unsafe partial class AudioStream
     public IReadOnlyList<MidiEvent> GetMidiEvents(int track = -1, MidiEventType? type = null)
     {
         uint count = 0;
-        int t = type is { } k ? (int)k : -1;
-        if (track < -1) throw new ArgumentOutOfRangeException(nameof(track));
+        var t = type is { } k ? (int)k : -1;
+        ArgumentOutOfRangeException.ThrowIfLessThan(track, -1);
         if (type is { } u && (u < MidiEventType.NoteOff || u > MidiEventType.SysEx)) throw new ArgumentOutOfRangeException(nameof(type));
         // With the arguments checked, InvalidArgument can only mean "not a MIDI stream": empty, as documented.
-        int r = NativeMethods.fa_stream_get_midi_events(Handle, track, t, null, 0, &count);
+        var r = NativeMethods.fa_stream_get_midi_events(Handle, track, t, null, 0, &count);
         if (r == (int)ErrorCode.InvalidArgument) return [];
         AudioException.ThrowIfFailed(r);
         if (count == 0) return [];
@@ -357,7 +356,7 @@ public unsafe partial class AudioStream
     public int GetMidiValue(int channel, MidiEventType type, int controller = 0)
     {
         if (channel is < 0 or > 15) throw new ArgumentOutOfRangeException(nameof(channel));
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_value(Handle, (uint)channel, (int)type, controller, out int v));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_value(Handle, (uint)channel, (int)type, controller, out var v));
         return v;
     }
 
@@ -370,7 +369,7 @@ public unsafe partial class AudioStream
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public void SetMidiTrackVolume(int track, float volume)
     {
-        if (track < 0) throw new ArgumentOutOfRangeException(nameof(track));
+        ArgumentOutOfRangeException.ThrowIfNegative(track);
         if (!(volume is >= 0f and <= 4f)) throw new ArgumentOutOfRangeException(nameof(volume));
         AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_midi_track_volume(Handle, (uint)track, volume));
     }
@@ -380,8 +379,8 @@ public unsafe partial class AudioStream
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public float GetMidiTrackVolume(int track)
     {
-        if (track < 0) throw new ArgumentOutOfRangeException(nameof(track));
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_track_volume(Handle, (uint)track, out float v));
+        ArgumentOutOfRangeException.ThrowIfNegative(track);
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_track_volume(Handle, (uint)track, out var v));
         return v;
     }
 }

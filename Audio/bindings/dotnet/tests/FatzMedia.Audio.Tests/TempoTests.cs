@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,11 +5,11 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Tempo, pitch and rate on decode-only streams (no audio hardware needed).</summary>
 public class TempoTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
-    private static long ReadAll(AudioStream s)
+    static long ReadAll(AudioStream s)
     {
         var buf = new float[4096 * s.Info.Format.Channels];
         long total = 0;
@@ -26,7 +25,7 @@ public class TempoTests
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 2), DecodeOnly);
         s.Tempo = 2f;
         Assert.Equal(2f, s.Tempo, 3);
-        long frames = ReadAll(s);
+        var frames = ReadAll(s);
         Assert.InRange(frames, 44100 - 64, 44100 + 64); // 2 s at double speed
     }
 

@@ -110,7 +110,7 @@ stats line shows `UI thread x.x ms/s (y.yy ms/frame)` for each composited surfac
    startup media loads without a delay.
 6. Docs: the A/B swap pattern (and an inset clip) in the WPF adapter README; the update note with the
    manual smoke steps; the manifest.
-7. Linux sandbox validation as in `HANDOFF.md`; boundary scripts and format pass.
+7. Linux sandbox validation as in `work\fatzmedia\Video\HANDOFF.md`; boundary scripts and format pass.
 
 ## Out of scope
 

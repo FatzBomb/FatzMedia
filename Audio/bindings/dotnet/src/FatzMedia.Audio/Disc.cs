@@ -141,9 +141,9 @@ public sealed class DiscOptions
 /// </example>
 public sealed class Disc : IDisposable
 {
-    private readonly DiscHandle _handle;
+    readonly DiscHandle _handle;
 
-    private Disc(DiscHandle handle) => _handle = handle;
+    Disc(DiscHandle handle) => _handle = handle;
 
     internal DiscHandle Handle
     {
@@ -161,7 +161,7 @@ public sealed class Disc : IDisposable
         get
         {
             NativeLoader.EnsureInitialized();
-            AudioException.ThrowIfFailed(NativeMethods.fa_disc_drive_count(out uint count));
+            AudioException.ThrowIfFailed(NativeMethods.fa_disc_drive_count(out var count));
             var list = new List<DiscDriveInfo>((int)count);
             for (uint i = 0; i < count; i++)
             {
@@ -188,7 +188,7 @@ public sealed class Disc : IDisposable
             o.Retries = (uint)Math.Clamp(options.Retries, 0, 100);
             o.Flags = (options.DeEmphasis ? 0u : 1u) | (options.UseC2 ? 0u : 2u) | (options.ReadCdg ? 0u : 4u);
         }
-        AudioException.ThrowIfFailed(NativeMethods.fa_disc_open(driveId, &o, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_disc_open(driveId, &o, out var native));
         var h = new DiscHandle();
         h.Initialize(native);
         return new Disc(h);
@@ -211,14 +211,14 @@ public sealed class Disc : IDisposable
     {
         get
         {
-            FaDiscToc* t = (FaDiscToc*)NativeMemory.AllocZeroed((nuint)sizeof(FaDiscToc));
+            var t = (FaDiscToc*)NativeMemory.AllocZeroed((nuint)sizeof(FaDiscToc));
             try
             {
                 t->StructSize = (uint)sizeof(FaDiscToc);
                 AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_toc(Handle, t));
                 var tracks = new List<DiscTrack>(t->TrackCount);
-                FaDiscTrack* raw = (FaDiscTrack*)t->Tracks;
-                for (int i = 0; i < t->TrackCount && i < FaDiscToc.MaxTracks; i++)
+                var raw = (FaDiscTrack*)t->Tracks;
+                for (var i = 0; i < t->TrackCount && i < FaDiscToc.MaxTracks; i++)
                 {
                     FaDiscTrack n = raw[i];
                     tracks.Add(new DiscTrack(n.Number, n.IsAudio != 0, n.Preemphasis != 0, n.CopyPermitted != 0, n.FourChannel != 0,
@@ -242,8 +242,8 @@ public sealed class Disc : IDisposable
     /// <exception cref="AudioException">No readable disc is in the drive (<see cref="ErrorCode.NoDisc"/>).</exception>
     public unsafe string? GetText(int track, DiscTextField field)
     {
-        byte* buf = stackalloc byte[1024];
-        int rc = NativeMethods.fa_disc_get_text(Handle, track, (int)field, buf, 1024);
+        var buf = stackalloc byte[1024];
+        var rc = NativeMethods.fa_disc_get_text(Handle, track, (int)field, buf, 1024);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         return Marshal.PtrToStringUTF8((nint)buf);
@@ -263,7 +263,7 @@ public sealed class Disc : IDisposable
     /// or subcode that cannot be read there (<see cref="ErrorCode.Io"/>).</exception>
     public long GetPregap(int track)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_pregap(Handle, track, out long sectors));
+        AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_pregap(Handle, track, out var sectors));
         return sectors;
     }
 
@@ -298,7 +298,7 @@ public sealed class Disc : IDisposable
     {
         get
         {
-            AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_speed(Handle, out float s));
+            AudioException.ThrowIfFailed(NativeMethods.fa_disc_get_speed(Handle, out var s));
             return s;
         }
         set => AudioException.ThrowIfFailed(NativeMethods.fa_disc_set_speed(Handle, value));

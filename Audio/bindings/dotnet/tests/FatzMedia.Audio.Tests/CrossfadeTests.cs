@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,9 +5,9 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Scheduling, markers, crossfades, queues, buses and the channel matrix on the silent null output.</summary>
 public class CrossfadeTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
+    static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public async Task DeviceTime_AdvancesWhileRunning()

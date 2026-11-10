@@ -8,7 +8,7 @@ namespace FatzMedia.Audio.Tests;
 /// point it into a temp folder before the first engine exists (Windows reads LOCALAPPDATA, Linux
 /// XDG_CACHE_HOME; .NET's SetEnvironmentVariable does not reach the native getenv off Windows, so call setenv).
 /// </summary>
-internal static partial class TestCacheHome
+static partial class TestCacheHome
 {
     [LibraryImport("libc", EntryPoint = "setenv", StringMarshalling = StringMarshalling.Utf8)]
     private static partial int SetEnv(string name, string value, int overwrite);

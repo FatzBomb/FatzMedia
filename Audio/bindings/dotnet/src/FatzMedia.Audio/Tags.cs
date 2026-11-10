@@ -139,9 +139,9 @@ public sealed record TagPicture(PictureType Type, string MimeType, string Descri
 /// </example>
 public sealed class Tags
 {
-    private readonly string?[] _fields;
+    readonly string?[] _fields;
 
-    private Tags(string?[] fields, TagItem[] items, TagPicture[] pictures, StreamInfo? info)
+    Tags(string?[] fields, TagItem[] items, TagPicture[] pictures, StreamInfo? info)
     {
         _fields = fields;
         Items = items;
@@ -158,7 +158,7 @@ public sealed class Tags
     {
         ArgumentNullException.ThrowIfNull(path);
         NativeLoader.EnsureInitialized();
-        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_path(path, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_path(path, (uint)options, out var native));
         return Take(native);
     }
 
@@ -202,7 +202,7 @@ public sealed class Tags
         try
         {
             var io = IoState.Callbacks(close: false);
-            AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out nint native));
+            AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out var native));
             return Take(native);
         }
         finally { gc.Free(); }
@@ -219,7 +219,7 @@ public sealed class Tags
     {
         ArgumentNullException.ThrowIfNull(archivePath);
         NativeLoader.EnsureInitialized();
-        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive_entry(archivePath, entryName, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive_entry(archivePath, entryName, (uint)options, out var native));
         return Take(native);
     }
 
@@ -232,25 +232,25 @@ public sealed class Tags
     public static Tags Read(Archives.Archive archive, Archives.ArchiveEntry? entry = null, TagReadOptions options = TagReadOptions.None)
     {
         ArgumentNullException.ThrowIfNull(archive);
-        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive(archive.Handle, entry?.Index ?? -1, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive(archive.Handle, entry?.Index ?? -1, (uint)options, out var native));
         return Take(native);
     }
 
     internal static Tags FromStream(StreamHandle stream, TagReadOptions options)
     {
-        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tags(stream, (uint)options, out nint native));
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tags(stream, (uint)options, out var native));
         return Take(native);
     }
 
     /// <summary>Copies everything out of the native tag object and closes it.</summary>
-    private static Tags Take(nint native)
+    static Tags Take(nint native)
     {
         try
         {
             var fields = new string?[(int)TagField.Count];
-            for (int f = 0; f < fields.Length; f++)
+            for (var f = 0; f < fields.Length; f++)
             {
-                string s = NativeText.Read(NativeMethods.fa_tags_get(native, f));
+                var s = NativeText.Read(NativeMethods.fa_tags_get(native, f));
                 fields[f] = s.Length > 0 ? s : null;
             }
             var items = new TagItem[NativeMethods.fa_tags_get_item_count(native)];
@@ -278,14 +278,14 @@ public sealed class Tags
         }
     }
 
-    private string? Field(TagField f) => _fields[(int)f];
+    string? Field(TagField f) => _fields[(int)f];
 
-    private static int? Number(string? s)
+    static int? Number(string? s)
     {
         if (s is null) return null;
-        int end = 0;
+        var end = 0;
         while (end < s.Length && char.IsAsciiDigit(s[end])) end++;
-        return end > 0 && int.TryParse(s.AsSpan(0, end), out int v) ? v : null;
+        return end > 0 && int.TryParse(s.AsSpan(0, end), out var v) ? v : null;
     }
 
     /// <summary>Title.</summary>
@@ -303,7 +303,7 @@ public sealed class Tags
     /// <summary>Date as written: "2024", "2024-05-17", ...</summary>
     public string? Date => Field(TagField.Date);
     /// <summary>The year at the start of <see cref="Date"/>.</summary>
-    public int? Year => Date is { Length: >= 4 } d && int.TryParse(d.AsSpan(0, 4), out int y) ? y : null;
+    public int? Year => Date is { Length: >= 4 } d && int.TryParse(d.AsSpan(0, 4), out var y) ? y : null;
     /// <summary>Track number.</summary>
     public int? Track => Number(Field(TagField.Track));
     /// <summary>Number of tracks on the album.</summary>
@@ -335,7 +335,7 @@ public sealed class Tags
         get
         {
             var pictures = Pictures;
-            for (int i = 0; i < pictures.Count; i++)
+            for (var i = 0; i < pictures.Count; i++)
                 if (pictures[i].Type == PictureType.FrontCover) return pictures[i];
             return pictures.Count > 0 ? pictures[0] : null;
         }
@@ -376,13 +376,13 @@ public sealed class Tags
         get
         {
             var items = Items;
-            for (int i = 0; i < items.Count; i++)
+            for (var i = 0; i < items.Count; i++)
                 if (string.Equals(items[i].Key, key, StringComparison.OrdinalIgnoreCase)) return items[i].Value;
             return null;
         }
     }
 
-    private enum TagField
+    enum TagField
     {
         Title, Artist, Album, AlbumArtist, Composer, Genre, Date, Track, TrackTotal, Disc, DiscTotal,
         Comment, Lyrics, Copyright, Encoder, Bpm, Count,

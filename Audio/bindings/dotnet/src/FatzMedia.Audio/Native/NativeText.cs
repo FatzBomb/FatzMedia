@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace FatzMedia.Audio.Native;
 
 /// <summary>UTF-8 strings to and from the native library.</summary>
-internal static unsafe class NativeText
+static unsafe class NativeText
 {
     /// <summary>The string at <paramref name="p"/>; empty for null.</summary>
     public static string Read(nint p) => Marshal.PtrToStringUTF8(p) ?? "";

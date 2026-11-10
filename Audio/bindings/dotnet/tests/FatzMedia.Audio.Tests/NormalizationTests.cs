@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,12 +5,12 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Loudness normalization, scans and the limiter, on the silent null output.</summary>
 public class NormalizationTests
 {
-    private static AudioEngine CreateHeadless(string? cache = null) =>
+    static AudioEngine CreateHeadless(string? cache = null) =>
         AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
-    private static async Task<Loudness> WaitFinalAsync(AudioStream s)
+    static async Task<Loudness> WaitFinalAsync(AudioStream s)
     {
-        for (int i = 0; i < 400; i++)
+        for (var i = 0; i < 400; i++)
         {
             var l = s.GetLoudness();
             if (l.IsFinal) return l;
@@ -24,7 +23,7 @@ public class NormalizationTests
     public void ScanLoudness_MeasuresSine()
     {
         // TestAudio.SineWav: mono 440 Hz at half scale (-6.02 dBFS peak) measures about -9.7 LUFS.
-        string path = Path.Combine(Path.GetTempPath(), $"fa-scan-{Guid.NewGuid():N}.wav");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-scan-{Guid.NewGuid():N}.wav");
         File.WriteAllBytes(path, TestAudio.SineWav(seconds: 30));
         try
         {
@@ -42,8 +41,8 @@ public class NormalizationTests
     [Fact]
     public void ScanLoudness_UsesCacheOnSecondScan()
     {
-        string dir = Path.Combine(Path.GetTempPath(), $"fa-cache-{Guid.NewGuid():N}");
-        string path = Path.Combine(Path.GetTempPath(), $"fa-scan-{Guid.NewGuid():N}.wav");
+        var dir = Path.Combine(Path.GetTempPath(), $"fa-cache-{Guid.NewGuid():N}");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-scan-{Guid.NewGuid():N}.wav");
         File.WriteAllBytes(path, TestAudio.SineWav(seconds: 5));
         try
         {
@@ -120,8 +119,8 @@ public class NormalizationTests
     [Fact]
     public void Cache_SizeAndClear()
     {
-        string dir = Path.Combine(Path.GetTempPath(), $"fa-lc-{Guid.NewGuid():N}");
-        string path = Path.Combine(Path.GetTempPath(), $"fa-lc-{Guid.NewGuid():N}.wav");
+        var dir = Path.Combine(Path.GetTempPath(), $"fa-lc-{Guid.NewGuid():N}");
+        var path = Path.Combine(Path.GetTempPath(), $"fa-lc-{Guid.NewGuid():N}.wav");
         File.WriteAllBytes(path, TestAudio.SineWav(seconds: 30));
         try
         {
@@ -138,8 +137,8 @@ public class NormalizationTests
                     Assert.Throws<AudioException>(() => engine.SetCacheSize(1000)).ErrorCode);
                 engine.SetCacheSize(0);
             }
-            using (var again = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = dir }))
-                Assert.Equal(LoudnessSource.Cache, again.ScanLoudness(path).Source);   // a new run reads the file
+            using var again = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = dir });
+            Assert.Equal(LoudnessSource.Cache, again.ScanLoudness(path).Source);   // a new run reads the file
         }
         finally
         {
@@ -172,10 +171,10 @@ public class NormalizationTests
         engine.SetNormalizationStartWait(TimeSpan.FromSeconds(5));
         using var output = engine.OpenOutput();
         using var s = engine.OpenMemory(TestAudio.SineWav(seconds: 10));
-        int provisional = 0;
+        var provisional = 0;
         s.LoudnessProvisional += (_, _) => Interlocked.Increment(ref provisional);
         s.PlayOn(output);
-        for (int i = 0; i < 500 && s.Clock < TimeSpan.FromMilliseconds(100); i++) await Task.Delay(10);
+        for (var i = 0; i < 500 && s.Clock < TimeSpan.FromMilliseconds(100); i++) await Task.Delay(10);
         Assert.True(s.Clock >= TimeSpan.FromMilliseconds(100));
         Assert.True(s.GetLoudness().IsFinal);
         Assert.Equal(0, Volatile.Read(ref provisional));

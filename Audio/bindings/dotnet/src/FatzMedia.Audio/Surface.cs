@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using FatzMedia.Audio.Native;
 
 namespace FatzMedia.Audio;
@@ -271,7 +270,7 @@ public interface IKaraokeSurface : IDisposable
 }
 
 /// <summary>Conversions every surface shares.</summary>
-internal static unsafe class SurfaceInterop
+static unsafe class SurfaceInterop
 {
     /// <summary>UpdateInto takes no lock of the surface's, so a setter on another thread (which waits for a worker's
     /// render, up to a frame) never makes the drawing thread wait. Instead it counts itself in
@@ -280,7 +279,7 @@ internal static unsafe class SurfaceInterop
     public static nint BeginUpdate(ref nint native, ref int updating)
     {
         Interlocked.Increment(ref updating);
-        nint n = Volatile.Read(ref native);
+        var n = Volatile.Read(ref native);
         if (n == 0) Interlocked.Decrement(ref updating);
         return n;
     }
@@ -291,7 +290,7 @@ internal static unsafe class SurfaceInterop
     /// UpdateInto is using it; 0 when it was already cleared.</summary>
     public static nint TakeForDestroy(ref nint native, ref int updating)
     {
-        nint n = Interlocked.Exchange(ref native, 0);
+        var n = Interlocked.Exchange(ref native, 0);
         if (n == 0) return 0;
         var spin = new SpinWait();
         while (Volatile.Read(ref updating) != 0) spin.SpinOnce();
@@ -303,10 +302,10 @@ internal static unsafe class SurfaceInterop
     public static CdgColor FromArgb(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v, (byte)(v >> 24));
 
     public static float Unit(float v) =>
-        v is >= 0.0f and <= 1.0f ? v : throw new ArgumentOutOfRangeException("value", v, "Must be 0 .. 1.");
+        v is >= 0.0f and <= 1.0f ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "Must be 0 .. 1.");
 
     public static float Angle(float v) =>
-        float.IsFinite(v) ? v : throw new ArgumentOutOfRangeException("value", v, "Must be finite.");
+        float.IsFinite(v) ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "Must be finite.");
 
     /// <summary>fa_surface_effects for <paramref name="value"/> (null: the defaults, all off).</summary>
     public static void ToNative(SurfaceEffects? value, FaSurfaceEffects* e)
@@ -353,26 +352,37 @@ internal static unsafe class SurfaceInterop
         {
             Outline = e.Outline.On == 0 ? null : new OutlineEffect
             {
-                Color = FromArgb(e.Outline.Color), SungColor = FromArgb(e.Outline.SungColor), Opacity = e.Outline.Opacity,
-                Size = e.Outline.Size, Fade = e.Outline.Fade,
+                Color = FromArgb(e.Outline.Color),
+                SungColor = FromArgb(e.Outline.SungColor),
+                Opacity = e.Outline.Opacity,
+                Size = e.Outline.Size,
+                Fade = e.Outline.Fade,
             },
             Shadow = e.Shadow.On == 0 ? null : new ShadowEffect
             {
-                Color = FromArgb(e.Shadow.Color), SungColor = FromArgb(e.Shadow.SungColor), Opacity = e.Shadow.Opacity,
-                Size = e.Shadow.Size, Distance = e.Shadow.Distance, AngleDegrees = e.Shadow.AngleDegrees,
+                Color = FromArgb(e.Shadow.Color),
+                SungColor = FromArgb(e.Shadow.SungColor),
+                Opacity = e.Shadow.Opacity,
+                Size = e.Shadow.Size,
+                Distance = e.Shadow.Distance,
+                AngleDegrees = e.Shadow.AngleDegrees,
                 Fade = e.Shadow.Fade,
             },
             Bevel = e.Bevel.On == 0 ? null : new BevelEffect
             {
-                Highlight = FromArgb(e.Bevel.Highlight), Shade = FromArgb(e.Bevel.Shade), Strength = e.Bevel.Strength,
-                Size = e.Bevel.Size, LightAngleDegrees = e.Bevel.LightAngleDegrees, Fade = e.Bevel.Fade,
+                Highlight = FromArgb(e.Bevel.Highlight),
+                Shade = FromArgb(e.Bevel.Shade),
+                Strength = e.Bevel.Strength,
+                Size = e.Bevel.Size,
+                LightAngleDegrees = e.Bevel.LightAngleDegrees,
+                Fade = e.Bevel.Fade,
             },
         };
     }
 
     public static SurfaceLayout FromNative(FaSurfaceLayout* l)
     {
-        string font = NativeText.Read(l->FontUsed);
+        var font = NativeText.Read(l->FontUsed);
         return new SurfaceLayout((int)l->Width, (int)l->Height, l->BitmapX, l->BitmapY,
             new PixelRect((int)l->ContentX, (int)l->ContentY, (int)l->ContentWidth, (int)l->ContentHeight), l->Scale,
             new PixelRect((int)l->CropX, (int)l->CropY, (int)l->CropWidth, (int)l->CropHeight), (SafetyZone)l->SafetyZone,
@@ -387,7 +397,7 @@ internal static unsafe class SurfaceInterop
     {
         if (size.IsUnset) return size;
         double w = size.Width, h = size.Height;
-        double k = Math.Min(3840 / w, 2160 / h);
+        var k = Math.Min(3840 / w, 2160 / h);
         if (k < 1) { w *= k; h *= k; }
         k = Math.Max(300 / w, 216 / h);
         if (k > 1) { w *= k; h *= k; }

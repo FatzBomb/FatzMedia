@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using FatzMedia.Audio.Native;
 
 namespace FatzMedia.Audio;
@@ -63,14 +62,14 @@ public sealed record SoundInfo(int SampleRate, int Channels, long Frames, long M
 /// </example>
 public sealed unsafe class Sound : IDisposable
 {
-    private readonly SoundHandle _handle;
-    private readonly Dictionary<nint, AudioStream> _voices = new();   // also the lock of the members below
+    readonly SoundHandle _handle;
+    readonly Dictionary<nint, AudioStream> _voices = [];   // also the lock of the members below
     // Voices whose wrapper is being disposed: the native close has not finished, and until it has started the
     // native pool may still hand the voice out. Such a voice is never wrapped again (it is about to be freed).
-    private readonly HashSet<nint> _closing = new();
-    private bool _disposed;   // no new voices once Dispose has taken the list
+    readonly HashSet<nint> _closing = [];
+    bool _disposed;   // no new voices once Dispose has taken the list
 
-    private Sound(AudioEngine engine, SoundHandle handle)
+    Sound(AudioEngine engine, SoundHandle handle)
     {
         Engine = engine;
         _handle = handle;
@@ -101,7 +100,7 @@ public sealed unsafe class Sound : IDisposable
         return o;
     }
 
-    private SoundHandle Handle
+    SoundHandle Handle
     {
         get
         {
@@ -116,7 +115,7 @@ public sealed unsafe class Sound : IDisposable
     /// <summary>The sound's format, length and memory use.</summary>
     public SoundInfo Info { get; }
 
-    private FaSoundInfo ReadInfo()
+    FaSoundInfo ReadInfo()
     {
         var n = NativeSized.New<FaSoundInfo>();
         AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_info(Handle, &n));
@@ -143,7 +142,7 @@ public sealed unsafe class Sound : IDisposable
         set => SetOptions(null, value);
     }
 
-    private void SetOptions(uint? maxVoices, SoundSteal? steal)
+    void SetOptions(uint? maxVoices, SoundSteal? steal)
     {
         lock (_voices)
         {
@@ -188,7 +187,7 @@ public sealed unsafe class Sound : IDisposable
         return PlayOn(bus.Device, bus, volume, pan);
     }
 
-    private AudioStream PlayOn(OutputDevice output, MixBus? bus, float volume, float pan)
+    AudioStream PlayOn(OutputDevice output, MixBus? bus, float volume, float pan)
     {
         if (!(volume >= 0)) throw new ArgumentOutOfRangeException(nameof(volume), "Volume must be 0 or more.");
         if (float.IsNaN(pan)) throw new ArgumentOutOfRangeException(nameof(pan));
@@ -196,13 +195,13 @@ public sealed unsafe class Sound : IDisposable
         var bh = bus?.Handle;
         output.Start();
         var spin = new SpinWait();
-        long giveUp = Environment.TickCount64 + 1000;
+        var giveUp = Environment.TickCount64 + 1000;
         while (true)
         {
             lock (_voices)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                bool added = false;
+                var added = false;
                 nint native;
                 int rc;
                 try
@@ -231,7 +230,7 @@ public sealed unsafe class Sound : IDisposable
     }
 
     // The wrapper of a native voice: one per voice, made the first time it is seen (lock held).
-    private AudioStream VoiceFor(nint native)
+    AudioStream VoiceFor(nint native)
     {
         if (_voices.TryGetValue(native, out var known) && !known.IsDisposed) return known;
         var h = new StreamHandle();
@@ -254,15 +253,14 @@ public sealed unsafe class Sound : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             var h = Handle;
-            uint count;
-            AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, null, 0, out count));
-            if (count == 0) return Array.Empty<AudioStream>();
+            AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, null, 0, out var count));
+            if (count == 0) return [];
             var buf = new nint[count];
             fixed (nint* p = buf)
                 AudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, p, count, out count));
-            int n = (int)Math.Min(count, (uint)buf.Length);   // fewer if some ended between the calls
+            var n = (int)Math.Min(count, (uint)buf.Length);   // fewer if some ended between the calls
             var list = new List<AudioStream>(n);
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
                 if (!_closing.Contains(buf[i])) list.Add(VoiceFor(buf[i]));   // not one being disposed
             return list;
         }

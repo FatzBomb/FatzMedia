@@ -29,9 +29,9 @@ namespace FatzMedia.Audio;
 /// </example>
 public sealed class SoundFont : IDisposable
 {
-    private readonly SoundFontHandle _handle;
+    readonly SoundFontHandle _handle;
 
-    private SoundFont(SoundFontHandle handle)
+    SoundFont(SoundFontHandle handle)
     {
         _handle = handle;
         Info = ReadInfo();
@@ -55,7 +55,7 @@ public sealed class SoundFont : IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
         NativeLoader.EnsureInitialized();
-        return FromNative(NativeMethods.fa_soundfont_open_path(path, out nint native), native);
+        return FromNative(NativeMethods.fa_soundfont_open_path(path, out var native), native);
     }
 
     /// <summary>Loads a SoundFont 2 or DLS bank from memory (the bytes are copied).</summary>
@@ -80,7 +80,7 @@ public sealed class SoundFont : IDisposable
     public static SoundFont? FromSystem()
     {
         NativeLoader.EnsureInitialized();
-        int rc = NativeMethods.fa_soundfont_open_system(out nint native);
+        var rc = NativeMethods.fa_soundfont_open_system(out var native);
         if (rc == (int)ErrorCode.NotFound) return null;
         return FromNative(rc, native);
     }
@@ -114,7 +114,7 @@ public sealed class SoundFont : IDisposable
         var native = new FaSoundFontStackEntry[entries.Length];
         try
         {
-            for (int i = 0; i < entries.Length; i++)
+            for (var i = 0; i < entries.Length; i++)
             {
                 var e = entries[i] ?? throw new ArgumentNullException(nameof(entries));
                 ArgumentNullException.ThrowIfNull(e.Font, nameof(entries));
@@ -142,14 +142,12 @@ public sealed class SoundFont : IDisposable
     }
 
     /// <summary>The instruments and drum kits, in bank and program order (read once, on first use).</summary>
-    public IReadOnlyList<SoundFontPreset> Presets => LazyInitializer.EnsureInitialized(ref _presets, ReadPresets);
+    public IReadOnlyList<SoundFontPreset> Presets { get => LazyInitializer.EnsureInitialized(ref field, ReadPresets); private set; }
 
-    private IReadOnlyList<SoundFontPreset>? _presets;
-
-    private unsafe IReadOnlyList<SoundFontPreset> ReadPresets()
+    unsafe IReadOnlyList<SoundFontPreset> ReadPresets()
     {
         var list = new SoundFontPreset[Info.PresetCount];
-        for (int i = 0; i < list.Length; i++)
+        for (var i = 0; i < list.Length; i++)
         {
             var p = NativeSized.New<FaSoundFontPreset>();
             AudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_preset(Handle, (uint)i, &p));
@@ -168,7 +166,7 @@ public sealed class SoundFont : IDisposable
         return new SoundFont(h);
     }
 
-    private unsafe SoundFontInfo ReadInfo()
+    unsafe SoundFontInfo ReadInfo()
     {
         var n = NativeSized.New<FaSoundFontInfo>();
         AudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_info(Handle, &n));

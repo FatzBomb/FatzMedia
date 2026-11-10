@@ -1,4 +1,3 @@
-using FatzMedia.Audio;
 using Xunit;
 
 namespace FatzMedia.Audio.Tests;
@@ -6,15 +5,15 @@ namespace FatzMedia.Audio.Tests;
 /// <summary>Encoding to WAV, FLAC and MP3 (when LAME is installed) from every kind of source.</summary>
 public class EncoderTests
 {
-    private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
+    static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static string TempFile(string ext) => Path.Combine(Path.GetTempPath(), $"fatzaudio-{Guid.NewGuid():N}.{ext}");
+    static string TempFile(string ext) => Path.Combine(Path.GetTempPath(), $"fatzaudio-{Guid.NewGuid():N}.{ext}");
 
-    private static float[] Sine(int frames, int rate, int channels, double freq = 440, double amp = 0.5)
+    static float[] Sine(int frames, int rate, int channels, double freq = 440, double amp = 0.5)
     {
         var x = new float[frames * channels];
-        for (int i = 0; i < frames; i++)
-            for (int c = 0; c < channels; c++)
+        for (var i = 0; i < frames; i++)
+            for (var c = 0; c < channels; c++)
                 x[i * channels + c] = (float)(amp * Math.Sin(2 * Math.PI * freq * i / rate + c));
         return x;
     }
@@ -43,8 +42,8 @@ public class EncoderTests
             Assert.Equal(30000, s.Info.LengthFrames);
             var y = TestAudio.ReadAllSamples(s, 2);
             Assert.Equal(x.Length, y.Length);
-            double tol = bits == 32 ? 0 : 1.0 / (1 << 23);
-            for (int i = 0; i < x.Length; i++) Assert.InRange(y[i] - x[i], -tol, tol);
+            var tol = bits == 32 ? 0 : 1.0 / (1 << 23);
+            for (var i = 0; i < x.Length; i++) Assert.InRange(y[i] - x[i], -tol, tol);
         }
         finally
         {
@@ -102,7 +101,7 @@ public class EncoderTests
         var bytes = ms.ToArray();
         Assert.All(bytes[..100], b => Assert.Equal(0, b));
         using var engine = AudioEngine.Create();
-        using var s = engine.OpenMemory(bytes[100..], DecodeOnly);
+        using var s = engine.OpenMemory(bytes.AsMemory()[100..], DecodeOnly);
         Assert.Equal(1000, s.Info.LengthFrames);
     }
 

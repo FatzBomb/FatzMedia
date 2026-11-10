@@ -83,7 +83,7 @@ public readonly record struct TempoSegment(long Start, double Bpm, double Beat);
 /// </example>
 public sealed class BeatGrid
 {
-    private readonly TempoSegment[] _segments;
+    readonly TempoSegment[] _segments;
 
     /// <summary>Creates a grid.</summary>
     /// <param name="bpm">The main tempo: the one that lasts longest (0.1..100000).</param>
@@ -163,7 +163,7 @@ public sealed class BeatGrid
         int lo = 0, hi = _segments.Length - 1;
         while (lo < hi)
         {
-            int mid = (lo + hi + 1) / 2;
+            var mid = (lo + hi + 1) / 2;
             if (_segments[mid].Beat <= beat) lo = mid; else hi = mid - 1;
         }
         var seg = _segments[lo];
@@ -181,7 +181,7 @@ public sealed class BeatGrid
         int lo = 0, hi = _segments.Length - 1;
         while (lo < hi)
         {
-            int mid = (lo + hi + 1) / 2;
+            var mid = (lo + hi + 1) / 2;
             if (_segments[mid].Start <= frame) lo = mid; else hi = mid - 1;
         }
         var seg = _segments[lo];
@@ -195,7 +195,7 @@ public sealed class BeatGrid
     {
         FaBeatGrid g = default;
         g.StructSize = (uint)sizeof(FaBeatGrid);
-        int rc = NativeMethods.fa_analysis_get_beat_grid(analysis, &g);
+        var rc = NativeMethods.fa_analysis_get_beat_grid(analysis, &g);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         uint count = 0;
@@ -212,7 +212,7 @@ public sealed class BeatGrid
         FaBeatGrid g = default;
         g.StructSize = (uint)sizeof(FaBeatGrid);
         uint count = 0;
-        int rc = NativeMethods.fa_stream_get_beat_grid(stream, &g, null, 0, &count);
+        var rc = NativeMethods.fa_stream_get_beat_grid(stream, &g, null, 0, &count);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         var native = new FaTempoSegment[count];
@@ -229,10 +229,10 @@ public sealed class BeatGrid
         return FromNative(g, native, (int)Math.Min(count, (uint)native.Length));
     }
 
-    private static BeatGrid FromNative(in FaBeatGrid g, FaTempoSegment[] segments, int count)
+    static BeatGrid FromNative(in FaBeatGrid g, FaTempoSegment[] segments, int count)
     {
         var list = new TempoSegment[count];
-        for (int i = 0; i < count; i++) list[i] = new TempoSegment(segments[i].Start, segments[i].Bpm, segments[i].Beat);
+        for (var i = 0; i < count; i++) list[i] = new TempoSegment(segments[i].Start, segments[i].Bpm, segments[i].Beat);
         return new BeatGrid(g.Bpm, g.FirstBeat, (int)g.SampleRate, list, (int)g.BeatsPerBar, (int)g.BarOffset, g.Confidence, (BeatGridFlags)g.Flags);
     }
 
@@ -251,7 +251,7 @@ public sealed class BeatGrid
             SegmentCount = (uint)_segments.Length,
         };
         var native = new FaTempoSegment[_segments.Length];
-        for (int i = 0; i < native.Length; i++)
+        for (var i = 0; i < native.Length; i++)
             native[i] = new FaTempoSegment { Start = _segments[i].Start, Bpm = _segments[i].Bpm, Beat = _segments[i].Beat };
         fixed (FaTempoSegment* p = native)
             AudioException.ThrowIfFailed(NativeMethods.fa_stream_set_beat_grid(stream, &g, p, (uint)native.Length));
@@ -274,7 +274,7 @@ public sealed class BeatGrid
 /// </example>
 public sealed class MusicalKey : IEquatable<MusicalKey>
 {
-    private MusicalKey(int tonic, bool isMinor, float confidence, string name, string camelot)
+    MusicalKey(int tonic, bool isMinor, float confidence, string name, string camelot)
     {
         Tonic = tonic;
         IsMinor = isMinor;
@@ -342,7 +342,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
     /// <summary>The key's name and Camelot code, for example "F#m (11A)".</summary>
     public override string ToString() => $"{Name} ({Camelot})";
 
-    private unsafe FaKeyInfo ToNative() => new()
+    unsafe FaKeyInfo ToNative() => new()
     {
         StructSize = (uint)sizeof(FaKeyInfo),
         Tonic = Tonic,
@@ -350,7 +350,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
         Confidence = Confidence,
     };
 
-    private static unsafe MusicalKey FromNative(in FaKeyInfo k)
+    static unsafe MusicalKey FromNative(in FaKeyInfo k)
     {
         fixed (byte* name = k.Name)
         fixed (byte* camelot = k.Camelot)
@@ -362,7 +362,7 @@ public sealed class MusicalKey : IEquatable<MusicalKey>
     {
         FaKeyInfo k = default;
         k.StructSize = (uint)sizeof(FaKeyInfo);
-        int rc = NativeMethods.fa_analysis_get_key(analysis, &k);
+        var rc = NativeMethods.fa_analysis_get_key(analysis, &k);
         if (rc == (int)ErrorCode.NotFound) return null;
         AudioException.ThrowIfFailed(rc);
         return FromNative(k);
@@ -485,7 +485,7 @@ public sealed class TrackAnalysis
         }
     }
 
-    private static unsafe WaveformPoint[] ReadWaveform(nint analysis)
+    static unsafe WaveformPoint[] ReadWaveform(nint analysis)
     {
         uint count = 0;
         AudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_waveform(analysis, null, 0, &count));
@@ -501,14 +501,14 @@ public sealed class TrackAnalysis
     internal static unsafe TrackAnalysis Run(EngineHandle engine, string path, AnalysisKinds kinds, AnalysisOptions? options)
     {
         var o = NativeOptions(kinds, options);
-        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_path(engine, path, &o, out nint analysis));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_path(engine, path, &o, out var analysis));
         return Take(analysis);
     }
 
     internal static unsafe TrackAnalysis Run(StreamHandle stream, AnalysisKinds kinds, AnalysisOptions? options)
     {
         var o = NativeOptions(kinds, options);
-        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_stream(stream, &o, out nint analysis));
+        AudioException.ThrowIfFailed(NativeMethods.fa_analyze_stream(stream, &o, out var analysis));
         return Take(analysis);
     }
 

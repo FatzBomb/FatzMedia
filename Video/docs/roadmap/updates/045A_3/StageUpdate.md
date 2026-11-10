@@ -101,7 +101,7 @@ video decode queue to run them on.
 
 ## Manual smoke (Windows, RTX 5090)
 
-From `D:\development\FatzBomb\FatzVideo` in PowerShell. The x64 FFmpeg 9 DLLs (a build **with
+From `D:\development\FatzBomb\FatzMedia\Video` in PowerShell. The x64 FFmpeg 9 DLLs (a build **with
 Vulkan**, for example a Gyan or BtbN 9.0 shared build) and BASS go in each player's `native\`
 folder. Logs: `$env:TEMP\FatzBombMedia\player-avalonia-debug.log`, `player-debug.log` (WPF) and
 `player-winforms-debug.log` (WinForms).
