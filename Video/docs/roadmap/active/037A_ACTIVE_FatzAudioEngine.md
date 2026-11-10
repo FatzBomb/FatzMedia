@@ -20,7 +20,8 @@ renderer; scaled CD+G, effects and FatzAudio's lyric surface were not built (see
 Slice 4 (2026-11-10, `updates/037A_4`): mostly delivered by slice 2; no BASSMIDI setup with FatzAudio;
 network audio takes the FFmpeg path. Slice 5 (2026-11-10, pending owner smoke, `updates/037A_5`, hand
 tests `updates/037A_5/HandTests.md`): video audio, soundtracks and network audio play through FatzAudio
-push streams on its clock, and a FatzAudio player uses and needs no BASS.
+push streams on its clock, and a FatzAudio player uses and needs no BASS. Slice 6 readiness (what is left
+before BASS can go): `updates/037A_6/Readiness.md`.
 Since the move into the FatzMedia repository, Video uses `FatzMedia.Audio` by project reference (no
 package pin or feed token).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
