@@ -345,7 +345,7 @@ function Test-3 {
     $log = Save-RunLog 'Wpf' 'net-https-radio'
     Add-Check 'https radio plays' ((Get-LastStats $log) -match ' Playing \|') (Get-LastStats $log)
     Add-Answer 'https radio sounds right and controls respond' 'Did the station play, with volume/EQ/Pause/Play responding at once?'
-    $null = Test-Run 'Plain http radio plays' 'Wpf' @('--url=http://ice2.somafm.com/groovesalad-128-mp3') -Expect @('Audio engine: FatzAudio') -Seconds 12
+    $null = Test-Run 'Plain http radio plays' 'Wpf' @('--url=http://ice2.somafm.com/groovesalad-128-mp3') -Expect @('Loaded:') -Reject @('could not start') -Seconds 12
     $null = Test-Run 'HLS in Background mode plays' 'Wpf' @('--mode=background', '--url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8') -Seconds 15 -Shot
     if ($script:FfmpegExe) {
         $slow = New-Media 'moov-at-end.mp4' ($Pic + $Tone + @('-c:v', 'mpeg4', '-c:a', 'aac'))
@@ -427,13 +427,13 @@ function Test-5 {
     $silent = New-Media 'silent-video.mp4' ($Pic + @('-c:v', 'mpeg4'))
     $mp3 = New-Media 'song.mp3' ($Tone + @('-c:a', 'libmp3lame'))
     $jpg = New-Media 'picture.jpg' @('-f', 'lavfi', '-i', 'testsrc2=size=1280x720', '-frames:v', '1')
-    $null = Test-Run 'Background mode: a music video loops silently, no audio set-up' 'Wpf' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened', 'Audio engine: FatzAudio') -Seconds 6
+    $null = Test-Run 'Background mode: a music video loops silently, no audio set-up' 'Wpf' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened') -Seconds 6
     $null = Test-Run 'Background mode: an MP3 is refused' 'Wpf' @('--mode=background', $mp3) -Expect @('Background mode does not accept') -Seconds 3
     $null = Test-Run 'Background mode: a picture shows' 'Wpf' @('--mode=background', $jpg) -Seconds 3 -Shot
     $null = Test-Run 'Audio mode: a music video plays its sound, no surface' 'Wpf' @('--mode=audio', $mv) -Expect @('Audio mode has no presentation') -Seconds 6
     $null = Test-Run 'Audio mode: a picture is refused' 'Wpf' @('--mode=audio', $jpg) -Expect @('Audio mode does not accept') -Seconds 3
     $null = Test-Run 'Audio mode: a silent video is refused' 'Wpf' @('--mode=audio', $silent) -Expect @('no playable audio stream') -Seconds 3
-    $null = Test-Run 'Background mode on Avalonia' 'Ava' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened', 'Audio engine: FatzAudio') -Seconds 6
+    $null = Test-Run 'Background mode on Avalonia' 'Ava' @('--mode=background', $mv) -Reject @('FatzAudioEngine: Audio opened') -Seconds 6
     Say 'Now mode switching on the fly. The script starts the WPF player with the music video.'
     $p = Start-Player 'Wpf' @($mv)
     [void](Wait-Window $p)

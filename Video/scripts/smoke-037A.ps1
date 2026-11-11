@@ -30,7 +30,7 @@
         -SkipBuild     do not rebuild first
         -SilentPart1   part 1 plays on FatzAudio's null device: nothing is heard (default: your
                        default output device, so it measures your real hardware; quiet test tones)
-        -Part          1, 2 or both (default both)
+        -Part          1, 2, 3 or both (default both = all three; 2 also runs 3)
 #>
 [CmdletBinding()]
 param(
@@ -39,7 +39,7 @@ param(
     [switch]$ChooseMedia,
     [switch]$SkipBuild,
     [switch]$SilentPart1,
-    [ValidateSet('1', '2', 'both')][string]$Part = 'both'
+    [ValidateSet('1', '2', '3', 'both')][string]$Part = 'both'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -251,6 +251,103 @@ if ($Part -in '2', 'both') {
     } else { Add-Outcome 'M12' 'no BASS DLLs, song plays' 'manual' 'SKIP' 'no song chosen' '' }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Part 3: automatic player checks (no input; each player opens, plays a few seconds and closes)
+# ---------------------------------------------------------------------------------------------
+if ($Part -in '2', '3', 'both') {
+    Write-Host ''
+    Write-Host ('=' * 78) -ForegroundColor Cyan
+    Write-Host ' PART 3: automatic player checks (about 5 minutes, nothing to do)' -ForegroundColor Cyan
+    Write-Host ('=' * 78) -ForegroundColor Cyan
+    Say 'Each player opens on your screen, plays a file for a few seconds and closes by itself. Please do not click in them.'
+    Add-Result ''
+    Add-Result '== PART 3: automatic player checks =='
+
+    $Exe = @{
+        Wpf      = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player'
+        Ava      = Find-Exe 'FatzMedia.Video.Sample.Player.Avalonia' 'FatzMedia.Video.Sample.Player.Avalonia'
+        WinForms = Find-Exe 'FatzMedia.Video.Sample.Player.WinForms' 'FatzMedia.Video.Sample.Player.WinForms'
+    }
+    $AutoMedia = [ordered]@{
+        'MP3 song'        = 'edge-cases\audio-only [MP3 stereo, 7m06s].mp3'
+        'MIDI karaoke'    = 'karaoke\abba_-_dancing_queen2.kar'
+        'tracker module'  = 'module-music\mario.mod'
+        'MP3+G karaoke'   = 'karaoke\karaoke.mp3'
+        'video with sound' = 'smoke-clips\video [1080p H.264 30fps, mono AAC, 30s].mp4'
+    }
+
+    # Starts one player with one file, waits for the load, lets it play, closes it and returns its saved log.
+    function Invoke-AutoRun([string]$Kind, [string]$File, [string]$Tag, [int]$PlaySeconds = 5) {
+        $proc = Start-Player $Kind @($File)
+        if (-not (Wait-Window $proc)) { Stop-Player $proc; return Save-RunLog $Kind $Tag }
+        $live = Join-Path $LogDir $LogNames[$Kind]
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.Elapsed.TotalSeconds -lt 25 -and -not $proc.HasExited) {
+            if (Test-Path $live) {
+                if (@(Select-String -Path $live -Pattern '[Status]' -SimpleMatch | Where-Object { $_.Line -match 'Loaded:|Could not load|Load failed' }).Count -gt 0) { break }
+            }
+            Start-Sleep -Milliseconds 300
+        }
+        Start-Sleep -Seconds $PlaySeconds
+        Stop-Player $proc
+        return Save-RunLog $Kind $Tag
+    }
+
+    function Test-LogHas($Log, [string]$Text) { $Log -and @(Select-String -Path $Log -Pattern $Text -SimpleMatch).Count -gt 0 }
+
+    function Get-Problems($Log) {
+        if (-not $Log) { return @() }
+        return @(Select-String -Path $Log -Pattern '[Diagnostic]' -SimpleMatch | Where-Object { $_.Line -match '\[Error\]' } |
+            Select-Object -First 2 | ForEach-Object { $_.Line -replace '^.*\[Diagnostic\]\s*', '' })
+    }
+
+    # A8: every player plays each kind of file through FatzAudio.
+    $n = 0
+    foreach ($kind in 'Wpf', 'Ava', 'WinForms') {
+        foreach ($label in $AutoMedia.Keys) {
+            $n++
+            $id = 'A8.' + $n
+            $name = "$($PlayerNames[$kind]) plays a $label"
+            $file = Join-Path $SampleFiles $AutoMedia[$label]
+            if (-not (Test-Path -LiteralPath $file)) { Add-Outcome $id $name 'auto' 'SKIP' "missing $file" ''; continue }
+            $log = Invoke-AutoRun $kind $file ("A8-$kind-" + ($label -replace '[^A-Za-z0-9]+', '-'))
+            $missing = @()
+            if (-not (Test-LogHas $log 'Loaded:')) { $missing += 'it did not load' }
+            if (Test-LogHas $log 'could not start') { $missing += 'FatzAudio did not start' }
+            if (-not ($log -and @(Select-String -Path $log -Pattern '[Stats]' -SimpleMatch | Where-Object { $_.Line -match 'Playing' }).Count -gt 0)) { $missing += 'it never reported Playing' }
+            if ($label -ne 'video with sound' -and -not (Test-LogHas $log 'Audio opened:')) { $missing += 'FatzAudio did not open the audio' }
+            $problems = Get-Problems $log
+            $detail = (@($missing) + @($problems | ForEach-Object { "error: $_" })) -join '; '
+            Add-Outcome $id $name 'auto' $(if ($missing.Count -eq 0 -and $problems.Count -eq 0) { 'PASS' } else { 'FAIL' }) $detail ''
+        }
+    }
+
+    # A9: without fatzaudio.dll the player still starts, plays a video's picture and refuses audio.
+    $copy = Join-Path $OutDir 'player-no-fatzaudio'
+    Say-Info "Copying the WPF player to $copy without fatzaudio.dll ..."
+    Copy-Item -Path (Split-Path $Exe['Wpf']) -Destination $copy -Recurse -Force
+    Get-ChildItem -Path $copy -Recurse -File | Where-Object { $_.Name -eq 'fatzaudio.dll' } | Remove-Item -Force
+    $Exe['NoFatz'] = Join-Path $copy (Split-Path $Exe['Wpf'] -Leaf)
+    $LogNames['NoFatz'] = $LogNames['Wpf']
+    $PlayerNames['NoFatz'] = 'WPF player without fatzaudio.dll'
+    try {
+        $video = Join-Path $SampleFiles $AutoMedia['video with sound']
+        $song = Join-Path $SampleFiles $AutoMedia['MP3 song']
+        $log = Invoke-AutoRun 'NoFatz' $video 'A9-video'
+        $missing = @()
+        if (-not (Test-LogHas $log 'could not start')) { $missing += 'no "could not start" warning' }
+        if (-not (Test-LogHas $log 'Loaded:')) { $missing += 'the video did not load' }
+        Add-Outcome 'A9.1' 'no fatzaudio.dll: starts with a warning, video plays picture-only' 'auto' $(if ($missing.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($missing -join '; ') ''
+        $log = Invoke-AutoRun 'NoFatz' $song 'A9-song' -PlaySeconds 1
+        $missing = @()
+        if (-not (Test-LogHas $log 'Could not load')) { $missing += 'the MP3 was not refused' }
+        if (-not (Test-LogHas $log 'Audio engine unavailable')) { $missing += 'no "Audio engine unavailable" error' }
+        Add-Outcome 'A9.2' 'no fatzaudio.dll: an MP3 is refused with a clear error' 'auto' $(if ($missing.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($missing -join '; ') ''
+    }
+    finally {
+        Remove-Item -Path $copy -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 # ---------------------------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------------------------

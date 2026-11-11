@@ -27,6 +27,7 @@ public sealed class AudioEngineSelectionTests
         var services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) });
 
         Assert.Same(engine, services.GetRequiredService<IAudioEngine>());
+        Assert.Empty(services.GetRequiredService<AudioEngineStartup>().Problem);
         var monitor = services.GetRequiredService<IAudioDeviceMonitor>();
         _ = Assert.IsType<AudioEngineDeviceMonitor>(monitor);
         List<AudioDeviceChangeKind> kinds = [];
@@ -60,6 +61,7 @@ public sealed class AudioEngineSelectionTests
 
         _ = Assert.IsType<SilentAudioEngine>(services.GetRequiredService<IAudioEngine>());
         Assert.Null(services.GetService<IAudioDeviceMonitor>());
+        Assert.StartsWith("Audio engine Test could not start (no fatzaudio).", services.GetRequiredService<AudioEngineStartup>().Problem, StringComparison.Ordinal);
         Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning
             && info.Message.StartsWith("Audio engine Test could not start (no fatzaudio).", StringComparison.Ordinal));
     }

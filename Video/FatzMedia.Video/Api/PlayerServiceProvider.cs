@@ -28,10 +28,13 @@ public static class PlayerServiceProvider
         ArgumentNullException.ThrowIfNull(platformServices);
         platformServices.EnsureNativeLibrariesLoaded(nativeLibraryPaths);
         // Background mode (043A) never opens audio output; without an engine (ENG-033) no mode can.
-        var audioEngine = MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode) ? TryCreateAudioEngine(configuration) : null;
+        var (audioEngine, audioProblem) = MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
+            ? TryCreateAudioEngine(configuration)
+            : (null, string.Empty);
         var audioAvailable = audioEngine is not null;
 
         var services = new ServiceCollection();
+        _ = services.AddSingleton(new AudioEngineStartup(audioProblem));
         RegisterCoreServices(services, audioEngine);
         platformServices.AddPlatformServices(services, configuration);
         if (audioEngine is IAudioDeviceChangeSource deviceEvents)
@@ -85,10 +88,10 @@ public static class PlayerServiceProvider
     }
 
     /// <summary>
-    /// The configured factory's engine, else the built-in FatzAudio engine; null, with a warning, when it cannot
-    /// start: the player then has no audio.
+    /// The configured factory's engine, else the built-in FatzAudio engine; null, with a warning (also kept as the
+    /// problem text, see <see cref="AudioEngineStartup"/>), when it cannot start: the player then has no audio.
     /// </summary>
-    static IAudioEngine? TryCreateAudioEngine(MediaPlayerConfiguration configuration)
+    static (IAudioEngine? Engine, string Problem) TryCreateAudioEngine(MediaPlayerConfiguration configuration)
     {
         var factory = configuration.AudioEngineFactory ?? new FatzAudioEngineFactory();
         try
@@ -96,16 +99,20 @@ public static class PlayerServiceProvider
             var engine = factory.Create(configuration)
                 ?? throw new InvalidOperationException("The factory returned no engine.");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Audio engine: {factory.Name}");
-            return engine;
+            return (engine, string.Empty);
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(
-                MediaDiagnosticLevel.Warning,
-                "Bootstrap",
-                $"Audio engine {factory.Name} could not start ({ex.Message}). {MediaPlayerModePolicy.AudioUnavailableMessage}: video plays without sound; audio media will not open.",
-                innerException: ex);
-            return null;
+            var problem = $"Audio engine {factory.Name} could not start ({ex.Message}). {MediaPlayerModePolicy.AudioUnavailableMessage}: video plays without sound; audio media will not open.";
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Bootstrap", problem, innerException: ex);
+            return (null, problem);
         }
     }
 }
+
+/// <summary>
+/// Why the player's audio engine did not start (empty when it started, or in Background mode). It is raised while the
+/// player is being built, before a host can subscribe to its diagnostics, so <see cref="PlayerCore.AudioEngineProblem"/>
+/// keeps it.
+/// </summary>
+sealed record AudioEngineStartup(string Problem);

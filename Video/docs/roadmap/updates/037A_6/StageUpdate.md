@@ -66,13 +66,20 @@ once on Windows), Vulkan 103, Avalonia 52, all passed; the four boundary scripts
 `dotnet format --verify-no-changes` pass. Not verified here: a real audio device, A/V sync by eye, clicks by ear,
 Linux CI.
 
+## Hand tests after the draft (2026-11-11)
+
+- Part 1 of the script passed on the owner's PC on the real output device: sync drift at most 8.9 ms over 12 s at
+  tempo 0.75-1.5, no clicks in seeks, loops, pause/resume or a steady minute.
+- The script now picks its media from `shared\sample-files` (`-ChooseMedia` asks instead) and has a part 3 that
+  runs by itself: each test player (WPF, Avalonia, WinForms) plays an MP3, a .kar, a tracker, an MP3+G and a video
+  (A8), and a copy of the WPF player without `fatzaudio.dll` starts, plays a video's picture and refuses an MP3 (A9).
+- Writing A9 showed that the "audio engine could not start" warning is raised while the player is built, before a
+  host can subscribe, so no host ever saw it. `PlayerCore.AudioEngineProblem` (new) keeps the text; the test
+  players log it as a Warning (`AudioEngine`).
+
 ## Manual smoke (owner)
 
-1. Build in Release (`Audio` first if it changed: `Audio\docs\building.md`).
-2. Run `powershell -ExecutionPolicy Bypass -File scripts\smoke-037A.ps1` from `Video\` (no `--audio=` needed any
-   more). M12 lists any `bass*.dll` still in the player folders: delete them, they are not used.
-3. Start each test player without options and play an MP3, a .kar, an MP3+G, a video and a tracker: all play, the
-   Log says `Audio engine: FatzAudio`.
-4. Rename `fatzaudio.dll` in a copy of the WPF player folder and start it: it starts, a warning says the audio engine
-   could not start, a video plays its picture, an MP3 is refused with an error.
-5. If all is well, mark the draft PR ready and merge it.
+1. Run `powershell -ExecutionPolicy Bypass -File scripts\smoke-037A.ps1 -Part 2` from `Video\` (part 2 is by eye
+   and ear, then part 3 runs by itself; it builds first unless `-SkipBuild`). M12 lists any `bass*.dll` still in the
+   player folders: delete them, they are not used.
+2. If all is well, mark the draft PR ready and merge it.

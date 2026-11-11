@@ -106,6 +106,13 @@ public partial class PlayerCore : IPlayerSession
     public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
 
     /// <summary>
+    /// Gets why the audio engine did not start (for example the FatzAudio library is missing), or an empty string
+    /// when it started or the mode uses no audio. Without an engine, video plays without sound and audio media does
+    /// not open. Its warning is raised while the player is built, before a host can subscribe, so hosts read it here.
+    /// </summary>
+    public string AudioEngineProblem => _serviceProvider.GetService<AudioEngineStartup>()?.Problem ?? string.Empty;
+
+    /// <summary>
     /// Gets which native libraries loaded at startup, with the exact file names and folders, so a
     /// host can report a missing or wrong-version file (see <see cref="NativeDependencyReport.Describe"/>).
     /// </summary>

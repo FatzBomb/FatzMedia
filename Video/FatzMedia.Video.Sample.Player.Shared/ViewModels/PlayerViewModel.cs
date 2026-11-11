@@ -520,6 +520,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             StartNetworkValidation(player);
             if (player.LastNativeLoadMessage.Length > 0)
                 HandleDiagnostic(MediaDiagnosticLevel.Info, "NativeLibraries", player.LastNativeLoadMessage);
+            if (player.AudioEngineProblem.Length > 0)
+                HandleDiagnostic(MediaDiagnosticLevel.Warning, "AudioEngine", player.AudioEngineProblem);
             ReportNativeDependencies(player.NativeDependencies);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";

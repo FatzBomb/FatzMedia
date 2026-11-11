@@ -115,6 +115,7 @@ public sealed class AudioUnavailableTests : IDisposable
         var errors = new ConcurrentQueue<MediaErrorEventArgs>();
         player.MediaError += (_, args) => errors.Enqueue(args);
 
+        Assert.Contains(MediaPlayerModePolicy.AudioUnavailableMessage, player.AudioEngineProblem, StringComparison.Ordinal);
         Assert.False(player.Load(path));
 
         Assert.True(SpinWait.SpinUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5)));
