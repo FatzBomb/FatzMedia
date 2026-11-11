@@ -222,7 +222,7 @@ if ($Part -in '2', 'both') {
             [void](Wait-Window $proc)
             Say-Do @(
                 'It plays with sound.',
-                'The song title is in the side panel (the flyout), on the line under the URL box; it can take up to a song change to appear.')
+                'The song title appears to the right of the URL box (the panel with NEXT, FADE and URL); it can take up to a song change.')
             Ask-Outcome 'M10' 'network radio'
             Stop-Player $proc
             $log = Save-RunLog 'Wpf' 'M10'
@@ -254,14 +254,30 @@ if ($Part -in '2', 'both') {
             [void](Wait-Window $proc)
             Say-Do @('The sound comes out of that device.')
             Ask-Outcome 'M11' 'plays on the chosen output device'
-            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches the device off for 6 s and on again (an admin prompt appears)'
+            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches it off for 6 s and on again (an admin prompt appears; if Windows cannot switch the output itself, its sound card is switched off, which also silences that card''s other outputs)'
             if ($unplug -eq 'yes') {
-                $id = $endpoint.InstanceId.Replace("'", "''")
-                $cmd = "Disable-PnpDevice -InstanceId '$id' -Confirm:`$false; Start-Sleep -Seconds 6; Enable-PnpDevice -InstanceId '$id' -Confirm:`$false"
-                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
-                Say-Info 'Switching the device off and on (if it stays off, turn it on again in Sound settings or Device Manager)...'
-                try { Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile -EncodedCommand $encoded" }
-                catch { Say-Warn "Windows did not switch the device: $($_.Exception.Message)" }
+                # The output itself (Windows often refuses for these), else the sound card named in its brackets.
+                $card = if ($device.Contains(' (')) { $device.Substring($device.IndexOf(' (') + 2).TrimEnd(')') } else { '' }
+                $switchLog = Join-Path $OutDir 'M11-unplug.log'
+                $switchScript = Join-Path $OutDir 'M11-unplug.ps1'
+                $q = { param($s) "'" + $s.Replace("'", "''") + "'" }
+                @(
+                    "`$log = $(& $q $switchLog)"
+                    'function W($t) { Add-Content -Path $log -Value ((Get-Date -Format ''HH:mm:ss.fff'') + '' '' + $t) }'
+                    '$off = @()'
+                    "try { Disable-PnpDevice -InstanceId $(& $q $endpoint.InstanceId) -Confirm:`$false -ErrorAction Stop; W 'output switched off'; `$off += $(& $q $endpoint.InstanceId) } catch { W ('output not switched: ' + `$_.Exception.Message) }"
+                    "if (`$off.Count -eq 0 -and $(& $q $card)) { `$hw = Get-PnpDevice -Class MEDIA -FriendlyName $(& $q $card) -ErrorAction SilentlyContinue | Select-Object -First 1"
+                    "    if (`$hw) { try { Disable-PnpDevice -InstanceId `$hw.InstanceId -Confirm:`$false -ErrorAction Stop; W ('sound card switched off: ' + `$hw.FriendlyName); `$off += `$hw.InstanceId } catch { W ('sound card not switched: ' + `$_.Exception.Message) } } else { W ('no sound card named ' + $(& $q $card)) } }"
+                    'Start-Sleep -Seconds 6'
+                    'foreach ($id in $off) { try { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop; W (''switched on again: '' + $id) } catch { W (''SWITCH ON FAILED: '' + $id + '': '' + $_.Exception.Message) } }'
+                ) | Set-Content -Path $switchScript -Encoding UTF8
+                Say-Info 'Switching it off and on (if it stays off, turn it on again in Device Manager)...'
+                try { Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$switchScript`"" }
+                catch { Say-Warn "Windows did not run the switch: $($_.Exception.Message)" }
+                Remove-Item -Path $switchScript -ErrorAction SilentlyContinue
+                $switched = @(if (Test-Path $switchLog) { Get-Content -Path $switchLog })
+                foreach ($line in $switched) { Say-Info "  $line"; Add-Result "  unplug: $line" }
+                if ($switched -match 'SWITCH ON FAILED') { Say-Warn 'A device did not come back on: turn it on again in Device Manager (Sound, video and game controllers).' }
                 Start-Sleep -Seconds 4
                 Say-Do @('While it was off the sound moved to your default device and went on; now it is back.')
                 Ask-Outcome 'M11u' 'unplug: playback moves to the default and goes on'
