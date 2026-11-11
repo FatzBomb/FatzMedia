@@ -254,9 +254,10 @@ if ($Part -in '2', 'both') {
             [void](Wait-Window $proc)
             Say-Do @('The sound comes out of that device.')
             Ask-Outcome 'M11' 'plays on the chosen output device'
-            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches it off for 6 s and on again (an admin prompt appears; if Windows cannot switch the output itself, its sound card is switched off, which also silences that card''s other outputs)'
+            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches it off for 6 s and on again (an admin prompt appears; its sound card is switched off, so that card''s other outputs go quiet too)'
             if ($unplug -eq 'yes') {
-                # The output itself (Windows often refuses for these), else the sound card named in its brackets.
+                # Its sound card, named in its brackets: switching the output entry itself off is accepted by Windows but
+                # changes nothing (2026-11-11), so the card goes, as when a USB device is pulled.
                 $card = if ($device.Contains(' (')) { $device.Substring($device.IndexOf(' (') + 2).TrimEnd(')') } else { '' }
                 $switchLog = Join-Path $OutDir 'M11-unplug.log'
                 $switchScript = Join-Path $OutDir 'M11-unplug.ps1'
@@ -265,9 +266,9 @@ if ($Part -in '2', 'both') {
                     "`$log = $(& $q $switchLog)"
                     'function W($t) { Add-Content -Path $log -Value ((Get-Date -Format ''HH:mm:ss.fff'') + '' '' + $t) }'
                     '$off = @()'
-                    "try { Disable-PnpDevice -InstanceId $(& $q $endpoint.InstanceId) -Confirm:`$false -ErrorAction Stop; W 'output switched off'; `$off += $(& $q $endpoint.InstanceId) } catch { W ('output not switched: ' + `$_.Exception.Message) }"
-                    "if (`$off.Count -eq 0 -and $(& $q $card)) { `$hw = Get-PnpDevice -Class MEDIA -FriendlyName $(& $q $card) -ErrorAction SilentlyContinue | Select-Object -First 1"
+                    "if ($(& $q $card)) { `$hw = Get-PnpDevice -Class MEDIA -FriendlyName $(& $q $card) -ErrorAction SilentlyContinue | Select-Object -First 1"
                     "    if (`$hw) { try { Disable-PnpDevice -InstanceId `$hw.InstanceId -Confirm:`$false -ErrorAction Stop; W ('sound card switched off: ' + `$hw.FriendlyName); `$off += `$hw.InstanceId } catch { W ('sound card not switched: ' + `$_.Exception.Message) } } else { W ('no sound card named ' + $(& $q $card)) } }"
+                    "else { W 'the device name names no sound card' }"
                     'Start-Sleep -Seconds 6'
                     'foreach ($id in $off) { try { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop; W (''switched on again: '' + $id) } catch { W (''SWITCH ON FAILED: '' + $id + '': '' + $_.Exception.Message) } }'
                 ) | Set-Content -Path $switchScript -Encoding UTF8
