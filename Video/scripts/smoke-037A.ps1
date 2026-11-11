@@ -24,7 +24,9 @@
         powershell -ExecutionPolicy Bypass -File scripts\smoke-037A.ps1
 
     Optional parameters:
-        -MediaDir      folders with your media (default C:\media and D:\- Testing Files, two levels deep)
+        -MediaDir      folders with your media (default the shared sample-files, C:\media and D:\- Testing Files,
+                       two levels deep)
+        -ChooseMedia   always ask for each file (otherwise the shared sample files below are used when present)
         -SkipBuild     do not rebuild first
         -SilentPart1   part 1 plays on FatzAudio's null device: nothing is heard (default: your
                        default output device, so it measures your real hardware; quiet test tones)
@@ -33,7 +35,8 @@
 [CmdletBinding()]
 param(
     [string]$Repo = '',
-    [string[]]$MediaDir = @('C:\media', 'D:\- Testing Files'),
+    [string[]]$MediaDir = @(),
+    [switch]$ChooseMedia,
     [switch]$SkipBuild,
     [switch]$SilentPart1,
     [ValidateSet('1', '2', 'both')][string]$Part = 'both'
@@ -43,6 +46,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }   # in the body: Windows PowerShell has no $PSScriptRoot in parameter defaults
 $SmokeName = '037A'
 . (Join-Path $PSScriptRoot 'smoke-common.ps1')
+if ($MediaDir.Count -eq 0) { $MediaDir = @($SampleFiles, 'C:\media', 'D:\- Testing Files') }
 
 $Results = New-Object System.Collections.Generic.List[object]
 $AudioRoot = Join-Path (Split-Path -Parent $Repo) 'Audio'
@@ -133,13 +137,13 @@ if ($Part -in '2', 'both') {
 
     $videoExt = @('.mp4', '.mkv', '.avi', '.mov', '.webm', '.mpg', '.ts', '.wmv')
     $Media = @{
-        Video   = Select-Media 'a music video with clear lip sync or drum hits' $videoExt @('music', 'clip', 'video')
-        Short   = Select-Media 'a SHORT video (under a minute) to loop' $videoExt @('short', 'loop', 'clip')
-        Hd      = Select-Media 'a 1080p video with sound' $videoExt @('1080', 'hd', 'fhd')
+        Video   = Select-Media 'a music video with clear lip sync or drum hits' $videoExt @('music', 'clip', 'video') -Preferred 'smoke-clips\avsync [1080p H.264 60fps, mono AAC, 1m00s].mp4'
+        Short   = Select-Media 'a SHORT video (under a minute) to loop' $videoExt @('short', 'loop', 'clip') -Preferred 'smoke-clips\video [1080p H.264 30fps, mono AAC, 30s].mp4'
+        Hd      = Select-Media 'a 1080p video with sound' $videoExt @('1080', 'hd', 'fhd') -Preferred 'edge-cases\LunchLady Land [1080p H.264 23.976fps, stereo AAC, 4m51s].mp4'
         Quiet   = Select-Media 'a QUIET video or song (older or classical)' ($videoExt + @('.mp3', '.flac', '.m4a')) @('quiet', 'classical', 'old')
-        Cdg     = Select-Media 'a karaoke song: MP3+G (pick the .mp3) or a ZIP' @('.mp3', '.zip') @('karaoke', 'cdg', 'sc')
-        Kar     = Select-Media 'a MIDI karaoke file' @('.kar', '.mid') @('kar')
-        Song    = Select-Media 'any MP3 song (for the plain song check)' @('.mp3') @('song')
+        Cdg     = Select-Media 'a karaoke song: MP3+G (pick the .mp3) or a ZIP' @('.mp3', '.zip') @('karaoke', 'cdg', 'sc') -Preferred 'karaoke\karaoke.mp3'
+        Kar     = Select-Media 'a MIDI karaoke file' @('.kar', '.mid') @('kar') -Preferred 'karaoke\abba_-_dancing_queen2.kar'
+        Song    = Select-Media 'any MP3 song (for the plain song check)' @('.mp3') @('song') -Preferred 'edge-cases\audio-only [MP3 stereo, 7m06s].mp3'
     }
     $Exe = @{ Wpf = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player' }
 

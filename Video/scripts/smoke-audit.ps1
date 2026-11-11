@@ -16,7 +16,7 @@
 
     Optional parameters:
         -Repo       repo folder              (default: the folder above this script)
-        -MediaDir   folder with your media   (default C:\media)
+        -MediaDir   folders with your media   (default the shared sample-files, then C:\media)
         -Steps      which tests, e.g. "1,2,3" or "all" (default: asks you)
         -SkipBuild  do not rebuild first
 
@@ -25,7 +25,7 @@
 [CmdletBinding()]
 param(
     [string]$Repo = (Split-Path -Parent $PSScriptRoot),
-    [string]$MediaDir = 'C:\media',
+    [string[]]$MediaDir = @(),
     [string]$Steps = '',
     [switch]$SkipBuild
 )
@@ -36,6 +36,7 @@ Add-Type -AssemblyName System.Windows.Forms
 
 $SmokeName = 'smoke'
 . (Join-Path $PSScriptRoot 'smoke-common.ps1')
+if ($MediaDir.Count -eq 0) { $MediaDir = @($SampleFiles, 'C:\media') }
 
 # ---------------------------------------------------------------------------------------------
 # The tests
