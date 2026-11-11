@@ -142,4 +142,10 @@ static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    // Full screen without the system's maximize and restore animation (WindowFullScreen).
+    internal const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+
+    [LibraryImport("dwmapi.dll")]
+    internal static partial int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
