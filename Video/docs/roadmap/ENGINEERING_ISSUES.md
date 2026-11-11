@@ -59,7 +59,17 @@ When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges,
 to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
 half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
 
-### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
+### ENG-065 - A chosen output device does not get the sound back when it is plugged in again
+
+Reported: 2026-11-11 (owner, 037A hand test M11 with a Yeti Nano on USB): with `AudioOutputDeviceId` set, pulling
+the device moved the sound to the default (as documented), but plugging it back in left the sound on the default.
+BASS's output watchdog used to reopen the same device when it came back. FatzMedia.Audio reopens a lost device on
+the default (`fa_device_open`) and has no call to move it back, so the fix needs Audio (remember the requested id
+and move back when it returns, or a call to retarget a device) plus the engine's device watch in Video. Same test:
+about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
+(14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
+
+### ENG-064 from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
 
 Reported: 2026-11-11 (owner, not blocking):
 - Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
