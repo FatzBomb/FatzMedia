@@ -16,8 +16,6 @@ public partial class PlayerCore
 
     public event EventHandler<MediaErrorEventArgs>? MediaError;
 
-    public event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
-
     public event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;
 
     public event EventHandler<MediaLoadedEventArgs>? MediaLoaded;
@@ -184,11 +182,11 @@ public partial class PlayerCore
     void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
         // Another player's diagnostics are not this player's (process-wide ones are everyone's).
-        var handler = MediaDiagnostic;
+        var handler = _mediaDiagnostic;
         if (handler == null || !info.IsFor(this))
             return;
 
-        var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);
+        var args = ToEventArgs(info);
         // Delivered in order on the player's own diagnostic worker, not the control queue: a
         // diagnostic raised during a long operation (a network retry during a load) reaches the
         // host while the operation runs. A failing diagnostic handler is not reported as a
@@ -198,11 +196,6 @@ public partial class PlayerCore
 
     void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
-
-    // The BASS output watchdog is process-wide and raises its own diagnostic, so every player
-    // forwards the event without adding a second warning (ENG-032).
-    void OnAudioOutputAvailabilityChanged(AudioDeviceChangeInfo info) =>
-        _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChanged(info));
 
     void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
     {

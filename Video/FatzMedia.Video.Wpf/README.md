@@ -18,7 +18,7 @@ no renderer, pipeline, or native presentation logic. Its Windows dependency ship
 `buildTransitive` guard, so a consumer that explicitly targets a non-x64
 `RuntimeIdentifier` receives an MSBuild error at build time. Renderer packages are
 selected separately by the host; the Direct3D11 package applies the same guard when it
-is selected. Hosts still supply BASS and FFmpeg native DLLs themselves; see
+is selected. Hosts still supply the FFmpeg native DLLs themselves; see
 `docs/NATIVE_DEPENDENCIES.md` in the source repository.
 
 ## Presentation Modes
@@ -144,12 +144,12 @@ platform factory. Their rules (what each accepts, the player's mode and settings
 reload and release) are Core's `LightweightPlayerPolicy` and `LightweightPlayerController`
 (Stage 046A slice 2), shared with the Avalonia and WinForms adapters, which offer the same two
 controls. `NativeLibraryPaths` (default `null`: `DLLPath` and the platform's default folders)
-sets the folders their player loads BASS and FFmpeg from. For the current Windows/Direct3D11
+sets the folders their player loads FFmpeg from. For the current Windows/Direct3D11
 stack:
 
 ```csharp
 MediaPlatformFactory = new WindowsDirect3D11PlatformFactory();
 ```
 
-Configure `DLLPath.Bass` and `DLLPath.FFmpeg`, or use the host's default native
+Configure `DLLPath.FFmpeg`, or use the host's default native
 directory, before loading media.

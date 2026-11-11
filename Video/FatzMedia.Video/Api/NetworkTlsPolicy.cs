@@ -6,8 +6,7 @@ namespace FatzMedia.Video;
 /// certificate must chain to a trusted root and match the host name. A host that plays from a
 /// private or self-signed server either names that server's CA in
 /// <see cref="CertificateAuthorityFile"/> or, as a last resort, turns the check off with
-/// <see cref="AllowInvalidCertificates"/>. Network audio played through BASS (014A) follows
-/// BASS's own HTTPS rules, not this policy.
+/// <see cref="AllowInvalidCertificates"/>. Network audio over https follows it too (it opens through FFmpeg).
 /// </summary>
 public sealed record NetworkTlsPolicy
 {

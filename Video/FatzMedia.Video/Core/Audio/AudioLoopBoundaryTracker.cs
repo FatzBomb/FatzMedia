@@ -1,7 +1,7 @@
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
-/// Pure bookkeeping for gapless audio looping. The audio engine plays a BASS push stream
+/// Pure bookkeeping for gapless audio looping. The audio engine plays a push stream
 /// whose channel position never resets across a loop wrap (the FFmpeg decoder is seeked
 /// back to 0 while the same channel keeps playing), so the played position is a single,
 /// ever-increasing "continuous" timeline spanning every lap.

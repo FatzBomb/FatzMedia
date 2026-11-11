@@ -33,7 +33,6 @@ sealed class AudioPipeline : IDisposable
     public event EventHandler? PlaybackEnded;
 
     public bool IsOpen { get; private set; }
-    public int PlayHandle => Engine.PlayHandle;
     public double DurationSeconds => _trimWindow?.EffectiveDuration ?? Engine.Duration;
 
     public double PositionSeconds

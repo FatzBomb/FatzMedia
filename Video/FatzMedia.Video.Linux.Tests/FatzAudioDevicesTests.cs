@@ -7,7 +7,7 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// Output devices on the FatzAudio engine: choosing one, and the device-list watch that replaces BASS's
+/// Output devices on the FatzAudio engine: choosing one, and the device-list watch that is the player's
 /// device monitor. The rules are pure; the native checks run where FatzAudio's library is built and look at
 /// whatever devices this machine has (they never need a particular one).
 /// </summary>
@@ -132,7 +132,6 @@ public sealed class FatzAudioDevicesTests
         });
         engine.DeviceWatchInterval = TimeSpan.FromMilliseconds(50);
         IAudioDeviceChangeSource source = engine;
-        Assert.True(source.ReportsDeviceList);
 
         // Nothing changes here: a quiet list gives no events, and listening starts and stops the watch.
         List<AudioDeviceChangeInfo> changes = [];

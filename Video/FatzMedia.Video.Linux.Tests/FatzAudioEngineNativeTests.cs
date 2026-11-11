@@ -41,7 +41,6 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         engine.StateChanged += (_, state) => { lock (states) states.Add(state); };
 
         Assert.True(engine.Open(wav));
-        Assert.Equal(0, engine.PlayHandle);
         Assert.InRange(engine.Duration, 5.99, 6.01);
         Assert.Equal(AudioEngineState.Stopped, engine.State);
 
@@ -238,7 +237,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             // The gain is FatzAudio's, on the stream: the bus carries only the user volume.
             Assert.Equal(0.5f, engine.OutputVolume, 3);
 
-            // Off: FatzAudio applies nothing; the gain reported is still the song's, as on BASS.
+            // Off: FatzAudio applies nothing; the gain reported is still the song's.
             engine.Normalize = false;
             Assert.True(SpinUntil(() => engine.CurrentStream!.GetLoudness().GainDb == 0));
             Assert.InRange(engine.NormalizationGain, 1.9, 2.1);
@@ -286,7 +285,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         Assert.Equal("Test Title", metadata.Title);
         Assert.Equal("Test Artist", metadata.Artist);
         Assert.Equal("3/4", metadata.TimeSignature);
-        Assert.Equal("Em", metadata.KeySignature); // our metadata format, as from BASS's "1 1"
+        Assert.Equal("Em", metadata.KeySignature); // our metadata format for "1 1" (one sharp, minor)
 
         // It plays: the soundfont renders the notes.
         Assert.True(engine.Play());
@@ -435,15 +434,12 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         }
     }
 
-    // Reports audio as available without loading BASS: the BASS engine is still created (and
-    // fails to initialize here), then the factory's engine replaces it.
+    // Loads nothing native: the FatzAudio engine loads its own library.
     sealed class AudioPlatformServices : IPlatformServices
     {
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {
         }
-
-        public bool IsAudioAvailable => true;
 
         public void AddPlatformServices(IServiceCollection services, MediaPlayerConfiguration configuration)
         {

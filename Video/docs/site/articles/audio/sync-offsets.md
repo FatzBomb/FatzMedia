@@ -54,4 +54,4 @@ TimeSpan subs = player.AdjustSubtitleSyncOffset(+1);
 ## Things to watch
 
 - The properties and helpers act on the current engine and do not wait in the control queue. Do not call them while a `Reset` or mode switch is running; the value may be lost. Set the offset again once the rebuild is done.
-- There is no offset for the audio itself. If the sound is late on a particular output device (a Bluetooth headset, say), delay the picture to match it with a negative `AudioSyncOffset`. For a device with fixed extra delay, `MediaPlayerConfiguration.EnableUsbBluetoothLatencyHeuristic` can compensate automatically for USB and Bluetooth outputs. It is an estimate; see [Audio output devices](output-devices.md).
+- There is no offset for the audio itself. If the sound is late on a particular output device (a Bluetooth headset, say), delay the picture to match it with a negative `AudioSyncOffset`. FatzAudio's clock already includes the latency the device reports; see [Audio output devices](output-devices.md).

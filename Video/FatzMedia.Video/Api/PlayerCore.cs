@@ -74,7 +74,8 @@ public partial class PlayerCore : IPlayerSession
         using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
-            CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
+            using (CaptureStartupDiagnostics())
+                CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
         }
         catch
         {
@@ -104,6 +105,13 @@ public partial class PlayerCore : IPlayerSession
     public string OpenFileDialogFilter => _acceptedTypes.OpenFileDialogFilter;
 
     public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
+
+    /// <summary>
+    /// Gets why the audio engine did not start (for example the FatzAudio library is missing), or an empty string
+    /// when it started or the mode uses no audio. Without an engine, video plays without sound and audio media does
+    /// not open. Its warning is raised while the player is built, before a host can subscribe, so hosts read it here.
+    /// </summary>
+    public string AudioEngineProblem => _serviceProvider.GetService<AudioEngineStartup>()?.Problem ?? string.Empty;
 
     /// <summary>
     /// Gets which native libraries loaded at startup, with the exact file names and folders, so a
@@ -472,10 +480,11 @@ public partial class PlayerCore : IPlayerSession
 
         try
         {
-            // A drag seek leaves the frame to the seek pump, which presents the scrub preview
-            // itself; re-rendering here held the video lock through a vsync present and stalled
-            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging).
-            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing);
+            // A drag seek of video or CD+G leaves the frame to the seek pump, which presents the scrub
+            // preview itself; re-rendering here held the video lock through a vsync present and stalled
+            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging). Audio
+            // with lyrics or subtitles has no seek pump: it redraws here, or a paused drag shows nothing.
+            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing || !HasSeekPump());
             _ = queued.Completion.TrySetResult(result);
             return result;
         }
@@ -491,6 +500,9 @@ public partial class PlayerCore : IPlayerSession
             return false;
         }
     }
+
+    // Video and CD+G seeks settle on the seek pump, which also presents their scrub previews.
+    bool HasSeekPump() => _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
 
     sealed class QueuedSeek(double seconds)
     {
@@ -512,7 +524,7 @@ public partial class PlayerCore : IPlayerSession
             return true;
         }
 
-        var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
+        var waitsForSettle = HasSeekPump();
         if (waitsForSettle)
         {
             lock (_seekCompletionGate)
@@ -969,7 +981,8 @@ public partial class PlayerCore : IPlayerSession
             (_serviceProvider, _mediaEngine, _presentationCoordinator, Controls);
         try
         {
-            CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
+            using (CaptureStartupDiagnostics())
+                CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
         }
         catch
         {
@@ -1040,7 +1053,6 @@ public partial class PlayerCore : IPlayerSession
         try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
         try { _presentationCoordinator.DeviceRecoveryFailed -= OnPresentationDeviceRecoveryFailed; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
-        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)
@@ -1134,9 +1146,6 @@ public partial class PlayerCore : IPlayerSession
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-        // Background mode has no audio output, so the output watchdog's reports are not its own.
-        if (MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode))
-            BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset

@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzMedia.Video.Tests;
 
-/// <summary>ENG-033: a player whose platform could not load BASS still starts.</summary>
+/// <summary>ENG-033: a player whose audio engine could not start still starts.</summary>
 [Collection("File type registry")]
 public sealed class AudioUnavailableTests : IDisposable
 {
@@ -45,13 +45,13 @@ public sealed class AudioUnavailableTests : IDisposable
     [InlineData(MediaPlayerMode.Full, false, false)]
     [InlineData(MediaPlayerMode.Background, true, false)]
     [InlineData(MediaPlayerMode.Background, false, false)]
-    public void VideoAudio_NeedsAudioOutputAndBass(MediaPlayerMode mode, bool audioAvailable, bool expected) =>
+    public void VideoAudio_NeedsAudioOutputAndAnEngine(MediaPlayerMode mode, bool audioAvailable, bool expected) =>
         Assert.Equal(expected, VideoPipelineFactory.UsesVideoAudio(mode, audioAvailable));
 
     [Theory]
     [InlineData(MediaPlayerMode.Full)]
     [InlineData(MediaPlayerMode.Audio)]
-    public void ServiceProvider_WithoutBass_UsesSilentEngineAndWarns(MediaPlayerMode mode)
+    public void ServiceProvider_WithoutAnEngine_UsesSilentEngineAndWarns(MediaPlayerMode mode)
     {
         IServiceProvider? services = null;
         var diagnostics = Capture(() => services = Create(mode));
@@ -59,12 +59,12 @@ public sealed class AudioUnavailableTests : IDisposable
         _ = Assert.IsType<SilentAudioEngine>(services!.GetRequiredService<IAudioEngine>());
         Assert.Same(UnavailableMediaFileAnalyzer.Instance, services!.GetRequiredService<IMediaFileAnalyzer>());
         Assert.NotNull(services!.GetRequiredService<IMediaEngine>());
-        var warning = Assert.Single(diagnostics, static info => info.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
+        var warning = Assert.Single(diagnostics, static info => info.Message.Contains(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
         Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
     }
 
     [Fact]
-    public void ServiceProvider_BackgroundWithoutBass_DoesNotWarn()
+    public void ServiceProvider_Background_DoesNotStartAnEngineOrWarn()
     {
         var diagnostics = Capture(() => Create(MediaPlayerMode.Background));
 
@@ -95,7 +95,7 @@ public sealed class AudioUnavailableTests : IDisposable
     }
 
     [Fact]
-    public void Open_NetworkAudioWithoutBass_FailsCleanly()
+    public void Open_NetworkAudioWithoutAnEngine_FailsCleanly()
     {
         var engine = Create(MediaPlayerMode.Full).GetRequiredService<IMediaEngine>();
         var errors = new List<MediaErrorInfo>();
@@ -108,21 +108,35 @@ public sealed class AudioUnavailableTests : IDisposable
     }
 
     [Fact]
-    public void Player_WithoutBass_ConstructsAndLoadReportsTheError()
+    public void Player_WithoutAnEngine_ConstructsAndLoadReportsTheError()
     {
         var path = CreateMediaFile("song.mp3");
         using var player = new PlayerCore(new NoAudioPlatformFactory(), MediaPlayerConfiguration.Auto, []);
         var errors = new ConcurrentQueue<MediaErrorEventArgs>();
         player.MediaError += (_, args) => errors.Enqueue(args);
 
+        Assert.Contains(MediaPlayerModePolicy.AudioUnavailableMessage, player.AudioEngineProblem, StringComparison.Ordinal);
         Assert.False(player.Load(path));
 
         Assert.True(SpinWait.SpinUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5)));
         Assert.Contains(errors, static args => args.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Player_StartupWarning_ReachesASubscriberThatSubscribesAfterConstruction()
+    {
+        using var player = new PlayerCore(new NoAudioPlatformFactory(), MediaPlayerConfiguration.Auto, []);
+        var diagnostics = new ConcurrentQueue<MediaDiagnosticEventArgs>();
+
+        player.MediaDiagnostic += (_, args) => diagnostics.Enqueue(args);
+
+        Assert.True(SpinWait.SpinUntil(
+            () => diagnostics.Any(static args => args.Level == MediaDiagnosticLevel.Warning && args.Message.Contains("could not start", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(5)));
+    }
+
     static IServiceProvider Create(MediaPlayerMode mode) =>
-        PlayerServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode }, [], new NoAudioPlatformServices());
+        PlayerServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode, AudioEngineFactory = new FailingAudioEngineFactory() }, [], new NoAudioPlatformServices());
 
     string CreateMediaFile(string fileName)
     {
@@ -154,11 +168,17 @@ public sealed class AudioUnavailableTests : IDisposable
         return [.. captured];
     }
 
-    /// <summary>A platform whose BASS libraries did not load: no audio, no device monitor.</summary>
+    /// <summary>An audio engine whose native library is missing.</summary>
+    sealed class FailingAudioEngineFactory : IAudioEngineFactory
+    {
+        public string Name => "Missing";
+
+        public IAudioEngine Create(MediaPlayerConfiguration configuration) => throw new DllNotFoundException("fatzaudio");
+    }
+
+    /// <summary>A platform with no native libraries and no device monitor.</summary>
     sealed class NoAudioPlatformServices : IPlatformServices
     {
-        public bool IsAudioAvailable => false;
-
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {
         }
@@ -189,6 +209,6 @@ public sealed class AudioUnavailableTests : IDisposable
         public IMediaPresentationCoordinator CreatePresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) => _coordinator;
 
         public IServiceProvider CreateServiceProvider(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths) =>
-            PlayerServiceProvider.Create(configuration, nativeLibraryPaths, new NoAudioPlatformServices());
+            PlayerServiceProvider.Create(configuration with { AudioEngineFactory = new FailingAudioEngineFactory() }, nativeLibraryPaths, new NoAudioPlatformServices());
     }
 }

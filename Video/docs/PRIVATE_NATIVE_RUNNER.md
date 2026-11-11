@@ -4,8 +4,8 @@ Updated: 2026-07-18
 
 This checklist provisions the dedicated runner required by
 `.github/workflows/windows-native-smoke.yml`. Do not register a general development
-workstation or a public/shared runner because the job accesses host-licensed BASS and
-FFmpeg binaries.
+workstation or a public/shared runner because the job accesses host-supplied FFmpeg
+binaries.
 
 ## Runner Requirements
 

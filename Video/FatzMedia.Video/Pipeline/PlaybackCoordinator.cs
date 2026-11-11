@@ -44,16 +44,12 @@ sealed partial class PlaybackCoordinator : IDisposable
 
         // The soundtrack engine (FFmpeg decode into the audio output) plays Audio mode's video
         // soundtracks and, in Full and Audio mode, network audio that opens through FFmpeg (https
-        // and HLS, ENG-034). Without BASS (ENG-033) there is none: those loads are refused first.
-        if (mode != MediaPlayerMode.Background && audioAvailable)
+        // and HLS, ENG-034). It plays on the audio engine's device, so without an engine that offers
+        // one (ENG-033) there is none: those loads are refused first.
+        if (mode != MediaPlayerMode.Background && audioAvailable && audioEngine is IPushAudioOutputSource outputSource)
         {
-            var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
-                ? deviceProvider.BassDeviceIndex
-                : configuration.AudioOutputDeviceIndex;
             var soundtrack = new AudioPipeline(
-                new SoundtrackAudioEngine(audioEngine is IPushAudioOutputSource outputSource
-                    ? outputSource.CreatePushAudioOutput()
-                    : new BassPushAudioOutput(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex)),
+                new SoundtrackAudioEngine(outputSource.CreatePushAudioOutput()),
                 _session.State,
                 ownsAudioEngine: true);
             soundtrack.PlaybackEnded += OnPlaybackEnded;
@@ -220,14 +216,14 @@ sealed partial class PlaybackCoordinator : IDisposable
         return false;
     }
 
-    /// <summary>Whether the soundtrack engine is there (Full and Audio mode, with BASS): network audio through FFmpeg can play.</summary>
+    /// <summary>Whether the soundtrack engine is there (Full and Audio mode, with audio): network audio through FFmpeg can play.</summary>
     public bool CanOpenSoundtrack => _session.Soundtrack is not null;
 
     public bool OpenNetworkAudio(Uri uri) => _session.Audio?.OpenUrl(uri.AbsoluteUri) == true;
 
     /// <summary>
-    /// Whether network audio goes to the audio pipeline (BASS opens URLs itself, and with no pipeline
-    /// <see cref="OpenNetworkAudio"/> reports the failure as before); false for an engine that cannot
+    /// Whether network audio goes to the audio pipeline (an engine that opens URLs itself, and with no
+    /// pipeline <see cref="OpenNetworkAudio"/> reports the failure); false for an engine that cannot
     /// open URLs, whose network audio goes through FFmpeg.
     /// </summary>
     public bool CanOpenNetworkAudio => _session.Audio?.Engine is null or INetworkAudioSource;
@@ -451,18 +447,10 @@ sealed partial class PlaybackCoordinator : IDisposable
 
         try
         {
-            // 037A slice 1: the built-in provider reads MIDI through an engine-neutral reader; a
-            // host-supplied provider still gets the BASS source handle.
-            var engine = _session.Audio?.Engine;
-            var cues = _midiLyricProvider is IMidiLyricReaderProvider readerProvider
-                ? readerProvider.ExtractLyrics(
-                    GetMidiEventReader(engine),
-                    audioPath,
-                    _karaokeTransitionDuration)
-                : _midiLyricProvider.ExtractLyrics(
-                    engine?.SourceHandle ?? 0,
-                    audioPath,
-                    _karaokeTransitionDuration);
+            var cues = _midiLyricProvider.ExtractLyrics(
+                GetMidiEventReader(_session.Audio?.Engine),
+                audioPath,
+                _karaokeTransitionDuration);
             if (cues is { Count: > 0 })
             {
                 _ = _session.Subtitle?.LoadEmbeddedTracks(
@@ -480,15 +468,7 @@ sealed partial class PlaybackCoordinator : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// The MIDI events of the open audio: from the engine when it reads them itself (the BASS
-    /// engines, on their source channel as before); for any other engine, its BASS source handle
-    /// as before this seam (null for 0). A FatzAudio engine will implement the reader itself.
-    /// </summary>
-    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine) => engine switch
-    {
-        null => null,
-        IMidiEventReaderSource source => source.GetMidiEventReader(),
-        _ => BassMidiEventReader.ForHandle(engine.SourceHandle),
-    };
+    /// <summary>The MIDI events of the open audio, when the engine reads them; null otherwise.</summary>
+    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine) =>
+        (engine as IMidiEventReaderSource)?.GetMidiEventReader();
 }

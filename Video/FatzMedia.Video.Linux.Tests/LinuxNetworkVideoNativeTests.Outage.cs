@@ -8,7 +8,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// Stage 039A slice 2: a network outage longer than the read-ahead. The open connection is reset
 /// and every request during the outage refused, as with an unplugged cable; once it ends the
 /// reader resumes where it stopped and playback carries on to the real end, with no seek from
-/// the host. Without BASS the picture runs on the playback clock, which is held while it waits
+/// the host. Without an audio engine the picture runs on the playback clock, which is held while it waits
 /// for the network (ENG-034), so nothing that played before the outage is skipped; the timeline
 /// in the output shows it.
 /// </summary>

@@ -17,13 +17,4 @@ public sealed record LinuxPlatformOptions
         get;
         init => field = double.IsFinite(value) ? Math.Clamp(value, 24, 360) : 60;
     } = 60;
-
-    /// <summary>Gets how often BASS output-device state is polled (clamped to 0.25..10 s).</summary>
-    public TimeSpan AudioDevicePollInterval
-    {
-        get;
-        init => field = value < TimeSpan.FromMilliseconds(250)
-            ? TimeSpan.FromMilliseconds(250)
-            : value > TimeSpan.FromSeconds(10) ? TimeSpan.FromSeconds(10) : value;
-    } = TimeSpan.FromSeconds(1);
 }

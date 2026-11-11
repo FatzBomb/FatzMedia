@@ -24,7 +24,7 @@ Create a WPF app targeting `net10.0-windows7.0` and x64, and add the packages (s
 </ItemGroup>
 ```
 
-Put the x64 BASS and FFmpeg DLLs in a `native` folder in the project ([Native dependencies](native-dependencies.md)).
+Put the x64 FFmpeg DLLs in a `native` folder in the project ([Native dependencies](native-dependencies.md)).
 
 ## 2. The window
 
@@ -157,7 +157,7 @@ public partial class MainWindow : Window
 
 ## What the code does
 
-- **Create.** <xref:FatzMedia.Video.Wpf.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. `new Player(...)` would freeze the window. `WindowsNativeLibraryPaths.GetDefaultSearchPaths()` returns the existing `native` and `runtimes/win-x64/native` folders under the application folder. The platform factory pairs the Windows services with the Direct3D11 renderer.
+- **Create.** <xref:FatzMedia.Video.Wpf.Player.CreateAsync*> builds the player on a pool thread, because loading FFmpeg and FatzAudio blocks. `new Player(...)` would freeze the window. `WindowsNativeLibraryPaths.GetDefaultSearchPaths()` returns the existing `native` and `runtimes/win-x64/native` folders under the application folder. The platform factory pairs the Windows services with the Direct3D11 renderer.
 - **Attach.** Setting `Surface.Player` attaches the surface to the player. The surface sizes itself to its layout and detaches when you set `Player` to `null`.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads. Anything that touches the UI goes through `Dispatcher`. See [Threading and events](../concepts/threading-and-events.md).
 - **Load and play.** `LoadAsync` returns `false` if the file could not be opened (the `MediaDiagnostic` and `MediaError` events say why). `OpenFileDialogFilter` is an Open dialog filter built from the formats the loaded libraries support. You can also set `PlayOnLoad = true` and skip the `PlayAsync` call.

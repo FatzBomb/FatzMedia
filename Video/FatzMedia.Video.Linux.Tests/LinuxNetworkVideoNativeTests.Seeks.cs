@@ -11,7 +11,7 @@ namespace FatzMedia.Video.Linux.Tests;
 /// players do, resizes the surface and sets the sync offset (which redraws the frame) every second,
 /// and records the longest call. If a read or a seek hangs, the watchdog writes a
 /// managed stack dump of every thread (<c>dotnet-stack report</c>, when installed) to the output.
-/// No BASS is loaded, so the audio cursor (<c>VideoAudioEngine</c>) is not exercised here.
+/// No audio engine runs here, so the audio cursor (<c>VideoAudioEngine</c>) is not exercised here.
 /// </summary>
 public sealed partial class LinuxNetworkVideoNativeTests
 {

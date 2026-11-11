@@ -143,28 +143,30 @@ public sealed record PlayerStartupOptions
     public bool LightweightSurfacesWindow { get; init; }
 
     /// <summary>
-    /// Gets the audio engine for audio files (<c>--audio=bass|fatz</c>, 037A slice 2); BASS by
-    /// default. The host supplies the FatzAudio engine.
-    /// </summary>
-    public PlayerAudioEngine AudioEngine { get; init; }
-
-    /// <summary>Gets an <c>--audio=</c> value that is not an engine name (then BASS applies), or null.</summary>
-    public string? UnknownAudioEngine { get; init; }
-
-    /// <summary>
     /// Gets the FatzAudio output device (<c>--audio-device=</c>, its id or name; the Log lists the names when
-    /// it is not found), or null for the system default. Only with <c>--audio=fatz</c>.
+    /// it is not found), or null for the system default.
     /// </summary>
     public string? AudioDevice { get; init; }
 
     /// <summary>
     /// Gets the scaled CD+G picture (<c>--cdg-scale</c> or <c>--cdg-scale=0..10</c>, the smoothness; <c>--cdg-effects</c>
-    /// adds an outline and a shadow); off (the classic picture) without it. Only with <c>--audio=fatz</c>.
+    /// adds an outline and a shadow); off (the classic picture) without it.
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
 
     /// <summary>Gets whether FatzAudio decodes video soundtracks from FFmpeg's packets (<c>--video-audio=fatz</c>); FFmpeg decodes otherwise.</summary>
     public bool AudioEngineDecodesSoundtracks { get; init; }
+
+    /// <summary>
+    /// The audio options on <paramref name="configuration"/>: FatzAudio plays on <c>--audio-device=</c> when
+    /// given, CD+G scaled with <c>--cdg-scale</c>, soundtracks decoded with <c>--video-audio=fatz</c>.
+    /// </summary>
+    public MediaPlayerConfiguration ApplyAudioOptions(MediaPlayerConfiguration configuration) => configuration with
+    {
+        AudioOutputDeviceId = AudioDevice,
+        CdgScaling = CdgScaling,
+        AudioEngineDecodesSoundtracks = AudioEngineDecodesSoundtracks
+    };
 
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
@@ -196,7 +198,6 @@ public sealed record PlayerStartupOptions
         var positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out var parsedUrl) ? parsedUrl : null;
         var surface = Values(args, "--surface=").LastOrDefault();
         var decoding = Values(args, "--decoding=").LastOrDefault();
-        var audio = Values(args, "--audio=").LastOrDefault();
         var networkUri = Values(args, "--url=")
             .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out var uri) ? uri : null)
             .FirstOrDefault(static uri => uri is not null);
@@ -236,8 +237,6 @@ public sealed record PlayerStartupOptions
                 .LastOrDefault(static count => count is not null) ?? 1,
             PreferFrameSinkSurface = IsValue(surface, "framesink"),
             UnknownSurface = surface is null || IsValue(surface, "framesink") || IsValue(surface, "auto") ? null : surface,
-            AudioEngine = PlayerAudioEngineRules.Parse(audio) ?? PlayerAudioEngine.Bass,
-            UnknownAudioEngine = audio is not null && PlayerAudioEngineRules.Parse(audio) is null ? audio : null,
             AudioDevice = Values(args, "--audio-device=").LastOrDefault(static value => !string.IsNullOrWhiteSpace(value)),
             CdgScaling = ParseCdgScaling(args),
             AudioEngineDecodesSoundtracks = Values(args, "--video-audio=").LastOrDefault() is { } videoAudio && IsValue(videoAudio, "fatz"),
@@ -283,7 +282,7 @@ public sealed record PlayerStartupOptions
 
     /// <summary>
     /// Gets a warning for each player value that was not understood (<c>--renderer=</c>,
-    /// <c>--surface=</c>, <c>--decoding=</c>, <c>--audio=</c>), naming the default used instead. Hosts log them.
+    /// <c>--surface=</c>, <c>--decoding=</c>), naming the default used instead. Hosts log them.
     /// </summary>
     public IReadOnlyList<string> DescribeUnknownValues()
     {
@@ -294,8 +293,6 @@ public sealed record PlayerStartupOptions
             warnings.Add($"Unknown --surface value '{surface}' (use auto or framesink); using auto.");
         if (UnknownDecoding is { } decoding)
             warnings.Add($"Unknown --decoding value '{decoding}' (use auto or software); using auto.");
-        if (UnknownAudioEngine is { } audio)
-            warnings.Add($"Unknown --audio value '{audio}' (use {PlayerAudioEngineRules.Usage}); using bass.");
         return warnings;
     }
 

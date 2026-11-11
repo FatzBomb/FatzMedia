@@ -13,7 +13,7 @@ public sealed class NativeDependencyReportTests
     [InlineData("libavcodec.so.63", "libavcodec.so.62")]
     public void FindVersionHint_NamesTheOtherVersionFound(string expected, string present)
     {
-        var hint = NativeDependencyReport.FindVersionHint(expected, ["bass.dll", present, "avformat-62.dll"]);
+        var hint = NativeDependencyReport.FindVersionHint(expected, ["fatzaudio.dll", present, "avformat-62.dll"]);
 
         Assert.Equal($"Found {present}, a different version; this control needs {expected}.", hint);
     }
@@ -23,7 +23,7 @@ public sealed class NativeDependencyReportTests
     [InlineData("avcodec-63.dll", "avcodec-63.dll")]
     [InlineData("avcodec-63.dll", "libavcodec.so.62")]
     [InlineData("libavcodec.so.63", "avcodec-62.dll")]
-    [InlineData("bass.dll", "bass-2.dll")]
+    [InlineData("fatzaudio.dll", "fatzaudio-2.dll")]
     public void FindVersionHint_IgnoresOtherLibrariesPlatformsAndUnversionedNames(string expected, string present) =>
         Assert.Null(NativeDependencyReport.FindVersionHint(expected, [present]));
 
@@ -32,23 +32,23 @@ public sealed class NativeDependencyReportTests
     {
         var report = new NativeDependencyReport(
             [
-                new NativeLibraryCheck("BASS", "bass.dll", true, NativeLibraryStatus.Loaded, @"C:\app\native\bass.dll"),
-                new NativeLibraryCheck("BASS", "bassopus.dll", false, NativeLibraryStatus.Missing),
+                new NativeLibraryCheck("FFmpeg", "avformat-63.dll", true, NativeLibraryStatus.Loaded, @"C:\app\native\avformat-63.dll"),
+                new NativeLibraryCheck("FFmpeg", "avdevice-63.dll", false, NativeLibraryStatus.Missing),
                 new NativeLibraryCheck("FFmpeg", "avcodec-63.dll", true, NativeLibraryStatus.Missing, Hint: "Found avcodec-62.dll, a different version; this control needs avcodec-63.dll."),
                 new NativeLibraryCheck("FFmpeg", "avutil-61.dll", true, NativeLibraryStatus.NotLoaded, @"C:\app\native\avutil-61.dll"),
-                new NativeLibraryCheck("BASS", "basswma.dll", false, NativeLibraryStatus.FailedToLoad, @"C:\app\native\basswma.dll"),
+                new NativeLibraryCheck("FFmpeg", "avfilter-12.dll", false, NativeLibraryStatus.FailedToLoad, @"C:\app\native\avfilter-12.dll"),
             ],
             [@"C:\app\native"]);
 
         Assert.False(report.RequiredLoaded);
         Assert.Equal(["avcodec-63.dll", "avutil-61.dll"], report.RequiredProblems.Select(static check => check.FileName));
-        Assert.Equal(["bassopus.dll", "basswma.dll"], report.OptionalProblems.Select(static check => check.FileName));
+        Assert.Equal(["avdevice-63.dll", "avfilter-12.dll"], report.OptionalProblems.Select(static check => check.FileName));
         Assert.Equal(
             [
                 "FFmpeg avcodec-63.dll (required) is missing. Found avcodec-62.dll, a different version; this control needs avcodec-63.dll.",
                 @"FFmpeg avutil-61.dll (required) was found at C:\app\native\avutil-61.dll but not loaded because other FFmpeg files are missing.",
-                "BASS bassopus.dll (optional) is missing.",
-                @"BASS basswma.dll (optional) was found at C:\app\native\basswma.dll but failed to load.",
+                "FFmpeg avdevice-63.dll (optional) is missing.",
+                @"FFmpeg avfilter-12.dll (optional) was found at C:\app\native\avfilter-12.dll but failed to load.",
             ],
             report.Describe());
     }
@@ -58,8 +58,8 @@ public sealed class NativeDependencyReportTests
     {
         var report = new NativeDependencyReport(
             [
-                new NativeLibraryCheck("BASS", "bass.dll", true, NativeLibraryStatus.Loaded),
-                new NativeLibraryCheck("BASS", "bassflac.dll", false, NativeLibraryStatus.Missing),
+                new NativeLibraryCheck("FFmpeg", "avformat-63.dll", true, NativeLibraryStatus.Loaded),
+                new NativeLibraryCheck("FFmpeg", "avdevice-63.dll", false, NativeLibraryStatus.Missing),
             ],
             []);
 
@@ -69,25 +69,8 @@ public sealed class NativeDependencyReportTests
     }
 
     [Fact]
-    public void Report_WithoutBass_IsNotAFailureButSaysAudioIsUnavailable()
-    {
-        var report = new NativeDependencyReport(
-            [
-                new NativeLibraryCheck("BASS", "bass.dll", false, NativeLibraryStatus.Missing),
-                new NativeLibraryCheck("FFmpeg", "avcodec-63.dll", true, NativeLibraryStatus.Loaded),
-            ],
-            [])
-        { IsAudioAvailable = false };
-
-        Assert.True(report.RequiredLoaded);
-        Assert.Empty(report.RequiredProblems);
-        Assert.Equal([NativeDependencyReport.AudioUnavailableLine, "BASS bass.dll (optional) is missing."], report.Describe());
-    }
-
-    [Fact]
     public void EmptyReport_IsWhatPlatformsWithoutChecksReturn()
     {
-        Assert.True(NativeDependencyReport.Empty.IsAudioAvailable);
         Assert.True(NativeDependencyReport.Empty.RequiredLoaded);
         Assert.Empty(NativeDependencyReport.Empty.Describe());
         IPlatformFactory factory = new MinimalFactory();

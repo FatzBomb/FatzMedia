@@ -1,6 +1,6 @@
 # Normalization and silence trimming
 
-Normalization evens out loudness between files so the user does not reach for the volume control at every track change. The engine measures each file's peak level and applies a gain to bring it to a common level. This article explains when the analysis runs, what the gain limits are, how to read the result, and how the optional silence trimming and the standalone analysis fit in.
+Normalization evens out loudness between files so the user does not reach for the volume control at every track change. FatzAudio measures each song's integrated loudness (ITU-R BS.1770 / EBU R128) and brings it to a target, with a true-peak limiter so a boost never clips. This article explains the switch, the options, how to read the result, and how the optional silence trimming and the standalone analysis fit in. The old peak-based rule went away with BASS in 037A.
 
 ## Switching it on and off
 
@@ -14,19 +14,11 @@ player.NormalizeChanged += (_, e) =>
         $"Normalize {e.PreviousValue} -> {e.CurrentValue}, current gain x{e.NormalizationGain:F2}"));
 ```
 
-The analysis runs when a file loads, whatever `Normalize` says. Turning normalization off only stops the gain being applied, so turning it back on is immediate and needs no new scan.
+Turning normalization off stops the gain being applied, so turning it back on is immediate and needs no new scan.
 
 ## How the gain is found
 
-Normalization is peak based. The analysis finds the highest sample peak of the file and sets the gain so that peak lands at 0.8 of full scale:
-
-```text
-gain = 0.8 / peak       (limited to 0 .. 8)
-```
-
-A loud file gets a gain below 1 (it is turned down). A quiet file gets a gain above 1, up to a maximum of 8 times (about +18 dB). A silent file keeps a gain of 1.
-
-`player.Effects.NormalizationGain` returns the current gain as this plain multiplier, with 1.0 meaning no change. `player.Effects.NormalizationGainChanged` fires when the analysis updates it, and `NormalizeChanged` carries the value too.
+`player.Effects.NormalizationGain` returns the current gain as a plain multiplier, with 1.0 meaning no change. `player.Effects.NormalizationGainChanged` fires once the loudness is final, and `NormalizeChanged` carries the value too.
 
 ```csharp
 player.Effects.NormalizationGainChanged += (_, gain) =>
@@ -36,29 +28,11 @@ player.Effects.NormalizationGainChanged += (_, gain) =>
 > [!NOTE]
 > The XML documentation of `NormalizationGain` calls the value dB. The value is a linear multiplier.
 
-### Two passes
-
-Analysis runs in two passes on a background thread:
-
-1. **Quick pass.** Reads a few short blocks from the start of the file and is ready almost at once. It may only lower the level, never raise it. This keeps a loud song from starting too loud and a quiet intro from being boosted for a moment.
-2. **Full pass.** Scans the whole file. The final gain comes from the louder of the two peaks, so a transient the quick pass saw is never lost.
-
-For a quiet file the level can therefore rise a little while the first seconds play, when the full pass finishes. For most files the gain is final within moments.
-
-The gain is cached per file (its path, size and modified time) for the whole process and shared by all players, so a file is analysed once and applies at once on every later load. The cache keeps the most recently used 1024 entries.
-
-### Autoplay waits for the quick pass
-
-With `PlayOnLoad` on and normalization enabled, playback waits for the quick pass, up to two seconds, so the first moments are not played at the wrong level. A file with a cached gain starts immediately.
-
-## With the FatzAudio engine: loudness (LUFS)
-
-With the opt-in FatzAudio engine (`MediaPlayerConfiguration.AudioEngineFactory`), normalization is loudness based instead of peak based: FatzAudio measures each song's integrated loudness (ITU-R BS.1770 / EBU R128) and brings it to a target, with a true-peak limiter so a boost never clips. The rest of this article (the peak rule, the two passes, the 1024-entry cache) describes the BASS engine, which ignores these options.
+## Options
 
 ```csharp
 var configuration = new MediaPlayerConfiguration
 {
-    AudioEngineFactory = new FatzAudioEngineFactory(),
     Normalization = new NormalizationOptions { TargetLufs = -16 },   // default -14
 };
 ```
@@ -138,6 +112,6 @@ if (analysis is not null)
 
 ## Things to watch
 
-- The analysis reads the whole file once. For long files on slow media the full pass takes noticeable time; the quick pass keeps playback unblocked meanwhile.
-- Normalization works from peak level, not perceived loudness. Two files with the same peak can still sound different in loudness.
-- A file that changes on disk gets a new cache entry, because size and modified time are part of the key.
+- The analysis reads the whole file once. For long files on slow media the scan takes noticeable time; playback does not wait for it.
+- Loudness is measured over the whole song, so a short loud passage does not pull the level of the rest of a song down; the limiter keeps peaks under the ceiling.
+- A file that changes on disk gets a new cache entry, because size and content are part of the key.

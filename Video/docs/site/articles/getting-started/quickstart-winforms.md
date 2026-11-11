@@ -24,7 +24,7 @@ Create a WinForms app targeting `net10.0-windows7.0` and x64, and add the packag
 </ItemGroup>
 ```
 
-Put the x64 BASS and FFmpeg DLLs in a `native` folder in the project ([Native dependencies](native-dependencies.md)).
+Put the x64 FFmpeg DLLs in a `native` folder in the project ([Native dependencies](native-dependencies.md)).
 
 ## 2. The program
 
@@ -145,7 +145,7 @@ public sealed class MainForm : Form
 
 ## What the code does
 
-- **Create.** <xref:FatzMedia.Video.WinForms.Player.CreateAsync*> builds the player on a pool thread, because loading BASS and FFmpeg blocks. The WinForms adapter has no default platform factory, so you pass one: here the Windows services paired with the Direct3D11 renderer.
+- **Create.** <xref:FatzMedia.Video.WinForms.Player.CreateAsync*> builds the player on a pool thread, because loading FFmpeg and FatzAudio blocks. The WinForms adapter has no default platform factory, so you pass one: here the Windows services paired with the Direct3D11 renderer.
 - **Attach.** Setting `_surface.Player` attaches the surface. Its default is a native child window that the renderer draws into. If the renderer cannot present into a window (the Software renderer, for example), the surface switches to a frame sink and draws the frames itself. `PresentationPath` reports which one is in use.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads, so the handlers use `BeginInvoke`. See [Threading and events](../concepts/threading-and-events.md).
 - **Load and play.** `LoadAsync` returns `false` if the file could not be opened. `OpenFileDialogFilter` is an Open dialog filter built from the formats the loaded libraries support.

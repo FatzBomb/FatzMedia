@@ -8,7 +8,7 @@ The configuration is an immutable value (`readonly record struct`). Build it wit
 var configuration = new MediaPlayerConfiguration
 {
     VideoDecoding = VideoDecodingMethod.Auto,
-    AudioOutputDeviceIndex = -1,
+    AudioOutputDeviceId = null,   // the system default
     NetworkRetry = new NetworkRetryPolicy { MaxRetries = 3 },
     HdrToneMapping = new HdrToneMappingOptions(ReferenceWhiteNits: 250),
 };
@@ -31,12 +31,11 @@ Two shortcuts exist: `new MediaPlayerConfiguration(VideoDecodingMethod.Software)
 | `EnablePerformanceLogging` | `bool` | `false` | Periodic performance summaries (frames presented, dropped, late; tick gaps) written to `System.Diagnostics.Trace`. For diagnosing stutter and comparing presentation modes. |
 | `EnableVerboseLogging` | `bool` | `false` | Very noisy detail: decoder candidates, individual FFmpeg packet errors, host callback cadence, seek previews. |
 | `PresentationLeadRefreshIntervals` | `double` | `0.75` | Starting point, in display refresh intervals, of the adaptive presentation lead. See [Frame timing](../video/frame-timing.md). |
-| `EnableUsbBluetoothLatencyHeuristic` | `bool` | `false` | Adds a conservative per-class offset to the reported output latency of USB DACs and Bluetooth endpoints, whose internal buffering BASS cannot see. The heuristic is name based and best effort. |
-| `AudioOutputDeviceIndex` | `int` | `-1` | The BASS output device to open. `-1` is the system primary device, which follows default-device changes. An explicit index is fixed at creation. Use `AudioOutputDevices.Enumerate()` for the list. See [Output devices](../audio/output-devices.md). |
-| `AudioOutputFallbackMode` | <xref:FatzMedia.Video.Core.Configuration.AudioOutputFallbackMode> | `FallbackToPrimary` | What happens when an explicit device cannot be initialized: switch to the primary device (with a warning), or `NoFallback`. Applied at creation and open time; device changes while running are reported but not acted on. |
+| `AudioOutputDeviceId` | `string?` | `null` | The output device: an id from `FatzAudioOutputDevices.Enumerate()` or a device name (case ignored). `null` is the system default, which follows default-device changes. An explicit device that goes away while playing moves to the default. See [Output devices](../audio/output-devices.md). |
+| `AudioOutputFallbackMode` | <xref:FatzMedia.Video.Core.Configuration.AudioOutputFallbackMode> | `FallbackToPrimary` | What happens when an explicit device cannot be opened: switch to the primary device (with a warning), or `NoFallback`. |
 | `SubtitleStyle` | <xref:FatzMedia.Video.Core.Configuration.SubtitleTextStyle> | See below | Look of text subtitles. |
 | `KaraokeStyle` | <xref:FatzMedia.Video.Core.Configuration.KaraokeTextStyle> | See below | Look of MIDI/KAR lyrics, including the sung-text wipe colors. |
-| `MidiSoundfontPath` | `string?` | `null` | Path to a `.sf2`, `.sfz` or `.dls` soundfont for MIDI synthesis. When set it is used instead of any auto-detected soundfont. When `null`, empty or missing (a missing file raises a Warning) the engine detects one; see [Native dependencies](../getting-started/native-dependencies.md#midi-soundfont). |
+| `MidiSoundfontPath` | `string?` | `null` | Path to a `.sf2`, `.sf3` or `.dls` soundfont for MIDI synthesis. When set it is used instead of the system bank. When `null` the operating system's General MIDI bank is used where there is one; see [Native dependencies](../getting-started/native-dependencies.md#midi-soundfont). |
 | `ResetPitchOnMediaLoad` | `bool` | `false` | Pitch returns to 0 after each successful load. |
 | `ResetTempoOnMediaLoad` | `bool` | `false` | Tempo returns to 100 after each successful load. |
 | `SilenceTrim` | <xref:FatzMedia.Video.SilenceTrimOptions> | Disabled | Leading and trailing silence trimming for analyzed plain audio. Not applied to synchronized media (video, CD+G). See below. |
@@ -92,7 +91,7 @@ Both styles are rendered by the Direct3D11 renderer only; see [Renderers](../vid
 
 ## Network policies
 
-These apply to network video. Network audio played through BASS follows BASS's own buffering and HTTPS rules.
+These apply to network sources, which open through FFmpeg.
 
 ### NetworkRetryPolicy
 

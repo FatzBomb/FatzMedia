@@ -15,7 +15,7 @@ try
     {
         Console.WriteLine($"Managed package graph loaded from: {AppContext.BaseDirectory}");
         Console.WriteLine($"Native search mode: {(nativeLibraryPaths.Count == 0 ? "predefined paths" : "caller paths")}");
-        Console.WriteLine("BASS and FFmpeg native initialization succeeded.");
+        Console.WriteLine("FFmpeg native initialization succeeded.");
         return 0;
     }
     finally

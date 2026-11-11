@@ -8,8 +8,8 @@ turn lyrics on and off, how to choose a soundfont and how to change the lyric st
 ## What you need
 
 - A MIDI file with the extension `.kar`, `.mid`, `.midi` or `.rmi`. These extensions are accepted
-  only when the BASS MIDI plug-in (`bassmidi.dll` on Windows, `libbassmidi.so` on Linux) is
-  loaded next to `bass.dll`. Without it `LoadAsync` returns `false` for these files.
+  only when the audio engine (FatzAudio) is running. Without it `LoadAsync` returns `false` for
+  these files.
 - A soundfont, or the system one. See [Soundfonts](#soundfonts).
 - Any renderer, to see the words: Direct3D 11 draws them with DirectWrite, the Software and Vulkan
   renderers with SkiaSharp (system fonts; the default font when Segoe UI is not installed).
@@ -71,20 +71,16 @@ See [Subtitles](../subtitles/subtitles.md) for the track API.
 
 ## Soundfonts
 
-BASS MIDI turns the notes into sound with a soundfont. The library selects one when it starts
+FatzAudio turns the notes into sound with a soundfont. It selects one when the player starts
 audio:
 
-1. The path you set in `MediaPlayerConfiguration.MidiSoundfontPath`, if the file exists. `.sf2`
-   and `.sfz` files are used as they are. A `.dls` file is converted to `.sf2` once and the
-   converted copy is cached in the user's local application data folder.
-2. If that is not set (or the file is missing, which is reported as a warning), the Windows
-   `gm.dls` from `System32\drivers`, converted to `.sf2` and cached.
-3. Otherwise the first of these files that exists: `System32\drivers\sgm.sb`, `soundfont.sf2`
-   next to your application, `native\soundfont.sf2` or `native\TimGM6mb.sf2` below the
-   application folder.
+1. The path you set in `MediaPlayerConfiguration.MidiSoundfontPath`. `.sf2`, `.sf3` and `.dls`
+   files are used as they are.
+2. If that is not set, the operating system's General MIDI bank where there is one: `gm.dls` on
+   Windows, the system bank on macOS, an installed `.sf2` on Linux.
 
-If none is found the library raises a warning (category `BASSMIDI`) and MIDI plays silently. Ship
-a soundfont with your app, or set `MidiSoundfontPath`, if you cannot rely on the Windows one.
+There is no search of application folders. Ship a soundfont with your app and set
+`MidiSoundfontPath` if you cannot rely on the system one.
 
 ```csharp
 MediaPlayerConfiguration configuration = MediaPlayerConfiguration.Auto with
@@ -94,8 +90,7 @@ MediaPlayerConfiguration configuration = MediaPlayerConfiguration.Auto with
 ```
 
 > [!NOTE]
-> BASS MIDI has one default soundfont for the whole process, and each player sets it when its
-> audio output starts. Use the same path for every player you create.
+> Each player loads its own soundfont from its `MidiSoundfontPath` when it starts.
 
 ## Lyric style
 

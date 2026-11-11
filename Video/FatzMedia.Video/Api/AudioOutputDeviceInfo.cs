@@ -2,37 +2,19 @@
 namespace FatzMedia.Video;
 
 /// <summary>
-/// Describes an output device that can be selected when creating a player: a BASS device (by
-/// <see cref="DeviceIndex"/>) or a FatzAudio device (by <see cref="Id"/>).
+/// An output device a host can offer when creating a player: pass <see cref="Id"/> as
+/// <c>MediaPlayerConfiguration.AudioOutputDeviceId</c>. Listed by <c>FatzAudioOutputDevices.Enumerate()</c>.
 /// </summary>
-public sealed record class AudioOutputDeviceInfo(
-    int DeviceIndex,
-    string Name,
-    string? Driver,
-    bool IsPrimary,
-    bool IsEnabled,
-    bool IsInitialized)
+/// <param name="Id">The device id; <see langword="null"/> for the system default, which the player follows.</param>
+/// <param name="Name">The device's name.</param>
+/// <param name="IsPrimary">True for the system default entry.</param>
+public sealed record class AudioOutputDeviceInfo(string? Id, string Name, bool IsPrimary)
 {
-    /// <summary>Gets the synthetic device index used for the system primary/default output.</summary>
-    public const int PrimaryDeviceIndex = -1;
-
-    /// <summary>
-    /// Gets the FatzAudio device id to pass as <c>MediaPlayerConfiguration.AudioOutputDeviceId</c>;
-    /// <see langword="null"/> for the system default and for BASS devices (which use <see cref="DeviceIndex"/>).
-    /// </summary>
-    public string? Id { get; init; }
-
     /// <summary>Gets the display text hosts can show in a device selector.</summary>
     public string DisplayName => IsPrimary ? "Primary (device default)" : Name;
 
-    /// <summary>Gets the synthetic primary/default output device.</summary>
-    public static AudioOutputDeviceInfo Primary { get; } = new(
-        PrimaryDeviceIndex,
-        "Primary (device default)",
-        Driver: null,
-        IsPrimary: true,
-        IsEnabled: true,
-        IsInitialized: false);
+    /// <summary>Gets the system primary/default output device.</summary>
+    public static AudioOutputDeviceInfo Primary { get; } = new(Id: null, "Primary (device default)", IsPrimary: true);
 
     public override string ToString() => DisplayName;
 }

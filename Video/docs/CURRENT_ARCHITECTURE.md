@@ -2,15 +2,14 @@
 
 ## Projects
 
-- `FatzMedia.Video`: OS- and UI-agnostic Core media-control engine (`net10.0`).
+- `FatzMedia.Video`: OS- and UI-agnostic Core media-control engine (`net10.0`), including the FatzAudio
+  audio engine (`FatzMedia.Audio` from `Audio\` of this repo, by project reference; 037A).
 - `FatzMedia.Video.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
 - `FatzMedia.Video.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
 - `FatzMedia.Video.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
 - `FatzMedia.Video.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzMedia.Video.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
 - `FatzMedia.Video.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
-- `FatzMedia.Video.Audio`: opt-in FatzAudio audio engine for files and archive
-  entries (`net10.0`, Core and the exact-pinned `FatzAudio` 1.0.0-rc.1 package; 037A slice 2).
 - `FatzMedia.Video.Sample.Player`: WPF validation host. The Avalonia and WinForms test players
   (`.Player.Avalonia`, `.Player.WinForms`) bind the same view model,
   `FatzMedia.Video.Sample.Player.Shared` (`net10.0`, Core only; Stage 044A).
@@ -191,7 +190,7 @@ named `window` handle.
 - `VideoAudioEngine` opens an independent FFmpeg cursor for the same source. This preserves codec priming/preroll semantics; routing initial audio packets through the video cursor caused a persistent startup offset with AV1 + E-AC-3 until the first seek.
 - Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
 - Seek-bar drags are bracketed by `BeginScrub`/`EndScrub` (035A): playback carries on, and `MediaControls` ignores a scrub seek that repeats the previous one (the release seek at the last drag position), and `SeekPump` (the latest-wins seek worker, 015A slice 2; CD+G shares it since ENG-013) settles an active scrub on the frame its last preview showed. A video `Play` that arrives while a seek is queued or settling is applied by the settle, which resumes from the target.
-- Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
+- Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping its audio output.
 
 ## Native Video Frames And Hardware Decode
 
@@ -250,19 +249,12 @@ named `window` handle.
 
 ## MIDI Playback
 
-- BASS optional plugins (bassmidi, bassflac, bassopus, etc.) are loaded via `Bass.PluginLoad` so BASS recognizes their formats automatically.
-- `BassMidiSoundfontManager` resolves the default MIDI soundfont with this priority:
-  1. `MediaPlayerConfiguration.MidiSoundfontPath` (user-configured; always wins if set and exists)
-  2. Windows `gm.dls` (converted to SF2 via `DlsToSf2Converter`, cached in LocalAppData)
-  3. System `.sf2` files (sgm.sb, etc.)
-  4. Bundled `native/TimGM6mb.sf2` (5.7 MB compact GM soundfont; always present)
-- DLS-to-SF2 conversion is handled by a self-contained `DlsToSf2Converter` that reads DLS RIFF chunks directly with `BinaryReader` and writes a minimal valid SF2 with `BinaryWriter`. No external DLS2/SF2 library or `EndianBinaryIO` dependency is required. The converted SF2 is cached in LocalAppData.
-- The converter reads the DirectX DLS `INSTHEADER`, `RGNHEADER`, `WAVELINK`,
-  `WAVESAMPLE`, and `WAVELOOP` layouts at their specified field widths and writes a
-  32-bit RIFF payload size. A deterministic minimal DLS fixture pins bank/preset,
-  key/velocity ranges, sample rate/root key, and the resulting SF2 container.
-- MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
-- Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
+- MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the FatzAudio engine with pitch, tempo,
+  normalization, volume, and loop support. FatzAudio loads SF2, SF3 and DLS soundfonts directly:
+  `MediaPlayerConfiguration.MidiSoundfontPath` when set, else the system bank (Windows `gm.dls`, an
+  installed `.sf2` on Linux).
+- Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx` and more) are decoded by
+  FatzAudio; they are never silence-trimmed (`AudioSourceFiles.IsTrackerFormat`).
 
 ## Embedded Subtitles
 
@@ -283,7 +275,7 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam is read through its `SourceHandle`, as before; the FatzAudio engine implements it with FatzAudio's MIDI texts and marks (`FatzAudioMidiEventReader`, 037A slice 2). A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1), which the FatzAudio engine implements with FatzAudio's MIDI texts and marks (`FatzAudioMidiEventReader`) through `IMidiEventReaderSource`; an engine without that seam has no MIDI lyrics. The internal `IMidiLyricProvider` (`MidiLyricProvider`) builds the cues.
 - `MidiMetadataExtractor` (internal) reads, through the same reader, Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
@@ -374,33 +366,23 @@ All three presentation/render loops use `MediaLoopPacer`:
 
 Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider` that advances on each wait.
 
-## Audio Device Idle Recovery
+## Audio Output Devices (Stages 006A-006C, 037A)
 
-- `AudioEngine.Play()` reasserts the BASS device context (`BassAudioOutputDevices.TrySetCurrentDevice`) before calling `ChannelPlay`.
-- If `ChannelPlay` fails after extended idle (e.g. media ended hours ago, Windows released the audio device), the engine attempts a full BASS reinitialization and retries the play. A warning diagnostic is raised on the initial failure.
-- This avoids permanent audio stall without requiring the user to restart the player or reload media.
-
-## Audio Output Latency Feedback (Stage 006A)
-
-- `IOutputLatencyProvider` interface: `GetOutputLatencySeconds()` returns the BASS-reported output latency for the current device.
-- `BassOutputLatencyProvider`: reads `MBass.GetInfo().Latency`; opt-in heuristic adds conservative per-class offsets for USB DAC and Bluetooth endpoints via `MediaPlayerConfiguration.EnableUsbBluetoothLatencyHeuristic`.
-- Both `AudioEngine` and `VideoAudioEngine` apply output latency at position-read time: `Position` getter, snapshot publish, and seek-position publish all subtract the latency so `AudioPresentationClock` and hosts see corrected time.
-
-## Audio Device Hotplug Monitoring (Stage 006B)
-
-- `IAudioDeviceMonitor` / `PollingAudioDeviceMonitor`: 1-second poll of BASS state and Windows default endpoint via `CoreAudioDefaultEndpointReader`.
-- `AudioDeviceChanged` event on `IPlayerSession` with `AudioDeviceChangedEventArgs`.
-- `BASS_CONFIG_DEV_NONSTOP` enabled at BASS init to keep the device buffer alive during transient loss.
-- Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by device-change notifications. BASS/Windows handle active-stream migration; Core only raises diagnostics and the public event.
-- Lost BASS output (ENG-032): `BassOutputWatchdog` (Core, BASS only, platform neutral) is one process-wide 1-second timer that runs while any `AudioEngine`/`VideoAudioEngine` is playing. When BASS stops the output or parks a playing channel as `BASS_ACTIVE_PAUSED_DEVICE` (another application holding the device exclusively, a USB device unplugged), it raises one unowned `AudioOutput` warning and `AudioDeviceChanged` (`DeviceRemoved`) on every player, retries `BASS_Start` / `BASS_Init(BASS_DEVICE_REINIT)` once a second per device, resumes only the channels whose engine is still `Playing`, then raises an Info and `AudioDeviceChanged` (`DeviceAdded`). The decisions live in the pure `AudioOutputRecoveryTracker`. A `Play` whose `BASS_ChannelPlay` fails restarts the output once (same rate limit) and reports an Error naming the unavailable output if it still fails.
-
-## Audio Output Device Selection (Stage 006C)
-
-- `AudioOutputDeviceInfo` is a Core public record; `AudioOutputDevices.Enumerate(...)` lives in the Windows package and enumerates BASS output devices through Windows composition.
-- `MediaPlayerConfiguration.AudioOutputDeviceIndex`: BASS device index, `-1` = Primary (system default). Creation-time choice; runtime device changes require a new player or `Reset`.
-- `MediaPlayerConfiguration.AudioOutputFallbackMode`: `FallbackToPrimary` (default) or `NoFallback`.
-- If an explicit device is unavailable at init and fallback is enabled, the engine retries on Primary.
-- Both `AudioEngine` and `VideoAudioEngine` resolve and select the configured BASS device before stream creation and latency queries.
+- **Latency:** the FatzAudio clock already includes the device buffer, so positions need no
+  latency correction (the BASS-era latency provider and USB/Bluetooth heuristic are gone).
+- **Events:** the FatzAudio engine watches the device list once a second while anyone listens and
+  takes FatzAudio's notice that it moved the output (`FatzAudioDeviceEvents`); each change is
+  reported once. `PlayerServiceProvider` registers `AudioEngineDeviceMonitor` over the engine's
+  `IAudioDeviceChangeSource`, which feeds `AudioDeviceChanged` on `IPlayerSession`.
+  `DeviceRemoved` is raised only for the device the player plays on.
+- Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by
+  device-change notifications. FatzAudio moves the output itself (to the default when the device
+  it plays on goes away); Core only raises diagnostics and the public event.
+- **Selection:** `FatzAudioOutputDevices.Enumerate()` lists `AudioOutputDeviceInfo(Id, Name, IsPrimary)`
+  (the default first). `MediaPlayerConfiguration.AudioOutputDeviceId` (id or name) picks one;
+  `null` follows the system default. `AudioOutputFallbackMode`: `FallbackToPrimary` (default) plays
+  on the default when the device is missing, `NoFallback` fails the engine's start. Creation-time
+  choice; a device change needs a new player or `Reset`.
 
 ## Per-Load Effect Reset
 
@@ -433,7 +415,7 @@ Core pitch/tempo reset to 0/100 and both WPF sliders visibly synchronized). See
 
 Public load, play, pause, stop, seek, close, and reset operations are admitted through
 one `PlayerOperationQueue`. Natural-end handling uses that same queue rather
-than restarting the engine directly from a BASS/pipeline callback: end detection is
+than restarting the engine directly from an audio-engine/pipeline callback: end detection is
 queued first, host `MediaEnded` delivery is ordered next, and loop completion is
 queued afterward. `MediaControls` carries a transport-generation token so a Play,
 Pause, Stop, or Seek that wins the race invalidates stale end work before it can
@@ -806,56 +788,17 @@ gain). `MediaPlayerConfiguration.SilenceTrim` defaults to the disabled record
 value, so current duration, seek, loop, normalization, startup, and end behavior
 are unchanged.
 
-Internal `Core/Audio` members implement the pure edge-trim math
-(`SilenceTrimCalculator`), result validation (`MediaAnalysisResultValidator`), a
-versioned local-file cache key (`MediaAnalysisCacheKey` — normalized full path,
-file length, UTC last-write ticks, and normalized trim options; creation fails
-closed on missing file or invalid input), and a process-local, thread-safe,
-single-analyzer-version, 256-entry bounded LRU `MediaAnalysisCache`
-(`System.Threading.Lock`, usage-ordered eviction) that treats version mismatches
-and invalid records as misses. The shared process-lifetime instance
-(`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
-container (`PlayerServiceProvider`) and therefore survives player `Reset`.
-The pinned contract lives at
+Internal `Core/Audio` members implement the pure edge-trim math (`SilenceTrimCalculator`) and
+result validation (`MediaAnalysisResultValidator`). The FatzAudio engine finds the silent edges with
+FatzAudio's `DetectSilence` at open (local plain non-tracker audio; CDG-paired opens, video, archives
+and network sources are excluded) and sets the playable window as the stream's CUE_IN/CUE_OUT, so
+play, stop, end and loop follow it natively from the first play. The internal
+`IAudioTrimWindowProvider` exposes the active window (`MediaAnalysisResult? ActiveTrimWindow`) to
+`AudioPipeline`, which maps source/effective coordinates: effective duration, effective position
+(`SourceToEffective`), effective→source seek (`EffectiveToSource`), and progress/end publication in
+effective space; a zero playable duration makes `Play` return `false`. The BASS-era scan and its
+`MediaAnalysisCache` were removed with BASS (037A slice 6). The pinned contract lives at
 `roadmap/complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md`.
-
-**Analyzer slice (2026-08-18)** — for enabled plain local non-tracker audio, a
-cancellable sequential 0.1-second silence scan (`AudioSilenceAnalyzer`) runs inside
-the existing background normalization-analysis task, sampling levels at actual BASS
-decode byte positions. The task captures the decode cursor up front and restores it
-in a `finally`; the existing `CancelNormalizationAnalysis` synchronously joins the
-previous task before any handle reuse or free, and partial/faulted/stale scans are
-never cached. The existing normalization scan, gain math, and gain cache are
-preserved: a normalization-gain cache hit skips peak rescans but still performs a
-missing silence scan. Results are validated through `SilenceTrimCalculator`
-(including normalization gain) and stored in the shared `MediaAnalysisCache`; a
-cache hit applies the stored gain and skips rescanning entirely. CDG-paired opens
-explicitly disable silence analysis (`OpenAudioCdg` passes `analyzeSilence: false`),
-and video, archives, tracker/MOD formats, and live/stream inputs remain excluded.
-Transport/duration/seek/loop/end trimming is still NOT implemented, so playback
-behavior is unchanged when the scan is enabled.
-
-**Transport slice (2026-08-18)** — trim is applied to transport only when a
-validated `MediaAnalysisResult` is already a cache hit synchronously during a local
-plain non-tracker audio `Open`; a late background scan only warms the cache for a
-subsequent open and never tightens duration during active/current playback. The
-internal `IAudioTrimWindowProvider` (on `IAudioEngine`) exposes the active window
-(`MediaAnalysisResult? ActiveTrimWindow`) to `AudioPipeline`, which maps
-source/effective coordinates: effective duration, effective position
-(`SourceToEffective`), effective→source seek (`EffectiveToSource`), and
-progress/end publication in effective space. Stop/replay and pause/resume behave
-consistently, and a zero playable duration makes `Play` return `false`.
-`AudioEngine.Play` positions at `PlayableStart` when the source position is outside
-the playable window, suppresses the native source-end loop while a trim window is
-active, attaches a BASS `Position | Mixtime | Onetime` sync at `PlayableEnd`
-(official BASS custom-loop guidance), stops at the custom end, and custom loops
-seek to `PlayableStart` with the `BASS_POS_FLUSH` raw flag `0x1000000`
-(ManagedBass omits the enum member; `AudioStreamManager.FlushPositionFlag`).
-Tempo changes alter wall-clock arrival of the position sync but do not require
-rearming it. CDG-paired opens pass `analyzeSilence: false`; video, archives,
-tracker/MOD formats, and live/stream inputs remain excluded; disabled/default
-behavior remains identity. The first uncached `Open` only warms the cache — a
-Stage 031A's prepared-next analysis supplies first-play cache.
 
 ## Prepared-Next Slot (Stage 031A, implemented — pending manual smoke)
 
@@ -867,11 +810,9 @@ Core owns a depth-one prepared-next slot; hosts own playlists and queues.
 `Core/Prepared/PreparedNextSlot` state machine (Empty → Analyzing → Ready →
 Transitioning → Empty; Ready → Stale when the prepared file's path/length/last-write
 identity changes) guards every completion with a generation so cleared or replaced
-items never resurrect. Analysis goes through the internal `IMediaFileAnalyzer`, which
-the BASS `AudioEngine` implements on its own decode stream (never the current media's
-handles) and which warms the shared 030B `MediaAnalysisCache` and normalization-gain
-cache, so the later transition load hits the cache instead of rescanning. Only local
-plain non-tracker audio is analyzed; other sources reach Ready with no analysis.
+items never resurrect. Analysis goes through the internal `IMediaFileAnalyzer`; no engine
+implements it since BASS was removed (FatzAudio measures loudness itself and caches it), so
+`AnalyzeAsync` returns no analysis and items reach Ready without one.
 Transitions run on the control queue (load, then play); automatic transitions are
 queued behind the host `MediaEnded` delivery and Core end completion and are skipped
 when the host intervened (transport generation, load generation, slot generation,
@@ -884,9 +825,9 @@ Public `AudioFadePoint`, immutable sorted `AudioFadeEnvelope` (exact-position up
 linear interpolation, `AudibleStart` for the leading zero plateau), and
 `AudioCrossfadeOptions` (shared duration, disabled by default). Internal
 `Core/Audio/Fade/AudioFadeSchedule` turns an envelope into chained linear ramps and
-`AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The BASS
-`AudioEngine` implements the target with a dedicated `BASS_FX_VOLUME` stage, so final
-gain = envelope x channel volume attribute (user volume) x normalization gain FX.
+`AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The FatzAudio
+engine implements the target with stream volume ramps, so final gain = envelope x bus volume
+(user volume) x FatzAudio's normalization gain.
 Fade sessions end on Open/Close/Stop (Stop restores unity). `PlayerCore`
 exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
 which turns 031A transitions into fade-through transitions; waits run off the control
@@ -900,21 +841,18 @@ queue. Overlapping two-handle crossfades are deferred. See
 the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
 NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
 `IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
-`PlayerCore.CurrentSourceCapabilities` expose the row. Plain http audio opens through
-the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
-normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
-monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
-`StreamMetadataChanged` through the control queue. https and HLS audio (BASS does not verify
-certificates; ENG-034, 039A.3) open through FFmpeg's network path instead
-(`NetworkAudioPolicy.OpensThroughFfmpeg`): `PipelineMediaEngine.OpenThroughFfmpeg` runs the same
-retried, cancellable open as network video into the soundtrack engine (`SoundtrackAudioEngine`
-over `VideoAudioEngine`, attached in Full and Audio mode when BASS is there; BASS plays the
-decoded sound), with `NetworkTlsPolicy`, the read-ahead's buffering and the row from
-`NetworkAudioPolicy.Resolve` (014A's metadata rule). ICY titles (FFmpeg's `icy_metadata_packet`)
-and Ogg comment updates are read on the reading thread after each packet, recorded with that
-packet's time, and raised when the played position reaches them
-(`INetworkPlayer.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
-https audio is refused like http audio. An `.m3u8` with no playable video plays as audio in Full
+`PlayerCore.CurrentSourceCapabilities` expose the row. Network audio opens through FFmpeg's
+network path (`NetworkAudioPolicy`; an engine that implements the internal `INetworkAudioSource`
+could take plain http itself, and the FatzAudio engine does not): `PipelineMediaEngine.OpenThroughFfmpeg`
+runs the same retried, cancellable open as network video into the soundtrack engine
+(`SoundtrackAudioEngine` over `VideoAudioEngine`, attached in Full and Audio mode when the audio
+engine offers outputs; FatzAudio plays the decoded sound), with `NetworkTlsPolicy`, the
+read-ahead's buffering and the row from `NetworkAudioPolicy.Resolve` (014A's metadata rule), and
+raises `BufferingChanged` / `StreamMetadataChanged` through the control queue. ICY titles (FFmpeg's
+`icy_metadata_packet`) and Ogg comment updates are read on the reading thread after each packet,
+recorded with that packet's time, and raised when the played position reaches them
+(`INetworkPlayer.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without an audio
+engine network audio is refused. An `.m3u8` with no playable video plays as audio in Full
 mode. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
 prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
@@ -922,7 +860,7 @@ prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPla
 ### Network Video (Stage 039A, implemented — pending manual smoke)
 
 A network source is video when the hint says so or the URI path has a video extension or
-`.m3u8` (`NetworkVideoPolicy.IsVideo`). It opens through FFmpeg's network path, not BASS:
+`.m3u8` (`NetworkVideoPolicy.IsVideo`). It opens through FFmpeg's network path:
 `MediaDemuxer.Open(url, FfmpegNetworkOptions)` calls `avformat_network_init` once
 (`FfmpegNetwork`), installs an interrupt callback (`FfmpegInterrupt`: abort, open cancellation,
 deadlines, and the read-stall timer) and passes FFmpeg options derived from the
@@ -972,18 +910,16 @@ read returns `AVERROR_EXIT`, not end of stream; Close makes a seek in progress g
 aborting the reader.
 See `roadmap/complete/039A_COMPLETED_NetworkVideoPlayback.md`.
 
-## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
+## Linux Platform Services (Stage 026B, implemented — pending player smoke)
 
 `FatzMedia.Video.Linux` (net10.0, references Core only) supplies
 `LinuxPlatformFactory` and the `IPlatformServices`
-registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
-ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
+registrations: host-supplied FFmpeg `.so` loading (dlopen by absolute path, preloaded in
 dependency order), a kernel-wait-plus-spin precision waiter, host-configured refresh
-timing, a BASS-snapshot device monitor using Core's `AudioDeviceChangeDetector`, the
-Core MIDI lyric extractor, software-only hardware-decode services, and an FFmpeg
-software capability scan. Renderer choice stays with the host (software renderer
-today). Sidecar extension matching in Core is case-insensitive on case-sensitive file
-systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
+timing, software-only hardware-decode services, and an FFmpeg software capability scan. Audio,
+its device events and MIDI come from the FatzAudio engine in Core. Renderer choice stays with the
+host (software renderer today). Sidecar extension matching in Core is case-insensitive on
+case-sensitive file systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 
 ## Vulkan Renderer Preview (Stage 026A, slice 1)
 
@@ -1041,76 +977,46 @@ Shared GPU image surfaces (Stage 027A slice 2):
 
 ## Audio Filter Framework (Stage 020A, slice 1)
 
-The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain
--> fade envelope -> channel volume -> output. Filter stages (fixed priority order in
-`AudioFilterStage`, bypass = no native stage, lifecycle per stream) are hosted by the
-`AudioEngine` through `IAudioFilterHost`. The only filter is a BASS_FX PEAKEQ
-equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
-`IPlayerSession.Equalizer`, `EqualizerChanged`). See
+Filter stages are hosted by the audio engine through `IAudioFilterHost`. The only filter is the
+equalizer, driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
+`IPlayerSession.Equalizer`, `EqualizerChanged`); the FatzAudio engine maps it to FatzAudio's built-in
+peaking bands (`FatzAudioMappings`), before the fade, user volume and normalization stages. See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
-## Audio Engine Seams (Stage 037A, slice 1, pending manual smoke)
+## Audio Engine (Stage 037A)
 
-`IAudioEngine.PlayHandle` and `SourceHandle` are BASS-specific and public; internal code no
-longer reads them, so a second engine needs no BASS handles. Internal seams, each implemented by
-the BASS engines with the BASS calls they made before:
+The audio engine is FatzAudio: `FatzMedia.Audio` (the .NET binding in `Audio\` of this repo, by project
+reference from Core) behind `IAudioEngine` and Core's internal seams. BASS was removed in slice 6
+(`roadmap/updates/037A_6/StageUpdate.md`); the code lives in `FatzMedia.Video/Audio/FatzAudio`
+(namespace `FatzMedia.Video.Audio`).
 
-- `IAudioFadeGainTarget` (fades, `BassFadeGainStage`), `IAudioFilterHost` (equalizer,
-  `BassEqualizerFilter`), `IAudioAnalysisOpenControl` and `IAudioTrimWindowProvider` (trim), and
-  the normalization members of `IAudioEngine`.
-- `IMidiEventReaderSource` / `IMidiEventReader` (MIDI lyrics and karaoke metadata;
-  `BassMidiEventReader` on the source channel).
-- `IAudioLevelSource` (what `AudioNormalizer` peak analysis and `AudioSilenceAnalyzer` read;
-  `BassChannelLevelSource`).
-
-The BASS effect stages, transport and device code keep their handles inside `AudioEngine`,
-`AudioStreamManager`, `VideoAudioEngine` and the `Bass*` helpers. See
-`roadmap/updates/037A_1/StageUpdate.md`.
-
-## FatzAudio Engine (Stage 037A, slice 2, pending manual smoke)
-
-- **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory` in
-  Core). `null`, the default, is the BASS `AudioEngine`. `PlayerServiceProvider` asks the factory
-  first and creates the BASS engine only without one, or when it throws (a `Bootstrap` warning; no
-  audio when BASS did not load either). Audio is available when either engine started. With the
-  FatzAudio engine BASS is never initialized (slice 5): CD+G comes from it through `ICdgEngineSource`
-  (slice 3), and video audio, soundtracks and network audio through FFmpeg play on its
-  `IPushAudioOutput`s through `IPushAudioOutputSource` (`VideoAudioEngine` keeps the FFmpeg side;
-  `BassPushAudioOutput` is the BASS side). The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
-  to `FatzAudioEngineFactory` in their host engine factories.
-- **Package:** `FatzMedia.Video.Audio` references Core and the `FatzAudio`
-  package only. It implements Core's internal seams, so it is Core's one non-test
-  `InternalsVisibleTo` friend (lockstep versioning); `check-core-boundary.ps1` pins that, the
-  project's place in the DAG, the exact package pin, and that Core never references FatzAudio.
-- **`FatzAudioEngine`** (`IAudioEngine`, `IAudioLoopControl`, `IAudioAnalysisOpenControl`,
-  `IAudioTrimWindowProvider`, `IAudioFadeGainTarget`, `IAudioFilterHost`, `IAudioVolumeSlide`,
-  `IMidiEventReaderSource`, `IAudioDeviceChangeSource`): one FatzAudio engine, default output device
-  and mix bus per player. Position is the stream's presentation clock. The stream's volume is the
-  fade stage (volume ramps); the bus carries the user volume. Loop is
-  FatzAudio's (`Looped` becomes one `PlaybackEnded` per wrap while `Playing`, as on BASS; `Ended` a
-  stop). Normalization is FatzAudio's loudness (LUFS) normalization and limiter from
-  `MediaPlayerConfiguration.Normalization` (`NormalizationOptions`: target, ceiling, cache folder);
-  `NormalizationGain` reports FatzAudio's gain for the song, `NormalizationGainChanged` fires when
-  its loudness is final, and `IsNormalizationReady` is always true (FatzAudio starts on its estimate
-  and glides; nothing waits). `AnalyzePeakQuickAsync`/`AnalyzePeakAsync` return FatzAudio's true peak
-  once the loudness is final (no measuring of our own, no second stream). BASS ignores the options
-  and keeps its peak rule. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
-  and minimum silence, 200 ms minimum sound), turns the first and last audible frames into edge
-  regions for `SilenceTrimCalculator` (our padding and edge switches), and sets the window as
-  CUE_IN/CUE_OUT, so play, stop, end and loop follow it natively from the first play; the
-  `MediaAnalysisCache` is not used. MIDI lyrics and metadata come from `FatzAudioMidiEventReader`
-  (FatzAudio's MIDI texts and marks; Soft Karaoke `\` and `/` marks restored from FatzAudio's
-  flags). Formats FatzAudio cannot decode go through `FfmpegAudioFallback` as on BASS. It is not an
-  `IMediaFileAnalyzer` (prepared-next analysis is skipped) nor an `INetworkAudioSource`: plain http
-  audio then opens through FFmpeg into the BASS soundtrack engine, like https.
-- **Device changes:** with a factory, the registered `IAudioDeviceMonitor` is an
-  `AudioEngineDeviceMonitor` that forwards the engine's own moves (FatzAudio `DeviceChanged`: value 0
-  `DefaultDeviceChanged`, 1 `DeviceRemoved`) and the platform's BASS monitor (still watching video
-  audio). `AudioOutputDeviceIndex` is a BASS index and is not mapped: FatzAudio plays on the default
-  device and follows it.
-- **Unchanged on BASS:** with no factory, the service graph, the BASS engine and every BASS path are
-  as before; the only shared change is `PlaybackCoordinator.CanOpenNetworkAudio`, which is true for
-  the BASS engine. See `roadmap/updates/037A_2/StageUpdate.md`.
+- **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory`). `null`, the
+  default, is `FatzAudioEngineFactory`. `PlayerServiceProvider` creates the engine once per player graph
+  (not in Background mode); when it throws, a `Bootstrap` warning says so and the player has no audio
+  (`SilentAudioEngine`; ENG-033). The engine's `ICdgEngineSource` supplies the CD+G engine, and its
+  `IPushAudioOutputSource` the outputs that video audio, soundtracks and network audio through FFmpeg
+  play on (`VideoAudioEngine` keeps the FFmpeg side; `FatzAudioPushAudioOutput` is the FatzAudio side).
+  An engine without them leaves video silent and CD+G on Core's `CdgEngine`.
+- **Seams:** `IAudioFadeGainTarget` (fades), `IAudioFilterHost` (equalizer), `IAudioAnalysisOpenControl`
+  and `IAudioTrimWindowProvider` (trim), `IAudioLoopControl`, `IAudioVolumeSlide`, the normalization
+  members of `IAudioEngine`, `IMidiEventReaderSource` / `IMidiEventReader` (MIDI lyrics and karaoke
+  metadata), `IAudioDeviceChangeSource` (device events), `ICdgEngineSource`, `IPushAudioOutputSource`.
+- **`FatzAudioEngine`:** one FatzAudio engine, output device and mix bus per player. Position is the
+  stream's presentation clock (device latency included). The stream's volume is the fade stage (volume
+  ramps); the bus carries the user volume. Loop is FatzAudio's (`Looped` becomes one `PlaybackEnded` per
+  wrap while `Playing`; `Ended` a stop). Normalization is FatzAudio's loudness (LUFS) normalization and
+  limiter from `MediaPlayerConfiguration.Normalization`; `NormalizationGain` reports FatzAudio's gain for
+  the song, `NormalizationGainChanged` fires when its loudness is final, and `IsNormalizationReady` is
+  always true (FatzAudio starts on its estimate and glides). Silence trim calls FatzAudio's
+  `DetectSilence` at open and sets the window as CUE_IN/CUE_OUT. MIDI lyrics and metadata come from
+  `FatzAudioMidiEventReader`. The audio extensions FatzAudio opens are registered as
+  `FileTypes.Audio` when the first engine starts (`FatzAudioFileTypes`); formats it cannot decode go
+  through `FfmpegAudioFallback`. It is not an `IMediaFileAnalyzer` (prepared-next analysis is skipped)
+  nor an `INetworkAudioSource`: all network audio opens through FFmpeg into the soundtrack engine.
+- **Lyrics and CD+G:** `FatzAudioCdgEngine` draws CD+G (classic or scaled with effects,
+  `CdgScalingOptions`); FatzAudio's `LyricSurface` draws MIDI lyrics through `IKaraokeOverlaySource`
+  on the subtitle layer, with Core's renderers as the fallback.
+- **Devices:** see "Audio Output Devices".
 
 ## CDG Snapshot Ownership (Stage 018A, slice 1)
 

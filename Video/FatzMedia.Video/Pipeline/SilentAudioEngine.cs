@@ -3,16 +3,13 @@ using FatzMedia.Video.Core.Abstractions;
 namespace FatzMedia.Video.Pipeline;
 
 /// <summary>
-/// The audio engine of a Background-mode player (Stage 043A), and of any player whose platform
-/// could not load BASS (ENG-033): it never initializes an audio output, never calls BASS, opens
-/// nothing, and accepts volume, pitch, tempo and normalization settings without effect. Such a
+/// The audio engine of a Background-mode player (Stage 043A), and of any player whose audio engine
+/// could not start (ENG-033): it never initializes an audio output, opens nothing, and accepts volume, pitch, tempo and normalization settings without effect. Such a
 /// player never opens audio, so the engine only fills the audio slot of the media-engine graph.
 /// </summary>
 sealed class SilentAudioEngine : IAudioEngine
 {
     public AudioEngineState State => AudioEngineState.Stopped;
-    public int PlayHandle => 0;
-    public int SourceHandle => 0;
     public bool Normalize { get; set; }
     public double NormalizationGain => 1.0;
     public bool IsNormalizationReady => true;

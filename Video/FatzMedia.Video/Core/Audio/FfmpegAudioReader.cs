@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Core.Audio;
 /// <summary>
 /// Decodes a file's best audio stream to interleaved 32-bit float PCM at the source sample
 /// rate, downmixed to at most two channels: the same format <see cref="VideoAudioEngine"/>
-/// pushes to BASS. It owns its demuxer and decoder, so it can run on a background thread while
+/// pushes to its output. It owns its demuxer and decoder, so it can run on a background thread while
 /// the same file plays.
 /// </summary>
 sealed unsafe class FfmpegAudioReader : IDisposable

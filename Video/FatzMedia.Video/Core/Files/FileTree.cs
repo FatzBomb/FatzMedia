@@ -71,14 +71,14 @@ public static class FileTreeBuilder
                 if (firstVideo == null && FileTypes.Video.Contains(eExt)) firstVideo = e;
                 if (firstImage == null && FileTypes.Image.Contains(eExt)) firstImage = e;
 
-                // Audio a BASS plugin decodes, or the FFmpeg fallback (as for loose files); an
-                // entry BASS decodes is preferred over one only FFmpeg does.
-                var bassAudio = FileTypes.Audio.Contains(eExt);
+                // Audio the audio engine decodes, or the FFmpeg fallback (as for loose files); an
+                // entry the engine decodes is preferred over one only FFmpeg does.
+                var engineAudio = FileTypes.Audio.Contains(eExt);
                 if (FileTypes.IsPlayableAudio(key))
                 {
-                    if (firstAudio == null || (bassAudio && !FileTypes.IsAudio(firstAudio.Key))) firstAudio = e;
+                    if (firstAudio == null || (engineAudio && !FileTypes.IsAudio(firstAudio.Key))) firstAudio = e;
                     var b = Path.GetFileNameWithoutExtension(key);
-                    if (!string.IsNullOrWhiteSpace(b) && (!audioByBase.TryGetValue(b, out var earlier) || (bassAudio && !FileTypes.IsAudio(earlier.Key))))
+                    if (!string.IsNullOrWhiteSpace(b) && (!audioByBase.TryGetValue(b, out var earlier) || (engineAudio && !FileTypes.IsAudio(earlier.Key))))
                         audioByBase[b] = e;
                 }
                 else if (FileTypes.Cdg.Contains(eExt))

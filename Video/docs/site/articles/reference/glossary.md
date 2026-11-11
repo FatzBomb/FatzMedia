@@ -11,7 +11,7 @@ Short definitions of terms used across this guide.
 : A MIDI karaoke file. A MIDI file whose lyric events carry the words, so the library can highlight each word as it is sung.
 
 **MIDI**
-: A file of musical instructions, not recorded sound. The library plays it with a soundfont through BASS.
+: A file of musical instructions, not recorded sound. The library plays it with a soundfont through FatzAudio.
 
 **Sidecar**
 : A companion file that sits next to a media file and shares its name: `.srt`, `.ass` or `.ssa` subtitles next to a video, a `.cdg` file next to an audio file, or an image or video used as a background. The player picks these up automatically. `ignoreSidecar: true` (and `AutoBackground = false`) turn off only the background search; subtitles and `.cdg` partners are always found.
@@ -97,8 +97,8 @@ Short definitions of terms used across this guide.
 
 ## Audio
 
-**BASS**
-: A third-party audio library (Un4seen) the library uses for audio playback, MIDI and effects. You deploy and license it yourself.
+**FatzAudio**
+: The audio engine of the library: playback, MIDI, trackers, effects and loudness normalization. It is built with the repository, so you deploy nothing extra for it.
 
 **FFmpeg**
 : The open-source media library used to demux and decode video, and as a fallback for audio. You deploy it as shared libraries.

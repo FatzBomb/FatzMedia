@@ -1,7 +1,5 @@
-using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Configuration;
-using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
 
 using FatzMediaPlayer = FatzMedia.Video.Wpf.Player;
@@ -37,16 +35,7 @@ sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         var selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         _platformFactory = new WindowsPlatformFactory(selection.CreateFactory());
-        // --audio=fatz (037A): FatzAudio plays everything, on --audio-device= when given, CD+G scaled with --cdg-scale;
-        // BASS stays the default.
-        if (App.StartupOptions.AudioEngine == PlayerAudioEngine.FatzAudio)
-            configuration = configuration with
-            {
-                AudioEngineFactory = new FatzAudioEngineFactory(),
-                AudioOutputDeviceId = App.StartupOptions.AudioDevice,
-                CdgScaling = App.StartupOptions.CdgScaling,
-                AudioEngineDecodesSoundtracks = App.StartupOptions.AudioEngineDecodesSoundtracks
-            };
+        configuration = App.StartupOptions.ApplyAudioOptions(configuration);
         return await FatzMediaPlayer.CreateAsync(configuration, NativeLibraryPaths, _platformFactory).ConfigureAwait(false);
     }
 }

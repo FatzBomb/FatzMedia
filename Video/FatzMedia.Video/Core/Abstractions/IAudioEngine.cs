@@ -13,29 +13,6 @@ public interface IAudioEngine : IDisposable
     AudioEngineState State { get; }
 
     /// <summary>
-    /// Gets the underlying BASS play handle if available (0 when closed). BASS-specific: an engine
-    /// that does not play through BASS returns 0.
-    /// </summary>
-    /// <remarks>
-    /// Internal code no longer depends on it (037A slice 1): fades, the equalizer, normalization,
-    /// silence trim and MIDI lyrics go through engine-neutral seams. It stays for hosts; whether it
-    /// is deprecated is decided with BASS's removal (037A slice 6).
-    /// </remarks>
-    int PlayHandle { get; }
-
-    /// <summary>
-    /// Gets the raw BASS decode/source handle (0 when closed): the unwrapped BASS channel before
-    /// tempo processing. BASS-specific: an engine that does not play through BASS returns 0.
-    /// </summary>
-    /// <remarks>
-    /// Internal code no longer depends on it (037A slice 1): the built-in MIDI lyric provider reads
-    /// MIDI through an engine-neutral reader. It is still passed to a host-supplied
-    /// <see cref="IMidiLyricProvider"/>. Whether it is deprecated is decided with BASS's removal
-    /// (037A slice 6).
-    /// </remarks>
-    int SourceHandle { get; }
-
-    /// <summary>
     /// Enables/disables normalization when applying volume.
     /// </summary>
     bool Normalize { get; set; }
@@ -68,7 +45,7 @@ public interface IAudioEngine : IDisposable
     /// <summary>
     /// Initializes the audio engine/device.
     /// </summary>
-    /// <param name="device">Device index (-1 default).</param>
+    /// <param name="device">Unused (the device is chosen when the engine is created); kept for hosts.</param>
     /// <param name="sampleRate">Device sample rate (e.g., 44100).</param>
     /// <returns>True if initialized.</returns>
     bool Init(int device = -1, int sampleRate = 44100);

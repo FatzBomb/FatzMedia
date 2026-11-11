@@ -3,16 +3,14 @@ using FatzMedia.Video.Core.Configuration;
 namespace FatzMedia.Video.Core.Abstractions;
 
 /// <summary>
-/// Creates the audio engine that plays audio files and archive entries, instead of the built-in
-/// BASS engine (037A slice 2). Set it as <see cref="MediaPlayerConfiguration.AudioEngineFactory"/>;
-/// <see langword="null"/> there keeps the BASS engine, the default. The FatzAudio engine package
-/// supplies one.
+/// Creates the player's audio engine. Set it as <see cref="MediaPlayerConfiguration.AudioEngineFactory"/>;
+/// <see langword="null"/> there uses the built-in FatzAudio engine (<c>FatzAudioEngineFactory</c>).
 /// </summary>
 /// <remarks>
 /// The engine plays file and archive audio. When it also offers Core's internal output and CD+G seams
 /// (the FatzAudio engine does), video audio, soundtracks, network audio through FFmpeg and CD+G go to
-/// it as well, and BASS is not initialized. When <see cref="Create"/> throws, the player warns and
-/// uses the BASS engine if BASS loaded, otherwise it has no audio.
+/// it as well; otherwise video plays without sound and CD+G uses the built-in decoder. When
+/// <see cref="Create"/> throws, the player warns and has no audio.
 /// </remarks>
 public interface IAudioEngineFactory
 {

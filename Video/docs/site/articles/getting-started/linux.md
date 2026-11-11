@@ -47,16 +47,15 @@ using var player = new PlayerCore(platform, configuration, []);
 
 ## Platform options
 
-<xref:FatzMedia.Video.Linux.LinuxPlatformOptions> has two settings:
+<xref:FatzMedia.Video.Linux.LinuxPlatformOptions> has one setting:
 
 | Option | Default | Range | Meaning |
 | --- | --- | --- | --- |
 | `DisplayRefreshRateHz` | 60 | 24 to 360 | The refresh rate used for presentation pacing. Linux has no compositor-independent query for it, so you supply it. |
-| `AudioDevicePollInterval` | 1 second | 0.25 to 10 seconds | How often BASS output-device state is polled for device changes. |
 
 ## Native libraries
 
-The packages contain no binaries. You supply Linux x64 builds of BASS and FFmpeg 9.0.x, and you license them (see [Native dependencies](native-dependencies.md), including the file lists and licensing).
+The packages contain no binaries. You supply Linux x64 builds of FFmpeg 9.0.x, and you license them (see [Native dependencies](native-dependencies.md), including the file lists and licensing).
 
 The engine searches your paths first, then the application folder, `native`, and `runtimes/linux-x64/native` beneath it. It does not search system library directories on its own, and it does not search subfolders. Put FFmpeg's libraries in one directory. A path you pass to the player must exist, or the constructor throws.
 
@@ -65,9 +64,9 @@ Check what loaded with <xref:FatzMedia.Video.PlayerCore.NativeDependencies>; its
 Notes:
 
 - FFmpeg libraries are preloaded in dependency order (avutil, swresample, swscale, avcodec, avformat, then the optional avfilter and avdevice) because typical Linux builds refer to each other by soname without an `$ORIGIN` run path.
-- BASS add-ons that enable formats on Windows exist only partly on Linux: AAC, AC-3, FLAC, MIDI, Opus and WavPack have add-on names (`libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so`). Formats without an add-on still play through the FFmpeg fallback where FFmpeg can decode them.
+- Audio is played by FatzAudio, whose library (`libfatzaudio.so`) is built from `Audio\` in the repository by CMake and copied to the app output; you do not supply it. Formats FatzAudio cannot decode still play through the FFmpeg fallback where FFmpeg can decode them.
 - For HTTPS network video, the OpenSSL-based FFmpeg builds read their trusted roots from the system certificate store (`/etc/ssl` on Debian and Ubuntu), or from a PEM bundle you set with `MediaPlayerConfiguration.NetworkTls`. Check your build's TLS backend.
-- Audio goes through whatever BASS enumerates (ALSA, PulseAudio, PipeWire).
+- Audio goes through FatzAudio's output on the system's sound server, and device changes (added, removed, default changed) come from FatzAudio's own device watch. Tests can use FatzAudio's null output device, which needs no sound server.
 
 ## What is different from Windows
 
@@ -76,8 +75,7 @@ Notes:
 | Direct3D11 renderer, HDR output, `WindowsNativeLibraryPaths` | Not available. |
 | Hardware decoding | Only through the Vulkan renderer, with Vulkan Video and an FFmpeg built with `--enable-vulkan`. The Software renderer always decodes in software. |
 | Text subtitles and MIDI/KAR lyric text | Drawn by the Software and Vulkan renderers through SkiaSharp. Fonts come from fontconfig: the configured family (Segoe UI by default) when installed, otherwise the system default font, so glyph shapes and widths differ from Windows. |
-| MIDI | Needs `libbassmidi.so` and a soundfont (`MediaPlayerConfiguration.MidiSoundfontPath`, or one of the file names listed in [MIDI soundfont](native-dependencies.md#midi-soundfont)). There is no system `gm.dls`. |
-| `basscd`, `bassalac`, `basswma` add-ons | Not part of the Linux set. ALAC and WMA files can still open through the FFmpeg fallback. |
+| MIDI | Needs a soundfont: `MediaPlayerConfiguration.MidiSoundfontPath`, or an installed `.sf2` system bank (see [MIDI soundfont](native-dependencies.md#midi-soundfont)). There is no system `gm.dls`. |
 | WPF and WinForms | Windows only. Use Avalonia. |
 
 > [!TIP]

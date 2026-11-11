@@ -285,6 +285,12 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         {
             PresentAfterSurfaceChange("presentation surface resized");
         }
+        else if (resized && HasCdgContent)
+        {
+            // Playing CD+G presents only when its graphics change: redraw the whole picture at the new size now,
+            // instead of leaving the old size in the corner until the next change.
+            RequestCdgPresentation(consumeDirtyRegions: false, retainedRefresh: true, "presentation surface resized");
+        }
 
         return resized;
     }

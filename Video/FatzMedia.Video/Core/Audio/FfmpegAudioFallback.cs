@@ -2,13 +2,11 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Files;
-using ManagedBass;
-using MBass = ManagedBass.Bass;
 
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
-/// An audio file decoded by FFmpeg into a 32-bit float WAV that BASS plays natively, held in
+/// An audio file decoded by FFmpeg into a 32-bit float WAV that FatzAudio plays natively, held in
 /// memory or, above <see cref="FfmpegAudioFallback.MaxInMemoryBytes"/>, in a temp file deleted
 /// on dispose. Disposing must follow freeing every stream created from it.
 /// </summary>
@@ -24,11 +22,6 @@ sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, st
 
     internal string? TempPath => tempPath;
 
-    /// <summary>Creates a BASS stream over the converted WAV.</summary>
-    public int CreateStream(BassFlags flags) => data is not null
-        ? MBass.CreateStream(data, 0, Length, flags)
-        : MBass.CreateStream(tempPath!, Flags: flags);
-
     public void Dispose()
     {
         if (tempPath is not null)
@@ -37,8 +30,8 @@ sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, st
 }
 
 /// <summary>
-/// Plays audio formats no BASS plugin claims (Stage 033A slice 2): FFmpeg decodes the file to a
-/// float WAV, which opens through <see cref="AudioEngine"/>'s normal stream path, so the file
+/// Plays audio formats FatzAudio does not decode (Stage 033A slice 2): FFmpeg decodes the file to a
+/// float WAV, which opens through the audio engine's normal stream path, so the file
 /// gets every plain-audio feature (seek, loop, tempo, equalizer, fades, normalization,
 /// trimming, prepared-next). The conversion made for a prepared-next item is kept so the
 /// transition does not convert again (one per player, up to <see cref="MaxPreparedConversions"/>).
@@ -59,14 +52,14 @@ static class FfmpegAudioFallback
     /// <summary>Converted WAVs larger than this go to a temp file instead of memory.</summary>
     internal static long MaxInMemoryBytes { get; set; } = DefaultMaxInMemoryBytes;
 
-    /// <summary>True when no BASS plugin claims the file's extension but FFmpeg can decode it.</summary>
+    /// <summary>True when the audio engine does not claim the file's extension but FFmpeg can decode it.</summary>
     public static bool RequiresConversion(string path)
     {
         var extension = Path.GetExtension(path);
         return !FileTypes.Audio.Contains(extension) && FileTypes.FfmpegAudio.Contains(extension);
     }
 
-    /// <summary>True when FFmpeg can try a file BASS failed to open (for example ALAC in .m4a).</summary>
+    /// <summary>True when FFmpeg can try a file the audio engine failed to open (for example DTS).</summary>
     public static bool CanRetryWithFfmpeg(string path) => FileTypes.FfmpegAudio.Contains(Path.GetExtension(path));
 
     /// <summary>

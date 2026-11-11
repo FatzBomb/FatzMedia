@@ -96,7 +96,7 @@ public sealed class RendererVideoDecodeServicesTests
     [Fact]
     public void TheCoordinator_AttachesItsRenderersDevice_ToThePlayersDecoders()
     {
-        using var provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        using var provider = (ServiceProvider)PlayerServiceProvider.Create(NoAudio, [], new TestPlatformServices());
         var engine = provider.GetRequiredService<IMediaEngine>();
         var services = provider.GetRequiredService<RendererVideoDecodeServices>();
 
@@ -117,7 +117,7 @@ public sealed class RendererVideoDecodeServicesTests
     {
         // ENG-037: the software renderer draws only CPU frames, so with the default (Auto)
         // decoding its players must decode in software instead of dropping hardware frames.
-        using var provider = (ServiceProvider)PlayerServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        using var provider = (ServiceProvider)PlayerServiceProvider.Create(NoAudio, [], new TestPlatformServices());
         var engine = provider.GetRequiredService<IMediaEngine>();
         var services = provider.GetRequiredService<RendererVideoDecodeServices>();
         var software = new SoftwareRendererBackend();
@@ -282,11 +282,19 @@ public sealed class RendererVideoDecodeServicesTests
     }
 
 
-    /// <summary>A platform with no native libraries: no audio, software decoding services.</summary>
+    /// <summary>A player without audio: the engine's native library is missing.</summary>
+    static readonly MediaPlayerConfiguration NoAudio = new() { AudioEngineFactory = new NoAudioEngineFactory() };
+
+    sealed class NoAudioEngineFactory : IAudioEngineFactory
+    {
+        public string Name => "None";
+
+        public IAudioEngine Create(MediaPlayerConfiguration configuration) => throw new DllNotFoundException("fatzaudio");
+    }
+
+    /// <summary>A platform with no native libraries and software decoding services.</summary>
     sealed class TestPlatformServices : IPlatformServices
     {
-        public bool IsAudioAvailable => false;
-
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {
         }

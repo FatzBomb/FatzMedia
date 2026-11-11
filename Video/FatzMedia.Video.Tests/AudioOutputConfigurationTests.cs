@@ -9,7 +9,7 @@ public class AudioOutputConfigurationTests
     {
         var configuration = new MediaPlayerConfiguration();
 
-        Assert.Equal(AudioOutputDeviceInfo.PrimaryDeviceIndex, configuration.AudioOutputDeviceIndex);
+        Assert.Null(configuration.AudioOutputDeviceId);
         Assert.Equal(AudioOutputFallbackMode.FallbackToPrimary, configuration.AudioOutputFallbackMode);
         Assert.False(configuration.ResetPitchOnMediaLoad);
         Assert.False(configuration.ResetTempoOnMediaLoad);
@@ -33,7 +33,7 @@ public class AudioOutputConfigurationTests
         var primary = AudioOutputDeviceInfo.Primary;
 
         Assert.True(primary.IsPrimary);
-        Assert.Equal(AudioOutputDeviceInfo.PrimaryDeviceIndex, primary.DeviceIndex);
+        Assert.Null(primary.Id);
         Assert.Equal("Primary (device default)", primary.DisplayName);
         Assert.Equal(primary.DisplayName, primary.ToString());
     }

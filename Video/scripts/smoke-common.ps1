@@ -327,9 +327,20 @@ function Invoke-Tdr {
 # ---------------------------------------------------------------------------------------------
 # Media selection
 # ---------------------------------------------------------------------------------------------
-function Select-Media([string]$Label, [string[]]$Extensions, [string[]]$Hints, [scriptblock]$Filter, [string]$Exclude) {
+# The ecosystem's shared test media (read-only), searched first; scripts can name a file in it to use without asking.
+$SampleFiles = [IO.Path]::GetFullPath((Join-Path $Repo '..\..\shared\sample-files'))
+
+function Select-Media([string]$Label, [string[]]$Extensions, [string[]]$Hints, [scriptblock]$Filter, [string]$Exclude, [string]$Preferred) {
     Write-Host ''
     Write-Host "Choose: $Label" -ForegroundColor Cyan
+    # A named shared sample is used without asking, unless the script runs with -ChooseMedia.
+    if ($Preferred -and -not $ChooseMedia) {
+        $preferredPath = Join-Path $SampleFiles $Preferred
+        if (Test-Path -LiteralPath $preferredPath) {
+            Write-Host "  Using $preferredPath (run with -ChooseMedia to pick another)"
+            return $preferredPath
+        }
+    }
     $files = @(Get-ChildItem -Path $MediaDir -File -Recurse -Depth 2 -ErrorAction SilentlyContinue |
         Where-Object { $Extensions -contains $_.Extension.ToLowerInvariant() -and $_.FullName -ne $Exclude })
     if ($Filter) { $files = @($files | Where-Object $Filter) }

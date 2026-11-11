@@ -8,8 +8,8 @@ namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
 /// ENG-034 follow-ups: https network audio through FFmpeg (certificate checks, ICY and Ogg titles
-/// timed to playback), checked at the demuxer level because playing audio needs BASS, which the
-/// sandbox does not have; the player's behaviour without BASS; and MP4s on servers without byte
+/// timed to playback), checked at the demuxer level because playing audio needs an audio engine, which the
+/// tests make unavailable; the player's behaviour without one; and MP4s on servers without byte
 /// ranges. Media: <c>audio/tone.mp3</c>, <c>audio/tone.ogg</c> and <c>faststart.mp4</c> (made by
 /// <c>scripts/setup-linux-native.sh</c>); the tests that need them return without them.
 /// </summary>
@@ -51,7 +51,7 @@ public sealed partial class LinuxNetworkVideoNativeTests
     }
 
     [Fact]
-    public void HttpsAudio_WithoutBass_IsRejectedAsAudioUnavailable_BeforeConnecting()
+    public void HttpsAudio_WithoutAudioEngine_IsRejectedAsAudioUnavailable_BeforeConnecting()
     {
         if (!TryGetEnvironment(out var ffmpegDirectory, out var media) || !File.Exists(Path.Combine(media, ToneMp3)))
             return;

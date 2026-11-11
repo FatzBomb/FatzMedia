@@ -55,6 +55,47 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges, these close with BASS and move
+to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
+half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
+
+### ENG-065 - A chosen output device does not get the sound back when it is plugged in again
+
+Reported: 2026-11-11 (owner, 037A hand test M11 with a Yeti Nano on USB): with `AudioOutputDeviceId` set, pulling
+the device moved the sound to the default (as documented), but plugging it back in left the sound on the default.
+BASS's output watchdog used to reopen the same device when it came back. FatzMedia.Audio reopens a lost device on
+the default (`fa_device_open`) and has no call to move it back, so the fix needs Audio (remember the requested id
+and move back when it returns, or a call to retarget a device) plus the engine's device watch in Video. Same test:
+about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
+(14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
+
+### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
+
+Reported: 2026-11-11 (owner, not blocking):
+- Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
+  stair steps; smoothness 8 traces rounded edges and passed, but the owner is not a fan of how the traced letters
+  look (bulgy joins). Try 9-10 and 4 with edge blend side by side before choosing a default; the tracing itself is
+  FatzMedia.Audio's (`Audio/src/cdg_contour.c`).
+- Going to full screen and back looks a bit jumpy (the picture, not the sound): the swap chain is resized and the
+  picture redrawn at each step. Compare with a plain video to see whether it is CD+G or every surface.
+
+### ENG-063 - WPF `--second-screen=2` opened two second-screen windows, one blank
+
+Reported: 2026-11-11 (owner, 037A hand test M5, WPF player, two monitors, NativeHwndOverlay): starting the WPF
+player with a 1080p video and `--second-screen=2` showed two second-screen windows; the top one stayed blank and
+had to be minimized, the other played correctly. `PlayerView` opens one `SecondaryPresentationWindow` at startup and
+reopens it when `PresentationMode` changes, so a close that left the old window on screen, or a second open path,
+is the likely cause. Not related to audio. Reproduce with the same command and check how many
+`second screen opens` lines the Log shows.
+
+### ENG-062 - Prepared-next analysis has no engine behind it
+
+Found: 2026-11-10 (037A slice 6). `PlayerCore.AnalyzeAsync` and prepared-next analysis go through the internal
+`IMediaFileAnalyzer`, which only the BASS engine implemented. The FatzAudio engine does not (it measures loudness
+itself and caches it by fingerprint, and finds silence at open), so with BASS gone `AnalyzeAsync` returns no
+analysis and prepared items reach Ready without one. Decide whether `AnalyzeAsync` should ask FatzAudio (loudness
+scan by path, `DetectSilence`) or be retired from the public API; either is its own change.
+
 ### ENG-061 - The first player start after a build loads its first video slowly
 
 Reported: 2026-11-07 (owner, 051A smoke test 1): the first WPF player start after a fresh build took

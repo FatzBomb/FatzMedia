@@ -8,34 +8,26 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FatzMedia.Video.Tests;
 
 /// <summary>
-/// 037A slice 2: the audio engine is chosen by <see cref="MediaPlayerConfiguration.AudioEngineFactory"/>
-/// (BASS by default) and, in the test players, by <c>--audio=</c>.
+/// The audio engine comes from <see cref="MediaPlayerConfiguration.AudioEngineFactory"/> (null: the built-in
+/// FatzAudio engine); its device events are the player's device monitor.
 /// </summary>
 public sealed class AudioEngineSelectionTests
 {
     [Fact]
-    public void Configuration_DefaultsToBass()
+    public void Configuration_DefaultsToTheBuiltInEngine()
     {
         Assert.Null(new MediaPlayerConfiguration().AudioEngineFactory);
         Assert.Null(MediaPlayerConfiguration.Auto.AudioEngineFactory);
     }
 
     [Fact]
-    public void ServiceProvider_WithoutAFactory_UsesTheBassEngineAndThePlatformMonitor()
-    {
-        var services = Create(new MediaPlayerConfiguration(), out var platformMonitor);
-
-        _ = Assert.IsType<AudioEngine>(services.GetRequiredService<IAudioEngine>());
-        Assert.Same(platformMonitor, services.GetRequiredService<IAudioDeviceMonitor>());
-    }
-
-    [Fact]
-    public void ServiceProvider_WithAFactory_UsesItsEngine_AndForwardsDeviceChangesOfBoth()
+    public void ServiceProvider_WithAFactory_UsesItsEngine_AndForwardsItsDeviceChanges()
     {
         var engine = new DeviceReportingEngine();
-        var services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) }, out var platformMonitor);
+        var services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) });
 
         Assert.Same(engine, services.GetRequiredService<IAudioEngine>());
+        Assert.Empty(services.GetRequiredService<AudioEngineStartup>().Problem);
         var monitor = services.GetRequiredService<IAudioDeviceMonitor>();
         _ = Assert.IsType<AudioEngineDeviceMonitor>(monitor);
         List<AudioDeviceChangeKind> kinds = [];
@@ -43,78 +35,39 @@ public sealed class AudioEngineSelectionTests
 
         monitor.Start();
         Assert.True(monitor.IsRunning);
-        Assert.True(platformMonitor.IsRunning);
         engine.Raise(AudioDeviceChangeKind.DeviceRemoved);
-        platformMonitor.Raise(AudioDeviceChangeKind.DefaultDeviceChanged);
         monitor.Dispose();
         engine.Raise(AudioDeviceChangeKind.DeviceAdded);
 
-        Assert.Equal([AudioDeviceChangeKind.DeviceRemoved, AudioDeviceChangeKind.DefaultDeviceChanged], kinds);
-        Assert.True(platformMonitor.Disposed);
+        Assert.Equal([AudioDeviceChangeKind.DeviceRemoved], kinds);
+        Assert.False(monitor.IsRunning);
     }
 
     [Fact]
-    public void ServiceProvider_WhenTheFactoryFails_WarnsAndUsesBass()
+    public void ServiceProvider_WhenTheFactoryFails_WarnsAndHasNoAudio()
     {
         List<MediaDiagnosticInfo> diagnostics = [];
         void Capture(MediaDiagnosticInfo info) => diagnostics.Add(info);
         DiagnosticRouter.DiagnosticOccurred += Capture;
+        IServiceProvider services;
         try
         {
-            var services = Create(
-                new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => throw new DllNotFoundException("no fatzaudio")) },
-                out _);
-            _ = Assert.IsType<AudioEngine>(services.GetRequiredService<IAudioEngine>());
+            services = Create(new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => throw new DllNotFoundException("no fatzaudio")) });
         }
         finally
         {
             DiagnosticRouter.DiagnosticOccurred -= Capture;
         }
 
+        _ = Assert.IsType<SilentAudioEngine>(services.GetRequiredService<IAudioEngine>());
+        Assert.Null(services.GetService<IAudioDeviceMonitor>());
+        Assert.StartsWith("Audio engine Test could not start (no fatzaudio).", services.GetRequiredService<AudioEngineStartup>().Problem, StringComparison.Ordinal);
         Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning
-            && info.Message.Contains("Test could not start (no fatzaudio); using BASS.", StringComparison.Ordinal));
+            && info.Message.StartsWith("Audio engine Test could not start (no fatzaudio).", StringComparison.Ordinal));
     }
-
-    [Fact]
-    public void ServiceProvider_WithAFactory_NeedsNoBass()
-    {
-        // 037A slice 5: the factory's engine plays everything, so audio works where BASS did not load.
-        var engine = new DeviceReportingEngine();
-        var services = PlayerServiceProvider.Create(
-            new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => engine) },
-            [],
-            new TestPlatformServices(audioAvailable: false));
-
-        Assert.Same(engine, services.GetRequiredService<IAudioEngine>());
-        _ = Assert.IsType<AudioEngineDeviceMonitor>(services.GetRequiredService<IAudioDeviceMonitor>());
-    }
-
-    [Fact]
-    public void ServiceProvider_WhenTheFactoryFailsWithoutBass_WarnsAndHasNoAudio()
-    {
-        List<MediaDiagnosticInfo> diagnostics = [];
-        void Capture(MediaDiagnosticInfo info) => diagnostics.Add(info);
-        DiagnosticRouter.DiagnosticOccurred += Capture;
-        try
-        {
-            var services = PlayerServiceProvider.Create(
-                new MediaPlayerConfiguration { AudioEngineFactory = new TestFactory(() => throw new DllNotFoundException("no fatzaudio")) },
-                [],
-                new TestPlatformServices(audioAvailable: false));
-            _ = Assert.IsType<SilentAudioEngine>(services.GetRequiredService<IAudioEngine>());
-        }
-        finally
-        {
-            DiagnosticRouter.DiagnosticOccurred -= Capture;
-        }
-
-        Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning
-            && info.Message.Contains("Test could not start (no fatzaudio); no audio.", StringComparison.Ordinal));
-    }
-
     [Theory]
     [InlineData(new string[0], null)]
-    [InlineData(new[] { "--audio=fatz", "--audio-device=USB Audio" }, "USB Audio")]
+    [InlineData(new[] { "--audio-device=USB Audio" }, "USB Audio")]
     [InlineData(new[] { "--audio-device=\"Speakers (Realtek)\"" }, "Speakers (Realtek)")]
     public void PlayerOption_ParsesTheAudioDevice(string[] args, string? expected) =>
         Assert.Equal(expected, PlayerStartupOptions.Parse(args).AudioDevice);
@@ -137,31 +90,8 @@ public sealed class AudioEngineSelectionTests
         Assert.Equal((enabled, smoothness, effects), (scaling.Enabled, scaling.Smoothness, scaling.Effects));
     }
 
-    [Theory]
-    [InlineData(new string[0], PlayerAudioEngine.Bass, null)]
-    [InlineData(new[] { "--audio=fatz" }, PlayerAudioEngine.FatzAudio, null)]
-    [InlineData(new[] { "--audio=FatzAudio" }, PlayerAudioEngine.FatzAudio, null)]
-    [InlineData(new[] { "--audio=fatz", "--audio=bass" }, PlayerAudioEngine.Bass, null)]
-    [InlineData(new[] { "--audio=wasapi" }, PlayerAudioEngine.Bass, "wasapi")]
-    public void PlayerOption_ParsesTheAudioEngine(string[] args, PlayerAudioEngine expected, string? unknown)
-    {
-        var options = PlayerStartupOptions.Parse(args);
-
-        Assert.Equal(expected, options.AudioEngine);
-        Assert.Equal(unknown, options.UnknownAudioEngine);
-        if (unknown is null)
-            Assert.Empty(options.DescribeUnknownValues());
-        else
-            Assert.Contains(options.DescribeUnknownValues(), line => line == "Unknown --audio value 'wasapi' (use bass or fatz); using bass.");
-    }
-
-    static IServiceProvider Create(MediaPlayerConfiguration configuration, out TestDeviceMonitor platformMonitor)
-    {
-        var platform = new TestPlatformServices();
-        var services = PlayerServiceProvider.Create(configuration, [], platform);
-        platformMonitor = platform.Monitor;
-        return services;
-    }
+    static IServiceProvider Create(MediaPlayerConfiguration configuration) =>
+        PlayerServiceProvider.Create(configuration, [], new TestPlatformServices());
 
     sealed class TestFactory(Func<IAudioEngine> create) : IAudioEngineFactory
     {
@@ -183,8 +113,6 @@ public sealed class AudioEngineSelectionTests
         public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
 
         public AudioEngineState State => AudioEngineState.Stopped;
-        public int PlayHandle => 0;
-        public int SourceHandle => 0;
         public bool Normalize { get; set; }
         public double NormalizationGain => 1;
         public bool IsNormalizationReady => true;
@@ -223,36 +151,15 @@ public sealed class AudioEngineSelectionTests
         }
     }
 
-    sealed class TestDeviceMonitor : IAudioDeviceMonitor
+    /// <summary>A platform that loads nothing and registers nothing.</summary>
+    sealed class TestPlatformServices : IPlatformServices
     {
-        public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
-
-        public bool IsRunning { get; private set; }
-
-        public bool Disposed { get; private set; }
-
-        public void Start() => IsRunning = true;
-
-        public void Stop() => IsRunning = false;
-
-        public void Dispose() => Disposed = true;
-
-        public void Raise(AudioDeviceChangeKind kind) => DeviceChanged?.Invoke(this, new AudioDeviceChangeInfo(kind, null, null, null, 0));
-    }
-
-    // Audio is reported available; BASS itself is not loaded, so the BASS engine is created and
-    // fails to initialize, as on a machine without the BASS libraries.
-    sealed class TestPlatformServices(bool audioAvailable = true) : IPlatformServices
-    {
-        public TestDeviceMonitor Monitor { get; } = new();
-
-        public bool IsAudioAvailable => audioAvailable;
-
         public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
         {
         }
 
-        public void AddPlatformServices(IServiceCollection services, MediaPlayerConfiguration configuration) =>
-            _ = services.AddSingleton<IAudioDeviceMonitor>(_ => Monitor);
+        public void AddPlatformServices(IServiceCollection services, MediaPlayerConfiguration configuration)
+        {
+        }
     }
 }

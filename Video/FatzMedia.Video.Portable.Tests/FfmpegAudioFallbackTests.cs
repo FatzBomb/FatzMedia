@@ -7,7 +7,7 @@ using FatzMedia.Video.Core.Files;
 namespace FatzMedia.Video.Portable.Tests;
 
 /// <summary>
-/// Stage 033A slice 2: audio formats no BASS plugin claims open through an FFmpeg conversion.
+/// Stage 033A slice 2: audio formats the audio engine does not claim open through an FFmpeg conversion.
 /// The extension sets are process-wide, so each test registers its own made-up extension.
 /// </summary>
 public sealed class FfmpegAudioFallbackTests
@@ -100,7 +100,7 @@ public sealed class FfmpegAudioFallbackTests
     }
 
     [Fact]
-    public void ExtensionABassPluginClaims_StaysOnBassButCanRetryWithFfmpeg()
+    public void ExtensionTheEngineClaims_StaysOnTheEngineButCanRetryWithFfmpeg()
     {
         const string Extension = ".fbfallbackb";
         _ = FileTypes.Audio.Add(Extension);
@@ -156,7 +156,7 @@ public sealed class FfmpegAudioFallbackTests
     [Fact]
     public void FileTree_ArchivedFallbackAudio_PairsWithItsCdg()
     {
-        // A zip of song.flac + song.cdg without bassflac played as a silent CD+G.
+        // A zip of audio only FFmpeg decodes + song.cdg once played as a silent CD+G.
         const string Extension = ".fbfallbackd";
         _ = FileTypes.FfmpegAudio.Add(Extension);
         var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-fallback-{Guid.NewGuid():N}.zip");
@@ -177,34 +177,34 @@ public sealed class FfmpegAudioFallbackTests
     }
 
     [Fact]
-    public void FileTree_Archive_PrefersAudioABassPluginDecodes()
+    public void FileTree_Archive_PrefersAudioTheEngineDecodes()
     {
         const string Fallback = ".fbfallbacke";
-        const string Bass = ".fbfallbackf";
+        const string Native = ".fbfallbackf";
         _ = FileTypes.FfmpegAudio.Add(Fallback);
-        _ = FileTypes.Audio.Add(Bass);
+        _ = FileTypes.Audio.Add(Native);
         var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-Fallback-{Guid.NewGuid():N}.zip");
         File.WriteAllBytes(archive, [1]);
         try
         {
-            using var paired = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{Fallback}", $"song{Bass}", "song.cdg"));
+            using var paired = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{Fallback}", $"song{Native}", "song.cdg"));
             Assert.Equal(FileType.AudioCdgArchive, paired.Type);
-            Assert.Equal($"song{Bass}", paired.AudioEntry!.Key);
+            Assert.Equal($"song{Native}", paired.AudioEntry!.Key);
 
-            using var audioOnly = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"a{Fallback}", $"b{Bass}"));
+            using var audioOnly = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"a{Fallback}", $"b{Native}"));
             Assert.Equal(FileType.AudioArchive, audioOnly.Type);
-            Assert.Equal($"b{Bass}", audioOnly.AudioEntry!.Key);
+            Assert.Equal($"b{Native}", audioOnly.AudioEntry!.Key);
         }
         finally
         {
             _ = FileTypes.FfmpegAudio.Remove(Fallback);
-            _ = FileTypes.Audio.Remove(Bass);
+            _ = FileTypes.Audio.Remove(Native);
             File.Delete(archive);
         }
     }
 
     [Fact]
-    public void RegisterFfmpegAudio_AddsCommonFormatsBassMayLack()
+    public void RegisterFfmpegAudio_AddsCommonAudioFormats()
     {
         Assert.Contains(".ape", FileTypes.FfmpegAudioExtensions);
         Assert.Contains(".wv", FileTypes.FfmpegAudioExtensions);

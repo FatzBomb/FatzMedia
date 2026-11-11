@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Linux.Runtime;
 using FatzMedia.Video.Software;
@@ -6,11 +7,11 @@ using FatzMedia.Video.Software;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// A real player for the opt-in Linux native tests with BASS and FFmpeg (026B, 033A, 043A, 039A):
-/// native libraries only from the given folders, the software renderer, an optional counting frame
-/// sink, and the errors and diagnostics it raised. Set <c>FATZBOMB_LINUX_BASS_DIR</c> and
-/// <c>FATZBOMB_LINUX_FFMPEG_DIR</c> (<c>scripts/setup-linux-native.sh</c> prints both) and run a sound
-/// server (PulseAudio or PipeWire; a null sink is enough).
+/// A real player for the opt-in Linux native tests with FFmpeg and FatzAudio (026B, 033A, 043A, 039A):
+/// FFmpeg only from the given folders, the software renderer, FatzAudio on its null output device (no sound
+/// card or sound server needed), an optional counting frame sink, and the errors and diagnostics it raised.
+/// Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> (<c>scripts/setup-linux-native.sh</c> prints it); FatzAudio's native
+/// library comes from Audio/ (<see cref="FatzAudioNativeGroup.CanRun"/>).
 /// </summary>
 sealed class LinuxNativeTestPlayer : IDisposable
 {
@@ -40,18 +41,15 @@ sealed class LinuxNativeTestPlayer : IDisposable
 
     public IReadOnlyList<string> Diagnostics => [.. _diagnostics];
 
-    /// <summary>Gets the BASS and FFmpeg folders from the environment; false when the tests should skip.</summary>
-    public static bool TryGetFolders(out string bass, out string ffmpeg)
+    /// <summary>Gets the FFmpeg folder from the environment; false when the tests should skip.</summary>
+    public static bool TryGetFfmpegFolder(out string ffmpeg)
     {
-        bass = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_BASS_DIR") ?? string.Empty;
         ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR") ?? string.Empty;
-        return OperatingSystem.IsLinux()
-            && Directory.Exists(bass) && File.Exists(Path.Combine(bass, "libbass.so"))
-            && Directory.Exists(ffmpeg);
+        return OperatingSystem.IsLinux() && FatzAudioNativeGroup.CanRun && Directory.Exists(ffmpeg);
     }
 
     /// <param name="nativePaths">The native folders, searched in order (an empty application folder otherwise).</param>
-    /// <param name="configuration">The configuration; the loudness cache is turned off unless it names a folder.</param>
+    /// <param name="configuration">The configuration; the audio engine is FatzAudio's null device unless it sets a factory, and the loudness cache is turned off unless it names a folder.</param>
     /// <param name="attachSurface">Attaches a 640x360 counting frame sink as the primary surface.</param>
     public static LinuxNativeTestPlayer Create(IReadOnlyList<string> nativePaths, MediaPlayerConfiguration? configuration = null, bool attachSurface = true)
     {
@@ -61,6 +59,8 @@ sealed class LinuxNativeTestPlayer : IDisposable
         var config = configuration ?? new MediaPlayerConfiguration(VideoDecodingMethod.Software);
         if (config.Normalization.CacheDirectory is null)
             config = config with { Normalization = config.Normalization with { CacheDirectory = string.Empty } };
+        if (config.AudioEngineFactory is null)
+            config = config with { AudioEngineFactory = new FatzAudioEngineFactory(nullOutput: true) };
 
         var player = new PlayerCore(factory, config, nativePaths);
         var sink = new NativeTestFrameSink();

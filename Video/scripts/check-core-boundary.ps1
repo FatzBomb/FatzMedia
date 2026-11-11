@@ -4,7 +4,11 @@ $root = Split-Path -Parent $PSScriptRoot
 $coreProject = Join-Path $root 'FatzMedia.Video'
 # Keep the approved reference DAG explicit so intentional project-reference changes require review here.
 $projectReferences = @{
-    'FatzMedia.Video\FatzMedia.Video.csproj' = @()
+    # 037A: the audio engine is FatzMedia.Audio, by project from Audio\ in this repo (its native library is
+    # loaded by the binding, so Core itself still has no P/Invoke).
+    'FatzMedia.Video\FatzMedia.Video.csproj' = @(
+        '..\..\Audio\bindings\dotnet\src\FatzMedia.Audio\FatzMedia.Audio.csproj'
+    )
     'FatzMedia.Video.Direct3D11\FatzMedia.Video.Direct3D11.csproj' = @(
         '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
@@ -17,12 +21,7 @@ $projectReferences = @{
         '..\FatzMedia.Video\FatzMedia.Video.csproj',
         '..\FatzMedia.Video.Text\FatzMedia.Video.Text.csproj'
     )
-    # 037A slice 2: the opt-in FatzAudio audio engine. Core and the FatzMedia.Audio binding (Audio\ in
-    # this repo); it implements Core's internal audio seams, so it is Core's one non-test friend assembly.
-    'FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj' = @(
-        '..\FatzMedia.Video\FatzMedia.Video.csproj',
-        '..\..\Audio\bindings\dotnet\src\FatzMedia.Audio\FatzMedia.Audio.csproj'
-    )
+
     'FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj' = @(
         '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
@@ -34,7 +33,6 @@ $projectReferences = @{
         '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj'
     )
     'FatzMedia.Video.Sample.Player\FatzMedia.Video.Sample.Player.csproj' = @(
-        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
         '..\FatzMedia.Video\FatzMedia.Video.csproj',
         '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
         '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
@@ -63,7 +61,6 @@ $projectReferences = @{
         '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
     'FatzMedia.Video.Linux.Tests\FatzMedia.Video.Linux.Tests.csproj' = @(
-        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
         '..\FatzMedia.Video\FatzMedia.Video.csproj',
         '..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj',
         '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj'
@@ -95,7 +92,6 @@ $projectReferences = @{
     # (net10.0-windows7.0 only; Direct3D11 feeds the shared GPU image path, Stage 027A slice 2) and
     # Linux (net10.0 only) conditionally; all appear here because the script reads every item group.
     'FatzMedia.Video.Sample.Player.Avalonia\FatzMedia.Video.Sample.Player.Avalonia.csproj' = @(
-        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
         '..\FatzMedia.Video\FatzMedia.Video.csproj',
         '..\FatzMedia.Video.Avalonia\FatzMedia.Video.Avalonia.csproj',
         '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
@@ -108,7 +104,6 @@ $projectReferences = @{
     # Stage 046A slice 2: the software renderer, shown through the WinForms surface's frame sink.
     # Stage 046A slice 3: the Vulkan renderer (--renderer=vulkan) in the WPF and WinForms players too.
     'FatzMedia.Video.Sample.Player.WinForms\FatzMedia.Video.Sample.Player.WinForms.csproj' = @(
-        '..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj',
         '..\FatzMedia.Video\FatzMedia.Video.csproj',
         '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
         '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
@@ -156,15 +151,14 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
     throw 'Core boundary check failed: Core must not reference Vortice packages.'
 }
 
-# 037A: FatzMedia.Audio stays out of Core; only the FatzAudio engine project references it (by project,
-# from Audio\ in this repo; the project-reference map above pins that).
+# 037A: Core takes FatzMedia.Audio by project from Audio\ in this repo (pinned above), never as a package.
 if ($corePackageReferences | Where-Object { $_ -in @('FatzAudio', 'FatzMedia.Audio') }) {
-    throw 'Core boundary check failed: Core must not reference the FatzMedia.Audio package.'
+    throw 'Core boundary check failed: Core must reference FatzMedia.Audio by project, not as a package.'
 }
 
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
-if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzMedia.Video.Tests', 'FatzMedia.Video.Portable.Tests', 'FatzMedia.Video.Linux.Tests', 'FatzMedia.Video.Avalonia.Tests', 'FatzMedia.Video.Audio') }) {
-    throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects (the FatzAudio audio engine is the one approved exception, 037A slice 2).'
+if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzMedia.Video.Tests', 'FatzMedia.Video.Portable.Tests', 'FatzMedia.Video.Linux.Tests', 'FatzMedia.Video.Avalonia.Tests') }) {
+    throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects.'
 }
 
 # The shared player view model stays UI-agnostic: portable TFM, the MVVM toolkit as its only
@@ -193,8 +187,7 @@ $forbiddenPatterns = @(
     '\[DllImport',
     '\bVortice\b',
     'using System\.Windows',
-    'FatzMedia\.Video\.(Windows|Direct3D11|Vulkan|Software|Text|Audio)\b',
-    '\busing\s+(global::)?FatzMedia\.Audio\b',
+    'FatzMedia\.Video\.(Windows|Direct3D11|Vulkan|Software|Text)\b',
     '\bRenderingMethod\b',
     '\bNativeSwapChainPresentMode\b'
 )

@@ -16,8 +16,7 @@
             "FatzMedia.Video.Linux/FatzMedia.Video.Linux.csproj",
             "FatzMedia.Video.Wpf/FatzMedia.Video.Wpf.csproj",
             "FatzMedia.Video.Avalonia/FatzMedia.Video.Avalonia.csproj",
-            "FatzMedia.Video.WinForms/FatzMedia.Video.WinForms.csproj",
-            "FatzMedia.Video.Audio/FatzMedia.Video.Audio.csproj"
+            "FatzMedia.Video.WinForms/FatzMedia.Video.WinForms.csproj"
           ]
         }
       ],

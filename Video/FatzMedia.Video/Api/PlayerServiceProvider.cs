@@ -1,4 +1,5 @@
 using FatzMedia.Video.Adapters.Archives;
+using FatzMedia.Video.Audio;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Cdg;
@@ -26,47 +27,36 @@ public static class PlayerServiceProvider
     {
         ArgumentNullException.ThrowIfNull(platformServices);
         platformServices.EnsureNativeLibrariesLoaded(nativeLibraryPaths);
-        var usesAudio = MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode);
-        // An engine from a factory (FatzAudio) plays everything, video audio included (037A slice 5):
-        // it needs no BASS, and BASS is only its fallback.
-        var factoryEngine = usesAudio ? TryCreateFactoryEngine(configuration, platformServices.IsAudioAvailable) : null;
-        var audioAvailable = factoryEngine is not null || platformServices.IsAudioAvailable;
-        if (!audioAvailable && usesAudio)
-        {
-            DiagnosticRouter.Raise(
-                MediaDiagnosticLevel.Warning,
-                "Bootstrap",
-                $"{MediaPlayerModePolicy.AudioUnavailableMessage}. Video plays without sound; audio media will not open.");
-        }
+        // Background mode (043A) never opens audio output; without an engine (ENG-033) no mode can.
+        var (audioEngine, audioProblem) = MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
+            ? TryCreateAudioEngine(configuration)
+            : (null, string.Empty);
+        var audioAvailable = audioEngine is not null;
 
         var services = new ServiceCollection();
-        RegisterCoreServices(services, configuration, audioAvailable, factoryEngine);
+        _ = services.AddSingleton(new AudioEngineStartup(audioProblem));
+        RegisterCoreServices(services, audioEngine);
         platformServices.AddPlatformServices(services, configuration);
-        if (factoryEngine is not null)
-            RegisterEngineDeviceMonitor(services);
+        if (audioEngine is IAudioDeviceChangeSource deviceEvents)
+            _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new AudioEngineDeviceMonitor(deviceEvents));
         RegisterMediaEngine(services, configuration, audioAvailable);
 
         return services.BuildServiceProvider();
     }
 
-    static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable, IAudioEngine? factoryEngine)
+    static void RegisterCoreServices(IServiceCollection services, IAudioEngine? audioEngine)
     {
-        _ = services.AddSingleton(MediaAnalysisCache.Shared);
-        // Background mode (043A) never initializes audio output; without an engine (ENG-033) no mode can.
         // Registered through a factory so the container disposes the engine.
-        _ = services.AddSingleton(provider => factoryEngine
-            ?? (audioAvailable && MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
-                ? CreateBassAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>())
-                : new SilentAudioEngine()));
+        _ = services.AddSingleton(_ => audioEngine ?? new SilentAudioEngine());
         _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
             provider.GetRequiredService<IAudioEngine>() as IMediaFileAnalyzer ?? UnavailableMediaFileAnalyzer.Instance);
-        // An engine that brings its own CD+G drawing (FatzAudio, 037A slice 3) supplies the CD+G engine.
+        // An engine that brings its own CD+G drawing (FatzAudio) supplies the CD+G engine.
         _ = services.AddSingleton(provider => provider.GetRequiredService<IAudioEngine>() is ICdgEngineSource source
             ? source.CreateCdgEngine()
             : new CdgEngine());
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();
-        _ = services.AddSingleton<IMidiLyricProvider, BassMidiLyricProvider>();
+        _ = services.AddSingleton<IMidiLyricProvider, MidiLyricProvider>();
     }
 
     static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
@@ -98,91 +88,31 @@ public static class PlayerServiceProvider
     }
 
     /// <summary>
-    /// The configured factory's engine; null without a factory, or when it fails (a warning says whether
-    /// BASS takes over).
+    /// The configured factory's engine, else the built-in FatzAudio engine; null, with a warning (also kept as the
+    /// problem text, see <see cref="AudioEngineStartup"/>), when it cannot start: the player then has no audio.
     /// </summary>
-    static IAudioEngine? TryCreateFactoryEngine(MediaPlayerConfiguration configuration, bool bassAvailable)
+    static (IAudioEngine? Engine, string Problem) TryCreateAudioEngine(MediaPlayerConfiguration configuration)
     {
-        if (configuration.AudioEngineFactory is not { } factory)
-            return null;
-
+        var factory = configuration.AudioEngineFactory ?? new FatzAudioEngineFactory();
         try
         {
             var engine = factory.Create(configuration)
                 ?? throw new InvalidOperationException("The factory returned no engine.");
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Audio engine: {factory.Name} (files, video audio and CD+G; BASS is not used)");
-            return engine;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Audio engine: {factory.Name}");
+            return (engine, string.Empty);
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(
-                MediaDiagnosticLevel.Warning,
-                "Bootstrap",
-                $"Audio engine {factory.Name} could not start ({ex.Message}); {(bassAvailable ? "using BASS." : "no audio.")}",
-                innerException: ex);
-            return null;
+            var problem = $"Audio engine {factory.Name} could not start ({ex.Message}). {MediaPlayerModePolicy.AudioUnavailableMessage}: video plays without sound; audio media will not open.";
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Bootstrap", problem, innerException: ex);
+            return (null, problem);
         }
-    }
-
-    /// <summary>
-    /// With an <see cref="IAudioEngineFactory"/> engine, the device monitor also reports that
-    /// engine's own device events (<see cref="IAudioDeviceChangeSource"/>), with the platform's monitor
-    /// (it watches the device list through BASS, when BASS loaded) unless the engine watches the list itself.
-    /// </summary>
-    static void RegisterEngineDeviceMonitor(IServiceCollection services)
-    {
-        var platformMonitor = services.LastOrDefault(static descriptor => descriptor.ServiceType == typeof(IAudioDeviceMonitor));
-        _ = services.AddSingleton<IAudioDeviceMonitor>(provider =>
-        {
-            var engine = provider.GetRequiredService<IAudioEngine>() as IAudioDeviceChangeSource;
-            var platform = engine is { ReportsDeviceList: true } ? null : platformMonitor switch
-            {
-                { ImplementationFactory: { } create } => create(provider) as IAudioDeviceMonitor,
-                { ImplementationInstance: IAudioDeviceMonitor instance } => instance,
-                { ImplementationType: { } type } => ActivatorUtilities.CreateInstance(provider, type) as IAudioDeviceMonitor,
-                _ => null,
-            };
-            return new AudioEngineDeviceMonitor(engine, platform);
-        });
-    }
-
-    static AudioEngine CreateBassAudioEngine(
-        MediaPlayerConfiguration configuration,
-        MediaAnalysisCache analysisCache)
-    {
-        var latencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
-        var audioEngine = new AudioEngine(
-            new AudioNormalizer(),
-            new AudioStreamManager(),
-            latencyProvider,
-            configuration.SilenceTrim,
-            analysisCache,
-            configuration.NetworkRetry);
-        var requestedDevice = configuration.AudioOutputDeviceIndex;
-        var initialized = audioEngine.Init(requestedDevice, 44100);
-
-        if (!initialized
-            && requestedDevice != AudioOutputDeviceInfo.PrimaryDeviceIndex
-            && configuration.AudioOutputFallbackMode == AudioOutputFallbackMode.FallbackToPrimary)
-        {
-            DiagnosticRouter.Raise(
-                MediaDiagnosticLevel.Warning,
-                "Bootstrap",
-                $"Audio output device {requestedDevice} could not be initialized ({ManagedBass.Bass.LastError}); falling back to Primary.");
-            initialized = audioEngine.Init(AudioOutputDeviceInfo.PrimaryDeviceIndex, 44100);
-        }
-
-        if (!initialized)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Failed to initialize BASS audio output device {requestedDevice}");
-        }
-        else
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Global BASS initialized successfully on device {audioEngine.BassDeviceIndex}");
-            BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
-        }
-
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
-        return audioEngine;
     }
 }
+
+/// <summary>
+/// Why the player's audio engine did not start (empty when it started, or in Background mode). It is raised while the
+/// player is being built, before a host can subscribe to its diagnostics, so <see cref="PlayerCore.AudioEngineProblem"/>
+/// keeps it.
+/// </summary>
+sealed record AudioEngineStartup(string Problem);

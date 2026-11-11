@@ -12,7 +12,7 @@ FatzMedia.Video is a media-control solution with a UI-agnostic Core engine, a st
 | `FatzMedia.Video.Windows` | Windows native-library loading, endpoint integration, timing, and hardware-decode policy. |
 | `FatzMedia.Video.Windows.Direct3D11` | Convenience integration bundle pairing Windows services with the current renderer. |
 | `FatzMedia.Video.Vulkan` | Preview Vulkan renderer backend (offscreen clear and background presentation into a frame sink). |
-| `FatzMedia.Video.Linux` | Linux platform services: host-supplied BASS/FFmpeg shared-library loading, precision waits, BASS device monitoring, software decode. |
+| `FatzMedia.Video.Linux` | Linux platform services: host-supplied FFmpeg shared-library loading, precision waits, software decode. |
 | `FatzMedia.Video.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It receives platform composition from the host and owns no renderer, pipeline, layer, timing, or final presentation logic. |
 | `FatzMedia.Video.Avalonia` | Avalonia adapter: composited `MediaSurface` over the frame-sink contract and bitmap conversions. |
 | `FatzMedia.Video.WinForms` | WinForms adapter: HWND `MediaSurface` attached as a presentation surface (primary, or a second screen). |
@@ -34,8 +34,10 @@ The WPF adapter exposes `FatzMedia.Video.Wpf.Player`, which derives from Core `P
 
 ## Native DLLs
 
-BASS and FFmpeg native DLLs are not included. The host developer supplies and
-licenses them through predefined or custom native paths. For local Player testing,
+FFmpeg native DLLs are not included. The host developer supplies and
+licenses them through predefined or custom native paths. The audio engine,
+FatzAudio, is built from `Audio\` in this repository and copied to the app output;
+no other audio library or licence is needed. For local Player testing,
 put x64 native DLLs in `FatzMedia.Video.Sample.Player/native/`. See
 `docs/NATIVE_DEPENDENCIES.md` for filenames, supported versions/RIDs, approved
 sources, licensing cautions, package layout, and the update process.

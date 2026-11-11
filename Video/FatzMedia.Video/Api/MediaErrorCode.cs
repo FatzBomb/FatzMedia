@@ -16,7 +16,7 @@ public enum MediaErrorCode
     /// <summary>The requested media file or source could not be found on disk.</summary>
     FileNotFound,
 
-    /// <summary>A required native library (BASS or FFmpeg) could not be located or loaded.</summary>
+    /// <summary>A required native library (FFmpeg) could not be located or loaded.</summary>
     NativeLibraryMissing,
 
     /// <summary>The file format is not supported by the current pipeline.</summary>

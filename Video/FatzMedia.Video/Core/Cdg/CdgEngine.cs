@@ -119,9 +119,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         }
     }
 
-    public void LoadPaired(string filePath, int audioStreamHandle) => Load(filePath);
-    public void LoadPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle) => Load(archiveEntry);
-
     public void Load(string filePath)
     {
         using var fs = File.OpenRead(filePath);

@@ -3,31 +3,19 @@ using FatzMedia.Video.Core.Abstractions;
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
-/// Audio-engine capability (037A slice 2): the engine follows the output device itself and reports
-/// each move. An engine created by an <see cref="IAudioEngineFactory"/> implements it when it can.
+/// Audio-engine capability: the engine watches the output devices itself and reports each change once.
 /// </summary>
 interface IAudioDeviceChangeSource
 {
     /// <summary>
-    /// Raised on a background thread (the engine's own, or its device-list watch) when its output moved to
-    /// another device, or, with <see cref="ReportsDeviceList"/>, when the device list changed.
+    /// Raised on a background thread (the engine's own, or its device-list watch) when devices are added or
+    /// removed, the default changes, or the engine's output moved to another device.
     /// </summary>
     event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
-
-    /// <summary>
-    /// True when <see cref="DeviceChanged"/> also reports devices added and removed and every default
-    /// change (the FatzAudio engine watches the device list itself): the platform's monitor, which watches
-    /// BASS, is then not used, so each change is reported once.
-    /// </summary>
-    bool ReportsDeviceList => false;
 }
 
-/// <summary>
-/// The player's device monitor when an <see cref="IAudioEngineFactory"/> engine plays file audio:
-/// the engine's own device events (<see cref="IAudioDeviceChangeSource"/>) plus the platform's
-/// monitor unless the engine watches the device list itself. Either may be missing.
-/// </summary>
-sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDeviceMonitor? platform) : IAudioDeviceMonitor
+/// <summary>The player's device monitor: the audio engine's own device events (<see cref="IAudioDeviceChangeSource"/>).</summary>
+sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource engine) : IAudioDeviceMonitor
 {
     readonly Lock _gate = new();
     bool _running;
@@ -52,11 +40,8 @@ sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDe
                 return;
 
             _running = true;
-            engine?.DeviceChanged += OnDeviceChanged;
-            platform?.DeviceChanged += OnDeviceChanged;
+            engine.DeviceChanged += OnDeviceChanged;
         }
-
-        platform?.Start();
     }
 
     public void Stop()
@@ -67,25 +52,22 @@ sealed class AudioEngineDeviceMonitor(IAudioDeviceChangeSource? engine, IAudioDe
                 return;
 
             _running = false;
-            engine?.DeviceChanged -= OnDeviceChanged;
-            platform?.DeviceChanged -= OnDeviceChanged;
+            engine.DeviceChanged -= OnDeviceChanged;
         }
-
-        platform?.Stop();
     }
 
     public void Dispose()
     {
-        Stop();
+        // One lock, so a Start racing the dispose cannot subscribe again after Stop.
         lock (_gate)
         {
-            if (_disposed)
-                return;
-
             _disposed = true;
+            if (_running)
+            {
+                _running = false;
+                engine.DeviceChanged -= OnDeviceChanged;
+            }
         }
-
-        platform?.Dispose();
     }
 
     void OnDeviceChanged(object? sender, AudioDeviceChangeInfo info) => DeviceChanged?.Invoke(this, info);

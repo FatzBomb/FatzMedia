@@ -86,26 +86,10 @@ public readonly record struct MediaPlayerConfiguration
     public double PresentationLeadRefreshIntervals { get; init; }
 
     /// <summary>
-    /// When true, the audio output latency provider augments a small BASS-reported latency value
-    /// with a conservative per-class offset for USB DACs and Bluetooth endpoints whose internal
-    /// buffering is not visible to BASS. Off by default because the heuristic is name-pattern based
-    /// and inherently best-effort.
-    /// </summary>
-    public bool EnableUsbBluetoothLatencyHeuristic { get; init; }
-
-    /// <summary>
-    /// BASS output device index to use when creating this player. Use -1 for Primary (system default),
-    /// which lets BASS follow Windows default-device changes. Explicit device indexes are creation-time
-    /// choices; changing devices at runtime should create a new player/control instance.
-    /// </summary>
-    public int AudioOutputDeviceIndex { get; init; }
-
-    /// <summary>
-    /// The output device of the FatzAudio engine (<see cref="AudioEngineFactory"/>): a device id from
-    /// <c>FatzAudioOutputDevices.Enumerate()</c> (<see cref="AudioOutputDeviceInfo.Id"/>) or its name (case ignored);
-    /// <see langword="null"/>, the default, plays on the system default and follows it. An explicit
-    /// device that goes away while playing moves to the default. A creation-time choice, like
-    /// <see cref="AudioOutputDeviceIndex"/>, which is BASS's and which the FatzAudio engine ignores.
+    /// The output device: a device id from <c>FatzAudioOutputDevices.Enumerate()</c>
+    /// (<see cref="AudioOutputDeviceInfo.Id"/>) or its name (case ignored); <see langword="null"/>, the default,
+    /// plays on the system default and follows it. An explicit device that goes away while playing moves to the
+    /// default. A creation-time choice: to change devices, create a new player.
     /// </summary>
     public string? AudioOutputDeviceId { get; init; }
 
@@ -149,23 +133,21 @@ public readonly record struct MediaPlayerConfiguration
     public SilenceTrimOptions SilenceTrim { get; init; }
 
     /// <summary>
-    /// Loudness (LUFS) normalization on the FatzAudio engine: the target, the limiter ceiling and
-    /// the cache folder. The default is -14 LUFS with peaks limited to
-    /// -1 dBTP. The BASS engine ignores it and keeps its peak rule.
+    /// Loudness (LUFS) normalization: the target, the limiter ceiling and the cache folder. The default is
+    /// -14 LUFS with peaks limited to -1 dBTP.
     /// </summary>
     public NormalizationOptions Normalization { get; init; }
 
     /// <summary>
-    /// The scaled, smoothed CD+G picture of the FatzAudio engine; off by default (the classic picture). The BASS
-    /// engine ignores it.
+    /// The scaled, smoothed CD+G picture; off by default (the classic picture).
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
 
     /// <summary>
-    /// With the FatzAudio engine: video soundtracks whose codec it decodes (MP3, MP2, AAC, AC-3, E-AC-3, FLAC, Opus,
-    /// Vorbis) are decoded by FatzAudio from FFmpeg's packets instead of by FFmpeg (only the packets cross). Off by
-    /// default: FFmpeg decodes every soundtrack. After a seek the packet that spans the target plays from its start
-    /// (20-40 ms early); FFmpeg's path trims to the sample. The BASS engine ignores it.
+    /// Video soundtracks whose codec FatzAudio decodes (MP3, MP2, AAC, AC-3, E-AC-3, FLAC, Opus, Vorbis) are decoded
+    /// by FatzAudio from FFmpeg's packets instead of by FFmpeg (only the packets cross). Off by default: FFmpeg
+    /// decodes every soundtrack. After a seek the packet that spans the target plays from its start (20-40 ms
+    /// early); FFmpeg's path trims to the sample.
     /// </summary>
     public bool AudioEngineDecodesSoundtracks { get; init; }
 
@@ -210,10 +192,10 @@ public readonly record struct MediaPlayerConfiguration
     public MediaPlayerMode Mode { get; init; }
 
     /// <summary>
-    /// The player's audio engine (037A). <see langword="null"/>, the default, uses the built-in BASS
-    /// engine. Set it to the FatzAudio engine package's factory to opt in to FatzAudio for files,
-    /// CD+G, video audio and soundtracks; BASS is then not used. When the factory cannot create its
-    /// engine, the player warns and uses BASS if BASS loaded.
+    /// The player's audio engine. <see langword="null"/>, the default, uses the built-in FatzAudio engine
+    /// (<c>FatzAudioEngineFactory</c>) for files, CD+G, video audio and soundtracks. When the engine cannot start
+    /// (for example the FatzAudio native library is missing), the player warns and starts without audio: video
+    /// plays without sound and audio media does not open.
     /// </summary>
     public IAudioEngineFactory? AudioEngineFactory { get; init; }
 
@@ -228,8 +210,6 @@ public readonly record struct MediaPlayerConfiguration
         EnablePerformanceLogging = false;
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
-        EnableUsbBluetoothLatencyHeuristic = false;
-        AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
         SubtitleStyle = new SubtitleTextStyle();
         KaraokeStyle = new KaraokeTextStyle();

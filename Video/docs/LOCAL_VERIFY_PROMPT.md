@@ -27,7 +27,7 @@ and push fixes to that same branch.
 Rules:
 - Never push to main. Never force-push, rebase, or rewrite history.
 - Never delete anything before showing me the list and getting my "yes".
-- Keep the BASS/FFmpeg DLLs in FatzMedia.Video.Sample.Player\native\ safe at all times.
+- Keep the FFmpeg DLLs in FatzMedia.Video.Sample.Player\native\ safe at all times.
 - Read CLAUDE.md, AGENTS.md and docs/VALIDATION.md before changing code; follow them.
 - Stop and ask me if something is ambiguous or a fix would change behaviour.
 

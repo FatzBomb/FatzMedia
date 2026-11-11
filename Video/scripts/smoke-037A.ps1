@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    The 037A hand tests (FatzAudio replacing BASS), as much of them automated as can be.
+    The 037A hand tests (the FatzAudio engine), as much of them automated as can be.
 
 .DESCRIPTION
     Part 1 runs by itself (about 3 minutes): it plays test tones through the video-audio path
@@ -24,27 +24,36 @@
         powershell -ExecutionPolicy Bypass -File scripts\smoke-037A.ps1
 
     Optional parameters:
-        -MediaDir      folders with your media (default C:\media and D:\- Testing Files, two levels deep)
+        -MediaDir      folders with your media (default the shared sample-files, C:\media and D:\- Testing Files,
+                       two levels deep)
+        -Only          run only these checks of parts 2 and 3, for example -Only M6,M6b,M8 (A8 and A9 are part 3)
+        -ChooseMedia   always ask for each file (otherwise the shared sample files below are used when present)
         -SkipBuild     do not rebuild first
         -SilentPart1   part 1 plays on FatzAudio's null device: nothing is heard (default: your
                        default output device, so it measures your real hardware; quiet test tones)
-        -Part          1, 2 or both (default both)
+        -Part          1, 2, 3 or both (default both = all three; 2 also runs 3)
 #>
 [CmdletBinding()]
 param(
     [string]$Repo = '',
-    [string[]]$MediaDir = @('C:\media', 'D:\- Testing Files'),
+    [string[]]$MediaDir = @(),
+    [switch]$ChooseMedia,
+    [string[]]$Only = @(),
     [switch]$SkipBuild,
     [switch]$SilentPart1,
-    [ValidateSet('1', '2', 'both')][string]$Part = 'both'
+    [ValidateSet('1', '2', '3', 'both')][string]$Part = 'both'
 )
 
 $ErrorActionPreference = 'Stop'
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }   # in the body: Windows PowerShell has no $PSScriptRoot in parameter defaults
 $SmokeName = '037A'
 . (Join-Path $PSScriptRoot 'smoke-common.ps1')
+if ($MediaDir.Count -eq 0) { $MediaDir = @($SampleFiles, 'C:\media', 'D:\- Testing Files') }
 
 $Results = New-Object System.Collections.Generic.List[object]
+# -Only: the check ids to run (all when empty).
+$Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+function Wants([string]$Id) { $Only.Count -eq 0 -or $Only -contains $Id }
 $AudioRoot = Join-Path (Split-Path -Parent $Repo) 'Audio'
 
 function Add-Outcome([string]$Id, [string]$Name, [string]$Kind, [string]$Outcome, [string]$Detail, [string]$Comment) {
@@ -133,23 +142,24 @@ if ($Part -in '2', 'both') {
 
     $videoExt = @('.mp4', '.mkv', '.avi', '.mov', '.webm', '.mpg', '.ts', '.wmv')
     $Media = @{
-        Video   = Select-Media 'a music video with clear lip sync or drum hits' $videoExt @('music', 'clip', 'video')
-        Short   = Select-Media 'a SHORT video (under a minute) to loop' $videoExt @('short', 'loop', 'clip')
-        Hd      = Select-Media 'a 1080p video with sound' $videoExt @('1080', 'hd', 'fhd')
-        Quiet   = Select-Media 'a QUIET video or song (older or classical)' ($videoExt + @('.mp3', '.flac', '.m4a')) @('quiet', 'classical', 'old')
-        Cdg     = Select-Media 'a karaoke song: MP3+G (pick the .mp3) or a ZIP' @('.mp3', '.zip') @('karaoke', 'cdg', 'sc')
-        Kar     = Select-Media 'a MIDI karaoke file' @('.kar', '.mid') @('kar')
-        Song    = Select-Media 'any MP3 song (for the no-BASS check)' @('.mp3') @('song')
+        Video   = Select-Media 'a music video with clear lip sync or drum hits' $videoExt @('music', 'clip', 'video') -Preferred 'smoke-clips\avsync [1080p H.264 60fps, mono AAC, 1m00s].mp4'
+        Short   = Select-Media 'a SHORT video (under a minute) to loop' $videoExt @('short', 'loop', 'clip') -Preferred 'smoke-clips\video [1080p H.264 30fps, mono AAC, 30s].mp4'
+        Hd      = Select-Media 'a 1080p video with sound' $videoExt @('1080', 'hd', 'fhd') -Preferred 'edge-cases\LunchLady Land [1080p H.264 23.976fps, stereo AAC, 4m51s].mp4'
+        Quiet   = if (-not (Wants 'M9')) { $null } else { Select-Media 'a QUIET video or song (older or classical)' ($videoExt + @('.mp3', '.flac', '.m4a')) @('quiet', 'classical', 'old') }
+        Cdg     = Select-Media 'a karaoke song: MP3+G (pick the .mp3) or a ZIP' @('.mp3', '.zip') @('karaoke', 'cdg', 'sc') -Preferred 'karaoke\karaoke.mp3'
+        Kar     = Select-Media 'a MIDI karaoke file' @('.kar', '.mid') @('kar') -Preferred 'karaoke\abba_-_dancing_queen2.kar'
+        Song    = Select-Media 'any MP3 song (for the plain song check)' @('.mp3') @('song') -Preferred 'edge-cases\audio-only [MP3 stereo, 7m06s].mp3'
     }
     $Exe = @{ Wpf = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player' }
 
     function Run-Check([string]$Id, [string]$Name, [string]$MediaKey, [string[]]$PlayerArgs, [string[]]$Steps, [string]$LogPattern) {
+        if (-not (Wants $Id)) { return }
         Write-Host ''
         Write-Host ("--- $Id $Name ---") -ForegroundColor Cyan
         if ($MediaKey -and -not $Media[$MediaKey]) { Add-Outcome $Id $Name 'manual' 'SKIP' 'no file chosen' ''; return }
         $a = (Read-Host 'Press Enter to start, or S to skip').Trim().ToLowerInvariant()
         if ($a -eq 's') { Add-Outcome $Id $Name 'manual' 'SKIP' 'skipped' ''; return }
-        $args2 = @('--audio=fatz') + $PlayerArgs
+        $args2 = @() + $PlayerArgs
         if ($MediaKey) { $args2 += $Media[$MediaKey] }
         $proc = Start-Player 'Wpf' $args2
         [void](Wait-Window $proc)
@@ -183,8 +193,8 @@ if ($Part -in '2', 'both') {
         'Play it: the graphics wipe in time with the singing.',
         'Seek, pause and resume, and loop: the picture is right after each.',
         'A song you know scrolls smoothly should glide line by line.') 'Loaded CDG'
-    Run-Check 'M6b' 'scaled CD+G (smoothed, outlined)' 'Cdg' @('--cdg-scale=4', '--cdg-effects') @(
-        'The same song, now drawn by FatzAudio in full colour, smoothed, with an outline and shadow.',
+    Run-Check 'M6b' 'scaled CD+G (smoothed, outlined)' 'Cdg' @('--cdg-scale=8', '--cdg-effects') @(
+        'The same song, now drawn by FatzAudio in full colour with traced, rounded edges (smoothness 8), an outline and a shadow.',
         'It fills the height of the window, sharp at any window size; seek and pause still show the right picture.',
         'Pass if it looks right and stays in time (it is optional: the classic picture stays the default).') 'Loaded CDG|Scaled CD\+G'
     Run-Check 'M7' 'Audio-mode soundtrack' 'Video' @('--mode=audio') @(
@@ -200,58 +210,201 @@ if ($Part -in '2', 'both') {
         'The same music video as M1, but FatzAudio decodes its sound (the Log says "FatzAudio decodes the soundtrack").',
         'Watch lips or drum hits for 20 seconds, seek a few times, set tempo to 125%.',
         'Pass if sync is as good as in M1 (this switch stays off by default until you say it is good).') 'decodes the soundtrack'
-    # M10: network radio needs a URL.
-    Write-Host ''
-    Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
-    $url = (Read-Host 'Paste an http:// or https:// radio stream URL (or press Enter to skip)').Trim()
-    if ($url) {
-        $proc = Start-Player 'Wpf' @('--audio=fatz', "--url=$url")
-        [void](Wait-Window $proc)
-        Say-Do @('It plays and the song title appears.')
-        Ask-Outcome 'M10' 'network radio'
-        Stop-Player $proc
-    } else { Add-Outcome 'M10' 'network radio' 'manual' 'SKIP' 'no URL' '' }
+    # M10: network radio. The title is checked in the log; the sound by ear.
+    if (Wants 'M10') {
+        Write-Host ''
+        Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
+        $defaultUrl = 'http://ice2.somafm.com/groovesalad-128-mp3'
+        $url = (Read-Host "Press Enter for SomaFM Groove Salad ($defaultUrl), paste another http(s) stream URL, or S to skip").Trim()
+        if ($url -eq '') { $url = $defaultUrl } elseif ($url.ToLowerInvariant() -eq 's') { $url = '' }
+        if ($url) {
+            $proc = Start-Player 'Wpf' @("--url=$url")
+            [void](Wait-Window $proc)
+            Say-Do @(
+                'It plays with sound.',
+                'The song title appears to the right of the URL box (the panel with NEXT, FADE and URL); it can take up to a song change.')
+            Ask-Outcome 'M10' 'network radio'
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M10'
+            $titles = @(if ($log) { Select-String -Path $log -Pattern 'Stream metadata:' -SimpleMatch })
+            $detail = if ($titles.Count -gt 0) { 'title read: ' + ($titles[-1].Line -replace '^.*Stream metadata:\s*', '') } else { 'no title in the log (the station may not send one)' }
+            Add-Outcome 'M10t' 'network radio title (from the log)' 'auto' $(if ($titles.Count -gt 0) { 'PASS' } else { 'FAIL' }) $detail ''
+        } else { Add-Outcome 'M10' 'network radio' 'manual' 'SKIP' 'no URL' '' }
+    }
 
-    # M11: output device and device events.
-    Write-Host ''
-    Write-Host '--- M11 output device and plug/unplug ---' -ForegroundColor Cyan
-    Say 'Your Windows sound devices (playback devices are usually "Speakers ...", "Headphones ...", or a TV name):'
-    Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Sort-Object FriendlyName | ForEach-Object { Say-Info ('  ' + $_.FriendlyName) }
-    Say-Info '  (a name FatzAudio does not know plays on the default, and the Log lists the names it knows)'
-    $device = (Read-Host 'Type the name of a device that is NOT your default (a USB headset, HDMI), or Enter to skip').Trim()
-    if ($device -and $Media['Song']) {
-        $proc = Start-Player 'Wpf' @('--audio=fatz', "--audio-device=$device", $Media['Song'])
-        [void](Wait-Window $proc)
-        Say-Do @(
-            'The sound comes out of that device (the Log says "ready on the <name> output device").',
-            'Unplug that device while it plays (if you can): playback moves to the default and goes on.',
-            'Plug something in and out again: the Log shows one "Audio device change detected" line each.')
-        Ask-Outcome 'M11' 'output device and plug/unplug'
-        Stop-Player $proc
-        $log = Save-RunLog 'Wpf' 'M11'
-        if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|not found' 12 }
-    } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
+    # M11: output device and device events. Windows can switch the device off and on for the "unplug" (admin prompt).
+    if (Wants 'M11') {
+        Write-Host ''
+        Write-Host '--- M11 output device and plug/unplug ---' -ForegroundColor Cyan
+        Say 'Your Windows sound devices (playback devices are usually "Speakers ...", "Headphones ...", or a TV name):'
+        $endpoints = @(Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Sort-Object FriendlyName)
+        for ($i = 0; $i -lt $endpoints.Count; $i++) { Say-Info ('  {0,2}) {1}' -f ($i + 1), $endpoints[$i].FriendlyName) }
+        Say-Info '  (a name FatzAudio does not know plays on the default, and the Log lists the names it knows)'
+        $endpoint = $null
+        while ($true) {
+            $a = (Read-Host 'Type the number of a device that is NOT your default (a USB headset, HDMI), or Enter to skip').Trim()
+            $n = 0
+            if ($a -eq '') { break }
+            if ([int]::TryParse($a, [ref]$n) -and $n -ge 1 -and $n -le $endpoints.Count) { $endpoint = $endpoints[$n - 1]; break }
+            Say-Warn '  Not one of the numbers above, try again.'
+        }
+        if ($endpoint -and $Media['Song']) {
+            $device = $endpoint.FriendlyName
+            $proc = Start-Player 'Wpf' @("--audio-device=$device", $Media['Song'])
+            [void](Wait-Window $proc)
+            Say-Do @('The sound comes out of that device.')
+            Ask-Outcome 'M11' 'plays on the chosen output device'
+            # Windows will not switch HDMI audio or built-in speakers off while they play (tried 2026-11-11: the
+            # output entry "switches off" and keeps playing; the card refuses), so the unplug is by hand.
+            Say-Info 'Unplug test: only for a device with a cable you can pull (a USB headset, mic or speaker).'
+            $unplug = Ask-YesNo 'Can you pull this device''s cable now'
+            if ($unplug -eq 'yes') {
+                Say-Do @('Pull the cable while it plays: the sound moves to your default device within about a second and goes on.', 'Plug it back in.')
+                Ask-Outcome 'M11u' 'unplug: playback moves to the default and goes on'
+            } else { Add-Outcome 'M11u' 'unplug: playback moves to the default and goes on' 'manual' 'SKIP' 'no cable to pull' '' }
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M11'
+            if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|moved the output|not found' 12 }
+            $ready = $log -and @(Select-String -Path $log -Pattern 'ready on the' -SimpleMatch).Count -gt 0
+            Add-Outcome 'M11l' 'the Log names the output device' 'auto' $(if ($ready) { 'PASS' } else { 'FAIL' }) '' ''
+            if ($unplug -eq 'yes') {
+                $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
+                Add-Outcome 'M11e' 'unplug reported in the Log' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
+            }
 
-    # M12: no BASS at all (the script prepares a copy without the BASS DLLs).
+            # M11d: a change of the Windows default, which a player on the default follows (no cable needed).
+            Write-Host ''
+            Write-Host '--- M11d default device change ---' -ForegroundColor Cyan
+            $proc = Start-Player 'Wpf' @($Media['Song'])
+            [void](Wait-Window $proc)
+            Start-Process 'ms-settings:sound' -ErrorAction SilentlyContinue
+            Say-Do @(
+                'Sound settings opened. While the song plays, choose another output device (for example MX279) at the top.',
+                'The sound moves to it within about a second. Then choose your usual device again: it moves back.')
+            Ask-Outcome 'M11d' 'the player follows a change of the Windows default'
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M11d'
+            if ($log) { Add-LogExcerpt $log 'Audio device change|moved the output' 8 }
+            $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
+            Add-Outcome 'M11de' 'default change reported in the Log' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
+        } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
+    }
+    # M12: no BASS DLLs anywhere in the player folder, and a song still plays.
+    if (Wants 'M12') {
     Write-Host ''
-    Write-Host '--- M12 no BASS at all ---' -ForegroundColor Cyan
+    Write-Host '--- M12 no BASS DLLs, song plays ---' -ForegroundColor Cyan
     if ($Media['Song']) {
-        $copy = Join-Path $Repo '..\..\work\fatzmedia\Video\scratch\player-without-bass'
-        $copy = [IO.Path]::GetFullPath($copy)
-        if (Test-Path $copy) { Remove-Item $copy -Recurse -Force }
-        Copy-Item (Split-Path $Exe['Wpf']) $copy -Recurse
-        Get-ChildItem $copy -Recurse -Filter 'bass*.dll' | Remove-Item -Force
-        Say-Info "A copy of the player without any bass*.dll is in $copy (deleted after this check)."
-        $copyExe = Join-Path $copy (Split-Path $Exe['Wpf'] -Leaf)
-        $proc = Start-Process -FilePath $copyExe -ArgumentList ('--audio=fatz "' + $Media['Song'] + '"') -WorkingDirectory $copy -PassThru
+        $bassFiles = @(Get-ChildItem (Split-Path $Exe['Wpf']) -Recurse -Filter 'bass*.dll' -ErrorAction SilentlyContinue)
+        if ($bassFiles.Count -gt 0) { Say-Info ('Found BASS DLLs in the player folder: ' + (($bassFiles | ForEach-Object Name) -join ', ')) }
+        else { Say-Info 'The player folder contains no bass*.dll.' }
+        $proc = Start-Player 'Wpf' @($Media['Song'])
         [void](Wait-Window $proc)
         Say-Do @('The song plays with sound. Also open the music video from M1: it plays with sound.')
-        Ask-Outcome 'M12' 'no BASS DLLs at all'
+        Ask-Outcome 'M12' 'no BASS DLLs, song plays'
         Stop-Player $proc
-        Remove-Item $copy -Recurse -Force -ErrorAction SilentlyContinue
-    } else { Add-Outcome 'M12' 'no BASS DLLs at all' 'manual' 'SKIP' 'no song chosen' '' }
+    } else { Add-Outcome 'M12' 'no BASS DLLs, song plays' 'manual' 'SKIP' 'no song chosen' '' }
+    }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Part 3: automatic player checks (no input; each player opens, plays a few seconds and closes)
+# ---------------------------------------------------------------------------------------------
+if (($Part -in '2', '3', 'both') -and ((Wants 'A8') -or (Wants 'A9'))) {
+    Write-Host ''
+    Write-Host ('=' * 78) -ForegroundColor Cyan
+    Write-Host ' PART 3: automatic player checks (about 5 minutes, nothing to do)' -ForegroundColor Cyan
+    Write-Host ('=' * 78) -ForegroundColor Cyan
+    Say 'Each player opens on your screen, plays a file for a few seconds and closes by itself. Please do not click in them.'
+    Add-Result ''
+    Add-Result '== PART 3: automatic player checks =='
+
+    $Exe = @{
+        Wpf      = Find-Exe 'FatzMedia.Video.Sample.Player' 'FatzMedia.Video.Sample.Player'
+        Ava      = Find-Exe 'FatzMedia.Video.Sample.Player.Avalonia' 'FatzMedia.Video.Sample.Player.Avalonia'
+        WinForms = Find-Exe 'FatzMedia.Video.Sample.Player.WinForms' 'FatzMedia.Video.Sample.Player.WinForms'
+    }
+    $AutoMedia = [ordered]@{
+        'MP3 song'        = 'edge-cases\audio-only [MP3 stereo, 7m06s].mp3'
+        'MIDI karaoke'    = 'karaoke\abba_-_dancing_queen2.kar'
+        'tracker module'  = 'module-music\mario.mod'
+        'MP3+G karaoke'   = 'karaoke\karaoke.mp3'
+        'video with sound' = 'smoke-clips\video [1080p H.264 30fps, mono AAC, 30s].mp4'
+    }
+
+    # Starts one player with one file, waits for the load, lets it play, closes it and returns its saved log.
+    function Invoke-AutoRun([string]$Kind, [string]$File, [string]$Tag, [int]$PlaySeconds = 5) {
+        $proc = Start-Player $Kind @($File)
+        if (-not (Wait-Window $proc)) { Stop-Player $proc; return Save-RunLog $Kind $Tag }
+        $live = Join-Path $LogDir $LogNames[$Kind]
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.Elapsed.TotalSeconds -lt 25 -and -not $proc.HasExited) {
+            if (Test-Path $live) {
+                if (@(Select-String -Path $live -Pattern '[Status]' -SimpleMatch | Where-Object { $_.Line -match 'Loaded:|Could not load|Load failed' }).Count -gt 0) { break }
+            }
+            Start-Sleep -Milliseconds 300
+        }
+        Start-Sleep -Seconds $PlaySeconds
+        Stop-Player $proc
+        return Save-RunLog $Kind $Tag
+    }
+
+    function Test-LogHas($Log, [string]$Text) { $Log -and @(Select-String -Path $Log -Pattern $Text -SimpleMatch).Count -gt 0 }
+
+    function Get-Problems($Log) {
+        if (-not $Log) { return @() }
+        return @(Select-String -Path $Log -Pattern '[Diagnostic]' -SimpleMatch | Where-Object { $_.Line -match '\[Error\]' } |
+            Select-Object -First 2 | ForEach-Object { $_.Line -replace '^.*\[Diagnostic\]\s*', '' })
+    }
+
+    # A8: every player plays each kind of file through FatzAudio.
+    $n = 0
+    foreach ($kind in @('Wpf', 'Ava', 'WinForms') | Where-Object { Wants 'A8' }) {
+        foreach ($label in $AutoMedia.Keys) {
+            $n++
+            $id = 'A8.' + $n
+            $name = "$($PlayerNames[$kind]) plays a $label"
+            $file = Join-Path $SampleFiles $AutoMedia[$label]
+            if (-not (Test-Path -LiteralPath $file)) { Add-Outcome $id $name 'auto' 'SKIP' "missing $file" ''; continue }
+            $log = Invoke-AutoRun $kind $file ("A8-$kind-" + ($label -replace '[^A-Za-z0-9]+', '-'))
+            $missing = @()
+            if (-not (Test-LogHas $log 'Loaded:')) { $missing += 'it did not load' }
+            if (Test-LogHas $log 'could not start') { $missing += 'FatzAudio did not start' }
+            if (-not ($log -and @(Select-String -Path $log -Pattern '[Stats]' -SimpleMatch | Where-Object { $_.Line -match 'Playing' }).Count -gt 0)) { $missing += 'it never reported Playing' }
+            if ($label -ne 'video with sound' -and -not (Test-LogHas $log 'Audio opened:')) { $missing += 'FatzAudio did not open the audio' }
+            $problems = Get-Problems $log
+            $detail = (@($missing) + @($problems | ForEach-Object { "error: $_" })) -join '; '
+            Add-Outcome $id $name 'auto' $(if ($missing.Count -eq 0 -and $problems.Count -eq 0) { 'PASS' } else { 'FAIL' }) $detail ''
+        }
+    }
+
+    # A9: without fatzaudio.dll the player still starts, plays a video's picture and refuses audio.
+    if (Wants 'A9') {
+    $copy = Join-Path $OutDir 'player-no-fatzaudio'
+    Say-Info "Copying the WPF player to $copy without fatzaudio.dll ..."
+    Copy-Item -Path (Split-Path $Exe['Wpf']) -Destination $copy -Recurse -Force
+    Get-ChildItem -Path $copy -Recurse -File | Where-Object { $_.Name -eq 'fatzaudio.dll' } | Remove-Item -Force
+    $Exe['NoFatz'] = Join-Path $copy (Split-Path $Exe['Wpf'] -Leaf)
+    $LogNames['NoFatz'] = $LogNames['Wpf']
+    $PlayerNames['NoFatz'] = 'WPF player without fatzaudio.dll'
+    try {
+        $video = Join-Path $SampleFiles $AutoMedia['video with sound']
+        $song = Join-Path $SampleFiles $AutoMedia['MP3 song']
+        $log = Invoke-AutoRun 'NoFatz' $video 'A9-video'
+        $missing = @()
+        if (-not (Test-LogHas $log 'could not start')) { $missing += 'no "could not start" warning' }
+        if (-not (Test-LogHas $log 'Loaded:')) { $missing += 'the video did not load' }
+        Add-Outcome 'A9.1' 'no fatzaudio.dll: starts with a warning, video plays picture-only' 'auto' $(if ($missing.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($missing -join '; ') ''
+        $log = Invoke-AutoRun 'NoFatz' $song 'A9-song' -PlaySeconds 1
+        $missing = @()
+        if (-not (Test-LogHas $log 'Could not load')) { $missing += 'the MP3 was not refused' }
+        if (-not (Test-LogHas $log 'Audio engine unavailable')) { $missing += 'no "Audio engine unavailable" error' }
+        Add-Outcome 'A9.2' 'no fatzaudio.dll: an MP3 is refused with a clear error' 'auto' $(if ($missing.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($missing -join '; ') ''
+    }
+    finally {
+        Remove-Item -Path $copy -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    }
+}
 # ---------------------------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------------------------

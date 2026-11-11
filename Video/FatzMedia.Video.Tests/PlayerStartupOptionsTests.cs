@@ -72,7 +72,7 @@ public sealed class PlayerStartupOptionsTests
 
     [Fact]
     public void Parse_NativeDirectoriesKeepTheirOrder() =>
-        Assert.Equal(["/opt/ffmpeg", "C:\\bass"], PlayerStartupOptions.Parse(["--native=/opt/ffmpeg", "--native=", "--native=\"C:\\bass\""]).NativeDirectories);
+        Assert.Equal(["/opt/ffmpeg", "C:\\native libs"], PlayerStartupOptions.Parse(["--native=/opt/ffmpeg", "--native=", "--native=\"C:\\native libs\""]).NativeDirectories);
 
     [Fact]
     public void WithoutStartupMedia_KeepsTheSettingsForAnotherPlayer()

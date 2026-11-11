@@ -39,7 +39,7 @@ The Avalonia adapter targets `net10.0`, but the Windows platform package targets
 
 Run it with `dotnet run -f net10.0` on Linux or `dotnet run -f net10.0-windows7.0` on Windows. If you only target one operating system, use a single target framework and drop the `#if` below.
 
-Put the BASS and FFmpeg libraries in a `native` folder in the project ([Native dependencies](native-dependencies.md), [Running on Linux](linux.md)).
+Put the FFmpeg libraries in a `native` folder in the project ([Native dependencies](native-dependencies.md), [Running on Linux](linux.md)).
 
 ## 2. The application
 

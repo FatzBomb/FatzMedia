@@ -40,24 +40,21 @@ Check also that the surface has a non-zero size: a collapsed or zero-sized contr
 
 | Cause | How to tell | Fix |
 | --- | --- | --- |
-| BASS did not load | `NativeDependencies.IsAudioAvailable` is `false`; diagnostic `BASS not loaded; audio is unavailable.` or `bass.dll not found (audio unavailable)`. Loading an audio file fails with `Audio engine unavailable: BASS libraries not found; <file> was not loaded.` (`NativeLibraryMissing`). Video plays without sound. | Deploy `bass.dll` and `bass_fx.dll` (`libbass.so` and `libbass_fx.so` on Linux) where the player looks. See [Native libraries not found](#native-libraries-not-found). |
+| FatzAudio did not start | Warning in `Bootstrap`: `Audio engine FatzAudio could not start (...). Audio engine unavailable: video plays without sound; audio media will not open.` Loading an audio file fails with `NativeLibraryMissing`. Video plays without sound. | Check that `fatzaudio.dll` (`libfatzaudio.so` on Linux) is next to the application and is the version the `FatzMedia.Audio` binding expects; it is built from `Audio\` and copied by the build. See [Audio engine](../audio/audio-engine.md). |
 | The player is in `Background` mode | Background mode never starts the audio engine. | Use `Full` mode. |
 | The volume is zero | `player.Effects.Volume` is 0. | Raise it. |
-| Another application holds the device | Warning in `AudioOutput`: `Audio output unavailable (another application may be using the device exclusively); retrying`, and `AudioDeviceChanged` with `DeviceRemoved`. | Close the other application. The player retries once a second and resumes with `Audio output available again; playback resumed`. |
-| The selected device is missing | Warning in `Bootstrap`: `Audio output device N could not be initialized (...); falling back to Primary.` | See the next section. |
-| A MIDI file is silent | Warning in `BASSMIDI`: `No soundfont found; MIDI playback will be silent.` | Set `MidiSoundfontPath` in the configuration to an `.sf2` or `.dls` file, or install a system soundfont. |
-| The format needs a BASS add-on that is not deployed | `Load` returns `false` or an `UnsupportedFormat` error. | Deploy the add-on, or let FFmpeg decode it: audio that BASS cannot open is decoded through FFmpeg (`AudioFallback` category). MIDI and audio CD still need their BASS add-ons. |
+| The selected device is missing | Warning in `FatzAudioEngine`: `Audio output device '...' was not found; playing on the system default. Devices: ...` (with `NoFallback` the player throws instead). | Pick a device from `FatzAudioOutputDevices.Enumerate()`. See [Output devices](../audio/output-devices.md). |
+| A MIDI file is silent | The system has no General MIDI bank and no soundfont is set. | Set `MidiSoundfontPath` in the configuration to an `.sf2`, `.sf3` or `.dls` file. |
+| The format is not one FatzAudio opens | `Load` returns `false` or an `UnsupportedFormat` error. | Let FFmpeg decode it: audio that FatzAudio cannot open is decoded through FFmpeg (`AudioFallback` category), so deploy FFmpeg. See [Supported formats](../playback/supported-formats.md). |
 
 ## Native libraries not found
 
-The library ships no BASS or FFmpeg binaries; your application deploys them. FFmpeg is required for playback of video and most formats. BASS is needed for audio.
+The library ships no FFmpeg binaries; your application deploys them. FFmpeg is required for playback of video and for audio formats FatzAudio cannot open itself. FatzAudio's library is built with the repository and copied for you. BASS was removed in 037A, so an old `bass.dll` in your folder does nothing.
 
 Look at `player.NativeDependencies.Describe()`. Each line names a file and its status, for example:
 
 ```text
 FFmpeg avcodec-63.dll (required) is missing. Found avcodec-62.dll, a different version; this control needs avcodec-63.dll.
-BASS bass.dll (optional) was found at C:\app\native\bass.dll but failed to load.
-Audio is unavailable: the BASS libraries did not load. Video plays without sound; audio media will not open.
 ```
 
 Typical causes:
@@ -73,11 +70,11 @@ See [Native dependencies](../getting-started/native-dependencies.md) for what to
 
 ## Wrong audio device after a device change
 
-By default (`AudioOutputDeviceIndex = -1`) the player uses the system's primary device, and Windows moves playback when the default changes. If you select a specific device by index, the player keeps that device. Device choices are made when the player is created or reset; a running player does not move to another explicit device.
+By default (`AudioOutputDeviceId = null`) the player uses the system's default device and follows it when the default changes. If you select a specific device, the player keeps that device, and moves to the default only if the device goes away. Device choices are made when the player is created or reset; a running player does not move to another explicit device.
 
-- To follow the system default, leave `AudioOutputDeviceIndex` at `-1`.
-- To switch to another device, create a new player with the new index, or call `Reset` with a new configuration and load the media again. List devices with `AudioOutputDevices.Enumerate()` (Windows). See [Output devices](../audio/output-devices.md).
-- To decide what happens when a chosen device is unavailable, set `AudioOutputFallbackMode`: `FallbackToPrimary` (default) switches to the primary device and logs a warning; `NoFallback` does not route audio elsewhere.
+- To follow the system default, leave `AudioOutputDeviceId` at `null`.
+- To switch to another device, create a new player with the new device id, or call `Reset` with a new configuration and load the media again. List devices with `FatzAudioOutputDevices.Enumerate()`. See [Output devices](../audio/output-devices.md).
+- To decide what happens when a chosen device is unavailable, set `AudioOutputFallbackMode`: `FallbackToPrimary` (default) switches to the default device and logs a warning; `NoFallback` does not route audio elsewhere.
 - Subscribe to `AudioDeviceChanged`. Its `Kind` is `DefaultDeviceChanged`, `DeviceStateChanged`, `DeviceRemoved`, `DeviceAdded` or `Unrecoverable`, and `DeviceName` and `FailureMessage` say what happened. The player does not change playback itself on such a notification. It is for your UI.
 
 ```csharp
@@ -132,4 +129,4 @@ See also [Subtitles](../subtitles/subtitles.md).
 - The full diagnostics log, with levels and categories.
 - `player.NativeDependencies.Describe()` and `SearchPaths`.
 - The renderer in use, the surface's `PresentationPath` and `PresentationPathReason`, and the `VideoDecoder` line for the file.
-- The configuration, the OS, the GPU and driver, and the FFmpeg and BASS versions.
+- The configuration, the OS, the GPU and driver, and the FFmpeg and FatzAudio versions.

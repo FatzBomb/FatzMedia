@@ -62,13 +62,13 @@ public sealed class PlayerViewModelTests
     [Fact]
     public async Task Start_WhenTheEngineCannotStart_KeepsTheErrorAndDisablesTheControls()
     {
-        var engine = new TestPlayerEngineFactory { CreateFailure = new DllNotFoundException("bass.dll") };
+        var engine = new TestPlayerEngineFactory { CreateFailure = new DllNotFoundException("avcodec-62.dll") };
         await using var harness = await PlayerViewModelHarness.StartAsync(engine: engine);
         var viewModel = harness.ViewModel;
 
         Assert.IsType<DllNotFoundException>(viewModel.StartupError);
         Assert.Null(viewModel.Player);
-        Assert.Equal("Native DLLs unavailable: bass.dll", viewModel.StatusText);
+        Assert.Equal("Native DLLs unavailable: avcodec-62.dll", viewModel.StatusText);
         Assert.False(viewModel.CanOpen);
         Assert.False(viewModel.PlayCommand.CanExecute(null));
         Assert.False(viewModel.LoadMediaCommand.CanExecute("song.mp3"));

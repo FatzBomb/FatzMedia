@@ -99,16 +99,15 @@ for the Direct3D11 renderer, which feeds the surface's shared GPU image path (DX
 
 ## Native libraries
 
-The packages ship no BASS or FFmpeg binaries. Directories are searched in this order; only existing
+The packages ship no FFmpeg binaries. Directories are searched in this order; only existing
 ones are passed to the engine:
 
 1. `--native=<dir>` arguments, in order;
-2. `FATZBOMB_LINUX_FFMPEG_DIR` (the variable the Linux tests use) and `FATZBOMB_LINUX_BASS_DIR`;
+2. `FATZBOMB_LINUX_FFMPEG_DIR` (the variable the Linux tests use);
 3. `native/` next to the executable (copied from `FatzMedia.Video.Sample.Player.Avalonia/native/` at
    build/publish; created empty if missing) and `runtimes/<rid>/native`.
 
-Needed: BASS and BASS_FX (`libbass.so`/`libbass_fx.so` or the x64 DLLs), optional BASS MIDI/add-ons, and
-FFmpeg 9.x (`libavcodec.so.63` ABI / `avcodec-63.dll`). See `docs/NATIVE_DEPENDENCIES.md`. Without them the
+Needed: FFmpeg 9.x (`libavcodec.so.63` ABI / `avcodec-63.dll`). FatzAudio's library (`libfatzaudio.so` / `fatzaudio.dll`) comes from the repository build. See `docs/NATIVE_DEPENDENCIES.md`. Without them the
 panels stay disabled and the log lists exactly which library is missing.
 
 ## Notes

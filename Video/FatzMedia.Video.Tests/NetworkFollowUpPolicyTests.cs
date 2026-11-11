@@ -33,7 +33,7 @@ public sealed class NetworkFollowUpPolicyTests
         Assert.True(row.IsBuffered);
         Assert.True(row.SupportsRetry);
         Assert.True(row.HasStreamMetadata);
-        // The same rule as 014A's BASS row.
+        // The same rule as 014A's network audio row.
         Assert.Equal(MediaSourceCapabilityMatrix.ForNetwork(new NetworkStreamProbe(null, false, false)), row);
     }
 

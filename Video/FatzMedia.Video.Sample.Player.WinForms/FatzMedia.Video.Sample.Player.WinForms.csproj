@@ -14,7 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
-    <ProjectReference Include="..\FatzMedia.Video.Audio\FatzMedia.Video.Audio.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj" />
     <ProjectReference Include="..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj" />
@@ -31,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- BASS/FFmpeg DLLs dropped into native/ (not tracked) are copied next to the app. -->
+    <!-- FFmpeg DLLs dropped into native/ (not tracked) are copied next to the app. -->
     <None Update="native\**\*.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="native\**\*.sf2" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

@@ -9,8 +9,8 @@ namespace FatzMedia.Video.Pipeline;
 
 /// <summary>
 /// Plays the soundtrack of a video file with no video decoder (Stage 043A, Audio mode). It wraps
-/// the <see cref="VideoAudioEngine"/> that video playback already uses (FFmpeg decode into a BASS or
-/// FatzAudio push stream, with tempo, pitch, equalizer, fades and normalization) and runs the decode pump
+/// the <see cref="VideoAudioEngine"/> that video playback already uses (FFmpeg decode into a FatzAudio push
+/// stream, with tempo, pitch, equalizer, fades and normalization) and runs the decode pump
 /// that <see cref="VideoPipeline"/> otherwise drives, so the file plays as plain audio content.
 /// </summary>
 /// <remarks>
@@ -33,7 +33,7 @@ namespace FatzMedia.Video.Pipeline;
 /// rest.
 /// </para>
 /// </remarks>
-sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide, IMidiEventReaderSource
+sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide
 {
     internal const double EndToleranceSeconds = 0.05;
     internal const double EndStallSeconds = 1.0;
@@ -53,7 +53,7 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     MediaSourceCapabilities? _networkCapabilities;
     NetworkBufferingMonitor? _bufferingMonitor;
 
-    /// <param name="output">Where the soundtrack plays (BASS, or the FatzAudio engine's device); owned.</param>
+    /// <param name="output">Where the soundtrack plays (the audio engine's device); owned.</param>
     internal SoundtrackAudioEngine(IPushAudioOutput output)
     {
         _audio = new VideoAudioEngine(output, null);
@@ -65,10 +65,6 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     }
 
     public AudioEngineState State => _audio.State;
-    public int PlayHandle => _audio.PlayHandle;
-    public int SourceHandle => _audio.SourceHandle;
-
-    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => ((IMidiEventReaderSource)_audio).GetMidiEventReader();
 
     public bool IsOpen => _audio.IsOpen;
 
@@ -352,13 +348,11 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
             else if (!LoopPlayback && _audio.State == AudioEngineState.Playing)
             {
                 // Only a stall with nothing left to decode is the end: a stall while the decoder
-                // still delivers audio, or while BASS has parked the channel because the output
-                // device was lost (ENG-032), restarts the stall timer.
+                // still delivers audio restarts the stall timer.
                 var position = _audio.Position;
                 if (double.IsNaN(lastPosition)
                     || Math.Abs(position - lastPosition) > StallPositionEpsilonSeconds
-                    || decoded
-                    || _audio.IsChannelPausedByDevice())
+                    || decoded)
                 {
                     lastPosition = position;
                     stallStarted = Stopwatch.GetTimestamp();

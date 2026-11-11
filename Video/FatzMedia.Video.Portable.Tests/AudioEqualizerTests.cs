@@ -1,6 +1,5 @@
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
-using FatzMedia.Video.Core.Audio.Filters;
 using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Tests;
@@ -63,46 +62,6 @@ public sealed class AudioEqualizerSettingsTests
         Assert.Equal(AudioEqualizerSettings.CreateGraphic10Band(1, 2).GetHashCode(), AudioEqualizerSettings.CreateGraphic10Band(1, 2).GetHashCode());
         Assert.NotEqual(AudioEqualizerSettings.CreateGraphic10Band(1, 2), AudioEqualizerSettings.CreateGraphic10Band(1, 3));
     }
-}
-
-public sealed class EqualizerUpdatePlannerTests
-{
-    [Fact]
-    public void NotEffective_RemovesOnlyWhenAttached()
-    {
-        Assert.Equal(EqualizerUpdateAction.None, EqualizerUpdatePlanner.Plan(0, false, AudioEqualizerSettings.Disabled));
-        Assert.Equal(EqualizerUpdateAction.Remove, EqualizerUpdatePlanner.Plan(10, true, AudioEqualizerSettings.CreateGraphic10Band()));
-    }
-
-    [Fact]
-    public void Effective_CreatesUpdatesOrRebuilds()
-    {
-        var ten = AudioEqualizerSettings.CreateGraphic10Band(4);
-
-        Assert.Equal(EqualizerUpdateAction.Create, EqualizerUpdatePlanner.Plan(0, false, ten));
-        Assert.Equal(EqualizerUpdateAction.Update, EqualizerUpdatePlanner.Plan(10, true, ten));
-        Assert.Equal(EqualizerUpdateAction.Rebuild, EqualizerUpdatePlanner.Plan(3, true, ten));
-    }
-
-    [Theory]
-    [InlineData(16000, 44100, 16000, 6)]
-    [InlineData(16000, 22050, 9922.5, 0)]
-    [InlineData(16000, 32000, 14400, 0)]
-    [InlineData(8000, 22050, 8000, 6)]
-    [InlineData(16000, 0, 16000, 6)]
-    public void ForSampleRate_KeepsBandsBelowNyquistAndNeutralizesTheRest(double center, int sampleRate, double expectedCenter, double expectedGain)
-    {
-        var band = new AudioEqualizerBand(center, 6, 1);
-
-        (var centerHz, var gainDb) = EqualizerUpdatePlanner.ForSampleRate(band, sampleRate);
-
-        Assert.Equal(expectedCenter, centerHz, 3);
-        Assert.Equal(expectedGain, gainDb);
-    }
-
-    [Fact]
-    public void Equalizer_RunsBeforeGainAndFadeStages() =>
-        Assert.True(AudioFilterStage.EqualizerPriority > AudioFilterStage.GainPriority);
 }
 
 public sealed class PlayerEqualizerTests
