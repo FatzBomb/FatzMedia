@@ -441,6 +441,64 @@ fa_result fa_device_reopen_mode(fa_device* d, fa_latency_mode mode, void (*betwe
     return r;
 }
 
+FA_API fa_result FA_CALL fa_device_move(fa_device* device, const char* device_id)
+{
+    ma_device_config cfg;
+    ma_device_id id, old_id;
+    int has_id, old_has_id, ok;
+    fa_result r;
+    if (!device) return FA_ERROR_INVALID_ARG;
+    memset(&id, 0, sizeof(id));
+    r = fa_device_parse_id(device->engine, FA_DEVICE_PLAYBACK, device_id, &id, &has_id);
+    if (r != FA_OK) return r;
+    fa_mutex_lock(&device->life_lock);
+    if (fa_load32(&device->closing)) {
+        fa_mutex_unlock(&device->life_lock);
+        return FA_ERROR_INVALID_ARG;
+    }
+    old_id = device->open_id;
+    old_has_id = device->open_has_id;
+    if (has_id == old_has_id && (!has_id || memcmp(&id, &old_id, sizeof(id)) == 0) && device->device_ok &&
+        !fa_load32(&device->lost) && (!fa_load32(&device->want_started) || ma_device_is_started(&device->device))) {
+        /* Already there and playing (the engine reopened it on the default after a loss): no second gap. */
+        fa_mutex_unlock(&device->life_lock);
+        return FA_OK;
+    }
+    fa_store32(&device->reopening, 1);
+    if (device->device_ok) {
+        ma_device_uninit(&device->device);   /* waits for its callback: none runs until the move */
+        device->device_ok = 0;
+    }
+    /* The same mix rate, so the streams keep their chains, positions and clock. */
+    cfg = device_config(device, has_id ? &id : NULL, device->rate);
+    ok = ma_device_init(&device->engine->context, &cfg, &device->device) == MA_SUCCESS;
+    if (ok) {
+        device->open_id = id;
+        device->open_has_id = has_id;
+    } else {
+        /* That output cannot be opened: stay on the one before. */
+        r = FA_ERROR_DEVICE;
+        cfg = device_config(device, old_has_id ? &old_id : NULL, device->rate);
+        ok = ma_device_init(&device->engine->context, &cfg, &device->device) == MA_SUCCESS;
+    }
+    if (ok) {
+        device->device_ok = 1;
+        store_latency(device);
+        if (device->volume != 1.0f) ma_device_set_master_volume(&device->device, device->volume);
+    }
+    fa_store32(&device->reopening, 0);
+    if (!ok || (fa_load32(&device->want_started) && ma_device_start(&device->device) != MA_SUCCESS)) {
+        /* Neither opens now: the event thread reopens it on the default, as after a loss. */
+        fa_store64(&device->lost_at, fa_monotonic_ns());
+        fa_store32(&device->lost, 1);
+        fa_wake_signal(&device->engine->event_wake);
+    } else {
+        fa_store32(&device->lost, 0);   /* open again: a loss before the move is over */
+    }
+    fa_mutex_unlock(&device->life_lock);
+    return r;
+}
+
 static int needs_service(fa_device* d, int64_t now)
 {
     if (fa_load32(&d->rerouted)) return 1;

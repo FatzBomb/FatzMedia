@@ -110,7 +110,34 @@ using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true
 | The device is unplugged or disabled while started (a chosen USB interface, or the default on a system that doesn't reroute) | The engine reopens the output on the system default at the same mix rate. Streams stay attached and play on from where they were, the device clock keeps counting, and every stream gets `FA_EVENT_DEVICE_CHANGED` with value 1. The `fa_device*` stays valid: from then on it is the default device, with the master volume you set (`fa_device_set_volume`). The system gets about 0.3 s to reroute a default device itself first, so a default output is never reopened twice |
 | No output is available at all | Silence; the engine tries again every second, and the device starts by itself once an output appears (`fa_device_is_started` keeps reporting what you asked for, and `fa_device_set_volume` still takes a volume for it) |
 
-The latency can differ on the new output; `fa_device_get_latency` and the presentation clock pick it up at once. A device that comes back (the USB interface plugged in again) is not switched back to: reopen it with `fa_device_open` and move the streams with `fa_stream_attach` if you want it.
+The latency can differ on the new output; `fa_device_get_latency` and the presentation clock pick it up at once. A device that comes back (the USB interface plugged in again) is not switched back to by itself: notice it in the device list and move the output back with `fa_device_move` (below).
+
+## Moving the output to another device
+
+`fa_device_move` moves a running device to another output (an id from `fa_device_list`, or NULL for the system
+default, which it then follows) at the same mix rate. Everything on it plays on: streams keep their position, buses
+and the clock go on, volume and mute stay; the gap is about one device start. The usual use is bringing the sound
+back to the output the user chose when it returns: remember its id when it goes away (the engine has reopened the
+device on the default), watch the device list, and move back once the id is there again. No
+`FA_EVENT_DEVICE_CHANGED` is raised for a move: the app asked for it. When the new output cannot be opened, the
+call returns `FA_ERROR_DEVICE` and the device stays where it was.
+
+```c
+/* chosen_id: the id the user picked, kept while it was away */
+fa_device_info now[64];
+uint32_t count = 0, i;
+now[0].struct_size = sizeof(now[0]);
+fa_device_list(engine, FA_DEVICE_PLAYBACK, now, 64, &count);
+for (i = 0; i < count && i < 64; i++)
+    if (strcmp(now[i].id, chosen_id) == 0 && fa_device_move(device, chosen_id) == FA_OK)
+        break;   /* back on the chosen output */
+```
+
+```csharp
+var back = engine.ListDevices(DeviceKind.Playback).FirstOrDefault(d => d.Id == chosenId);
+if (back is not null)
+    output.MoveTo(back);   // back on the chosen output
+```
 
 ## Watching the device list
 

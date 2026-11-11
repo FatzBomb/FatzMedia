@@ -241,7 +241,7 @@ FA_API fa_result FA_CALL fa_format_get_info(uint32_t index, fa_format_info* out_
 
 ### Devices
 
-Functions: `fa_device_count`, `fa_device_get_info`, `fa_device_open`, `fa_device_close`, `fa_device_start`, `fa_device_stop`, `fa_device_is_started`, `fa_device_set_volume`, `fa_device_get_volume`, `fa_device_set_mute`, `fa_device_get_mute`, `fa_device_get_latency`, `fa_device_get_time`
+Functions: `fa_device_count`, `fa_device_get_info`, `fa_device_list`, `fa_device_open`, `fa_device_move`, `fa_device_close`, `fa_device_start`, `fa_device_stop`, `fa_device_is_started`, `fa_device_set_volume`, `fa_device_get_volume`, `fa_device_set_mute`, `fa_device_get_mute`, `fa_device_get_latency`, `fa_device_get_time`
 
 ```c
 typedef enum fa_device_type { FA_DEVICE_PLAYBACK = 1, FA_DEVICE_CAPTURE = 2 } fa_device_type;
@@ -258,12 +258,29 @@ typedef struct fa_device_info {
 
 FA_API fa_result FA_CALL fa_device_count(fa_engine* engine, fa_device_type type, uint32_t* out_count);
 FA_API fa_result FA_CALL fa_device_get_info(fa_engine* engine, fa_device_type type, uint32_t index, fa_device_info* out_info);
+/* Every device of a type from one enumeration, cheap enough to poll (to notice devices
+ * plugged in or removed, or a new default): id, name, type and is_default; no format
+ * query, so native_sample_rate and native_channels are 0 (fa_device_get_info has them).
+ * Fills up to `capacity` entries of `out_infos`, whose elements are each
+ * out_infos[0].struct_size bytes (set it on the first; capacity 0 and out_infos NULL just
+ * count). *out_count is the number of devices, which may exceed capacity. */
+FA_API fa_result FA_CALL fa_device_list(fa_engine* engine, fa_device_type type, fa_device_info* out_infos, uint32_t capacity, uint32_t* out_count);
 
 /* device_id NULL = system default; follows default-device changes where the system
  * reroutes (WASAPI, Core Audio). A started device that goes away (unplugged) is
  * reopened on the default at the same rate, its streams playing on; every stream
  * on it gets FA_EVENT_DEVICE_CHANGED (value 0 = rerouted, 1 = reopened). */
 FA_API fa_result FA_CALL fa_device_open(fa_engine* engine, const char* device_id, fa_device** out_device);
+/* Moves an open device to another output (device_id as for fa_device_open; NULL = the
+ * system default, which it then follows) at the same mix rate: its streams, buses and
+ * clock play on, with a gap of about one device start, and its volume and mute stay.
+ * Use it to bring the sound back to an output the user chose once it is plugged in
+ * again (a device that goes away is reopened on the default). No FA_EVENT_DEVICE_CHANGED
+ * is raised: the app asked for the move. A move to the output it already plays on does
+ * nothing. FA_ERROR_NOT_FOUND / FA_ERROR_INVALID_ARG for an unknown or malformed id;
+ * FA_ERROR_DEVICE when that output cannot be opened (the device stays on the output it
+ * had). */
+FA_API fa_result FA_CALL fa_device_move(fa_device* device, const char* device_id);
 /* Detaches every stream still attached (they keep their position) and closes the device. */
 FA_API void FA_CALL fa_device_close(fa_device* device);
 /* Start and stop are idempotent: starting a running device or stopping a stopped

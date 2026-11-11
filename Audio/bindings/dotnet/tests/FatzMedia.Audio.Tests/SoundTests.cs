@@ -144,7 +144,14 @@ public class SoundTests
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (Volatile.Read(ref ended) < 8 && DateTime.UtcNow < deadline) Thread.Sleep(1);
             var dispose = Task.Run(sound.Dispose);
-            Assert.True(await Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(10))) == dispose, $"Dispose hung in round {round}");
+            try
+            {
+                await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (TimeoutException)
+            {
+                Assert.Fail($"Dispose hung in round {round}");
+            }
         }
     }
 

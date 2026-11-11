@@ -153,6 +153,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_ChannelLock | Not needed: parameter changes are applied atomically per buffer | — | ➖ (by design) |
 | Cue / preview on headphones (a second `BASS_Init` device + `BASS_ChannelSetDevice`) | A second `fa_device_open` by device id, and `fa_stream_attach` the preview stream to it; attaching it to the main device later puts it on air from where it is ([devices](../features/devices.md#cue-output-previewing-on-a-second-device)) | `engine.OpenOutput(headphones)`, `stream.PlayOn(cue)` | ✅ |
 | BASS_DEVICE_REINIT / BASS_CONFIG_DEV_DEFAULT, and reinitialising after BASS_ERROR_DEVICE when a device is unplugged | Automatic: an unplugged device is reopened on the default, streams play on, `FA_EVENT_DEVICE_CHANGED` tells you ([devices](../features/devices.md#when-the-device-changes-or-goes-away)) | `DeviceChanged` | ✅ |
+| Getting the sound back on a device that was unplugged and returned (BASS: `BASS_Init` it again, `BASS_ChannelSetDevice`) | `fa_device_move` moves the whole output back once the device is in `fa_device_list` again ([devices](../features/devices.md#moving-the-output-to-another-device)) | `output.MoveTo(device)` | ✅ |
 | BASS_ChannelSetDevice / GetDevice | `fa_stream_attach` to the new device moves the stream and keeps its position; `fa_stream_detach` removes it | `stream.PlayOn(other)`, `stream.Detach()`, `stream.Device` | ✅ |
 | BASS_ChannelRef | Not needed: handles stay valid until you close them | — | ➖ (by design) |
 

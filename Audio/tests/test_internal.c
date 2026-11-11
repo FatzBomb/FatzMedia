@@ -367,6 +367,71 @@ static void test_device_lost_reopens_default(void)
     rec_free(&rec);
 }
 
+/* fa_device_move: the app moves a running device to another output (by id, or back to
+ * the default) at the same rate; its streams play on from where they were, its volume
+ * stays, and no FA_EVENT_DEVICE_CHANGED is raised (the app asked). An unknown id fails
+ * and leaves the device where it was. */
+static void test_device_move(void)
+{
+    fa_device* d = NULL;
+    fa_stream* s = NULL;
+    recorder rec;
+    size_t n;
+    uint8_t* wav = make_wav(g_dev->rate, g_dev->rate * 20, 0, &n);
+    fa_frames before = 0, after = 0;
+    uint32_t rate;
+    int i;
+    rec_init(&rec);
+    CHECK_EQ(fa_device_open(g_engine, NULL, &d), FA_OK);
+    rate = d->rate;
+    CHECK_EQ(fa_stream_open_memory(g_engine, wav, n, NULL, &s), FA_OK);
+    free(wav);
+    CHECK_EQ(fa_stream_set_event_callback(s, record, &rec), FA_OK);
+    CHECK_EQ(fa_stream_attach(s, d, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    CHECK_EQ(fa_device_start(d), FA_OK);
+    CHECK_EQ(fa_device_set_volume(d, 0.5f), FA_OK);
+    for (i = 0; i < 200 && before == 0; i++) { fa_sleep_ms(5); fa_stream_get_position(s, &before); }
+    CHECK(before > 0);
+
+    CHECK_EQ(fa_device_move(d, "#0"), FA_OK);   /* the first output, by index */
+    CHECK(d->open_has_id);
+    CHECK(d->device_ok);
+    CHECK_EQ(d->rate, rate);
+    {
+        float v = 0;
+        CHECK_EQ(ma_device_get_master_volume(&d->device, &v), MA_SUCCESS);
+        CHECK_NEAR(v, 0.5, 1e-6);                    /* set again on the moved device */
+    }
+    for (i = 0; i < 200; i++) {
+        fa_stream_get_position(s, &after);
+        if (after > before + (fa_frames)rate / 20) break;
+        fa_sleep_ms(5);
+    }
+    CHECK(after > before + (fa_frames)rate / 20);   /* plays on, from where it was */
+
+    CHECK_EQ(fa_device_move(d, "#999"), FA_ERROR_NOT_FOUND);
+    CHECK_EQ(fa_device_move(d, "zz"), FA_ERROR_INVALID_ARG);
+    CHECK(d->open_has_id);                          /* still where it was */
+    CHECK_EQ(fa_device_move(d, NULL), FA_OK);       /* back to the default, which it follows */
+    CHECK(!d->open_has_id);
+    CHECK_EQ(fa_load32(&d->lost), 0);
+    {
+        /* Already on the default and playing: no reopen (the same ma_device stays). */
+        uint64_t lat_before = (uint64_t)fa_load64(&d->latency_ns);
+        fa_store64(&d->latency_ns, -1);
+        CHECK_EQ(fa_device_move(d, NULL), FA_OK);
+        CHECK_EQ(fa_load64(&d->latency_ns), -1);
+        fa_store64(&d->latency_ns, (int64_t)lat_before);
+    }
+    fa_sleep_ms(50);
+    CHECK_EQ(count_events(&rec, FA_EVENT_DEVICE_CHANGED, 1), 0);
+    CHECK_EQ(fa_device_move(NULL, NULL), FA_ERROR_INVALID_ARG);
+    fa_stream_close(s);
+    fa_device_close(d);
+    rec_free(&rec);
+}
+
 /* Waits for a worker to carry out a pending fa_stream_seek_async. */
 static int wait_seek_done(fa_stream* s)
 {
@@ -2354,6 +2419,7 @@ int main(void)
     RUN(test_seek_while_attached);
     RUN(test_device_rerouted_event);
     RUN(test_device_lost_reopens_default);
+    RUN(test_device_move);
     RUN(test_seek_async);
     RUN(test_seek_async_then_detach);
     RUN(test_detach_resumes_at_heard_position);

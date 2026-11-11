@@ -88,8 +88,9 @@ public readonly record struct MediaPlayerConfiguration
     /// <summary>
     /// The output device: a device id from <c>FatzAudioOutputDevices.Enumerate()</c>
     /// (<see cref="AudioOutputDeviceInfo.Id"/>) or its name (case ignored); <see langword="null"/>, the default,
-    /// plays on the system default and follows it. An explicit device that goes away while playing moves to the
-    /// default. A creation-time choice: to change devices, create a new player.
+    /// plays on the system default and follows it. An explicit device that goes away moves the sound to the default
+    /// at once, and back when the device returns (unless the user chose another default meanwhile). A creation-time
+    /// choice: to change devices, create a new player.
     /// </summary>
     public string? AudioOutputDeviceId { get; init; }
 

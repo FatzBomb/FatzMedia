@@ -64,7 +64,8 @@ jobs:
       - name: Build the app for the simulator
         run: |
           dotnet workload install ios
-          versions=$(dotnet workload search version | grep -oE '^[0-9][0-9.]*[0-9]' | head -8)
+          # `search version` lists only the newest 5 unless told otherwise: take enough to reach a set for an older Xcode.
+          versions=$(dotnet workload search version --take 30 | grep -oE '^[0-9][0-9.]*[0-9]' | head -30)
           for v in "" $versions; do
             if [ -n "$v" ]; then echo "== trying workload set $v"; dotnet workload update --version "$v"; fi
             rc=0; dotnet build tools/dotnet-apps/ios -c Release -r iossimulator-arm64 > build.log 2>&1 || rc=$?
