@@ -254,35 +254,14 @@ if ($Part -in '2', 'both') {
             [void](Wait-Window $proc)
             Say-Do @('The sound comes out of that device.')
             Ask-Outcome 'M11' 'plays on the chosen output device'
-            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches it off for 6 s and on again (an admin prompt appears; its sound card is switched off, so that card''s other outputs go quiet too)'
+            # Windows will not switch HDMI audio or built-in speakers off while they play (tried 2026-11-11: the
+            # output entry "switches off" and keeps playing; the card refuses), so the unplug is by hand.
+            Say-Info 'Unplug test: only for a device with a cable you can pull (a USB headset, mic or speaker).'
+            $unplug = Ask-YesNo 'Can you pull this device''s cable now'
             if ($unplug -eq 'yes') {
-                # Its sound card, named in its brackets: switching the output entry itself off is accepted by Windows but
-                # changes nothing (2026-11-11), so the card goes, as when a USB device is pulled.
-                $card = if ($device.Contains(' (')) { $device.Substring($device.IndexOf(' (') + 2).TrimEnd(')') } else { '' }
-                $switchLog = Join-Path $OutDir 'M11-unplug.log'
-                $switchScript = Join-Path $OutDir 'M11-unplug.ps1'
-                $q = { param($s) "'" + $s.Replace("'", "''") + "'" }
-                @(
-                    "`$log = $(& $q $switchLog)"
-                    'function W($t) { Add-Content -Path $log -Value ((Get-Date -Format ''HH:mm:ss.fff'') + '' '' + $t) }'
-                    '$off = @()'
-                    "if ($(& $q $card)) { `$hw = Get-PnpDevice -Class MEDIA -FriendlyName $(& $q $card) -ErrorAction SilentlyContinue | Select-Object -First 1"
-                    "    if (`$hw) { try { Disable-PnpDevice -InstanceId `$hw.InstanceId -Confirm:`$false -ErrorAction Stop; W ('sound card switched off: ' + `$hw.FriendlyName); `$off += `$hw.InstanceId } catch { W ('sound card not switched: ' + `$_.Exception.Message) } } else { W ('no sound card named ' + $(& $q $card)) } }"
-                    "else { W 'the device name names no sound card' }"
-                    'Start-Sleep -Seconds 6'
-                    'foreach ($id in $off) { try { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop; W (''switched on again: '' + $id) } catch { W (''SWITCH ON FAILED: '' + $id + '': '' + $_.Exception.Message) } }'
-                ) | Set-Content -Path $switchScript -Encoding UTF8
-                Say-Info 'Switching it off and on (if it stays off, turn it on again in Device Manager)...'
-                try { Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$switchScript`"" }
-                catch { Say-Warn "Windows did not run the switch: $($_.Exception.Message)" }
-                Remove-Item -Path $switchScript -ErrorAction SilentlyContinue
-                $switched = @(if (Test-Path $switchLog) { Get-Content -Path $switchLog })
-                foreach ($line in $switched) { Say-Info "  $line"; Add-Result "  unplug: $line" }
-                if ($switched -match 'SWITCH ON FAILED') { Say-Warn 'A device did not come back on: turn it on again in Device Manager (Sound, video and game controllers).' }
-                Start-Sleep -Seconds 4
-                Say-Do @('While it was off the sound moved to your default device and went on; now it is back.')
+                Say-Do @('Pull the cable while it plays: the sound moves to your default device within about a second and goes on.', 'Plug it back in.')
                 Ask-Outcome 'M11u' 'unplug: playback moves to the default and goes on'
-            } else { Add-Outcome 'M11u' 'unplug: playback moves to the default and goes on' 'manual' 'SKIP' 'not switched off' '' }
+            } else { Add-Outcome 'M11u' 'unplug: playback moves to the default and goes on' 'manual' 'SKIP' 'no cable to pull' '' }
             Stop-Player $proc
             $log = Save-RunLog 'Wpf' 'M11'
             if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|moved the output|not found' 12 }
@@ -290,8 +269,24 @@ if ($Part -in '2', 'both') {
             Add-Outcome 'M11l' 'the Log names the output device' 'auto' $(if ($ready) { 'PASS' } else { 'FAIL' }) '' ''
             if ($unplug -eq 'yes') {
                 $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
-                Add-Outcome 'M11e' 'device events reported (from the log)' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
+                Add-Outcome 'M11e' 'unplug reported in the Log' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
             }
+
+            # M11d: a change of the Windows default, which a player on the default follows (no cable needed).
+            Write-Host ''
+            Write-Host '--- M11d default device change ---' -ForegroundColor Cyan
+            $proc = Start-Player 'Wpf' @($Media['Song'])
+            [void](Wait-Window $proc)
+            Start-Process 'ms-settings:sound' -ErrorAction SilentlyContinue
+            Say-Do @(
+                'Sound settings opened. While the song plays, choose another output device (for example MX279) at the top.',
+                'The sound moves to it within about a second. Then choose your usual device again: it moves back.')
+            Ask-Outcome 'M11d' 'the player follows a change of the Windows default'
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M11d'
+            if ($log) { Add-LogExcerpt $log 'Audio device change|moved the output' 8 }
+            $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
+            Add-Outcome 'M11de' 'default change reported in the Log' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
         } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
     }
     # M12: no BASS DLLs anywhere in the player folder, and a song still plays.
