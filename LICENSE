@@ -31,6 +31,6 @@ above. Each remains under its own license:
 - Audio: stated in each component's folder under Audio/third_party/ and
   summarised in Audio/THIRD_PARTY_NOTICES.md; those notices must be kept and
   shown as that file describes.
-- Video: the General MIDI soundfont TimGM6mb.sf2 keeps its own license. FFmpeg and other native libraries are
-  not part of this repository; they are supplied separately under their own
-  licenses (Video/docs/NATIVE_DEPENDENCIES.md).
+- Video: FFmpeg and other native libraries are not part of this repository; they
+  are supplied separately under their own licenses
+  (Video/docs/NATIVE_DEPENDENCIES.md).

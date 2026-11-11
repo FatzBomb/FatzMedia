@@ -29,8 +29,8 @@ FFmpeg decodes the audio formats FatzAudio cannot open. BASS was removed in 037A
 `bass*.dll` still in this folder is not used and can be deleted.
 
 MIDI plays with the system General MIDI bank (Windows `gm.dls`). To use a soundfont file
-instead, set `MediaPlayerConfiguration.MidiSoundfontPath` to it. `TimGM6mb.sf2` in this
-folder is not picked up automatically; check its licence before redistributing it.
+instead, set `MediaPlayerConfiguration.MidiSoundfontPath` to it (a `.sf2` dropped in this folder is copied
+next to the app); check its licence before redistributing it.
 
 ## Not used
 
