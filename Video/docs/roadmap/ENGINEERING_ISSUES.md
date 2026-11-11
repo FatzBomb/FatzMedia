@@ -59,6 +59,15 @@ When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges,
 to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
 half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
 
+### ENG-063 - WPF `--second-screen=2` opened two second-screen windows, one blank
+
+Reported: 2026-11-11 (owner, 037A hand test M5, WPF player, two monitors, NativeHwndOverlay): starting the WPF
+player with a 1080p video and `--second-screen=2` showed two second-screen windows; the top one stayed blank and
+had to be minimized, the other played correctly. `PlayerView` opens one `SecondaryPresentationWindow` at startup and
+reopens it when `PresentationMode` changes, so a close that left the old window on screen, or a second open path,
+is the likely cause. Not related to audio. Reproduce with the same command and check how many
+`second screen opens` lines the Log shows.
+
 ### ENG-062 - Prepared-next analysis has no engine behind it
 
 Found: 2026-11-10 (037A slice 6). `PlayerCore.AnalyzeAsync` and prepared-next analysis go through the internal

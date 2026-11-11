@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Subtitle;
 using Fa = global::FatzMedia.Audio;
 
@@ -14,6 +15,9 @@ namespace FatzMedia.Video.Audio;
 /// </summary>
 sealed partial class FatzAudioEngine : IKaraokeOverlaySource
 {
+    /// <summary>How long a frame asked for while not playing waits for render-ahead (a full lyric frame takes a few ms).</summary>
+    const int PausedFrameWaitMilliseconds = 200;
+
     // Guarded by _gate: the open song's lyric surface, made on the first frame.
     bool _streamHasLyrics;
     Fa.LyricSurface? _lyricSurface;
@@ -87,6 +91,15 @@ sealed partial class FatzAudioEngine : IKaraokeOverlaySource
                 }
 
                 var update = surface.UpdateInto(memory.Span, stride, layout.Width, layout.Height, heldRevision, time);
+                // Not playing (a seek or step while paused): nothing asks again until Play, so wait briefly for the
+                // render-ahead frame of this time instead of showing the old one.
+                for (var waited = 0; update.Behind && update.LayoutRevision == layout.LayoutRevision
+                    && waited < PausedFrameWaitMilliseconds && State != AudioEngineState.Playing; waited += 5)
+                {
+                    Thread.Sleep(5);
+                    update = surface.UpdateInto(memory.Span, stride, layout.Width, layout.Height, update.Revision, time);
+                }
+
                 if (update.LayoutRevision != layout.LayoutRevision && attempt == 0)
                 {
                     frame?.LayoutRevision = 0; // what the buffer holds is unknown: draw it whole next time
