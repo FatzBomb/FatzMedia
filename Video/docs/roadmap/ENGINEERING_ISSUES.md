@@ -69,7 +69,7 @@ and move back when it returns, or a call to retarget a device) plus the engine's
 about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
 (14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
 
-### ENG-064 from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
+### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
 
 Reported: 2026-11-11 (owner, not blocking):
 - Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
