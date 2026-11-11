@@ -87,6 +87,10 @@ static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_device_set_mute(DeviceHandle device, int muted);
 
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_device_move(DeviceHandle device, string? deviceId);
+
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_device_get_mute(DeviceHandle device, out int muted);

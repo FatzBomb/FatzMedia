@@ -30,8 +30,37 @@ public sealed class OutputDevice : IDisposable
     /// <summary>The engine that opened this device.</summary>
     public AudioEngine Engine { get; }
 
-    /// <summary>The device description this output was opened with, or null when the system default device was requested.</summary>
-    public AudioDeviceInfo? Info { get; }
+    /// <summary>
+    /// The device description this output was opened with or last moved to (<see cref="MoveTo"/>), or null for the system
+    /// default. A device that went away and was reopened on the default keeps the description it had.
+    /// </summary>
+    public AudioDeviceInfo? Info { get; private set; }
+
+    /// <summary>
+    /// Moves this output to another device at the same mix rate: everything playing on it plays on, with its position,
+    /// buses, volume and mute, after a gap of about one device start. Use it to bring the sound back to a device the
+    /// user chose once it is plugged in again (a device that goes away is reopened on the system default).
+    /// No <see cref="AudioStream.DeviceChanged"/> is raised: the app asked for the move.
+    /// </summary>
+    /// <param name="device">A device from <see cref="AudioEngine.OutputDevices"/>, or null for the system default (which it then follows).</param>
+    /// <example>
+    /// <code>
+    /// var usb = engine.OutputDevices.FirstOrDefault(d => d.Id == chosenId);
+    /// if (usb is not null)
+    ///     output.MoveTo(usb);   // back on the USB interface
+    /// </code>
+    /// </example>
+    /// <exception cref="ArgumentException"><paramref name="device"/> is not a playback device.</exception>
+    /// <exception cref="ObjectDisposedException">The device was disposed.</exception>
+    /// <exception cref="AudioException">The device is unknown (<see cref="ErrorCode.NotFound"/>) or cannot be opened
+    /// (<see cref="ErrorCode.Device"/>); the output stays where it was.</exception>
+    public void MoveTo(AudioDeviceInfo? device)
+    {
+        if (device is { Kind: not DeviceKind.Playback })
+            throw new ArgumentException("Not a playback device.", nameof(device));
+        AudioException.ThrowIfFailed(NativeMethods.fa_device_move(Handle, device?.Id));
+        Info = device;
+    }
 
     internal bool IsDisposed => _handle.IsClosed;
 

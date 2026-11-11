@@ -37,6 +37,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- `fa_device_move` (.NET `OutputDevice.MoveTo`): moves a running output to another device (or back to the default) at the same mix rate, everything on it playing on; for bringing the sound back to a chosen device once it is plugged in again. ([devices](docs/features/devices.md#moving-the-output-to-another-device))
 - `fa_device_list` (.NET `AudioEngine.ListDevices`): every device of a type from one enumeration, without the format query, cheap enough to poll once a second to notice devices plugged in or removed and a new default. ([devices](docs/features/devices.md#watching-the-device-list))
 
 - WavPack: `.wv` files play built in (libwavpack 5.9.0, BSD-3-Clause, decoder only): lossless and hybrid (without the `.wvc`

@@ -76,6 +76,31 @@ public class CoreEngineTests
     }
 
     [Fact]
+    public void Device_MoveTo_KeepsItRunning_AndUpdatesInfo()
+    {
+        using var engine = CreateHeadless();
+        using var output = engine.OpenOutput();
+        output.Volume = 0.5f;
+        output.Start();
+        var first = engine.ListDevices(DeviceKind.Playback)[0];
+
+        output.MoveTo(first);
+        Assert.Same(first, output.Info);
+        Assert.True(output.IsStarted);
+        Assert.Equal(0.5f, output.Volume);
+
+        output.MoveTo(null);
+        Assert.Null(output.Info);
+        Assert.True(output.IsStarted);
+
+        var capture = new AudioDeviceInfo(first.Id, first.Name, DeviceKind.Capture, false, 0, 0);
+        Assert.Throws<ArgumentException>(() => output.MoveTo(capture));
+        var missing = new AudioDeviceInfo("#999", "gone", DeviceKind.Playback, false, 0, 0);
+        Assert.Equal(ErrorCode.NotFound, Assert.Throws<AudioException>(() => output.MoveTo(missing)).ErrorCode);
+        Assert.Null(output.Info);
+    }
+
+    [Fact]
     public async Task PlayOn_KeepsFormatAndPosition_AcrossDevices()
     {
         using var engine = CreateHeadless();
