@@ -201,7 +201,7 @@ public sealed class PlayerCoreTests
         // and presented the current frame held the video lock through a vsync present and stalled
         // the seek pump's preview render. Drag seeks skip that refresh, as Controls.Seek did; a
         // seek outside a scrub still refreshes.
-        var engine = new TestMediaEngine();
+        var engine = new TestMediaEngine { TestCdg = new TestCdgEngine() };
         var factory = new TestPlatformFactory(engine);
         using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
         Assert.True(player.Load("song.mp3"));
@@ -214,6 +214,23 @@ public sealed class PlayerCoreTests
         Assert.True(player.EndScrub());
         Assert.True(await player.SeekAsync(40).WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.True(Volatile.Read(ref factory.Coordinator.RefreshCount) > before);
+    }
+
+    [Fact]
+    public async Task SeekAsync_DuringAScrubOfAudio_RedrawsBecauseNoSeekPumpDoes()
+    {
+        // 037A hand test M8: MIDI lyrics have no seek pump, so a paused drag showed nothing until Play.
+        var engine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(engine);
+        using var player = new PlayerCore(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.kar"));
+        Assert.True(player.BeginScrub());
+        var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
+
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.True(Volatile.Read(ref factory.Coordinator.RefreshCount) > before);
+        Assert.True(player.EndScrub());
     }
 
     [Fact]

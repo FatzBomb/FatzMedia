@@ -122,6 +122,19 @@ public sealed class AudioUnavailableTests : IDisposable
         Assert.Contains(errors, static args => args.Message.StartsWith(MediaPlayerModePolicy.AudioUnavailableMessage, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Player_StartupWarning_ReachesASubscriberThatSubscribesAfterConstruction()
+    {
+        using var player = new PlayerCore(new NoAudioPlatformFactory(), MediaPlayerConfiguration.Auto, []);
+        var diagnostics = new ConcurrentQueue<MediaDiagnosticEventArgs>();
+
+        player.MediaDiagnostic += (_, args) => diagnostics.Enqueue(args);
+
+        Assert.True(SpinWait.SpinUntil(
+            () => diagnostics.Any(static args => args.Level == MediaDiagnosticLevel.Warning && args.Message.Contains("could not start", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(5)));
+    }
+
     static IServiceProvider Create(MediaPlayerMode mode) =>
         PlayerServiceProvider.Create(new MediaPlayerConfiguration { Mode = mode, AudioEngineFactory = new FailingAudioEngineFactory() }, [], new NoAudioPlatformServices());
 

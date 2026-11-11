@@ -59,6 +59,16 @@ When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges,
 to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
 half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
 
+### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch)
+
+Reported: 2026-11-11 (owner, not blocking):
+- Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
+  stair steps; smoothness 8 traces rounded edges and passed, but the owner is not a fan of how the traced letters
+  look (bulgy joins). Try 9-10 and 4 with edge blend side by side before choosing a default; the tracing itself is
+  FatzMedia.Audio's (`Audio/src/cdg_contour.c`).
+- Going to full screen and back looks a bit jumpy (the picture, not the sound): the swap chain is resized and the
+  picture redrawn at each step. Compare with a plain video to see whether it is CD+G or every surface.
+
 ### ENG-063 - WPF `--second-screen=2` opened two second-screen windows, one blank
 
 Reported: 2026-11-11 (owner, 037A hand test M5, WPF player, two monitors, NativeHwndOverlay): starting the WPF

@@ -74,7 +74,8 @@ public partial class PlayerCore : IPlayerSession
         using var diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
-            CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
+            using (CaptureStartupDiagnostics())
+                CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
         }
         catch
         {
@@ -479,10 +480,11 @@ public partial class PlayerCore : IPlayerSession
 
         try
         {
-            // A drag seek leaves the frame to the seek pump, which presents the scrub preview
-            // itself; re-rendering here held the video lock through a vsync present and stalled
-            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging).
-            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing);
+            // A drag seek of video or CD+G leaves the frame to the seek pump, which presents the scrub
+            // preview itself; re-rendering here held the video lock through a vsync present and stalled
+            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging). Audio
+            // with lyrics or subtitles has no seek pump: it redraws here, or a paused drag shows nothing.
+            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing || !HasSeekPump());
             _ = queued.Completion.TrySetResult(result);
             return result;
         }
@@ -498,6 +500,9 @@ public partial class PlayerCore : IPlayerSession
             return false;
         }
     }
+
+    // Video and CD+G seeks settle on the seek pump, which also presents their scrub previews.
+    bool HasSeekPump() => _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
 
     sealed class QueuedSeek(double seconds)
     {
@@ -519,7 +524,7 @@ public partial class PlayerCore : IPlayerSession
             return true;
         }
 
-        var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
+        var waitsForSettle = HasSeekPump();
         if (waitsForSettle)
         {
             lock (_seekCompletionGate)
@@ -976,7 +981,8 @@ public partial class PlayerCore : IPlayerSession
             (_serviceProvider, _mediaEngine, _presentationCoordinator, Controls);
         try
         {
-            CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
+            using (CaptureStartupDiagnostics())
+                CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
         }
         catch
         {

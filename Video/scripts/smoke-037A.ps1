@@ -210,52 +210,73 @@ if ($Part -in '2', 'both') {
         'The same music video as M1, but FatzAudio decodes its sound (the Log says "FatzAudio decodes the soundtrack").',
         'Watch lips or drum hits for 20 seconds, seek a few times, set tempo to 125%.',
         'Pass if sync is as good as in M1 (this switch stays off by default until you say it is good).') 'decodes the soundtrack'
-    # M10: network radio needs a URL.
+    # M10: network radio. The title is checked in the log; the sound by ear.
     if (Wants 'M10') {
-    Write-Host ''
-    Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
-    $defaultUrl = 'http://ice2.somafm.com/groovesalad-128-mp3'
-    $url = (Read-Host "Press Enter for SomaFM Groove Salad ($defaultUrl), paste another http(s) stream URL, or S to skip").Trim()
-    if ($url -eq '') { $url = $defaultUrl } elseif ($url.ToLowerInvariant() -eq 's') { $url = '' }
-    if ($url) {
-        $proc = Start-Player 'Wpf' @("--url=$url")
-        [void](Wait-Window $proc)
-        Say-Do @('It plays and the song title appears.')
-        Ask-Outcome 'M10' 'network radio'
-        Stop-Player $proc
-    } else { Add-Outcome 'M10' 'network radio' 'manual' 'SKIP' 'no URL' '' }
+        Write-Host ''
+        Write-Host '--- M10 network radio ---' -ForegroundColor Cyan
+        $defaultUrl = 'http://ice2.somafm.com/groovesalad-128-mp3'
+        $url = (Read-Host "Press Enter for SomaFM Groove Salad ($defaultUrl), paste another http(s) stream URL, or S to skip").Trim()
+        if ($url -eq '') { $url = $defaultUrl } elseif ($url.ToLowerInvariant() -eq 's') { $url = '' }
+        if ($url) {
+            $proc = Start-Player 'Wpf' @("--url=$url")
+            [void](Wait-Window $proc)
+            Say-Do @(
+                'It plays with sound.',
+                'The song title is in the side panel (the flyout), on the line under the URL box; it can take up to a song change to appear.')
+            Ask-Outcome 'M10' 'network radio'
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M10'
+            $titles = @(if ($log) { Select-String -Path $log -Pattern 'Stream metadata:' -SimpleMatch })
+            $detail = if ($titles.Count -gt 0) { 'title read: ' + ($titles[-1].Line -replace '^.*Stream metadata:\s*', '') } else { 'no title in the log (the station may not send one)' }
+            Add-Outcome 'M10t' 'network radio title (from the log)' 'auto' $(if ($titles.Count -gt 0) { 'PASS' } else { 'FAIL' }) $detail ''
+        } else { Add-Outcome 'M10' 'network radio' 'manual' 'SKIP' 'no URL' '' }
     }
 
-    # M11: output device and device events.
+    # M11: output device and device events. Windows can switch the device off and on for the "unplug" (admin prompt).
     if (Wants 'M11') {
-    Write-Host ''
-    Write-Host '--- M11 output device and plug/unplug ---' -ForegroundColor Cyan
-    Say 'Your Windows sound devices (playback devices are usually "Speakers ...", "Headphones ...", or a TV name):'
-    $endpoints = @(Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Sort-Object FriendlyName | ForEach-Object FriendlyName)
-    for ($i = 0; $i -lt $endpoints.Count; $i++) { Say-Info ('  {0,2}) {1}' -f ($i + 1), $endpoints[$i]) }
-    Say-Info '  (a name FatzAudio does not know plays on the default, and the Log lists the names it knows)'
-    $device = ''
-    while ($true) {
-        $a = (Read-Host 'Type the number of a device that is NOT your default (a USB headset, HDMI), or Enter to skip').Trim()
-        $n = 0
-        if ($a -eq '') { break }
-        if ([int]::TryParse($a, [ref]$n) -and $n -ge 1 -and $n -le $endpoints.Count) { $device = $endpoints[$n - 1]; break }
-        Say-Warn '  Not one of the numbers above, try again.'
+        Write-Host ''
+        Write-Host '--- M11 output device and plug/unplug ---' -ForegroundColor Cyan
+        Say 'Your Windows sound devices (playback devices are usually "Speakers ...", "Headphones ...", or a TV name):'
+        $endpoints = @(Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Sort-Object FriendlyName)
+        for ($i = 0; $i -lt $endpoints.Count; $i++) { Say-Info ('  {0,2}) {1}' -f ($i + 1), $endpoints[$i].FriendlyName) }
+        Say-Info '  (a name FatzAudio does not know plays on the default, and the Log lists the names it knows)'
+        $endpoint = $null
+        while ($true) {
+            $a = (Read-Host 'Type the number of a device that is NOT your default (a USB headset, HDMI), or Enter to skip').Trim()
+            $n = 0
+            if ($a -eq '') { break }
+            if ([int]::TryParse($a, [ref]$n) -and $n -ge 1 -and $n -le $endpoints.Count) { $endpoint = $endpoints[$n - 1]; break }
+            Say-Warn '  Not one of the numbers above, try again.'
+        }
+        if ($endpoint -and $Media['Song']) {
+            $device = $endpoint.FriendlyName
+            $proc = Start-Player 'Wpf' @("--audio-device=$device", $Media['Song'])
+            [void](Wait-Window $proc)
+            Say-Do @('The sound comes out of that device.')
+            Ask-Outcome 'M11' 'plays on the chosen output device'
+            $unplug = Ask-YesNo 'Let the script "unplug" it: Windows switches the device off for 6 s and on again (an admin prompt appears)'
+            if ($unplug -eq 'yes') {
+                $id = $endpoint.InstanceId.Replace("'", "''")
+                $cmd = "Disable-PnpDevice -InstanceId '$id' -Confirm:`$false; Start-Sleep -Seconds 6; Enable-PnpDevice -InstanceId '$id' -Confirm:`$false"
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+                Say-Info 'Switching the device off and on (if it stays off, turn it on again in Sound settings or Device Manager)...'
+                try { Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile -EncodedCommand $encoded" }
+                catch { Say-Warn "Windows did not switch the device: $($_.Exception.Message)" }
+                Start-Sleep -Seconds 4
+                Say-Do @('While it was off the sound moved to your default device and went on; now it is back.')
+                Ask-Outcome 'M11u' 'unplug: playback moves to the default and goes on'
+            } else { Add-Outcome 'M11u' 'unplug: playback moves to the default and goes on' 'manual' 'SKIP' 'not switched off' '' }
+            Stop-Player $proc
+            $log = Save-RunLog 'Wpf' 'M11'
+            if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|moved the output|not found' 12 }
+            $ready = $log -and @(Select-String -Path $log -Pattern 'ready on the' -SimpleMatch).Count -gt 0
+            Add-Outcome 'M11l' 'the Log names the output device' 'auto' $(if ($ready) { 'PASS' } else { 'FAIL' }) '' ''
+            if ($unplug -eq 'yes') {
+                $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
+                Add-Outcome 'M11e' 'device events reported (from the log)' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
+            }
+        } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
     }
-    if ($device -and $Media['Song']) {
-        $proc = Start-Player 'Wpf' @("--audio-device=$device", $Media['Song'])
-        [void](Wait-Window $proc)
-        Say-Do @(
-            'The sound comes out of that device (the Log says "ready on the <name> output device").',
-            'Unplug that device while it plays (if you can): playback moves to the default and goes on.',
-            'Plug something in and out again: the Log shows one "Audio device change detected" line each.')
-        Ask-Outcome 'M11' 'output device and plug/unplug'
-        Stop-Player $proc
-        $log = Save-RunLog 'Wpf' 'M11'
-        if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|not found' 12 }
-    } else { Add-Outcome 'M11' 'output device and plug/unplug' 'manual' 'SKIP' 'no device or song chosen' '' }
-    }
-
     # M12: no BASS DLLs anywhere in the player folder, and a song still plays.
     if (Wants 'M12') {
     Write-Host ''
