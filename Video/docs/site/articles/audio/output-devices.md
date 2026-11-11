@@ -74,6 +74,15 @@ What the kinds mean in practice:
 - **`DeviceRemoved`:** the device the player plays on went away. FatzAudio moves the output to the default device. A different device going away is a `DeviceStateChanged`.
 - **`DeviceStateChanged`:** another change to the device list or to a device.
 
+## When a chosen device is unplugged and comes back
+
+A player created with an `AudioOutputDeviceId` moves its sound to the default device as soon as that device goes away
+(within about a second), and back to it when it returns, however much later: a USB interface pulled out by mistake
+and plugged in again carries on where the show is. If the user changes the system default while the device is away
+(more than 3 seconds after it went away, so not Windows replacing a lost default), the player takes that as their
+choice and stops waiting. Each step is logged at Info (category `FatzAudioEngine`): "went away: playing on the
+default device until it returns", "Back on <name>", or "no longer waiting for it".
+
 The core never changes the transport state because of these events; the audio engine moves the output itself. The same information is also logged as `MediaDiagnostic` warnings (categories `AudioDeviceMonitor` and `AudioOutput`).
 
 The event fires on a background thread. Marshal to the UI thread before you touch controls.

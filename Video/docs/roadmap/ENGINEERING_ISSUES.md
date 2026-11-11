@@ -59,7 +59,13 @@ When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges,
 to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
 half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
 
-### ENG-065 - A chosen output device does not get the sound back when it is plugged in again
+### ENG-065 - A chosen output device does not get the sound back when it is plugged in again (fixed, pending owner smoke)
+
+Fixed 2026-11-11: FatzMedia.Audio gained `fa_device_move` (.NET `OutputDevice.MoveTo`); the FatzAudio engine's
+`ChosenDeviceReturn` moves to the default as soon as the device list shows the chosen device gone (the 6.5 s
+gap), back when it returns, and stops waiting when the user picks another default more than 3 s after the loss
+(owner's design). The duplicate Info line per move is one line now. Owner smoke: `smoke-037A.ps1 -Part 2 -Only M11`.
+
 
 Reported: 2026-11-11 (owner, 037A hand test M11 with a Yeti Nano on USB): with `AudioOutputDeviceId` set, pulling
 the device moved the sound to the default (as documented), but plugging it back in left the sound on the default.

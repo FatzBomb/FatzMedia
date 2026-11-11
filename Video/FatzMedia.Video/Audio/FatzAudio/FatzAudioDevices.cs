@@ -125,8 +125,107 @@ sealed class FatzAudioDeviceEvents(string? explicitDeviceId)
         return [new AudioDeviceChangeInfo(AudioDeviceChangeKind.DefaultDeviceChanged, newDefault.Id, newDefault.Name, null, 0)];
     }
 
+    /// <summary>The engine moved the output itself: to <paramref name="deviceId"/>, or to the default (null).</summary>
+    public void OnMovedTo(string? deviceId) => _explicitDeviceId = deviceId;
+
     string? ActiveId(IReadOnlyList<FatzAudioDevices.Snapshot> list) => _explicitDeviceId ?? DefaultOf(list)?.Id;
 
     static FatzAudioDevices.Snapshot? DefaultOf(IReadOnlyList<FatzAudioDevices.Snapshot> list) =>
         list.Any(static device => device.IsDefault) ? list.First(static device => device.IsDefault) : null;
+}
+
+/// <summary>
+/// Brings the sound back to the device the player was created on (<c>AudioOutputDeviceId</c>) when it returns after going
+/// away (ENG-065, owner design 2026-11-11). While it is away the player plays on the default. A change of the Windows
+/// default after <see cref="Grace"/> means the user chose another device, so the player stops waiting; changes within
+/// the grace are Windows replacing a lost default by itself. Pure: the engine calls it on each look at the device list.
+/// Not thread-safe: the engine holds its watch lock.
+/// </summary>
+sealed class ChosenDeviceReturn(string chosenId, string chosenName)
+{
+    /// <summary>How long after the loss a change of the default is taken as Windows', not the user's.</summary>
+    public static readonly TimeSpan Grace = TimeSpan.FromSeconds(3);
+
+    bool _away;
+    bool _stopped;
+    TimeSpan _lostAt;
+    string? _defaultId;
+
+    /// <summary>What the engine should do after a look at the list.</summary>
+    public enum Step
+    {
+        /// <summary>Nothing.</summary>
+        None,
+
+        /// <summary>The chosen device went away: play on the default now.</summary>
+        MoveToDefault,
+
+        /// <summary>The chosen device is back (<see cref="Decision.Device"/>): move the output to it.</summary>
+        MoveBack,
+
+        /// <summary>The user chose another default while waiting: stop waiting for good.</summary>
+        StopWaiting,
+    }
+
+    /// <summary>A step, with the returned device for <see cref="Step.MoveBack"/>.</summary>
+    public readonly record struct Decision(Step Step, FatzAudioDevices.Snapshot? Device = null);
+
+    /// <summary>The chosen device's name, for reports.</summary>
+    public string ChosenName => chosenName;
+
+    /// <summary>One look at the device list at <paramref name="time"/> (any steady clock).</summary>
+    public Decision OnList(IReadOnlyList<FatzAudioDevices.Snapshot> now, TimeSpan time)
+    {
+        if (_stopped)
+            return default;
+
+        var chosen = Find(now);
+        if (!_away)
+        {
+            if (chosen is not null)
+                return default;
+
+            _away = true;
+            _lostAt = time;
+            _defaultId = DefaultId(now);
+            return new Decision(Step.MoveToDefault);
+        }
+
+        if (chosen is { } back)
+        {
+            _away = false;
+            return new Decision(Step.MoveBack, back);
+        }
+
+        var defaultId = DefaultId(now);
+        if (time - _lostAt <= Grace)
+        {
+            _defaultId = defaultId; // Windows replacing a lost default by itself
+            return default;
+        }
+
+        if (defaultId is not null && defaultId != _defaultId)
+        {
+            _stopped = true;
+            return new Decision(Step.StopWaiting);
+        }
+
+        return default;
+    }
+
+    // By id; a device that came back with another id is matched by its name when exactly one has it.
+    FatzAudioDevices.Snapshot? Find(IReadOnlyList<FatzAudioDevices.Snapshot> list)
+    {
+        foreach (var device in list)
+        {
+            if (device.Id == chosenId)
+                return device;
+        }
+
+        var byName = list.Where(device => string.Equals(device.Name, chosenName, StringComparison.OrdinalIgnoreCase)).ToList();
+        return byName.Count == 1 ? byName[0] : null;
+    }
+
+    static string? DefaultId(IReadOnlyList<FatzAudioDevices.Snapshot> list) =>
+        list.FirstOrDefault(static device => device.IsDefault).Id;
 }

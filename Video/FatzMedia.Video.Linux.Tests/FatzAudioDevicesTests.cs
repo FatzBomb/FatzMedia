@@ -25,6 +25,67 @@ public sealed class FatzAudioDevicesTests
         Assert.Null(FatzAudioDevices.Find([Speakers, Usb], "HDMI"));
     }
 
+    // ENG-065: the chosen device ("b", USB) goes away and comes back; "a" is the default.
+    static readonly FatzAudioDevices.Snapshot Default = new("a", "Speakers", true);
+    static readonly FatzAudioDevices.Snapshot Chosen = new("b", "USB", false);
+    static readonly FatzAudioDevices.Snapshot Other = new("c", "HDMI", false);
+
+    static TimeSpan At(double seconds) => TimeSpan.FromSeconds(seconds);
+
+    [Fact]
+    public void ChosenDevice_GoneThenBack_PlaysOnTheDefault_ThenMovesBack_EveryTime()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([Default, Chosen], At(0)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default], At(1)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([Default], At(60)).Step);   // minutes later is fine
+        var back = chosen.OnList([Default, Chosen], At(120));
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, back.Step);
+        Assert.Equal("b", back.Device?.Id);
+
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default], At(130)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, chosen.OnList([Default, Chosen], At(131)).Step);
+    }
+
+    [Fact]
+    public void ChosenDevice_ADefaultChangeRightAfterTheLoss_IsWindows_AndKeepsWaiting()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+        var hdmiDefault = Other with { IsDefault = true };
+        var speakers = Default with { IsDefault = false };
+
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default], At(10)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault], At(10 + 2)).Step);   // within the grace
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault], At(10 + 30)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, chosen.OnList([speakers, hdmiDefault, Chosen], At(10 + 40)).Step);
+    }
+
+    [Fact]
+    public void ChosenDevice_ADefaultChosenByTheUserWhileAway_StopsWaitingForGood()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+        var hdmiDefault = Other with { IsDefault = true };
+        var speakers = Default with { IsDefault = false };
+
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default, Other], At(0)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.StopWaiting, chosen.OnList([speakers, hdmiDefault], At(20)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault, Chosen], At(30)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault], At(40)).Step);
+    }
+
+    [Fact]
+    public void ChosenDevice_BackUnderANewId_IsFoundByItsName_WhenOnlyOneHasIt()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default], At(0)).Step);
+
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([Default, new("b2", "usb", false), new("b3", "USB", false)], At(5)).Step);
+        var back = chosen.OnList([Default, new("b2", "usb", false)], At(6));
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, back.Step);
+        Assert.Equal("b2", back.Device?.Id);
+    }
+
     [Fact]
     public void OutputDeviceInfos_StartWithTheDefault_ThenCarryIds()
     {

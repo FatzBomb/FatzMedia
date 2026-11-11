@@ -383,6 +383,10 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
   `null` follows the system default. `AudioOutputFallbackMode`: `FallbackToPrimary` (default) plays
   on the default when the device is missing, `NoFallback` fails the engine's start. Creation-time
   choice; a device change needs a new player or `Reset`.
+- **Return (ENG-065):** a chosen device that goes away moves the output to the default as soon as the device
+  list shows it gone, and back (`fa_device_move`, .NET `OutputDevice.MoveTo`) when it returns, however much later;
+  a change of the Windows default by the user while it is away (more than 3 s after the loss, so not Windows
+  replacing a lost default) stops the wait. The pure rule is `ChosenDeviceReturn`; each step is logged at Info.
 
 ## Per-Load Effect Reset
 

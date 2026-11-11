@@ -259,17 +259,21 @@ if ($Part -in '2', 'both') {
             Say-Info 'Unplug test: only for a device with a cable you can pull (a USB headset, mic or speaker).'
             $unplug = Ask-YesNo 'Can you pull this device''s cable now'
             if ($unplug -eq 'yes') {
-                Say-Do @('Pull the cable while it plays: the sound moves to your default device within about a second and goes on.', 'Plug it back in.')
-                Ask-Outcome 'M11u' 'unplug: playback moves to the default and goes on'
-            } else { Add-Outcome 'M11u' 'unplug: playback moves to the default and goes on' 'manual' 'SKIP' 'no cable to pull' '' }
+                Say-Do @(
+                    'Pull the cable while it plays: within about a second the sound moves to your default device and goes on.',
+                    'Plug it back in: within about a second the sound goes back to it (you hear the default go quiet).')
+                Ask-Outcome 'M11u' 'unplug and plug back: the sound moves away and comes back'
+            } else { Add-Outcome 'M11u' 'unplug and plug back: the sound moves away and comes back' 'manual' 'SKIP' 'no cable to pull' '' }
             Stop-Player $proc
             $log = Save-RunLog 'Wpf' 'M11'
-            if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|moved the output|not found' 12 }
+            if ($log) { Add-LogExcerpt $log 'ready on|Audio device change|moved the output|went away|Back on|not found' 14 }
             $ready = $log -and @(Select-String -Path $log -Pattern 'ready on the' -SimpleMatch).Count -gt 0
             Add-Outcome 'M11l' 'the Log names the output device' 'auto' $(if ($ready) { 'PASS' } else { 'FAIL' }) '' ''
             if ($unplug -eq 'yes') {
                 $changes = if ($log) { @(Select-String -Path $log -Pattern 'Audio device change|moved the output').Count } else { 0 }
                 Add-Outcome 'M11e' 'unplug reported in the Log' 'auto' $(if ($changes -gt 0) { 'PASS' } else { 'FAIL' }) "$changes device-change lines" ''
+                $back = $log -and @(Select-String -Path $log -Pattern 'Back on ' -SimpleMatch).Count -gt 0
+                Add-Outcome 'M11b' 'the Log says the sound went back to the device' 'auto' $(if ($back) { 'PASS' } else { 'FAIL' }) '' ''
             }
 
             # M11d: a change of the Windows default, which a player on the default follows (no cable needed).

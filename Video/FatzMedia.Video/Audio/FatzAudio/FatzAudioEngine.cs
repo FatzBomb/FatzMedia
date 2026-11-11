@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using FatzMedia.Video.Core.Abstractions;
 using FatzMedia.Video.Core.Audio;
@@ -70,6 +71,11 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
     EventHandler<AudioDeviceChangeInfo>? _deviceChanged;
     Timer? _deviceWatch;
     FatzAudioDeviceEvents? _deviceEvents;
+    // The device the player was created on, brought back when it returns after going away (null: the default).
+    readonly ChosenDeviceReturn? _chosenReturn;
+    readonly long _watchClockStart = Stopwatch.GetTimestamp();
+    string? _lastMoveNotice;
+    long _lastMoveNoticeAt;
 
     /// <summary>Creates the engine and opens the default output device.</summary>
     /// <param name="configuration">The player's configuration: soundfont, silence trim, normalization, device.</param>
@@ -99,7 +105,9 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
 
             // The chosen device, else the default: FatzAudio follows default-device changes, and an
             // output whose device goes away is reopened on the default.
-            OutputDevice = _engine.OpenOutput(nullOutput ? null : SelectDevice(configuration));
+            var chosen = nullOutput ? null : SelectDevice(configuration);
+            OutputDevice = _engine.OpenOutput(chosen);
+            _chosenReturn = chosen is null ? null : new ChosenDeviceReturn(chosen.Id, chosen.Name);
             _bus = OutputDevice.CreateBus();
         }
         catch
@@ -964,12 +972,20 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
             // The name is only for the report.
         }
 
-        DiagnosticRouter.Raise(
-            MediaDiagnosticLevel.Info,
-            Category,
-            e.Value == 0
-                ? $"FatzAudio moved the output to the new default device {deviceName ?? "(unknown)"}."
-                : $"The output device went away; FatzAudio reopened the output on the default device {deviceName ?? "(unknown)"}.");
+        var notice = e.Value == 0
+            ? $"FatzAudio moved the output to the new default device {deviceName ?? "(unknown)"}."
+            : $"The output device went away; FatzAudio reopened the output on the default device {deviceName ?? "(unknown)"}.";
+        // Every stream on the output gets the event: one notice per move.
+        bool repeated;
+        lock (_deviceWatchGate)
+        {
+            repeated = notice == _lastMoveNotice && Stopwatch.GetElapsedTime(_lastMoveNoticeAt) < TimeSpan.FromSeconds(2);
+            _lastMoveNotice = notice;
+            _lastMoveNoticeAt = Stopwatch.GetTimestamp();
+        }
+
+        if (!repeated)
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, notice);
 
         // Also a change the list may not show (unplugged and back within one look, an exclusive-mode reset).
         IReadOnlyList<AudioDeviceChangeInfo> changes;
@@ -1077,9 +1093,47 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
             // No baseline yet (the first read failed): this look is the baseline, not a burst of "added".
             changes = _deviceEvents.OnList(now);
             handlers = _deviceChanged;
+            if (_chosenReturn?.OnList(now, Stopwatch.GetElapsedTime(_watchClockStart)) is { Step: not ChosenDeviceReturn.Step.None } decision)
+                FollowChosenDeviceLocked(decision);
         }
 
         RaiseDeviceChanges(changes, handlers);
+    }
+
+    /// <summary>
+    /// The chosen device went away (play on the default now, instead of when the system notices), came back (move the
+    /// output back to it), or the user chose another default meanwhile (stop waiting). Caller holds _deviceWatchGate.
+    /// </summary>
+    void FollowChosenDeviceLocked(ChosenDeviceReturn.Decision decision)
+    {
+        var name = _chosenReturn!.ChosenName;
+        try
+        {
+            switch (decision.Step)
+            {
+                case ChosenDeviceReturn.Step.MoveToDefault:
+                    OutputDevice.MoveTo(null);
+                    _deviceEvents?.OnMovedTo(null);
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"The chosen output device {name} went away: playing on the default device until it returns.");
+                    break;
+                case ChosenDeviceReturn.Step.MoveBack when decision.Device is { } back:
+                    var device = _engine.ListDevices(Fa.DeviceKind.Playback).FirstOrDefault(info => info.Id == back.Id);
+                    if (device is null)
+                        return;
+
+                    OutputDevice.MoveTo(device);
+                    _deviceEvents?.OnMovedTo(device.Id);
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"Back on {device.Name}: the chosen output device returned.");
+                    break;
+                case ChosenDeviceReturn.Step.StopWaiting:
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"The default output device was changed while {name} was away: no longer waiting for it.");
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Could not move the output for {name}: {ex.Message}", innerException: ex);
+        }
     }
 
     void RaiseDeviceChanges(IReadOnlyList<AudioDeviceChangeInfo> changes, EventHandler<AudioDeviceChangeInfo>? handlers)
