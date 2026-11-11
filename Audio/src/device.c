@@ -458,6 +458,12 @@ FA_API fa_result FA_CALL fa_device_move(fa_device* device, const char* device_id
     }
     old_id = device->open_id;
     old_has_id = device->open_has_id;
+    if (has_id == old_has_id && (!has_id || memcmp(&id, &old_id, sizeof(id)) == 0) && device->device_ok &&
+        !fa_load32(&device->lost) && (!fa_load32(&device->want_started) || ma_device_is_started(&device->device))) {
+        /* Already there and playing (the engine reopened it on the default after a loss): no second gap. */
+        fa_mutex_unlock(&device->life_lock);
+        return FA_OK;
+    }
     fa_store32(&device->reopening, 1);
     if (device->device_ok) {
         ma_device_uninit(&device->device);   /* waits for its callback: none runs until the move */

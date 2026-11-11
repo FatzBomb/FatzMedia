@@ -276,9 +276,10 @@ FA_API fa_result FA_CALL fa_device_open(fa_engine* engine, const char* device_id
  * clock play on, with a gap of about one device start, and its volume and mute stay.
  * Use it to bring the sound back to an output the user chose once it is plugged in
  * again (a device that goes away is reopened on the default). No FA_EVENT_DEVICE_CHANGED
- * is raised: the app asked for the move. FA_ERROR_NOT_FOUND / FA_ERROR_INVALID_ARG for
- * an unknown or malformed id; FA_ERROR_DEVICE when that output cannot be opened (the
- * device stays on the output it had). */
+ * is raised: the app asked for the move. A move to the output it already plays on does
+ * nothing. FA_ERROR_NOT_FOUND / FA_ERROR_INVALID_ARG for an unknown or malformed id;
+ * FA_ERROR_DEVICE when that output cannot be opened (the device stays on the output it
+ * had). */
 FA_API fa_result FA_CALL fa_device_move(fa_device* device, const char* device_id);
 /* Detaches every stream still attached (they keep their position) and closes the device. */
 FA_API void FA_CALL fa_device_close(fa_device* device);

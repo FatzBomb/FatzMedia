@@ -1117,10 +1117,8 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"The chosen output device {name} went away: playing on the default device until it returns.");
                     break;
                 case ChosenDeviceReturn.Step.MoveBack when decision.Device is { } back:
-                    var device = _engine.ListDevices(Fa.DeviceKind.Playback).FirstOrDefault(info => info.Id == back.Id);
-                    if (device is null)
-                        return;
-
+                    // From the look just taken: ListDevices has no native rate or channels either.
+                    var device = new Fa.AudioDeviceInfo(back.Id, back.Name, Fa.DeviceKind.Playback, back.IsDefault, 0, 0);
                     OutputDevice.MoveTo(device);
                     _deviceEvents?.OnMovedTo(device.Id);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, Category, $"Back on {device.Name}: the chosen output device returned.");
@@ -1132,6 +1130,9 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         }
         catch (Exception ex) when (ex is Fa.AudioException or ObjectDisposedException)
         {
+            // A device just plugged in may not open yet: the next look tries again.
+            if (decision.Step == ChosenDeviceReturn.Step.MoveBack)
+                _chosenReturn.MoveBackFailed();
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Could not move the output for {name}: {ex.Message}", innerException: ex);
         }
     }

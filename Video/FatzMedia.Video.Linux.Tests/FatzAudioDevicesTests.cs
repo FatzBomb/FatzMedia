@@ -49,6 +49,17 @@ public sealed class FatzAudioDevicesTests
     }
 
     [Fact]
+    public void ChosenDevice_AFailedMoveBack_IsTriedAgainOnTheNextLook()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default], At(0)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, chosen.OnList([Default, Chosen], At(10)).Step);
+
+        chosen.MoveBackFailed();
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, chosen.OnList([Default, Chosen], At(11)).Step);
+    }
+
+    [Fact]
     public void ChosenDevice_ADefaultChangeRightAfterTheLoss_IsWindows_AndKeepsWaiting()
     {
         var chosen = new ChosenDeviceReturn("b", "USB");
@@ -72,6 +83,17 @@ public sealed class FatzAudioDevicesTests
         Assert.Equal(ChosenDeviceReturn.Step.StopWaiting, chosen.OnList([speakers, hdmiDefault], At(20)).Step);
         Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault, Chosen], At(30)).Step);
         Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([speakers, hdmiDefault], At(40)).Step);
+    }
+
+    [Fact]
+    public void ChosenDevice_AnIdenticalDeviceThatStayed_IsNotTakenForIt()
+    {
+        var chosen = new ChosenDeviceReturn("b", "USB");
+        var twin = new FatzAudioDevices.Snapshot("b-twin", "USB", false);
+
+        Assert.Equal(ChosenDeviceReturn.Step.MoveToDefault, chosen.OnList([Default, twin], At(0)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.None, chosen.OnList([Default, twin], At(5)).Step);
+        Assert.Equal(ChosenDeviceReturn.Step.MoveBack, chosen.OnList([Default, twin, Chosen], At(6)).Step);
     }
 
     [Fact]

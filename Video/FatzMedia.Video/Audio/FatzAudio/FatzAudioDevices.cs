@@ -150,6 +150,7 @@ sealed class ChosenDeviceReturn(string chosenId, string chosenName)
     bool _stopped;
     TimeSpan _lostAt;
     string? _defaultId;
+    HashSet<string> _idsAtLoss = [];
 
     /// <summary>What the engine should do after a look at the list.</summary>
     public enum Step
@@ -173,25 +174,28 @@ sealed class ChosenDeviceReturn(string chosenId, string chosenName)
     /// <summary>The chosen device's name, for reports.</summary>
     public string ChosenName => chosenName;
 
+    /// <summary>The move back after <see cref="Step.MoveBack"/> failed: keep waiting, so the next look tries again.</summary>
+    public void MoveBackFailed() => _away = true;
+
     /// <summary>One look at the device list at <paramref name="time"/> (any steady clock).</summary>
     public Decision OnList(IReadOnlyList<FatzAudioDevices.Snapshot> now, TimeSpan time)
     {
         if (_stopped)
             return default;
 
-        var chosen = Find(now);
         if (!_away)
         {
-            if (chosen is not null)
+            if (now.Any(device => device.Id == chosenId))
                 return default;
 
             _away = true;
             _lostAt = time;
             _defaultId = DefaultId(now);
+            _idsAtLoss = [.. now.Select(static device => device.Id)];
             return new Decision(Step.MoveToDefault);
         }
 
-        if (chosen is { } back)
+        if (FindReturned(now) is { } back)
         {
             _away = false;
             return new Decision(Step.MoveBack, back);
@@ -213,8 +217,9 @@ sealed class ChosenDeviceReturn(string chosenId, string chosenName)
         return default;
     }
 
-    // By id; a device that came back with another id is matched by its name when exactly one has it.
-    FatzAudioDevices.Snapshot? Find(IReadOnlyList<FatzAudioDevices.Snapshot> list)
+    // By id; a device that came back with another id is matched by its name, among the devices that were not there when
+    // it went away (an identical second device that stayed plugged in is not it), when exactly one has it.
+    FatzAudioDevices.Snapshot? FindReturned(IReadOnlyList<FatzAudioDevices.Snapshot> list)
     {
         foreach (var device in list)
         {
@@ -222,7 +227,8 @@ sealed class ChosenDeviceReturn(string chosenId, string chosenName)
                 return device;
         }
 
-        var byName = list.Where(device => string.Equals(device.Name, chosenName, StringComparison.OrdinalIgnoreCase)).ToList();
+        var byName = list.Where(device => !_idsAtLoss.Contains(device.Id)
+            && string.Equals(device.Name, chosenName, StringComparison.OrdinalIgnoreCase)).ToList();
         return byName.Count == 1 ? byName[0] : null;
     }
 

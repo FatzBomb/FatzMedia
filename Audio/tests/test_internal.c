@@ -416,6 +416,14 @@ static void test_device_move(void)
     CHECK_EQ(fa_device_move(d, NULL), FA_OK);       /* back to the default, which it follows */
     CHECK(!d->open_has_id);
     CHECK_EQ(fa_load32(&d->lost), 0);
+    {
+        /* Already on the default and playing: no reopen (the same ma_device stays). */
+        uint64_t lat_before = (uint64_t)fa_load64(&d->latency_ns);
+        fa_store64(&d->latency_ns, -1);
+        CHECK_EQ(fa_device_move(d, NULL), FA_OK);
+        CHECK_EQ(fa_load64(&d->latency_ns), -1);
+        fa_store64(&d->latency_ns, (int64_t)lat_before);
+    }
     fa_sleep_ms(50);
     CHECK_EQ(count_events(&rec, FA_EVENT_DEVICE_CHANGED, 1), 0);
     CHECK_EQ(fa_device_move(NULL, NULL), FA_ERROR_INVALID_ARG);
