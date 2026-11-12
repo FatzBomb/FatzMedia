@@ -1084,6 +1084,25 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.False(coordinator.UpdateSubtitleOverlay(6));
     }
 
+    [Fact]
+    public void EngineOverlay_ThatStopsDrawing_IsClearedWithNoCues()
+    {
+        // ENG-064: scaled CD+G turned off while a song plays (no cues): its last frame must not stay on screen.
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, engine);
+        engine.TestAudio.DrawLyricsWith = (_, width, height, rent) =>
+            (new SubtitleRasterResult(rent(8 * 2 * 4), 8, 2, 32, 0, 0, width, height), true);
+        Assert.True(coordinator.UpdateSubtitleOverlay(1));
+
+        engine.TestAudio.DrawLyricsWith = null;
+        Assert.True(coordinator.UpdateSubtitleOverlay(1));
+        Assert.False(coordinator.UpdateSubtitleOverlay(1));
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        coordinator.RefreshCurrentPosition();
+        Assert.Equal(0, backend.PresentedFrames.Last().SubtitleWidth);
+    }
+
     static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
     {
         var changed = false;

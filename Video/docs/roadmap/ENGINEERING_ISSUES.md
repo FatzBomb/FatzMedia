@@ -83,6 +83,11 @@ its new size. The smoothing levels were rendered side by side for the owner; a b
 smoothness 6 (traced straight edges, sharp corners) instead of 0. Not done: the WinForms and Avalonia second-screen
 windows still switch with the system's animation; the same change there if the jump shows.
 
+Added 2026-11-11 at the owner's request: the scaled CD+G look changes live (`PlayerCore.CdgScaling`, any player:
+`CdgScalingOptions` gained outline, shadow size and distance, bevel strength and size, and `RenderHeight`, the size
+it is drawn at before the GPU scales it). The WPF test player's Video flyout has a CD+G LOOK row to try them on a
+playing song; the owner picks the defaults from there.
+
 Reported: 2026-11-11 (owner, not blocking):
 - Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
   stair steps; smoothness 8 traces rounded edges and passed, but the owner is not a fan of how the traced letters

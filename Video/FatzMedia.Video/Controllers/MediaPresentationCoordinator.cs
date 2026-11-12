@@ -112,6 +112,8 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     SubtitleCue[] _subtitleCues = [];
     string? _subtitleText;
     int _subtitleProgressRevision = int.MinValue;
+    // The last overlay came from an engine (IKaraokeOverlaySource). Guarded by _subtitleGate.
+    bool _engineOverlayShown;
     long _subtitleRevision;
     double _lastSubtitleOffsetSeconds = double.NaN;
     // The player that built this coordinator (DiagnosticRouter.Owner at construction).
@@ -1585,6 +1587,11 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             if (_mediaEngine.Audio is IKaraokeOverlaySource { DrawsOverlay: true } engineLyrics)
                 return UpdateEngineOverlay(engineLyrics, TimeSpan.FromSeconds(subtitlePosition));
 
+            // The engine stopped drawing (scaled CD+G turned off while a song plays): the cue path draws or clears the
+            // overlay, whatever cue state the engine path left behind.
+            var redraw = _engineOverlayShown;
+            _engineOverlayShown = false;
+
             var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
             var karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
             var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
@@ -1592,13 +1599,14 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             // The same cues at the same progress draw the same raster: skip it without rebuilding
             // the cue text (ENG-039 P5-2).
             var sameCues = IsSameSubtitleCues(activeCues);
-            if (sameCues && progressRevision == _subtitleProgressRevision)
+            if (!redraw && sameCues && progressRevision == _subtitleProgressRevision)
                 return false;
 
             var text = sameCues ? _subtitleText : JoinCueText(activeCues);
             if (!sameCues)
                 _subtitleCues = [.. activeCues];
-            if (string.Equals(text, _subtitleText, StringComparison.Ordinal)
+            if (!redraw
+                && string.Equals(text, _subtitleText, StringComparison.Ordinal)
                 && progressRevision == _subtitleProgressRevision)
                 return false;
 
@@ -1645,6 +1653,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     bool UpdateEngineOverlay(IKaraokeOverlaySource source, TimeSpan time)
     {
         // The cue path's state no longer describes the overlay.
+        _engineOverlayShown = true;
         _subtitleCues = [];
         _subtitleText = null;
         _subtitleProgressRevision = int.MinValue;

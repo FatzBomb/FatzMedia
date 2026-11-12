@@ -180,13 +180,13 @@ public sealed record PlayerStartupOptions
         if (smoothness is null && !args.Contains("--cdg-scale"))
             return default;
 
-        return new CdgScalingOptions
+        var scaling = new CdgScalingOptions
         {
             Enabled = true,
             Smoothness = int.TryParse(smoothness, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : DefaultCdgSmoothness,
             EdgeBlend = true,
-            Effects = args.Contains("--cdg-effects"),
         };
+        return args.Contains("--cdg-effects") ? scaling.WithDefaultEffects() : scaling;
     }
 
     /// <summary>The smoothness of a bare <c>--cdg-scale</c>: traced straight edges with sharp corners (owner pick, ENG-064).</summary>

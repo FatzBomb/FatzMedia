@@ -162,7 +162,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
 
         var bytes = CreateStream(PacketCount, seed: 9);
         using var classic = new FatzAudioCdgEngine(_engine!);
-        using var scaled = new FatzAudioCdgEngine(_engine!, new CdgScalingOptions { Enabled = true, Smoothness = 4, EdgeBlend = true, Effects = true });
+        using var scaled = new FatzAudioCdgEngine(_engine!, new CdgScalingOptions { Enabled = true, Smoothness = 4, EdgeBlend = true }.WithDefaultEffects());
         classic.Load(Write("classic.cdg", bytes));
         scaled.Load(Write("scaled.cdg", bytes));
         Assert.False(((IKaraokeOverlaySource)classic).DrawsOverlay);
@@ -199,6 +199,64 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         scaled.RenderAtSeconds(TimeAt(6_000));
         _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
         Assert.True(changed);
+    }
+
+    [Fact]
+    public void Scaling_ChangesWhileASongPlays()
+    {
+        if (!FatzAudioNativeGroup.CanRun)
+            return;
+
+        var bytes = CreateStream(PacketCount, seed: 11);
+        using var reference = new FatzAudioCdgEngine(_engine!);
+        using var cdg = new FatzAudioCdgEngine(_engine!);
+        reference.Load(Write("reference.cdg", bytes));
+        cdg.Load(Write("live.cdg", bytes));
+        reference.RenderAtSeconds(TimeAt(3_000));
+        cdg.RenderAtSeconds(TimeAt(3_000));
+        Assert.True(reference.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var classic));
+        Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out _));
+        IKaraokeOverlaySource overlay = cdg;
+        var invalidated = 0;
+        cdg.FrameInvalidated += (_, _) => invalidated++;
+
+        // On: the picture moves to the overlay, made from the song already loaded.
+        cdg.Scaling = new CdgScalingOptions { Enabled = true, Smoothness = 6, EdgeBlend = true };
+        Assert.Equal(1, invalidated);
+        Assert.True(overlay.DrawsOverlay);
+        Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var washOnly));
+        Assert.True(washOnly.ColorIndices.IsEmpty);
+        var buffer = new byte[3840 * 2160 * 4];
+        Memory<byte> Rent(int length) => buffer.AsMemory(0, length);
+        var frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out var changed)!.Value;
+        Assert.True(changed);
+        Assert.Equal((1500, 1080), (frame.Width, frame.Height));
+
+        // A new look draws the frame again; the same options change nothing.
+        cdg.Scaling = cdg.Scaling.WithDefaultEffects() with { BevelStrength = 0.5f, BevelSize = 0.5f };
+        _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
+        Assert.True(changed);
+        var same = cdg.Scaling;
+        cdg.Scaling = same;
+        Assert.Equal(2, invalidated);
+
+        // A render height: drawn at that size, the canvas says so, and the renderers scale it to the screen.
+        cdg.Scaling = cdg.Scaling with { RenderHeight = 432 };
+        frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _)!.Value;
+        Assert.Equal((768, 432), (frame.CanvasWidth, frame.CanvasHeight));
+        Assert.Equal((600, 432), (frame.Width, frame.Height));
+        cdg.Scaling = cdg.Scaling with { RenderHeight = 2160 };
+        frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _)!.Value;
+        Assert.Equal((3840, 2160), (frame.CanvasWidth, frame.CanvasHeight));
+        Assert.Equal((3000, 2160), (frame.Width, frame.Height));
+
+        // Off: the classic picture again, whole, without a new render.
+        cdg.Scaling = cdg.Scaling with { Enabled = false };
+        Assert.False(overlay.DrawsOverlay);
+        Assert.Null(overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _));
+        Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var back));
+        Assert.True(FirstMismatch(classic.ColorIndices.Span, back.ColorIndices.Span) < 0, "the classic picture differs after scaling was turned off");
+        Assert.Contains(CdgDirtyRect.FullFrame, back.DirtyRects);
     }
 
     // Mid-pack: our engine shows floor(t x 300) = packs there; the FatzAudio engine must show the same.

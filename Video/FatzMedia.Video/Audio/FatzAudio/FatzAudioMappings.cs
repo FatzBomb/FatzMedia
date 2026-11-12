@@ -226,12 +226,29 @@ static class FatzAudioMappings
         EdgeBlend = options.EdgeBlend,
     };
 
-    /// <summary>The scaled CD+G effects (<see cref="CdgScalingOptions.Effects"/>): FatzAudio's default outline and a soft shadow.</summary>
-    public static Fa.SurfaceEffects CdgEffects { get; } = new()
-    {
-        Outline = new Fa.OutlineEffect(),
-        Shadow = new Fa.ShadowEffect { Size = 0.3f, Fade = 0.5f },
-    };
+    /// <summary>
+    /// The scaled CD+G effects of <paramref name="options"/>, or null for none: a black outline, a soft black shadow down
+    /// right and a bevel lit from the top left, each off at 0.
+    /// </summary>
+    public static Fa.SurfaceEffects? ToCdgEffects(CdgScalingOptions options) => options.HasEffects
+        ? new Fa.SurfaceEffects
+        {
+            Outline = options.OutlineSize > 0 ? new Fa.OutlineEffect { Size = options.OutlineSize } : null,
+            Shadow = options.ShadowSize > 0 || options.ShadowDistance > 0
+                ? new Fa.ShadowEffect { Size = options.ShadowSize, Distance = options.ShadowDistance, Fade = 0.5f }
+                : null,
+            Bevel = options.BevelStrength > 0 ? new Fa.BevelEffect { Strength = options.BevelStrength, Size = options.BevelSize } : null,
+        }
+        : null;
+
+    /// <summary>
+    /// The size the scaled CD+G picture is drawn at on a <paramref name="canvasWidth"/> x <paramref name="canvasHeight"/>
+    /// canvas: the canvas, or <see cref="CdgScalingOptions.RenderHeight"/> high at the canvas's shape.
+    /// </summary>
+    public static Fa.PixelSize ToCdgRenderSize(CdgScalingOptions options, int canvasWidth, int canvasHeight) =>
+        options.RenderHeight <= 0 || canvasHeight <= 0
+            ? new Fa.PixelSize(canvasWidth, canvasHeight)
+            : new Fa.PixelSize(Math.Max(1, (int)Math.Round((double)canvasWidth * options.RenderHeight / canvasHeight)), options.RenderHeight);
 
     // Codecs FatzAudio decodes itself on every platform (no system decoder needed), by FFmpeg's names.
     static readonly HashSet<string> PacketCodecs = new(StringComparer.Ordinal) { "mp3", "mp2", "aac", "ac3", "eac3", "flac", "opus", "vorbis" };
