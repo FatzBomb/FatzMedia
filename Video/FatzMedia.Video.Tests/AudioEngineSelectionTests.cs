@@ -81,7 +81,7 @@ public sealed class AudioEngineSelectionTests
 
     [Theory]
     [InlineData(new string[0], false, 0, false)]
-    [InlineData(new[] { "--cdg-scale" }, true, 0, false)]
+    [InlineData(new[] { "--cdg-scale" }, true, PlayerStartupOptions.DefaultCdgSmoothness, false)]
     [InlineData(new[] { "--cdg-scale=6", "--cdg-effects" }, true, 6, true)]
     [InlineData(new[] { "--cdg-scale=42" }, true, 10, false)]
     public void PlayerOption_ParsesTheCdgScaling(string[] args, bool enabled, int smoothness, bool effects)
