@@ -189,7 +189,7 @@ public sealed record PlayerStartupOptions
 
     static CdgScale ParseCdgScale(string value) => value.ToUpperInvariant() switch
     {
-        "NONE" or "OFF" => CdgScale.None,
+        "NONE" or "OFF" or "0" or "FALSE" => CdgScale.None,
         "LOW" => CdgScale.Low,
         "MED" or "MEDIUM" => CdgScale.Medium,
         _ => CdgScale.High,
@@ -200,6 +200,7 @@ public sealed record PlayerStartupOptions
         "PIXEL" => CdgScaleStyle.Pixel,
         "AA" or "ANTIALIASED" => CdgScaleStyle.AntiAliased,
         "PIXELART" or "PIXEL-ART" => CdgScaleStyle.PixelArt,
+        "TRACED" => CdgScaleStyle.Traced,
         "CURVED" => CdgScaleStyle.Curved,
         _ => DefaultCdgStyle,
     };

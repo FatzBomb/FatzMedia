@@ -277,6 +277,10 @@ static void pixel_art_pass(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_
                         w[k] = cc[k] >= 0 ? diag_cover((0.5f - du - dv) * look) : 0.0f;
                         own -= w[k];
                     }
+                    if (own >= 1.0f) {
+                        memcpy(px, pm[c], 4);   /* no cut reaches this pixel: most of the block */
+                        continue;
+                    }
                     if (own < 0.0f) own = 0.0f;
                     for (ch = 0; ch < 4; ch++) acc[ch] = own * (float)pm[c][ch];
                     for (k = 0; k < 4; k++)

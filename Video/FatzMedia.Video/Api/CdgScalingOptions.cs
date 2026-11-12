@@ -31,7 +31,7 @@ public enum CdgScale
     /// <summary>2x (432 high) at any screen size.</summary>
     Low,
 
-    /// <summary>The largest multiple at or below half the screen height (1080p: 2x, 1440p: 3x, 4K: 5x).</summary>
+    /// <summary>The largest multiple at or below half the screen height, at least 2x (1080p: 2x, 1440p: 3x, 4K: 5x).</summary>
     Medium,
 
     /// <summary>The largest multiple at or below the screen height (720p: 3x, 1080p: 5x, 1440p: 6x, 4K: 10x).</summary>

@@ -46,13 +46,14 @@ public partial class PlayerViewModel
     public CdgLookChoice<CdgScale> CdgScaleChoice
     {
         get;
-        set => SetCdgLook(ref field, value ?? CdgScales[0]);
+        // A list that loses its selection (null) keeps the current scale rather than turning scaling off.
+        set => SetCdgLook(ref field, value ?? field ?? CdgScales[0]);
     } = null!;
 
     public CdgLookChoice<CdgScaleStyle> CdgStyleChoice
     {
         get;
-        set => SetCdgLook(ref field, value ?? StyleChoice(PlayerStartupOptions.DefaultCdgStyle));
+        set => SetCdgLook(ref field, value ?? field ?? StyleChoice(PlayerStartupOptions.DefaultCdgStyle));
     } = null!;
 
     public int CdgOutlineSize

@@ -86,6 +86,7 @@ public sealed class AudioEngineSelectionTests
     [InlineData(new[] { "--cdg-scale=Med", "--cdg-style=aa" }, CdgScale.Medium, CdgScaleStyle.AntiAliased, false)]
     [InlineData(new[] { "--cdg-scale=6", "--cdg-style=curved" }, CdgScale.High, CdgScaleStyle.Curved, false)]
     [InlineData(new[] { "--cdg-scale=none", "--cdg-style=pixel" }, CdgScale.None, CdgScaleStyle.Pixel, false)]
+    [InlineData(new[] { "--cdg-scale=0", "--cdg-style=traced" }, CdgScale.None, CdgScaleStyle.Traced, false)]
     public void PlayerOption_ParsesTheCdgScaling(string[] args, CdgScale scale, CdgScaleStyle style, bool effects)
     {
         var scaling = PlayerStartupOptions.Parse(args).CdgScaling;
@@ -109,6 +110,7 @@ public sealed class AudioEngineSelectionTests
     [Theory]
     [InlineData(CdgScale.Low, 1080, 432)]
     [InlineData(CdgScale.Low, 2160, 432)]
+    [InlineData(CdgScale.Medium, 720, 432)]
     [InlineData(CdgScale.Medium, 1080, 432)]
     [InlineData(CdgScale.Medium, 1440, 648)]
     [InlineData(CdgScale.Medium, 2160, 1080)]

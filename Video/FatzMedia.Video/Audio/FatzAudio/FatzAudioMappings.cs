@@ -267,7 +267,7 @@ static class FatzAudioMappings
         var multiple = scale switch
         {
             CdgScale.Low => 2,
-            CdgScale.Medium => display / 2 / ScreenHeight,
+            CdgScale.Medium => Math.Max(2, display / 2 / ScreenHeight), // never below Low on a small screen
             _ => display / ScreenHeight,
         };
         var height = Math.Clamp(multiple, 1, MaximumCdgMultiple) * ScreenHeight;
