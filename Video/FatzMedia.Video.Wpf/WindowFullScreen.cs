@@ -5,8 +5,9 @@ namespace FatzMedia.Video.Wpf;
 
 /// <summary>
 /// Full screen for a WPF window: borderless and maximized over the whole screen, taskbar included, and back to the
-/// style, state and size it had. The window's maximize and restore animation is turned off while it switches, so the
-/// picture goes straight to its new size instead of sliding through the animation's in-between sizes (ENG-064).
+/// style, state and size it had. The window's maximize and restore animation is turned off from the first switch on (for
+/// the window's lifetime), so the picture goes straight to its new size instead of sliding through the animation's
+/// in-between sizes (ENG-064). It never creates the window's handle: a window not shown yet is switched once it gets one.
 /// <see cref="SecondaryPresentationWindow"/> uses it; a host's own player window can too.
 /// </summary>
 /// <example>
@@ -23,6 +24,8 @@ public sealed class WindowFullScreen(Window window)
     ResizeMode _restoreResizeMode;
     WindowState _restoreState;
     bool _restoreTopmost;
+    bool _setTopmost;
+    bool _transitionsDisabled;
 
     /// <summary>Gets whether the window is full screen.</summary>
     public bool IsFullScreen { get; private set; }
@@ -38,6 +41,7 @@ public sealed class WindowFullScreen(Window window)
         _restoreResizeMode = _window.ResizeMode;
         _restoreState = _window.WindowState == WindowState.Minimized ? WindowState.Normal : _window.WindowState;
         _restoreTopmost = _window.Topmost;
+        _setTopmost = topmost;
 
         DisableTransitions();
         _window.WindowStyle = WindowStyle.None;
@@ -58,20 +62,39 @@ public sealed class WindowFullScreen(Window window)
             return;
 
         IsFullScreen = false;
-        DisableTransitions();
         // Normal first, so a window maximized before gets its frame back (and the work area) when maximized again.
         _window.WindowState = WindowState.Normal;
         _window.WindowStyle = _restoreStyle;
         _window.ResizeMode = _restoreResizeMode;
-        _window.Topmost = _restoreTopmost;
+        if (_setTopmost)
+            _window.Topmost = _restoreTopmost;
         _window.WindowState = _restoreState;
     }
 
-    // Once the window has a handle; failing (an old Windows without the attribute) keeps the animation.
+    // Once per window. A window without a handle yet gets it when the handle is made: creating it here would run
+    // SourceInitialized early (a SecondaryPresentationWindow would take its session before it is shown). Failing (an
+    // old Windows without the attribute) keeps the animation.
     void DisableTransitions()
     {
-        var hwnd = new WindowInteropHelper(_window).EnsureHandle();
+        if (_transitionsDisabled)
+            return;
+
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            _window.SourceInitialized -= OnSourceInitialized;
+            _window.SourceInitialized += OnSourceInitialized;
+            return;
+        }
+
+        _transitionsDisabled = true;
         var disabled = 1;
         _ = NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DWMWA_TRANSITIONS_FORCEDISABLED, ref disabled, sizeof(int));
+    }
+
+    void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        _window.SourceInitialized -= OnSourceInitialized;
+        DisableTransitions();
     }
 }

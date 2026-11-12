@@ -77,11 +77,11 @@ about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the ou
 
 ### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch) (fixed, pending owner smoke)
 
-Fixed 2026-11-12: the full-screen switch turns off the window's maximize and restore animation (`WindowFullScreen` in
+Fixed 2026-11-11: the full-screen switch turns off the window's maximize and restore animation (`WindowFullScreen` in
 the WPF adapter, used by `SecondaryPresentationWindow` and the WPF test player), so the picture goes straight to
 its new size. The smoothing levels were rendered side by side for the owner; a bare `--cdg-scale` now means
-smoothness 6 (traced straight edges, sharp corners) instead of 0.
-
+smoothness 6 (traced straight edges, sharp corners) instead of 0. Not done: the WinForms and Avalonia second-screen
+windows still switch with the system's animation; the same change there if the jump shows.
 
 Reported: 2026-11-11 (owner, not blocking):
 - Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
@@ -93,9 +93,8 @@ Reported: 2026-11-11 (owner, not blocking):
 
 ### ENG-063 - WPF `--second-screen=2` opened two second-screen windows, one blank (not reproduced)
 
-2026-11-12: three runs on the owner's PC (same file and options) and the owner's rerun of M5 each opened one
+2026-11-11: three runs on the owner's PC (same file and options) and the owner's rerun of M5 each opened one
 second screen, playing. Left open in case it comes back: note the windows' titles (Alt+Tab) and monitors.
-
 
 Reported: 2026-11-11 (owner, 037A hand test M5, WPF player, two monitors, NativeHwndOverlay): starting the WPF
 player with a 1080p video and `--second-screen=2` showed two second-screen windows; the top one stayed blank and
