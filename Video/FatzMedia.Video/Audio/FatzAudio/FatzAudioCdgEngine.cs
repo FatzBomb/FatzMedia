@@ -160,11 +160,24 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
                 throw new ObjectDisposedException(GetType().FullName);
             }
 
+            // Under the lock, so it has the options of the moment (they can change while a song loads); made before
+            // any field changes, so a failure leaves the old song in place and frees the new carrier.
+            Fa.CdgSurface? scaled;
+            try
+            {
+                scaled = carrier is not null && _scaling.Enabled ? CreateScaledSurface(carrier, label) : null;
+            }
+            catch
+            {
+                carrier?.Dispose();
+                throw;
+            }
+
             oldCarrier = _carrier;
             _carrier = carrier;
             _surface = surface;
-            // Under the lock, so it has the options of the moment (they can change while a song loads).
-            _scaledSurface = carrier is not null && _scaling.Enabled ? CreateScaledSurface(carrier, label) : null;
+            _scaledSurface = scaled;
+            _scaledSurfaceFailed = carrier is not null && _scaling.Enabled && scaled is null;
             _scaledFrames = [];
             _renderFailureReported = false;
             TotalDurationSeconds = packs / (double)CdgConstants.PacketsPerSecond;

@@ -267,7 +267,7 @@
                         Command="{Binding ResetCdgLookCommand}"
                         Content="Reset Look"
                         Style="{StaticResource SyncButtonStyle}"
-                        ToolTip="Smoothness 6, edge blend on, no outline, shadow or bevel, drawn at 1080" />
+                        ToolTip="Smoothness 6, edge blend on, no outline, shadow or bevel, drawn at the canvas size" />
                 </DockPanel>
                 <WrapPanel Margin="0,4,0,0" HorizontalAlignment="Center">
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">

@@ -23,6 +23,9 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
     CdgScalingOptions _scaling;
     // Guarded by _renderLock (the reference); the surface itself is drawn on the presentation thread only.
     Fa.CdgSurface? _scaledSurface;
+    // The song's scaled surface could not be made: not tried again (and reported again) on every options change.
+    // Guarded by _renderLock.
+    bool _scaledSurfaceFailed;
     TimeSpan _lastTime;
     // Which surface revision each pooled buffer holds, so a buffer that comes back gets only the change.
     ConditionalWeakTable<byte[], HeldFrame> _scaledFrames = [];
@@ -56,16 +59,21 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
                 if (_disposed)
                     return;
 
-                if (value.Enabled && _scaledSurface is null && _carrier is { } carrier)
+                if (value.Enabled && _scaledSurface is null && !_scaledSurfaceFailed && _carrier is { } carrier)
                 {
                     // Made under the lock, so a song loaded meanwhile cannot get a surface of the old carrier.
                     _scaledSurface = CreateScaledSurface(carrier, "the song");
+                    _scaledSurfaceFailed = _scaledSurface is null;
                     _scaledFrames = [];
                 }
                 else if (_scaledSurface is { } surface && (ToLook(before) != ToLook(value)))
                 {
                     ApplyLook(surface, value);
                 }
+
+                // The classic picture before and after: nothing on screen changed.
+                if (!wasScaled && !ScaledLocked)
+                    return;
 
                 if (wasScaled != ScaledLocked)
                     SwitchPictureLocked();
@@ -174,14 +182,18 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
     /// </summary>
     Fa.CdgSurface? CreateScaledSurface(Fa.PushAudioStream carrier, string label)
     {
+        Fa.CdgSurface? surface = null;
         try
         {
-            var surface = carrier.CreateCdgSurface(new Fa.CdgSurfaceOptions { PixelFormat = Fa.CdgPixelFormat.Bgra32 });
-            ApplyLook(surface, _scaling);
+            // Not ApplyLook: a surface FatzAudio would not scale must not be shown as the scaled picture.
+            surface = carrier.CreateCdgSurface(new Fa.CdgSurfaceOptions { PixelFormat = Fa.CdgPixelFormat.Bgra32 });
+            surface.Presentation = FatzAudioMappings.ToCdgPresentation(_scaling);
+            surface.Effects = FatzAudioMappings.ToCdgEffects(_scaling);
             return surface;
         }
         catch (Exception ex) when (ex is Fa.AudioException or ArgumentException)
         {
+            surface?.Dispose();
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Scaled CD+G is not available for '{label}' ({ex.Message}); the classic picture is shown.", innerException: ex);
             return null;
         }
