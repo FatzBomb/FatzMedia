@@ -176,6 +176,32 @@ public partial class PlayerCore : IPlayerSession
         set => Effects.Equalizer = value;
     }
 
+    /// <summary>
+    /// Gets or sets the scaled CD+G picture (<see cref="CdgScalingOptions"/>; it starts as
+    /// <see cref="MediaPlayerConfiguration.CdgScaling"/>). A change shows on the next frame, the song playing or paused:
+    /// on or off switches between the scaled and the classic picture, the rest changes its look. A mode switch keeps it,
+    /// <see cref="Reset"/> takes its configuration's. The FatzAudio engine draws it; with another engine CD+G stays
+    /// classic.
+    /// </summary>
+    public CdgScalingOptions CdgScaling
+    {
+        get => _configuration.CdgScaling;
+        set
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _configuration = _configuration with { CdgScaling = value };
+            try
+            {
+                if (_serviceProvider.GetService(typeof(ICdgEngine)) is Core.Cdg.ICdgScalingTarget target)
+                    target.Scaling = value;
+            }
+            catch (ObjectDisposedException)
+            {
+                // A failed Reset left no graph; the next one is built with the new value.
+            }
+        }
+    }
+
     public bool IsOpen => _mediaEngine.IsOpen;
 
     public MediaPlayerState State => _mediaEngine.State;

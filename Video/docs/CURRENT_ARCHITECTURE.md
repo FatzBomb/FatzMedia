@@ -1018,7 +1018,8 @@ reference from Core) behind `IAudioEngine` and Core's internal seams. BASS was r
   through `FfmpegAudioFallback`. It is not an `IMediaFileAnalyzer` (prepared-next analysis is skipped)
   nor an `INetworkAudioSource`: all network audio opens through FFmpeg into the soundtrack engine.
 - **Lyrics and CD+G:** `FatzAudioCdgEngine` draws CD+G (classic or scaled with effects,
-  `CdgScalingOptions`); FatzAudio's `LyricSurface` draws MIDI lyrics through `IKaraokeOverlaySource`
+  `CdgScalingOptions`, changeable while a song plays through `PlayerCore.CdgScaling` and the internal
+  `ICdgScalingTarget`); FatzAudio's `LyricSurface` draws MIDI lyrics through `IKaraokeOverlaySource`
   on the subtitle layer, with Core's renderers as the fallback.
 - **Devices:** see "Audio Output Devices".
 

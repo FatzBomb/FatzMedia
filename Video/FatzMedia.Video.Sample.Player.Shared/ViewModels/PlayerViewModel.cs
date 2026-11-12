@@ -59,6 +59,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         ToggleFlyoutCommand = new RelayCommand<string?>(ToggleFlyout);
         InitializeValidationControls();
         InitializeEqualizerControls();
+        InitializeCdgLookControls();
         InitializePreparedNextControls();
         InitializeNetworkControls();
         InitializeModeControls();
@@ -502,6 +503,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
                 _ = player.PauseBackgroundAsync();
             player.ShowMidiLyrics = true;
             player.Equalizer = BuildEqualizerSettings();
+            player.CdgScaling = BuildCdgScaling();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
             // Subscribed before the surface binds to the player: attaching it creates the

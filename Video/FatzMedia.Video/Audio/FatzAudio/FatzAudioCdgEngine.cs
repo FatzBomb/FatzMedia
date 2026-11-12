@@ -53,7 +53,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     bool _disposed;
 
     /// <param name="engine">The FatzAudio engine the graphics ride on.</param>
-    /// <param name="scaling">The scaled picture's options; off (the default) draws the classic picture.</param>
+    /// <param name="scaling">The scaled picture's options; off (the default) draws the classic picture. <see cref="Scaling"/> changes them later.</param>
     public FatzAudioCdgEngine(Fa.AudioEngine engine, CdgScalingOptions scaling = default)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -149,17 +149,6 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var (carrier, surface, packs) = CreateCarrier(cdg, label);
-        Fa.CdgSurface? scaled;
-        try
-        {
-            scaled = carrier is null ? null : CreateScaledSurface(carrier, label);
-        }
-        catch
-        {
-            carrier?.Dispose();
-            throw;
-        }
-
         Fa.PushAudioStream? oldCarrier;
         bool washChanged;
         lock (_renderLock)
@@ -174,7 +163,8 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
             oldCarrier = _carrier;
             _carrier = carrier;
             _surface = surface;
-            _scaledSurface = scaled;
+            // Under the lock, so it has the options of the moment (they can change while a song loads).
+            _scaledSurface = carrier is not null && _scaling.Enabled ? CreateScaledSurface(carrier, label) : null;
             _scaledFrames = [];
             _renderFailureReported = false;
             TotalDurationSeconds = packs / (double)CdgConstants.PacketsPerSecond;
@@ -356,7 +346,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         lock (_renderLock)
         {
             // Scaled: the picture is the overlay (DrawOverlay); the snapshot carries only the wash.
-            snapshot = _scaledSurface is null ? CreateSnapshotLocked(consumeDirtyRegions) : CreateWashOnlySnapshotLocked();
+            snapshot = ScaledLocked ? CreateWashOnlySnapshotLocked() : CreateSnapshotLocked(consumeDirtyRegions);
             return true;
         }
     }

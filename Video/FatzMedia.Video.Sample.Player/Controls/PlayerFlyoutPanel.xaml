@@ -232,6 +232,136 @@
                         Style="{StaticResource SyncButtonStyle}"
                         ToolTip="Restore all base-visual transforms to identity" />
                 </DockPanel>
+                <!--  Scaled CD+G look (ENG-064): applied live by FatzAudio, playing or paused  -->
+                <DockPanel Margin="0,10,0,0" HorizontalAlignment="Center">
+                    <TextBlock
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="CD+G LOOK" />
+                    <CheckBox
+                        Margin="0,0,14,0"
+                        VerticalAlignment="Center"
+                        Content="Scaled"
+                        IsChecked="{Binding CdgScaled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Draw CD+G smoothed in full colour (FatzAudio) instead of the classic 300x216 picture scaled up" />
+                    <CheckBox
+                        Margin="0,0,14,0"
+                        VerticalAlignment="Center"
+                        Content="Edge blend"
+                        IsChecked="{Binding CdgEdgeBlend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Anti-alias stair steps along colour edges (no effect at smoothness 5 and up)" />
+                    <TextBlock
+                        Margin="0,0,6,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="RENDER" />
+                    <ComboBox
+                        MinWidth="110"
+                        Margin="0,0,14,0"
+                        ItemsSource="{Binding CdgRenderHeights}"
+                        SelectedItem="{Binding CdgRenderHeight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Height the picture is drawn at before the GPU scales it to the screen; it is drawn at the largest whole multiple of 216 that fits" />
+                    <Button
+                        Width="92"
+                        Command="{Binding ResetCdgLookCommand}"
+                        Content="Reset Look"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Smoothness 6, edge blend on, no outline, shadow or bevel, drawn at 1080" />
+                </DockPanel>
+                <WrapPanel Margin="0,4,0,0" HorizontalAlignment="Center">
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="SMOOTHNESS" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgSmoothness}" />
+                        </DockPanel>
+                        <Slider
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
+                            Minimum="0"
+                            TickFrequency="1"
+                            ToolTip="0 sharp pixels, 1-4 softer, 5-10 traced outlines: straighter diagonals, rounder corners, curves at 9 and 10"
+                            Value="{Binding CdgSmoothness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="OUTLINE" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgOutlineSize, StringFormat={}{0:0.00}}" />
+                        </DockPanel>
+                        <Slider
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.05"
+                            ToolTip="Black outline width: 0 none, 1 is 1.5 CD+G pixels"
+                            Value="{Binding CdgOutlineSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="SHADOW SIZE" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgShadowSize, StringFormat={}{0:0.00}}" />
+                        </DockPanel>
+                        <Slider
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.05"
+                            ToolTip="How far the soft shadow spreads: 1 is 2 CD+G pixels"
+                            Value="{Binding CdgShadowSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="SHADOW DIST" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgShadowDistance, StringFormat={}{0:0.00}}" />
+                        </DockPanel>
+                        <Slider
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.05"
+                            ToolTip="How far down and right the shadow falls: 1 is 2 CD+G pixels. Shadow is off when size and distance are both 0"
+                            Value="{Binding CdgShadowDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="BEVEL" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgBevelStrength, StringFormat={}{0:0.00}}" />
+                        </DockPanel>
+                        <Slider
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.05"
+                            ToolTip="Bevel strength: a highlight top left and a shade bottom right; 0 none"
+                            Value="{Binding CdgBevelStrength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
+                        <DockPanel>
+                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="BEVEL SIZE" />
+                            <TextBlock
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource ValueTextStyle}"
+                                Text="{Binding CdgBevelSize, StringFormat={}{0:0.00}}" />
+                        </DockPanel>
+                        <Slider
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.05"
+                            ToolTip="How far the bevel reaches in from the edge: 1 is 1 CD+G pixel"
+                            Value="{Binding CdgBevelSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </WrapPanel>
             </StackPanel>
         </Border>
 

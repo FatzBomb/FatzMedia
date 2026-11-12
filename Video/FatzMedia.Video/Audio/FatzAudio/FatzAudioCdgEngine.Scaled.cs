@@ -13,11 +13,14 @@ namespace FatzMedia.Video.Audio;
 /// composites. The indexed surface keeps running for the background wash and the change notices, and the snapshot
 /// then carries the wash only. The picture is drawn on the presentation thread for the position last rendered
 /// (render-ahead would hand back a late frame with no notice that a newer one is ready): about 1 ms for a full
-/// frame at 1080p without effects, 15-25 ms with them, a fraction of that for a typical change.
+/// frame at 1080p without effects, 15-25 ms with them, a fraction of that for a typical change. The options can
+/// change while a song plays (<see cref="ICdgScalingTarget"/>): the surface is made the first time scaling is on
+/// and kept for the song, and turning scaling off shows the classic picture again.
 /// </summary>
-sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
+sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarget
 {
-    readonly CdgScalingOptions _scaling;
+    // Guarded by _renderLock.
+    CdgScalingOptions _scaling;
     // Guarded by _renderLock (the reference); the surface itself is drawn on the presentation thread only.
     Fa.CdgSurface? _scaledSurface;
     TimeSpan _lastTime;
@@ -30,12 +33,54 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
         public ulong LayoutRevision;
     }
 
+    /// <summary>Whether the scaled picture is shown. Caller holds _renderLock.</summary>
+    bool ScaledLocked => _scaledSurface is not null && _scaling.Enabled && !_disposed;
+
+    public CdgScalingOptions Scaling
+    {
+        get
+        {
+            lock (_renderLock)
+                return _scaling;
+        }
+        set
+        {
+            lock (_renderLock)
+            {
+                var before = _scaling;
+                if (before == value)
+                    return;
+
+                var wasScaled = ScaledLocked;
+                _scaling = value;
+                if (_disposed)
+                    return;
+
+                if (value.Enabled && _scaledSurface is null && _carrier is { } carrier)
+                {
+                    // Made under the lock, so a song loaded meanwhile cannot get a surface of the old carrier.
+                    _scaledSurface = CreateScaledSurface(carrier, "the song");
+                    _scaledFrames = [];
+                }
+                else if (_scaledSurface is { } surface && (ToLook(before) != ToLook(value)))
+                {
+                    ApplyLook(surface, value);
+                }
+
+                if (wasScaled != ScaledLocked)
+                    SwitchPictureLocked();
+            }
+
+            InvalidateFrame();
+        }
+    }
+
     bool IKaraokeOverlaySource.DrawsOverlay
     {
         get
         {
             lock (_renderLock)
-                return _scaledSurface is not null && !_disposed;
+                return ScaledLocked;
         }
     }
 
@@ -45,24 +90,26 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
         Fa.CdgSurface surface;
         TimeSpan at;
         ConditionalWeakTable<byte[], HeldFrame> held;
+        Fa.PixelSize size;
         lock (_renderLock)
         {
-            if (_disposed || _scaledSurface is null)
+            if (!ScaledLocked)
                 return null;
 
-            surface = _scaledSurface;
+            surface = _scaledSurface!;
             at = _lastTime;
             held = _scaledFrames;
+            size = FatzAudioMappings.ToCdgRenderSize(_scaling, canvasWidth, canvasHeight);
         }
 
         try
         {
-            var size = new Fa.PixelSize(canvasWidth, canvasHeight);
             if (surface.PresentationSize != size)
                 surface.PresentationSize = size;
 
             // The layout can change while drawing (the Auto safety zone switches when the song first draws in the
-            // border): then read it again, so the frame is placed with the geometry it was drawn for.
+            // border, or the options change on another thread): then read it again, so the frame is placed with the
+            // geometry it was drawn for.
             for (var attempt = 0; ; attempt++)
             {
                 var layout = surface.GetLayout();
@@ -96,7 +143,8 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
                 }
 
                 // The buffer has a transparent margin of one CD+G pixel around the picture, which can reach past the
-                // canvas (5x at 1080 high is 1090 high): show the picture without it.
+                // canvas (5x at 1080 high is 1090 high): show the picture without it. The canvas is the size it was
+                // drawn for, which the renderers scale to the screen.
                 var m = layout.Margin;
                 return new SubtitleRasterResult(
                     memory[((m * stride) + (m * 4))..],
@@ -105,8 +153,8 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
                     stride,
                     layout.BitmapX + m,
                     layout.BitmapY + m,
-                    canvasWidth,
-                    canvasHeight);
+                    size.Width,
+                    size.Height);
             }
         }
         catch (ObjectDisposedException)
@@ -120,17 +168,16 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
         }
     }
 
-    /// <summary>The scaled surface on <paramref name="carrier"/>, or null when scaling is off or it cannot be made.</summary>
+    /// <summary>
+    /// A scaled surface on <paramref name="carrier"/> with the current options, or null when it cannot be made. Caller
+    /// holds _renderLock.
+    /// </summary>
     Fa.CdgSurface? CreateScaledSurface(Fa.PushAudioStream carrier, string label)
     {
-        if (!_scaling.Enabled)
-            return null;
-
         try
         {
             var surface = carrier.CreateCdgSurface(new Fa.CdgSurfaceOptions { PixelFormat = Fa.CdgPixelFormat.Bgra32 });
-            surface.Presentation = FatzAudioMappings.ToCdgPresentation(_scaling);
-            surface.Effects = _scaling.Effects ? FatzAudioMappings.CdgEffects : null;
+            ApplyLook(surface, _scaling);
             return surface;
         }
         catch (Exception ex) when (ex is Fa.AudioException or ArgumentException)
@@ -138,6 +185,40 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Scaled CD+G is not available for '{label}' ({ex.Message}); the classic picture is shown.", innerException: ex);
             return null;
         }
+    }
+
+    // What the surface itself is told; Enabled and RenderHeight are ours.
+    static CdgScalingOptions ToLook(CdgScalingOptions options) => options with { Enabled = false, RenderHeight = 0 };
+
+    static void ApplyLook(Fa.CdgSurface surface, CdgScalingOptions options)
+    {
+        try
+        {
+            surface.Presentation = FatzAudioMappings.ToCdgPresentation(options);
+            surface.Effects = FatzAudioMappings.ToCdgEffects(options);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The song is closing.
+        }
+        catch (Exception ex) when (ex is Fa.AudioException or ArgumentException)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"FatzAudio did not take the scaled CD+G options ({ex.Message}); the picture keeps its look.", innerException: ex);
+        }
+    }
+
+    /// <summary>
+    /// Scaling went on or off: the snapshot carries the whole picture again, or only the wash; a pooled buffer may have
+    /// held anything meanwhile. Caller holds _renderLock.
+    /// </summary>
+    void SwitchPictureLocked()
+    {
+        _scaledFrames = [];
+        _lastSnapshot = null;
+        _dirtyRects.Clear();
+        _dirtyRects.Add(CdgDirtyRect.FullFrame);
+        _dirtyBaseRevision = -1;
+        _revision++;
     }
 
     /// <summary>A snapshot with the wash and no pixels, for the scaled picture. Caller holds _renderLock.</summary>

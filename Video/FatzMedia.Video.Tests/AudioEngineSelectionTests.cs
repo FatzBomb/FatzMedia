@@ -87,7 +87,21 @@ public sealed class AudioEngineSelectionTests
     public void PlayerOption_ParsesTheCdgScaling(string[] args, bool enabled, int smoothness, bool effects)
     {
         var scaling = PlayerStartupOptions.Parse(args).CdgScaling;
-        Assert.Equal((enabled, smoothness, effects), (scaling.Enabled, scaling.Smoothness, scaling.Effects));
+        Assert.Equal((enabled, smoothness, effects), (scaling.Enabled, scaling.Smoothness, scaling.HasEffects));
+        if (effects)
+            Assert.Equal(scaling, scaling.WithDefaultEffects());
+    }
+
+    [Fact]
+    public void CdgScalingOptions_ClampTheirValues()
+    {
+        var options = new CdgScalingOptions { OutlineSize = 2, ShadowSize = -1, ShadowDistance = float.NaN, BevelStrength = 0.4f, BevelSize = 7, RenderHeight = 100 };
+        Assert.Equal((1f, 0f, 0f, 0.4f, 1f), (options.OutlineSize, options.ShadowSize, options.ShadowDistance, options.BevelStrength, options.BevelSize));
+        Assert.Equal(CdgScalingOptions.MinimumRenderHeight, options.RenderHeight);
+        Assert.Equal(CdgScalingOptions.MaximumRenderHeight, (options with { RenderHeight = 9999 }).RenderHeight);
+        Assert.Equal(0, (options with { RenderHeight = -5 }).RenderHeight);
+        Assert.True(options.HasEffects);
+        Assert.False(new CdgScalingOptions { BevelSize = 1 }.HasEffects);
     }
 
     static IServiceProvider Create(MediaPlayerConfiguration configuration) =>
