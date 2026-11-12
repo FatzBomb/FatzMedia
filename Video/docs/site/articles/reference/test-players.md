@@ -62,7 +62,7 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--hdr-tonemap-cpu` | Tone map HDR video on the CPU, for comparison. |
 | `--lightweight-surfaces` | Opens a smoke window with the adapter's `BackgroundSurface` and `KaraokeSurface`. |
 | `--audio-device=<id or name>` | The FatzAudio output device (see [Output devices](../audio/output-devices.md)). The Log lists the names when it is not found. The default is the system default device. |
-| `--cdg-scale[=0..10]` | The scaled CD+G picture; the value is the smoothness. Off (the classic picture) without it. |
+| `--cdg-scale[=0..10]` | The scaled CD+G picture; the value is the smoothness (6, traced straight edges with sharp corners, when left out). Off (the classic picture) without it. |
 | `--cdg-effects` | Adds an outline and a shadow to the scaled CD+G picture. |
 | `--video-audio=fatz` | FatzAudio decodes video soundtracks from FFmpeg's packets; FFmpeg decodes otherwise. |
 | `--no-auto-hide` | Surfaces keep the last frame after stop (`AutoHide = false`). |

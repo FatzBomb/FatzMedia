@@ -267,8 +267,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         var close = Stopwatch.StartNew();
         session.Player.Close();
         var closeMs = close.Elapsed.TotalMilliseconds;
-        Assert.Same(load, await Task.WhenAny(load, Task.Delay(TimeSpan.FromSeconds(3))));
-        Assert.False(await load);
+        Assert.False(await load.WaitAsync(TimeSpan.FromSeconds(3)));
         output.WriteLine($"close during connect: {closeMs:F0} ms (load finished {close.Elapsed.TotalMilliseconds:F0} ms after Close)");
         Assert.True(close.Elapsed < TimeSpan.FromSeconds(2), $"close took {close.Elapsed}");
         Assert.Contains(session.DiagnosticList, line => line.Contains("cancelled", StringComparison.OrdinalIgnoreCase));

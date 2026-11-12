@@ -149,7 +149,7 @@ public sealed record PlayerStartupOptions
     public string? AudioDevice { get; init; }
 
     /// <summary>
-    /// Gets the scaled CD+G picture (<c>--cdg-scale</c> or <c>--cdg-scale=0..10</c>, the smoothness; <c>--cdg-effects</c>
+    /// Gets the scaled CD+G picture (<c>--cdg-scale</c>, smoothness <see cref="DefaultCdgSmoothness"/>, or <c>--cdg-scale=0..10</c>; <c>--cdg-effects</c>
     /// adds an outline and a shadow); off (the classic picture) without it.
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
@@ -183,11 +183,14 @@ public sealed record PlayerStartupOptions
         return new CdgScalingOptions
         {
             Enabled = true,
-            Smoothness = int.TryParse(smoothness, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : 0,
+            Smoothness = int.TryParse(smoothness, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : DefaultCdgSmoothness,
             EdgeBlend = true,
             Effects = args.Contains("--cdg-effects"),
         };
     }
+
+    /// <summary>The smoothness of a bare <c>--cdg-scale</c>: traced straight edges with sharp corners (owner pick, ENG-064).</summary>
+    public const int DefaultCdgSmoothness = 6;
 
     /// <summary>Parses <paramref name="args"/>. Unknown flags are ignored.</summary>
     public static PlayerStartupOptions Parse(IReadOnlyList<string> args)

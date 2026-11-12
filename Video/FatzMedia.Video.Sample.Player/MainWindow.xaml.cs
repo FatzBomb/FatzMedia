@@ -7,6 +7,7 @@ using FatzMedia.Video.Sample.Player.Hosting;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
 using FatzMedia.Video.Sample.Player.Shared.Presentation;
+using FatzMedia.Video.Wpf;
 
 namespace FatzMedia.Video.Sample.Player;
 
@@ -22,14 +23,12 @@ namespace FatzMedia.Video.Sample.Player;
 public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
 {
     readonly PlayerSetController<PlayerView> _players;
-    WindowState _restoreWindowState;
-    WindowStyle _restoreWindowStyle;
-    ResizeMode _restoreResizeMode;
-    bool _restoreTopmost;
+    readonly WindowFullScreen _fullScreen;
 
     public MainWindow()
     {
         InitializeComponent();
+        _fullScreen = new WindowFullScreen(this);
         _players = new PlayerSetController<PlayerView>(this, new WpfPlayerDispatcher());
 
         if (App.StartupOptions.Players > 1)
@@ -95,27 +94,9 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
     void IPlayerSetHost<PlayerView>.SetWindowFullScreen(bool fullScreen)
     {
         if (fullScreen)
-        {
-            _restoreWindowState = WindowState == WindowState.Minimized ? WindowState.Normal : WindowState;
-            _restoreWindowStyle = WindowStyle;
-            _restoreResizeMode = ResizeMode;
-            _restoreTopmost = Topmost;
-
-            WindowStyle = WindowStyle.None;
-            ResizeMode = ResizeMode.NoResize;
-            Topmost = true;
-            // Maximizing again after the style change makes the borderless window cover the taskbar too.
-            WindowState = WindowState.Normal;
-            WindowState = WindowState.Maximized;
-        }
+            _fullScreen.Enter(topmost: true);
         else
-        {
-            WindowState = WindowState.Normal;
-            WindowStyle = _restoreWindowStyle;
-            ResizeMode = _restoreResizeMode;
-            Topmost = _restoreTopmost;
-            WindowState = _restoreWindowState;
-        }
+            _fullScreen.Exit();
     }
 
     void IPlayerSetHost<PlayerView>.FallBackRenderer()

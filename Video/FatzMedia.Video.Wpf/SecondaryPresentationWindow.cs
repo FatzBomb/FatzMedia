@@ -24,9 +24,7 @@ public sealed class SecondaryPresentationWindow : Window
     public static readonly Size DefaultSize = new(960, 540);
 
     readonly IPlayerSession _session;
-    WindowStyle _restoreWindowStyle;
-    ResizeMode _restoreResizeMode;
-    WindowState _restoreWindowState;
+    readonly WindowFullScreen _fullScreen;
 
     /// <param name="session">The session to present from.</param>
     /// <param name="surfaceId">The secondary surface id; distinct per secondary window of one session.</param>
@@ -42,6 +40,7 @@ public sealed class SecondaryPresentationWindow : Window
         WpfPresentationMode presentationMode = WpfPresentationMode.NativeHwndOverlay)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _fullScreen = new WindowFullScreen(this);
         Surface = new MediaSurface
         {
             PresentationMode = presentationMode,
@@ -73,32 +72,13 @@ public sealed class SecondaryPresentationWindow : Window
     /// <summary>Gets or sets whether the window covers its whole screen (borderless, maximized).</summary>
     public bool IsFullScreen
     {
-        get;
+        get => _fullScreen.IsFullScreen;
         set
         {
-            if (field == value)
-                return;
-
-            field = value;
             if (value)
-            {
-                _restoreWindowStyle = WindowStyle;
-                _restoreResizeMode = ResizeMode;
-                _restoreWindowState = WindowState;
-                WindowStyle = WindowStyle.None;
-                ResizeMode = ResizeMode.NoResize;
-
-                // Maximizing again after the style change makes the borderless window cover the
-                // taskbar too.
-                WindowState = WindowState.Normal;
-                WindowState = WindowState.Maximized;
-            }
+                _fullScreen.Enter();
             else
-            {
-                WindowStyle = _restoreWindowStyle;
-                ResizeMode = _restoreResizeMode;
-                WindowState = _restoreWindowState == WindowState.Minimized ? WindowState.Normal : _restoreWindowState;
-            }
+                _fullScreen.Exit();
         }
     }
 

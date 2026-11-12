@@ -81,6 +81,8 @@ public sealed class WpfMediaSurfaceParityTests
         window.IsFullScreen = true;
         Assert.Equal(WindowStyle.None, window.WindowStyle);
         Assert.Equal(WindowState.Maximized, window.WindowState);
+        // Switching does not make the handle, so the unshown window still does not follow the session.
+        Assert.Null(window.Surface.Player);
         window.IsFullScreen = false;
         Assert.Equal(WindowStyle.SingleBorderWindow, window.WindowStyle);
         Assert.Equal(WindowState.Normal, window.WindowState);

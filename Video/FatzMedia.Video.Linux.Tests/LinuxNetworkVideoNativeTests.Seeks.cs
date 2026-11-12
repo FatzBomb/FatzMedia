@@ -180,15 +180,24 @@ public sealed partial class LinuxNetworkVideoNativeTests
                 requests.Add(session.Player.SeekAsync(target));
             }
 
-            if (await Task.WhenAny(Task.WhenAll(requests), Task.Delay(SeekSettleTimeout)) is not Task<bool[]> accepted)
+            bool[] accepted;
+            try
+            {
+                accepted = await Task.WhenAll(requests).WaitAsync(SeekSettleTimeout);
+            }
+            catch (TimeoutException)
             {
                 DumpStacks("a SeekAsync task did not finish");
                 Assert.Fail($"SeekAsync did not finish within {SeekSettleTimeout}");
                 return 0;
             }
 
-            Assert.All(await accepted, Assert.True);
-            if (await Task.WhenAny(settled.Task, Task.Delay(SeekSettleTimeout)) != settled.Task)
+            Assert.All(accepted, Assert.True);
+            try
+            {
+                await settled.Task.WaitAsync(SeekSettleTimeout);
+            }
+            catch (TimeoutException)
             {
                 DumpStacks($"the seek to {last} s did not settle");
                 Assert.Fail($"the seek to {last} s did not settle within {SeekSettleTimeout}; position {session.Player.Position}");

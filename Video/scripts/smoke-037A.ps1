@@ -193,8 +193,8 @@ if ($Part -in '2', 'both') {
         'Play it: the graphics wipe in time with the singing.',
         'Seek, pause and resume, and loop: the picture is right after each.',
         'A song you know scrolls smoothly should glide line by line.') 'Loaded CDG'
-    Run-Check 'M6b' 'scaled CD+G (smoothed, outlined)' 'Cdg' @('--cdg-scale=8', '--cdg-effects') @(
-        'The same song, now drawn by FatzAudio in full colour with traced, rounded edges (smoothness 8), an outline and a shadow.',
+    Run-Check 'M6b' 'scaled CD+G (smoothed, outlined)' 'Cdg' @('--cdg-scale', '--cdg-effects') @(
+        'The same song, now drawn by FatzAudio in full colour with traced straight edges (smoothness 6), an outline and a shadow.',
         'It fills the height of the window, sharp at any window size; seek and pause still show the right picture.',
         'Pass if it looks right and stays in time (it is optional: the classic picture stays the default).') 'Loaded CDG|Scaled CD\+G'
     Run-Check 'M7' 'Audio-mode soundtrack' 'Video' @('--mode=audio') @(
