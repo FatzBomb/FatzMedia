@@ -21,24 +21,34 @@
 
 #define EDGE_SPAN 4               /* CD+G pixels a step's line reaches along its edge */
 
-void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend)
+void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend, int pixel_art)
 {
-    cdg_scaler_init_look(sc, n, n, smoothness, edge_blend);
+    cdg_scaler_init_look(sc, n, n, smoothness, edge_blend, pixel_art);
 }
 
-void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend)
+void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend, int pixel_art)
 {
     static const float band[5] = { 0.0f, 0.0f, 0.25f, 0.5f, 1.0f };
     uint32_t p;
     float width;
     struct cdg_contours* ct = sc->ct;
-    int contour = smoothness >= 5 && smoothness <= 10 ? smoothness : 0, failed = sc->ct_failed;
+    int contour, failed = sc->ct_failed;
+    if (pixel_art) smoothness = edge_blend = 0;
+    contour = smoothness >= 5 && smoothness <= 10 ? smoothness : 0;
     memset(sc, 0, sizeof(*sc));
     sc->ct = ct;
     sc->ct_failed = failed;
     if (n < 1) n = 1;
     if (n > CDG_SCALE_MAX_N) n = CDG_SCALE_MAX_N;
     if (look < 1 || look > n) look = n;
+    sc->look = look;
+    if (pixel_art) {
+        /* A corner's rule reads the 4x4 pixels around it (see pixel_art_pass). */
+        sc->n = n;
+        sc->pixel_art = 1;
+        sc->reach_across = sc->reach_along = 2;
+        return;
+    }
     if (smoothness < 0) smoothness = 0;
     if (smoothness > 4) smoothness = 4;   /* contour mode falls back to 4 without memory */
     if (contour) edge_blend = 0;          /* nothing left for it to do */
@@ -178,6 +188,109 @@ static void base_pass(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_H][CD
     }
 }
 
+/* ---- pixel art ----------------------------------------------------------------------- */
+
+static uint8_t px_at(const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W], int x, int y)
+{
+    return screen[clampi(y, 0, CDG_SCALE_H - 1)][clampi(x, 0, CDG_SCALE_W - 1)];
+}
+
+/* The colour the corner of pixel (x, y) towards (dx, dy) (each -1 or +1) takes, or -1 to
+ * keep its own:
+ * - a step: the two pixels beside the corner (h across, v up or down) share a colour
+ *   that is not this pixel's, the pixel diagonally across is not this pixel's colour
+ *   either, and the edge goes on past the corner (one of the two pixels diagonal to
+ *   this one along the edge, k1 or k2, is this pixel's colour). The corner is then
+ *   cut along the 45-degree line through the middles of its two sides, so a staircase
+ *   of steps becomes a straight 45-degree line from both sides. A square corner (no
+ *   pixel of its colour along the edge) and a lone pixel keep their corners.
+ * - a crossing (two pixels of each colour meeting diagonally at the corner): the
+ *   colour that is scarcer in the 4x4 pixels around the corner is the line that goes
+ *   through, so the two pixels of the other colour give it their corner; the same
+ *   count either way keeps both. */
+static int corner_colour(const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W], int x, int y, int dx, int dy)
+{
+    uint8_t p = px_at(screen, x, y), h = px_at(screen, x + dx, y), v = px_at(screen, x, y + dy);
+    uint8_t d = px_at(screen, x + dx, y + dy);
+    if (h != v || h == p) return -1;
+    if (d != p) {
+        uint8_t k1 = px_at(screen, x + dx, y - dy), k2 = px_at(screen, x - dx, y + dy);
+        return k1 == p || k2 == p ? h : -1;
+    }
+    {
+        /* The 4x4 pixels around the corner: columns x0..x0+3, rows y0..y0+3. */
+        int x0 = (dx > 0 ? x : x - 1) - 1, y0 = (dy > 0 ? y : y - 1) - 1, i, j, np = 0, nh = 0;
+        for (j = 0; j < 4; j++)
+            for (i = 0; i < 4; i++) {
+                uint8_t c = px_at(screen, x0 + i, y0 + j);
+                np += c == p;
+                nh += c == h;
+            }
+        return nh < np ? h : -1;
+    }
+}
+
+/* Coverage of an output pixel by the half-plane past a 45-degree line, from the L1
+ * offset `a` of the pixel's centre past it in output pixels (-1..1 crosses the pixel):
+ * the exact area of the square on that side. */
+static float diag_cover(float a)
+{
+    if (a <= -1.0f) return 0.0f;
+    if (a >= 1.0f) return 1.0f;
+    return a < 0.0f ? 0.5f * (1.0f + a) * (1.0f + a) : 1.0f - 0.5f * (1.0f - a) * (1.0f - a);
+}
+
+/* The pixel-art scaler: each CD+G pixel is an n x n block whose corners may be cut by
+ * corner_colour's rules, the cut edges anti-aliased at the `look` multiple. Only those
+ * 45-degree lines are new; every other edge stays on the pixel grid, as drawn. Own
+ * rules, in the spirit of the EPX / Scale2x family, at any whole multiple. */
+static void pixel_art_pass(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W],
+                           const uint8_t pm[CDG_SCALE_COLORS][4], uint8_t* out, size_t stride, int ox, int oy,
+                           int sx0, int sy0, int sx1, int sy1)
+{
+    static const int cdx[4] = { -1, 1, -1, 1 }, cdy[4] = { -1, -1, 1, 1 };
+    uint32_t n = sc->n, i, j, k, ch;
+    float look = (float)sc->look;
+    int sx, sy;
+    for (sy = sy0; sy < sy1; sy++)
+        for (sx = sx0; sx < sx1; sx++) {
+            uint8_t c = screen[sy][sx];
+            uint8_t* block = out + (size_t)(sy - oy) * n * stride + (size_t)(sx - ox) * n * 4;
+            int cc[4], any = 0;
+            for (k = 0; k < 4; k++) {
+                cc[k] = corner_colour(screen, sx, sy, cdx[k], cdy[k]);
+                any |= cc[k] >= 0;
+            }
+            if (!any) {
+                for (i = 0; i < n; i++) memcpy(block + i * 4, pm[c], 4);
+                for (j = 1; j < n; j++) memcpy(block + j * stride, block, (size_t)n * 4);
+                continue;
+            }
+            for (j = 0; j < n; j++) {
+                float v = ((float)j + 0.5f) / (float)n;
+                uint8_t* px = block + j * stride;
+                for (i = 0; i < n; i++, px += 4) {
+                    float u = ((float)i + 0.5f) / (float)n, w[4], own = 1.0f, acc[4];
+                    for (k = 0; k < 4; k++) {
+                        /* L1 distance from the corner, less the half pixel the cut reaches. */
+                        float du = cdx[k] > 0 ? 1.0f - u : u, dv = cdy[k] > 0 ? 1.0f - v : v;
+                        w[k] = cc[k] >= 0 ? diag_cover((0.5f - du - dv) * look) : 0.0f;
+                        own -= w[k];
+                    }
+                    if (own < 0.0f) own = 0.0f;
+                    for (ch = 0; ch < 4; ch++) acc[ch] = own * (float)pm[c][ch];
+                    for (k = 0; k < 4; k++)
+                        if (w[k] > 0.0f)
+                            for (ch = 0; ch < 4; ch++) acc[ch] += w[k] * (float)pm[cc[k]][ch];
+                    for (ch = 0; ch < 4; ch++) {
+                        float o = acc[ch] + 0.5f;
+                        px[ch] = (uint8_t)(o > 255.0f ? 255.0f : o);
+                    }
+                }
+            }
+        }
+}
+
 /* ---- edge blend ---------------------------------------------------------------------- */
 
 typedef struct edge_ctx {
@@ -281,6 +394,10 @@ void cdg_scale_rect(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_H][CDG_
     if (sx1 > CDG_SCALE_W) sx1 = CDG_SCALE_W;
     if (sy1 > CDG_SCALE_H) sy1 = CDG_SCALE_H;
     if (sx0 >= sx1 || sy0 >= sy1) return;
+    if (sc->pixel_art) {
+        pixel_art_pass(sc, screen, pm, out, out_stride, ox, oy, sx0, sy0, sx1, sy1);
+        return;
+    }
     if (sc->contour && sc->ct_ok) {
         cdg_contours_draw(sc->ct, screen, pm, out, out_stride, ox, oy, sx0, sy0, sx1, sy1, (int32_t*)(void*)rows);
         return;

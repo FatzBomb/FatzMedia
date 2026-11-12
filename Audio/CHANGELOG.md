@@ -37,6 +37,8 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- CD+G presentation: `fa_cdg_presentation.pixel_art` (.NET `CdgPresentation.PixelArt`), a pixel-art scaler: sharp pixels with the corners of diagonal steps cut at 45 degrees, square corners and lone pixels kept, at any whole multiple. ([CD+G](docs/features/cdg.md#presentation-options-fa_cdg_surface_set_presentation))
+- Surface effects: sizes and distances go up to `FA_FX_MAX_SIZE` (5; .NET `SurfaceEffects.MaxSize`) instead of 1, for outlines, shadows and bevels up to 5 CD+G pixels (7.5 for the outline). Values that were valid stay valid.
 - `fa_device_move` (.NET `OutputDevice.MoveTo`): moves a running output to another device (or back to the default) at the same mix rate, everything on it playing on; for bringing the sound back to a chosen device once it is plugged in again. ([devices](docs/features/devices.md#moving-the-output-to-another-device))
 - `fa_device_list` (.NET `AudioEngine.ListDevices`): every device of a type from one enumeration, without the format query, cheap enough to poll once a second to notice devices plugged in or removed and a new default. ([devices](docs/features/devices.md#watching-the-device-list))
 

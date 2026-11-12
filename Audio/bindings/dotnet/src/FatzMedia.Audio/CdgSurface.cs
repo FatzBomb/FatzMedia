@@ -92,6 +92,10 @@ public sealed record CdgPresentation
     public bool EdgeBlend { get; init; }
     /// <summary>The border is transparent too; its colour is still reported in <see cref="SurfaceUpdate.BorderIndex"/>.</summary>
     public bool TransparentBorder { get; init; }
+    /// <summary>With <see cref="Scale"/> only: the pixel-art scaler instead of <see cref="Smoothness"/> and
+    /// <see cref="EdgeBlend"/> (both ignored): sharp pixels, with the corners of each diagonal step cut at 45 degrees so
+    /// staircases become clean slopes; square corners and lone pixels stay.</summary>
+    public bool PixelArt { get; init; }
 }
 
 /// <summary>Where a stream's CD+G graphics come from.</summary>
@@ -347,6 +351,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 p.Smoothness = value.Smoothness;
                 p.EdgeBlend = value.EdgeBlend ? 1 : 0;
                 p.Flags = value.TransparentBorder ? 1u : 0;
+                p.PixelArt = value.PixelArt ? 1 : 0;
             }
             var h = Enter(out var added);
             try

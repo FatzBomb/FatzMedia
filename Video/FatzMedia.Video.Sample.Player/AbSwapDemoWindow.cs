@@ -173,9 +173,14 @@ sealed class AbSwapDemoWindow : Window
             return null;
         }
 
-        var finished = await Task.WhenAny(swapped.Task, Task.Delay(FirstFrameTimeout));
-        if (finished == swapped.Task)
-            return await swapped.Task;
+        try
+        {
+            return await swapped.Task.WaitAsync(FirstFrameTimeout);
+        }
+        catch (TimeoutException)
+        {
+            // No first frame in time: give up on this swap.
+        }
 
         incoming.FirstFrameReady -= OnFirstFrameReady;
         return null;

@@ -162,7 +162,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
 
         var bytes = CreateStream(PacketCount, seed: 9);
         using var classic = new FatzAudioCdgEngine(_engine!);
-        using var scaled = new FatzAudioCdgEngine(_engine!, new CdgScalingOptions { Enabled = true, Smoothness = 4, EdgeBlend = true }.WithDefaultEffects());
+        using var scaled = new FatzAudioCdgEngine(_engine!, new CdgScalingOptions { Scale = CdgScale.High, Style = CdgScaleStyle.AntiAliased }.WithDefaultEffects());
         classic.Load(Write("classic.cdg", bytes));
         scaled.Load(Write("scaled.cdg", bytes));
         Assert.False(((IKaraokeOverlaySource)classic).DrawsOverlay);
@@ -221,7 +221,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         cdg.FrameInvalidated += (_, _) => invalidated++;
 
         // On: the picture moves to the overlay, made from the song already loaded.
-        cdg.Scaling = new CdgScalingOptions { Enabled = true, Smoothness = 6, EdgeBlend = true };
+        cdg.Scaling = new CdgScalingOptions { Scale = CdgScale.High, Style = CdgScaleStyle.Traced };
         Assert.Equal(1, invalidated);
         Assert.True(overlay.DrawsOverlay);
         Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var washOnly));
@@ -233,25 +233,32 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         Assert.Equal((1500, 1080), (frame.Width, frame.Height));
 
         // A new look draws the frame again; the same options change nothing.
-        cdg.Scaling = cdg.Scaling.WithDefaultEffects() with { BevelStrength = 0.5f, BevelSize = 0.5f };
+        cdg.Scaling = cdg.Scaling.WithDefaultEffects() with { BevelStrength = 5, BevelSize = 2 };
         _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
         Assert.True(changed);
         var same = cdg.Scaling;
         cdg.Scaling = same;
         Assert.Equal(2, invalidated);
 
-        // A render height: drawn at that size, the canvas says so, and the renderers scale it to the screen.
-        cdg.Scaling = cdg.Scaling with { RenderHeight = 432 };
+        // The pixel-art style draws too.
+        cdg.Scaling = cdg.Scaling with { Style = CdgScaleStyle.PixelArt };
+        _ = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out changed);
+        Assert.True(changed);
+
+        // The scale: drawn at its size, the canvas says so, and the renderers fit it to the screen. High follows the
+        // screen the presentation reports.
+        cdg.Scaling = cdg.Scaling with { Scale = CdgScale.Low };
         frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _)!.Value;
         Assert.Equal((768, 432), (frame.CanvasWidth, frame.CanvasHeight));
         Assert.Equal((600, 432), (frame.Width, frame.Height));
-        cdg.Scaling = cdg.Scaling with { RenderHeight = 2160 };
+        cdg.DisplayHeight = 2160;
+        cdg.Scaling = cdg.Scaling with { Scale = CdgScale.High };
         frame = overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _)!.Value;
         Assert.Equal((3840, 2160), (frame.CanvasWidth, frame.CanvasHeight));
         Assert.Equal((3000, 2160), (frame.Width, frame.Height));
 
         // Off: the classic picture again, whole, without a new render.
-        cdg.Scaling = cdg.Scaling with { Enabled = false };
+        cdg.Scaling = cdg.Scaling with { Scale = CdgScale.None };
         Assert.False(overlay.DrawsOverlay);
         Assert.Null(overlay.DrawOverlay(TimeSpan.Zero, 1920, 1080, Rent, out _));
         Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var back));

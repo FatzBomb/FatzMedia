@@ -114,7 +114,7 @@ The player understands the flags all test players share (`PlayerStartupOptions`)
 or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--net-retries=`,
 `--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`,
 `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
-`--audio-device=<id or name>`, `--cdg-scale[=0..10]`, `--cdg-effects`, `--video-audio=fatz`,
+`--audio-device=<id or name>`, `--cdg-scale[=low|med|high]`, `--cdg-style=pixel|aa|pixelart|traced|curved`, `--cdg-effects`, `--video-audio=fatz`,
 `--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, `--renderer=`/`--software` (below), `--no-auto-hide`, and since Stage 046A slice 3
 `--players=1..4` (players side by side, one `PlayerView` and view model each),
 `--surface=auto|framesink` (`framesink` starts in `WpfComposited`), `--decoding=auto|software` and

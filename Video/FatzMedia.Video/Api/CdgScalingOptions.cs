@@ -18,102 +18,132 @@ public enum CdgSafetyZone
 }
 
 /// <summary>
-/// The scaled CD+G picture of the FatzAudio engine (037A): full colour at a whole-number multiple of the CD+G screen,
-/// smoothed and optionally outlined, shadowed and bevelled, instead of the classic 300x216 picture scaled up on the GPU.
-/// Off by default (<c>default(CdgScalingOptions)</c>): the classic picture. A player changes it while a song plays with
-/// <see cref="PlayerCore.CdgScaling"/>.
+/// How big the scaled CD+G picture is drawn, as a whole multiple of the 216-pixel-high CD+G screen, before the GPU fits
+/// it to the screen. Med and High follow the height of the largest screen or window showing it, so the look is the same
+/// at any resolution; a higher scale costs more CPU (most of it for the outline, shadow and bevel), like a game's
+/// graphics setting.
+/// </summary>
+public enum CdgScale
+{
+    /// <summary>No scaling: the classic 300x216 picture, scaled up on the GPU.</summary>
+    None = 0,
+
+    /// <summary>2x (432 high) at any screen size.</summary>
+    Low,
+
+    /// <summary>The largest multiple at or below half the screen height (1080p: 2x, 1440p: 3x, 4K: 5x).</summary>
+    Medium,
+
+    /// <summary>The largest multiple at or below the screen height (720p: 3x, 1080p: 5x, 1440p: 6x, 4K: 10x).</summary>
+    High,
+}
+
+/// <summary>How the scaled CD+G picture turns each CD+G pixel into many.</summary>
+public enum CdgScaleStyle
+{
+    /// <summary>Sharp square pixels.</summary>
+    Pixel = 0,
+
+    /// <summary>Sharp pixels with the stair steps along colour edges anti-aliased.</summary>
+    AntiAliased,
+
+    /// <summary>A pixel-art scaler: diagonal steps become clean slopes, square corners and single pixels stay.</summary>
+    PixelArt,
+
+    /// <summary>Traced outlines with straight diagonals and slopes and sharp corners.</summary>
+    Traced,
+
+    /// <summary>Traced outlines fitted with curves.</summary>
+    Curved,
+}
+
+/// <summary>
+/// The scaled CD+G picture of the FatzAudio engine (037A): full colour at a whole-number multiple of the CD+G screen
+/// (<see cref="CdgScale"/>), in a <see cref="CdgScaleStyle"/>, optionally outlined, shadowed and bevelled, instead of the
+/// classic 300x216 picture scaled up on the GPU. Off by default (<c>default(CdgScalingOptions)</c>): the classic picture.
+/// The effect sizes count half CD+G pixels, 0 (off) to 10 (5 CD+G pixels), whatever the scale. A player changes it while
+/// a song plays with <see cref="PlayerCore.CdgScaling"/>.
 /// </summary>
 /// <example>
 /// <code>
-/// player.CdgScaling = new CdgScalingOptions { Enabled = true, Smoothness = 6, EdgeBlend = true }
-///     .WithDefaultEffects() with { BevelStrength = 0.5f, BevelSize = 0.5f };
+/// player.CdgScaling = new CdgScalingOptions { Scale = CdgScale.High, Style = CdgScaleStyle.Traced }
+///     .WithDefaultEffects() with { BevelStrength = 5, BevelSize = 2 };
 /// </code>
 /// </example>
 public readonly record struct CdgScalingOptions
 {
-    /// <summary>The outline width of <see cref="WithDefaultEffects"/>.</summary>
-    public const float DefaultOutlineSize = 0.5f;
+    /// <summary>The largest effect size or strength: 10 half CD+G pixels (5 CD+G pixels), or full strength.</summary>
+    public const int MaximumEffect = 10;
 
-    /// <summary>The shadow spread of <see cref="WithDefaultEffects"/>.</summary>
-    public const float DefaultShadowSize = 0.3f;
+    /// <summary>The outline width of <see cref="WithDefaultEffects"/>: 2, one CD+G pixel.</summary>
+    public const int DefaultOutlineSize = 2;
 
-    /// <summary>The shadow offset of <see cref="WithDefaultEffects"/>.</summary>
-    public const float DefaultShadowDistance = 0.5f;
+    /// <summary>The shadow spread of <see cref="WithDefaultEffects"/>: 1, half a CD+G pixel.</summary>
+    public const int DefaultShadowSize = 1;
 
-    /// <summary>The smallest <see cref="RenderHeight"/> other than 0: the CD+G screen at 1x.</summary>
-    public const int MinimumRenderHeight = 216;
+    /// <summary>The shadow offset of <see cref="WithDefaultEffects"/>: 2, one CD+G pixel.</summary>
+    public const int DefaultShadowDistance = 2;
 
-    /// <summary>The largest <see cref="RenderHeight"/> (2160, 4K).</summary>
-    public const int MaximumRenderHeight = 2160;
-
-    /// <summary>Gets whether CD+G is drawn scaled (otherwise the classic picture).</summary>
-    public bool Enabled { get; init; }
-
-    /// <summary>
-    /// Gets the smoothing, 0 to 10: 0 sharp pixels, 1 to 4 softer, 5 to 10 traced outlines with diagonals
-    /// straightened, corners rounded and curves at 9 and 10.
-    /// </summary>
-    public int Smoothness
+    /// <summary>Gets how big the picture is drawn; <see cref="CdgScale.None"/> (the default) is the classic picture.</summary>
+    public CdgScale Scale
     {
         get;
-        init => field = Math.Clamp(value, 0, 10);
+        init => field = Enum.IsDefined(value) ? value : CdgScale.None;
     }
 
-    /// <summary>Gets whether stair steps along colour edges are anti-aliased (no effect at smoothness 5 and up).</summary>
-    public bool EdgeBlend { get; init; }
+    /// <summary>Gets whether CD+G is drawn scaled (<see cref="Scale"/> is not <see cref="CdgScale.None"/>).</summary>
+    public bool Enabled => Scale != CdgScale.None;
+
+    /// <summary>Gets how the pixels are scaled; <see cref="CdgScaleStyle.Pixel"/> by default.</summary>
+    public CdgScaleStyle Style
+    {
+        get;
+        init => field = Enum.IsDefined(value) ? value : CdgScaleStyle.Pixel;
+    }
 
     /// <summary>Gets which part of the screen is shown.</summary>
     public CdgSafetyZone SafetyZone { get; init; }
 
-    /// <summary>Gets the outline width around what the song draws, 0 (none) to 1 (1.5 CD+G pixels).</summary>
-    public float OutlineSize
+    /// <summary>Gets the outline width around what the song draws, in half CD+G pixels, 0 (none) to 10.</summary>
+    public int OutlineSize
     {
         get;
-        init => field = Clamp01(value);
-    }
-
-    /// <summary>Gets how far the shadow spreads beyond the shape, 0 to 1 (2 CD+G pixels), half of it soft; a shadow is drawn when this or <see cref="ShadowDistance"/> is above 0.</summary>
-    public float ShadowSize
-    {
-        get;
-        init => field = Clamp01(value);
-    }
-
-    /// <summary>Gets how far down and right the shadow falls, 0 to 1 (2 CD+G pixels).</summary>
-    public float ShadowDistance
-    {
-        get;
-        init => field = Clamp01(value);
-    }
-
-    /// <summary>Gets the bevel's strength, 0 (none) to 1: a highlight on the top-left edges and a shade on the bottom-right ones.</summary>
-    public float BevelStrength
-    {
-        get;
-        init => field = Clamp01(value);
-    }
-
-    /// <summary>Gets how far the bevel reaches in from the edge, 0 to 1 (1 CD+G pixel).</summary>
-    public float BevelSize
-    {
-        get;
-        init => field = Clamp01(value);
+        init => field = ClampEffect(value);
     }
 
     /// <summary>
-    /// Gets the height in pixels the picture is drawn at before the GPU scales it to the screen, or 0 (the default) for
-    /// the presentation's own 1920x1080 canvas; otherwise <see cref="MinimumRenderHeight"/> to
-    /// <see cref="MaximumRenderHeight"/>, at 16:9. The picture is drawn at the largest whole multiple of the CD+G screen
-    /// that fits, so 1080 draws 5x and 2160 10x.
+    /// Gets how far the shadow spreads beyond the shape (half of it soft), in half CD+G pixels, 0 to 10; a shadow is
+    /// drawn when this or <see cref="ShadowDistance"/> is above 0.
     /// </summary>
-    public int RenderHeight
+    public int ShadowSize
     {
         get;
-        init => field = value <= 0 ? 0 : Math.Clamp(value, MinimumRenderHeight, MaximumRenderHeight);
+        init => field = ClampEffect(value);
+    }
+
+    /// <summary>Gets how far down and right the shadow falls, in half CD+G pixels, 0 to 10.</summary>
+    public int ShadowDistance
+    {
+        get;
+        init => field = ClampEffect(value);
+    }
+
+    /// <summary>Gets the bevel's strength, 0 (none) to 10 (full): a highlight on the top-left edges, a shade on the bottom-right ones.</summary>
+    public int BevelStrength
+    {
+        get;
+        init => field = ClampEffect(value);
+    }
+
+    /// <summary>Gets how far the bevel reaches in from the edge, in half CD+G pixels, 0 to 10.</summary>
+    public int BevelSize
+    {
+        get;
+        init => field = ClampEffect(value);
     }
 
     /// <summary>Gets whether the picture has an outline, a shadow or a bevel.</summary>
-    public bool HasEffects => OutlineSize > 0 || ShadowSize > 0 || ShadowDistance > 0 || BevelStrength > 0;
+    public bool HasEffects => OutlineSize > 0 || ShadowSize > 0 || ShadowDistance > 0 || (BevelStrength > 0 && BevelSize > 0);
 
     /// <summary>These options with the default outline and soft shadow (<c>--cdg-effects</c> in the test players) and no bevel.</summary>
     public CdgScalingOptions WithDefaultEffects() => this with
@@ -124,6 +154,5 @@ public readonly record struct CdgScalingOptions
         BevelStrength = 0,
     };
 
-    // NaN counts as 0, so a bad value turns the effect off instead of reaching FatzAudio.
-    static float Clamp01(float value) => value > 0 ? Math.Min(value, 1) : 0;
+    static int ClampEffect(int value) => Math.Clamp(value, 0, MaximumEffect);
 }

@@ -27,6 +27,8 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
     // Guarded by _renderLock.
     bool _scaledSurfaceFailed;
     TimeSpan _lastTime;
+    // The height of the largest screen showing the picture (0: unknown, drawn for 1080). Guarded by _renderLock.
+    int _displayHeight;
     // Which surface revision each pooled buffer holds, so a buffer that comes back gets only the change.
     ConditionalWeakTable<byte[], HeldFrame> _scaledFrames = [];
 
@@ -83,6 +85,20 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
         }
     }
 
+    public int DisplayHeight
+    {
+        get
+        {
+            lock (_renderLock)
+                return _displayHeight;
+        }
+        set
+        {
+            lock (_renderLock)
+                _displayHeight = Math.Max(0, value);
+        }
+    }
+
     bool IKaraokeOverlaySource.DrawsOverlay
     {
         get
@@ -107,7 +123,7 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
             surface = _scaledSurface!;
             at = _lastTime;
             held = _scaledFrames;
-            size = FatzAudioMappings.ToCdgRenderSize(_scaling, canvasWidth, canvasHeight);
+            size = FatzAudioMappings.ToCdgRenderSize(_scaling.Scale, _displayHeight);
         }
 
         try
@@ -152,7 +168,7 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
 
                 // The buffer has a transparent margin of one CD+G pixel around the picture, which can reach past the
                 // canvas (5x at 1080 high is 1090 high): show the picture without it. The canvas is the size it was
-                // drawn for, which the renderers scale to the screen.
+                // drawn for (the scale's size, not the presentation canvas), which the renderers fit to the screen.
                 var m = layout.Margin;
                 return new SubtitleRasterResult(
                     memory[((m * stride) + (m * 4))..],
@@ -199,8 +215,8 @@ sealed partial class FatzAudioCdgEngine : IKaraokeOverlaySource, ICdgScalingTarg
         }
     }
 
-    // What the surface itself is told; Enabled and RenderHeight are ours.
-    static CdgScalingOptions ToLook(CdgScalingOptions options) => options with { Enabled = false, RenderHeight = 0 };
+    // What the surface itself is told; the scale is ours (its presentation size).
+    static CdgScalingOptions ToLook(CdgScalingOptions options) => options with { Scale = CdgScale.None };
 
     static void ApplyLook(Fa.CdgSurface surface, CdgScalingOptions options)
     {

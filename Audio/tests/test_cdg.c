@@ -3883,8 +3883,11 @@ static void test_effects(void)
     CHECK(!got.outline.on && !got.shadow.on && !got.bevel.on);
     CHECK_EQ(got.shadow.angle_degrees, 315.0f);
     fa_surface_effects_init(&e);
-    e.outline.size = 1.5f;
+    e.outline.size = 5.5f;   /* past FA_FX_MAX_SIZE */
     CHECK_EQ(fa_surface_set_effects(f, &e), FA_ERROR_INVALID_ARG);
+    fa_surface_effects_init(&e);
+    e.outline.size = e.shadow.size = e.shadow.distance = e.bevel.size = FA_FX_MAX_SIZE;
+    CHECK_EQ(fa_surface_set_effects(f, &e), FA_OK);
     fa_surface_effects_init(&e);
     e.shadow.on = 2;
     CHECK_EQ(fa_surface_set_effects(f, &e), FA_ERROR_INVALID_ARG);
@@ -4476,6 +4479,73 @@ static void test_smoothness_and_edge_blend(void)
         prev = level >= 1 && level <= 4 ? mixed : prev;
         free(a);
     }
+    fa_surface_destroy(f);
+    fa_stream_close(s);
+    free(c.p);
+}
+
+/* The pixel-art scaler: a staircase's steps are cut at 45 degrees from both sides
+ * (anti-aliased), while straight edges, square corners and the inside stay as drawn. */
+static void test_pixel_art(void)
+{
+    fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
+    fa_cdg_surface* f = NULL;
+    fa_cdg_presentation p;
+    fa_surface_layout l;
+    buf c = { 0 };
+    uint8_t *a, *sharp;
+    int i, mixed = 0;
+    uint32_t x, y;
+    colors(&c, 0, k_low);
+    preset(&c, 0, 0);
+    /* As test_smoothness_and_edge_blend: a staircase (1, 1, 2, 2, 3, 3.. pixels from
+     * x 120, rows 96..107) and a block three tiles wide from (120, 144). */
+    {
+        uint8_t d[16];
+        d[0] = 0; d[1] = 1; d[2] = 8; d[3] = 20;
+        for (i = 0; i < 12; i++) d[4 + i] = (uint8_t)(0x3F << (5 - (i / 2 < 5 ? i / 2 : 5)) & 0x3F);
+        pack(&c, 6, d);
+    }
+    for (i = 0; i < 3; i++) tile(&c, 0, 1, 1, 12, 20 + i, 0x00);
+    CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &f), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(f, 2400, 1728), FA_OK);   /* 8x */
+    p = pres(1, FA_SAFETY_SHOW);
+    p.pixel_art = 2;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_ERROR_INVALID_ARG);
+    p.pixel_art = 0;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    sharp = full_draw(f, 20, 4, &l);
+    p.pixel_art = 1;
+    p.smoothness = 10;   /* ignored */
+    p.edge_blend = 1;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    a = full_draw(f, 20, 4, &l);
+    CHECK(a && sharp);
+    CHECK(l.scale == 8.0f);
+    for (y = 0; y < l.height; y++)
+        for (x = 0; x < l.width; x++) {
+            const uint8_t* q = a + ((size_t)y * l.width + x) * 4;
+            CHECK(q[0] == 0 && q[1] == 0 && q[2] == q[3]);   /* red over transparent */
+            if (q[3] != 0 && q[3] != 255) mixed++;
+        }
+    CHECK(mixed > 0);
+#define ART_A(img, cx, cy, ix, iy) (img)[(((size_t)(cy) * 8 + 8 + (iy)) * l.width + (size_t)(cx) * 8 + 8 + (ix)) * 4 + 3]   /* past the 1-pixel margin */
+    /* A step: the red pixel (121, 98) loses its top-right corner, the transparent
+     * pixel (121, 97) above-right of the red (120, 97) takes its bottom-left one. */
+    CHECK_EQ(ART_A(sharp, 121, 98, 7, 0), 255);
+    CHECK_EQ(ART_A(a, 121, 98, 7, 0), 0);
+    CHECK_EQ(ART_A(sharp, 121, 97, 0, 7), 0);
+    CHECK_EQ(ART_A(a, 121, 97, 0, 7), 255);
+    /* The block: square corner, straight top edge and inside as drawn. */
+    CHECK_EQ(ART_A(a, 120, 144, 0, 0), 255);
+    CHECK_EQ(ART_A(a, 122, 144, 7, 0), 255);
+    CHECK_EQ(ART_A(a, 125, 143, 4, 7), 0);
+    CHECK_EQ(ART_A(a, 130, 150, 4, 4), 255);
+    CHECK_EQ(ART_A(a, 100, 100, 4, 4), 0);
+#undef ART_A
+    free(a);
+    free(sharp);
     fa_surface_destroy(f);
     fa_stream_close(s);
     free(c.p);
@@ -5106,6 +5176,7 @@ int main(void)
     RUN(test_presentation_scaled);
     RUN(test_safety_zone_prepass);
     RUN(test_smoothness_and_edge_blend);
+    RUN(test_pixel_art);
     RUN(test_contours);
     RUN(test_effects);
     RUN(test_bevel_half_stroke);

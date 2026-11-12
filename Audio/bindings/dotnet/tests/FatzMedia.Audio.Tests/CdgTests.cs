@@ -586,7 +586,7 @@ public class CdgTests
         Assert.True(update.IsFullDraw);
         Assert.Equal(new byte[] { 255, 0, 0, 255 }, buffer.AsSpan(y * stride + x * 4, 4).ToArray());   // blue, B G R A
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => cdg.Effects = new SurfaceEffects { Outline = new OutlineEffect { Size = 1.5f } });
+        Assert.Throws<ArgumentOutOfRangeException>(() => cdg.Effects = new SurfaceEffects { Outline = new OutlineEffect { Size = 5.5f } });
         Assert.Throws<ArgumentOutOfRangeException>(() => cdg.Effects = new SurfaceEffects { Shadow = new ShadowEffect { Opacity = float.NaN } });
         Assert.Throws<ArgumentOutOfRangeException>(() => cdg.Effects = new SurfaceEffects { Bevel = new BevelEffect { LightAngleDegrees = float.PositiveInfinity } });
         Assert.Same(effects, cdg.Effects);
