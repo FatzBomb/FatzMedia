@@ -12,11 +12,10 @@
  * both ends: where the colour on one side steps over the edge at an end and the edge
  * goes on one pixel over (a stair step: Z or U shapes; the L of a square corner or of
  * a stroke's end stays square), a line runs from half a pixel off the edge at that end
- * back to the edge,
- * over half the run (both ends step) or all of it (one end does), at most
- * EDGE_SPAN pixels; the output pixels between that line and the edge take the other
- * colour by the area they cover. The grid is exact, so no threshold is needed and
- * nothing else is touched. */
+ * back to the edge, over half the run (the other end steps over the edge too, square
+ * or not) or all of it (it does not), at most EDGE_SPAN pixels; the output pixels
+ * between that line and the edge take the other colour by the area they cover. The
+ * grid is exact, so no threshold is needed and nothing else is touched. */
 #include "cdg_scale.h"
 #include "cdg_contour.h"
 #include <string.h>
@@ -345,6 +344,26 @@ static void blend_end(const edge_ctx* m, int vertical, int e, int at, int dir, f
 
 enum { END_NONE, END_NEAR, END_FAR };
 
+/* At cell q along edge line e (between cells e and e + 1 across), where a run of
+ * colours a | b ended with both cells taking one colour: does the edge go on one or
+ * two cells over, as a stair does? `far`: both took a, so the edge moved towards
+ * e + 1 and goes on where a cell over there is b again; otherwise both took b, and
+ * it goes on where a cell towards e is a again. */
+static int stair_goes_on(const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W], int vertical, int e, int across, int q,
+                         int far, uint8_t a, uint8_t b)
+{
+    int k;
+    for (k = 1; k <= 2; k++) {
+        int c = far ? e + 1 + k : e - k;
+        uint8_t v;
+        if (c < 0 || c >= across) return 0;
+        v = vertical ? screen[q][c] : screen[c][q];
+        if (v == (far ? b : a)) return 1;
+        if (v != (far ? a : b)) return 0;
+    }
+    return 0;
+}
+
 /* Edges between rows (vertical = 0) or columns (1). */
 static void edge_pass(const edge_ctx* m, int vertical, const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W],
                       const uint8_t pm[CDG_SCALE_COLORS][4])
@@ -381,14 +400,13 @@ static void edge_pass(const edge_ctx* m, int vertical, const uint8_t screen[CDG_
             d1 = t0 != END_NONE ? 0.5f * (float)len : (float)len;
             if (d0 > EDGE_SPAN) d0 = EDGE_SPAN;
             if (d1 > EDGE_SPAN) d1 = EDGE_SPAN;
-            /* An end is blended only where the edge goes on one cell over (a stair
-             * step). The end of a stroke or a square corner (an L) is left alone:
-             * blending there tapered a stroke's square end into a wedge. Its run still
-             * shares the length with the other end as before. */
-            if (t0 == END_NEAR && !(e > 0 && CELL(start - 1, -1) == a)) t0 = END_NONE;
-            if (t0 == END_FAR && !(e + 2 < across && CELL(start - 1, 2) == b)) t0 = END_NONE;
-            if (t1 == END_NEAR && !(e > 0 && CELL(end, -1) == a)) t1 = END_NONE;
-            if (t1 == END_FAR && !(e + 2 < across && CELL(end, 2) == b)) t1 = END_NONE;
+            /* An end is blended only where the edge goes on past the step, one or two
+             * cells over (a stair step of a slope up to 1:2). The end of a stroke or a
+             * square corner (an L) is left alone: blending there tapered a stroke's
+             * square end into a wedge. Its run still shares the length with the other
+             * end as before. */
+            if (t0 != END_NONE && !stair_goes_on(screen, vertical, e, across, start - 1, t0 == END_FAR, a, b)) t0 = END_NONE;
+            if (t1 != END_NONE && !stair_goes_on(screen, vertical, e, across, end, t1 == END_FAR, a, b)) t1 = END_NONE;
             if (t0 == END_NEAR) blend_end(m, vertical, e, start, 1, d0, 0, pm[b]);
             if (t0 == END_FAR) blend_end(m, vertical, e, start, 1, d0, 1, pm[a]);
             if (t1 == END_NEAR) blend_end(m, vertical, e, end, -1, d1, 0, pm[b]);
