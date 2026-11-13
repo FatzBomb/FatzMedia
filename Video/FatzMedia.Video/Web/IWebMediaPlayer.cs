@@ -149,8 +149,8 @@ public sealed class WebMediaErrorEventArgs(WebMediaErrorKind kind, string messag
 
 /// <summary>
 /// A web item player a UI adapter provides (Stage 060A). Core defines only this contract; the web view
-/// lives in the adapter. Position and state events arrive on a background thread (see the Video rules for
-/// host events). FatzMedia never sees the service's passwords or tokens: <see cref="SignInAsync"/> only
+/// lives in the adapter. Events may arrive on any thread (the WebView2 adapter raises them on its UI thread); handlers
+/// marshal as the Video rules say for host events. FatzMedia never sees the service's passwords or tokens: <see cref="SignInAsync"/> only
 /// opens the service's own sign-in page in the same persistent web view profile.
 /// </summary>
 public interface IWebMediaPlayer : IAsyncDisposable

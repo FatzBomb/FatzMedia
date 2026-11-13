@@ -77,7 +77,12 @@ $projectReferences = @{
         '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
         '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
         '..\FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj',
-        '..\FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj'
+        '..\FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj',
+        '..\FatzMedia.Video.WebView2\FatzMedia.Video.WebView2.csproj'
+    )
+    # 060A: the WebView2 adapter (YouTube web media) references Core only; the web view lives here, not in Core.
+    'FatzMedia.Video.WebView2\FatzMedia.Video.WebView2.csproj' = @(
+        '..\FatzMedia.Video\FatzMedia.Video.csproj'
     )
     'FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj' = @(
         '..\FatzMedia.Video\FatzMedia.Video.csproj'

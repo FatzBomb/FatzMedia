@@ -6,7 +6,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $adapters = @(
     'FatzMedia.Video.Avalonia',
-    'FatzMedia.Video.WinForms'
+    'FatzMedia.Video.WinForms',
+    'FatzMedia.Video.WebView2'
 )
 
 $forbiddenPatterns = @(
