@@ -1,6 +1,5 @@
 using FatzMedia.Video.Controllers;
 using FatzMedia.Video.Core.Abstractions;
-using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Subtitle;
@@ -108,7 +107,6 @@ public sealed class NetworkPipelineTests
             new SubtitleEngine(),
             new NotSupportedArchiveService(),
             new ClosedVideoFactory(),
-            new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             MediaPlayerConfiguration.Auto,
@@ -164,7 +162,6 @@ public sealed class NetworkPipelineTests
             new SubtitleEngine(),
             new NotSupportedArchiveService(),
             new ClosedVideoFactory(),
-            new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
             new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             MediaPlayerConfiguration.Auto);
@@ -175,12 +172,6 @@ public sealed class NetworkPipelineTests
             new TestVideoEngine { IsOpen = false };
     }
 
-    sealed class NoMidiLyrics : IMidiLyricProvider
-    {
-        public bool IsMidiFile(string path) => false;
-
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string sourcePath, TimeSpan transitionDuration) => null;
-    }
 }
 
 public sealed class PlayerNetworkEventTests

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using FatzMedia.Video.Core.Abstractions;
-using FatzMedia.Video.Core.Audio;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Core.Files;
 using FatzMedia.Video.Core.Subtitle;
@@ -59,7 +58,6 @@ public sealed class AudioOnlyVideoFallbackTests
                 new SubtitleEngine(),
                 new NotSupportedArchiveService(),
                 new FixedVideoFactory(video),
-                new NoMidiLyrics(),
                 new SystemPrecisionWaiterFactory(),
                 new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
                 MediaPlayerConfiguration.Auto,
@@ -89,10 +87,4 @@ public sealed class AudioOnlyVideoFallbackTests
         public IVideoEngine Create(IClockSource clock, MediaState state, IAudioEngine audioEngine, MediaPlayerConfiguration configuration, PlaybackSyncState sync) => video;
     }
 
-    sealed class NoMidiLyrics : IMidiLyricProvider
-    {
-        public bool IsMidiFile(string path) => false;
-
-        public IReadOnlyList<SubtitleCue>? ExtractLyrics(IMidiEventReader? reader, string path, TimeSpan transitionDuration) => null;
-    }
 }

@@ -261,38 +261,6 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     }
 
     [Fact]
-    public void Karaoke_LyricsAndMetadata_ComeThroughTheMidiEventReader()
-    {
-        if (!FatzAudioNativeGroup.CanRun)
-            return;
-
-        var soundFont = FatzAudioTestMedia.WriteSoundFont(_root);
-        var kar = FatzAudioTestMedia.WriteKaraoke(_root);
-        using var engine = CreateEngine(new MediaPlayerConfiguration { MidiSoundfontPath = soundFont });
-
-        Assert.True(engine.Open(kar));
-        var reader = ((IMidiEventReaderSource)engine).GetMidiEventReader();
-        Assert.NotNull(reader);
-        Assert.Equal(["\\Hel", "lo ", "world", "/Sec", "ond ", "line", "\\Third ", "page"], reader.GetMarks(MidiMarkKind.Lyric).Select(static mark => mark.Text));
-        Assert.Equal(2.0, reader.PositionToSeconds(reader.GetMarks(MidiMarkKind.Lyric)[0].Position), 3);
-        Assert.Equal(500000, Assert.Single(reader.GetTempoEvents()).MicrosecondsPerQuarterNote);
-
-        var cues = MidiLyricCueBuilder.ExtractLyrics(reader, kar);
-        Assert.NotNull(cues);
-        var lines = cues.SelectMany(static cue => cue.KaraokeTiming!.Lines).Select(static line => line.Text.Trim()).Distinct().ToArray();
-        Assert.Equal(FatzAudioTestMedia.KaraokeLines, lines);
-        var metadata = cues[0].KaraokeTiming!.Metadata!;
-        Assert.Equal("Test Title", metadata.Title);
-        Assert.Equal("Test Artist", metadata.Artist);
-        Assert.Equal("3/4", metadata.TimeSignature);
-        Assert.Equal("Em", metadata.KeySignature); // our metadata format for "1 1" (one sharp, minor)
-
-        // It plays: the soundfont renders the notes.
-        Assert.True(engine.Play());
-        Assert.True(SpinUntil(() => engine.Position > 0.2));
-    }
-
-    [Fact]
     public void Karaoke_LyricsAreDrawnByFatzAudio_OnTheSubtitleCanvas_OnlyTheChangeWhenTheBufferComesBack()
     {
         if (!FatzAudioNativeGroup.CanRun)

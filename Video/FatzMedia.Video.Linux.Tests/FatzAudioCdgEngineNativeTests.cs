@@ -7,8 +7,8 @@ using Fa = global::FatzMedia.Audio;
 namespace FatzMedia.Video.Linux.Tests;
 
 /// <summary>
-/// CD+G drawn by FatzAudio (037A slice 3) against our own CD+G state machine, on the real FatzAudio
-/// library from Audio/ (Linux and Windows; nothing is played): the same position shows the same packs as our engine.
+/// CD+G drawn by FatzAudio (037A slice 3), on the real FatzAudio library from Audio/ (Linux and Windows; nothing
+/// is played): a position reached by playing or seeking shows the same picture as a fresh engine rendered straight there.
 /// </summary>
 [Collection(FatzAudioNativeGroup.Name)]
 public sealed class FatzAudioCdgEngineNativeTests : IDisposable
@@ -24,7 +24,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
     }
 
     [Fact]
-    public void ThePicture_MatchesOurStateMachine_PlayingAndSeekingAnywhere()
+    public void ThePicture_MatchesAFreshRender_PlayingAndSeekingAnywhere()
     {
         if (!FatzAudioNativeGroup.CanRun)
             return;
@@ -43,14 +43,14 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         ];
         // Steady play first: a frame every 75 Hz tick, as the presentation loop renders.
         for (var n = 1; n <= 1_200; n += 4)
-            AssertSame(bytes, n, cdg, opacity: 40, backgroundOverride: null);
+            AssertSame("song.cdg", bytes, n, cdg, opacity: 40, backgroundOverride: null);
         foreach (var n in packs)
-            AssertSame(bytes, n, cdg, opacity: 40, backgroundOverride: null);
+            AssertSame("song.cdg", bytes, n, cdg, opacity: 40, backgroundOverride: null);
 
         cdg.BackgroundOverrideArgb = 0xC0204060;
         cdg.BackgroundOpacity = 100;
         foreach (var n in packs.Take(6))
-            AssertSame(bytes, n, cdg, opacity: 100, backgroundOverride: 0xC0204060);
+            AssertSame("song.cdg", bytes, n, cdg, opacity: 100, backgroundOverride: 0xC0204060);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         Assert.Equal(0u, blank.BackgroundWashArgb);
 
         // FatzAudio's surface is still at 2,000 packs: the whole frame comes across.
-        AssertSame(bytes, 2_000, cdg, opacity: 100, backgroundOverride: null);
+        AssertSame("song.cdg", bytes, 2_000, cdg, opacity: 100, backgroundOverride: null);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         cdg.Load(new BytesEntry("second.cdg", second));
 
         Assert.Equal(PacketCount / 2 / 300.0, cdg.TotalDurationSeconds, 6);
-        AssertSame(second, 1_000, cdg, opacity: 100, backgroundOverride: null);
+        AssertSame("second.cdg", second, 1_000, cdg, opacity: 100, backgroundOverride: null);
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         Assert.Contains(CdgDirtyRect.FullFrame, back.DirtyRects);
     }
 
-    // Mid-pack: our engine shows floor(t x 300) = packs there; the FatzAudio engine must show the same.
+    // Mid-pack: floor(t x 300) = packs there; the FatzAudio engine must show the same.
     static double TimeAt(int packs) => (packs + 0.5) / CdgConstants.PacketsPerSecond;
 
     static bool Covers(CdgDirtyRect r, int x, int y) => x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height;
@@ -278,20 +278,19 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
         return path;
     }
 
-    static void AssertSame(byte[] bytes, int packs, FatzAudioCdgEngine cdg, byte opacity, uint? backgroundOverride)
+    void AssertSame(string name, byte[] bytes, int packs, FatzAudioCdgEngine cdg, byte opacity, uint? backgroundOverride)
     {
         cdg.RenderAtSeconds(TimeAt(packs));
-        var reference = new CdgStateMachine { BackgroundOpacity = opacity, BackgroundOverrideArgb = backgroundOverride };
-        for (var index = 0; index < packs; index++)
-            _ = reference.ProcessPacket(bytes.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize));
-        var expected = reference.CreateSnapshot();
+        using var freshEngine = new FatzAudioCdgEngine(_engine!) { BackgroundOpacity = opacity, BackgroundOverrideArgb = backgroundOverride };
+        freshEngine.Load(Write($"fresh-{name}", bytes));
+        freshEngine.RenderAtSeconds(TimeAt(packs));
+        Assert.True(freshEngine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var expected));
 
         Assert.True(cdg.TryCreateCdgSnapshot(consumeDirtyRegions: true, out var actual));
         var mismatch = FirstMismatch(expected.ColorIndices.Span, actual.ColorIndices.Span);
         Assert.True(mismatch < 0, $"pixels differ at {packs} packs, first at ({mismatch % 300}, {mismatch / 300})");
         Assert.Equal(expected.BackgroundColorIndex, actual.BackgroundColorIndex);
         Assert.Equal(expected.BackgroundWashArgb, actual.BackgroundWashArgb);
-        // Colours in use: FatzAudio's palette before a colour load may differ from our default table.
         foreach (var index in actual.ColorIndices.ToArray().Distinct())
             Assert.Equal(expected.PaletteArgb.Span[index].ToString("X8", System.Globalization.CultureInfo.InvariantCulture), actual.PaletteArgb.Span[index].ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
     }
@@ -308,9 +307,8 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
     }
 
     /// <summary>
-    /// Shaped like a real disc (as CdgEngineCheckpointTests): mostly tile blocks, rare clears and
-    /// colour loads. Scrolls carry no fine offset (our engine ignores it; FatzAudio scrolls smoothly),
-    /// and the colour tables come first so every colour in use is a loaded one.
+    /// Shaped like a real disc: mostly tile blocks, rare clears and
+    /// colour loads. Scrolls carry no fine offset, and the colour tables come first so every colour in use is a loaded one.
     /// </summary>
     static byte[] CreateStream(int packets, int seed)
     {

@@ -20,7 +20,7 @@ public sealed class CdgPackTimingTests
     [InlineData(4.35, 1_305)]
     [InlineData(10.0, 3_000)]
     public void ExactBoundaries_CountExactly(double seconds, long packs) =>
-        Assert.Equal(packs, CdgEngine.PacketCountAt(seconds));
+        Assert.Equal(packs, CdgConstants.PacketCountAt(seconds));
 
     [Fact]
     public void EveryMultipleOfOneThreeHundredth_CountsItsOwnIndex()
@@ -28,29 +28,29 @@ public sealed class CdgPackTimingTests
         // Positions given as the nearest double to n / 300 s: a pack boundary, whatever the
         // rounding of the division.
         for (var n = 0; n <= 300 * 600; n++)
-            Assert.Equal(n, CdgEngine.PacketCountAt(n / 300.0));
+            Assert.Equal(n, CdgConstants.PacketCountAt(n / 300.0));
     }
 
     [Fact]
     public void JustBeforeABoundary_StaysOnThePreviousPack()
     {
         for (var n = 1; n <= 300 * 60; n += 7)
-            Assert.Equal(n - 1, CdgEngine.PacketCountAt((n / 300.0) - 1e-6));
+            Assert.Equal(n - 1, CdgConstants.PacketCountAt((n / 300.0) - 1e-6));
     }
 
     [Fact]
     public void InBetween_RoundsDown()
     {
-        Assert.Equal(1, CdgEngine.PacketCountAt(0.0049));
-        Assert.Equal(0, CdgEngine.PacketCountAt(0.0033));
-        Assert.Equal(1, CdgEngine.PacketCountAt(0.0034));
+        Assert.Equal(1, CdgConstants.PacketCountAt(0.0049));
+        Assert.Equal(0, CdgConstants.PacketCountAt(0.0033));
+        Assert.Equal(1, CdgConstants.PacketCountAt(0.0034));
     }
 
     [Fact]
     public void HugeAndInfinitePositions_DoNotOverflow()
     {
-        Assert.True(CdgEngine.PacketCountAt(double.PositiveInfinity) > 1_000_000_000L);
-        Assert.True(CdgEngine.PacketCountAt(1e300) > 1_000_000_000L);
-        Assert.Equal(0, CdgEngine.PacketCountAt(double.NegativeInfinity));
+        Assert.True(CdgConstants.PacketCountAt(double.PositiveInfinity) > 1_000_000_000L);
+        Assert.True(CdgConstants.PacketCountAt(1e300) > 1_000_000_000L);
+        Assert.Equal(0, CdgConstants.PacketCountAt(double.NegativeInfinity));
     }
 }

@@ -5,14 +5,6 @@ namespace FatzMedia.Video.Tests;
 
 public sealed class KaraokeMetadataOverlayTests
 {
-    [Theory]
-    [InlineData("0 0", "C")]
-    [InlineData("2 0", "D")]
-    [InlineData("-3 1", "Cm")]
-    [InlineData("7 1", "A#m")]
-    public void FormatKeySignature_ConvertsMidiAccidentals(string value, string expected) =>
-        Assert.Equal(expected, MidiMetadataExtractor.FormatKeySignature(value));
-
     [Fact]
     public void IntroMetadata_LateLyrics_UsesCenteredCardTimeline()
     {
