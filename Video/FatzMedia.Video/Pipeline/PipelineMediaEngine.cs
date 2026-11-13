@@ -63,7 +63,6 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
         ISubtitleEngine subtitleEngine,
         IArchiveService archiveService,
         IVideoEngineFactory videoEngineFactory,
-        IMidiLyricProvider midiLyricProvider,
         IPrecisionWaiterFactory precisionWaiterFactory,
         RendererVideoDecodeServices hardwareAccelerationServices,
         MediaPlayerConfiguration configuration,
@@ -79,7 +78,7 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
         _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
         ArgumentNullException.ThrowIfNull(cdgEngine);
         ArgumentNullException.ThrowIfNull(subtitleEngine);
-        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine, audioAvailable);
+        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, configuration, ownsAudioEngine, audioAvailable);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
         _coordinator.PlaybackLooped += OnPlaybackLooped;
         _coordinator.NetworkBufferingChanged += OnNetworkBufferingChanged;

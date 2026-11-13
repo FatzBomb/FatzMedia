@@ -65,14 +65,6 @@ public sealed class FatzAudioMappingsTests
         Assert.Equal([new SilenceRegion(0, 7)], FatzAudioMappings.ToEdgeRegions(null, null, 308700, 44100, 7));
     }
 
-    [Theory]
-    [InlineData(Fa.MidiTextFlags.None, "word")]
-    [InlineData(Fa.MidiTextFlags.NewLine, "/word")]
-    [InlineData(Fa.MidiTextFlags.NewParagraph, "\\word")]
-    [InlineData(Fa.MidiTextFlags.NewParagraph | Fa.MidiTextFlags.NewLine, "\\word")]
-    public void Lyrics_GetTheirSoftKaraokeMarksBack(Fa.MidiTextFlags flags, string expected) =>
-        Assert.Equal(expected, FatzAudioMidiEventReader.WithLayoutMarks(new Fa.MidiText(0, Fa.MidiTextType.Lyric, "word", flags, TimeSpan.Zero, 0, 0)));
-
     [Fact]
     public void CacheDirectory_DefaultsPerUser_EmptyTurnsItOff_AnythingElseIsUsed()
     {

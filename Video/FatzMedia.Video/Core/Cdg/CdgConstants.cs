@@ -48,6 +48,25 @@ public static class CdgConstants
     /// </summary>
     public const int PacketsPerSecond = 300;
 
+    /// <summary>Positions at or past this many seconds count as "the end" (keeps nanoseconds x 300 inside a long).</summary>
+    const double MaxPositionSeconds = 1e7;
+
+    /// <summary>
+    /// How many whole 300 packets-per-second packs a position has played, rounded to the nearest pack in integer
+    /// nanoseconds, so every platform gets the same pack instead of depending on how a double product truncates.
+    /// Negative, NaN and zero positions give 0; an infinite or enormous one gives a very large count.
+    /// </summary>
+    internal static long PacketCountAt(double seconds)
+    {
+        if (double.IsNaN(seconds) || seconds <= 0)
+            return 0;
+        if (seconds >= MaxPositionSeconds)
+            return long.MaxValue / 2;
+
+        var nanoseconds = (long)Math.Round(seconds * 1_000_000_000d);
+        return ((nanoseconds * PacketsPerSecond) + (PacketsPerSecond / 2)) / 1_000_000_000L;
+    }
+
     #endregion
 
     #region Tile System

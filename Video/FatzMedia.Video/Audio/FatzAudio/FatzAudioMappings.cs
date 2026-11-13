@@ -112,13 +112,13 @@ static class FatzAudioMappings
     /// <summary>FatzAudio's normalization gain in dB as the linear multiplier <c>NormalizationGain</c> reports (1 when unknown).</summary>
     public static double GainFromDecibels(double gainDb) => double.IsFinite(gainDb) ? Math.Pow(10, gainDb / 20) : 1;
 
-    /// <summary>Our CD+G background opacity (0..100 %) as alpha 0..255, as <c>CdgColorManager</c> maps it (100 % is exactly 255).</summary>
+    /// <summary>Our CD+G background opacity (0..100 %) as alpha 0..255; 100 % is exactly 255.</summary>
     public static byte ToCdgOpacityAlpha(byte percent) =>
         percent >= 100 ? (byte)255 : (byte)Math.Round(percent * 255.0 / 100.0);
 
     /// <summary>
     /// A FatzAudio CD+G palette as the ARGB colours our renderers look indices up in, with the
-    /// presentation settings applied as our <c>CdgColorManager</c> applies them: colour 0,
+    /// presentation settings applied: colour 0,
     /// the border colour and the background colour take <paramref name="backgroundOverride"/>'s colour
     /// when set, and their alpha is the override's alpha (else 255) times <paramref name="opacityAlpha"/>;
     /// every other colour is opaque.
@@ -143,8 +143,7 @@ static class FatzAudioMappings
     }
 
     /// <summary>
-    /// The full-viewport background wash for a FatzAudio CD+G frame, as our
-    /// <c>CdgColorManager</c> works it out: transparent until the first screen clear unless an
+    /// The full-viewport background wash for a FatzAudio CD+G frame, as the player works it out: transparent until the first screen clear unless an
     /// override is set, then the background colour (or the override's) at the override's alpha (else
     /// 255) times <paramref name="opacityAlpha"/>.
     /// </summary>

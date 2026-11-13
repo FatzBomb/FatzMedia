@@ -29,7 +29,7 @@ namespace FatzMedia.Video.Audio;
 /// <para>Events arrive on FatzAudio's event thread; handlers re-enter the player's diagnostic owner.</para>
 /// </remarks>
 sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider,
-    IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IMidiEventReaderSource, IAudioDeviceChangeSource,
+    IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IAudioDeviceChangeSource,
     ICdgEngineSource, IPushAudioOutputSource
 {
     const string Category = "FatzAudioEngine";
@@ -676,25 +676,6 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
             return ramp > TimeSpan.Zero
                 ? TryLocked(stream => stream.Ramp(Fa.AudioParameter.Volume, target, ramp), "Fade")
                 : TryLocked(stream => stream.Volume = target, "Fade");
-        }
-    }
-
-    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader()
-    {
-        lock (_gate)
-        {
-            if (_stream is not { } stream)
-                return null;
-
-            try
-            {
-                return FatzAudioMidiEventReader.TryCreate(stream, _duration);
-            }
-            catch (Exception ex)
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"MIDI events could not be read: {ex.Message}", innerException: ex);
-                return null;
-            }
         }
     }
 

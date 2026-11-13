@@ -45,8 +45,8 @@ public interface ICdgEngine : IDisposable
     /// <param name="seconds">Time position in seconds to render at</param>
     /// <param name="forceRebuild">
     /// True for an authoritative frame: the state is guaranteed to equal a replay from the first
-    /// packet and the frame is invalidated even if nothing changed. <see cref="Cdg.CdgEngine"/>
-    /// restores the nearest replay checkpoint when it has to move back (Stage 022A slice 4).
+    /// packet and the frame is invalidated even if nothing changed. An engine
+    /// that replays from checkpoints restores the nearest one when it has to move back.
     /// </param>
     void RenderAtSeconds(double seconds, bool forceRebuild);
 

@@ -9,17 +9,13 @@ namespace FatzMedia.Video.Pipeline;
 
 sealed partial class PlaybackCoordinator : IDisposable
 {
-    const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
     readonly MediaSession _session;
-    readonly TimeSpan _karaokeTransitionDuration;
-    readonly IMidiLyricProvider _midiLyricProvider;
 
     public PlaybackCoordinator(
         IAudioEngine audioEngine,
         ICdgEngine cdgEngine,
         ISubtitleEngine subtitleEngine,
         IVideoEngineFactory videoEngineFactory,
-        IMidiLyricProvider midiLyricProvider,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false,
         bool audioAvailable = true,
@@ -27,9 +23,7 @@ sealed partial class PlaybackCoordinator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(videoEngineFactory);
         _decodeEmbeddedSubtitles = embeddedSubtitleDecoder ?? EmbeddedSubtitleDecoder.DecodeTracks;
-        _midiLyricProvider = midiLyricProvider ?? throw new ArgumentNullException(nameof(midiLyricProvider));
         _session = new MediaSession();
-        _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
 
         // Stage 043A: each mode attaches only the pipelines it plays. Background is video and
         // images on the clock (no audio, CD+G or subtitles); Audio is audio files plus video
@@ -107,14 +101,6 @@ sealed partial class PlaybackCoordinator : IDisposable
                 return;
 
             field = value;
-            var midiTrack = SubtitleTracks.FirstOrDefault(static track => track.DisplayName == MidiLyricsDisplayName);
-            if (midiTrack == null)
-                return;
-
-            if (value)
-                _ = _session.Subtitle?.SelectTrack(midiTrack.Id);
-            else if (SelectedSubtitleTrackId == midiTrack.Id)
-                _ = _session.Subtitle?.SelectTrack(null);
         }
     } = true;
     public double AudioVideoOffsetSeconds => _session.Sync.AudioVideoOffsetSeconds;
@@ -189,10 +175,10 @@ sealed partial class PlaybackCoordinator : IDisposable
         set => Seek(value);
     }
 
-    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true && TryLoadMidiLyrics(path);
+    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true;
 
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
-        _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key, archiveEntry);
+        _session.Audio?.Open(archiveEntry) == true;
 
     /// <summary>
     /// Audio mode (043A): plays the soundtrack of a video file as plain audio, with no video
@@ -439,36 +425,4 @@ sealed partial class PlaybackCoordinator : IDisposable
     void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
     void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
-
-    bool TryLoadMidiLyrics(string audioPath, IArchiveEntryInfo? archiveEntry = null)
-    {
-        if (_session.Subtitle == null || !_midiLyricProvider.IsMidiFile(audioPath))
-            return true;
-
-        try
-        {
-            var cues = _midiLyricProvider.ExtractLyrics(
-                GetMidiEventReader(_session.Audio?.Engine),
-                audioPath,
-                _karaokeTransitionDuration);
-            if (cues is { Count: > 0 })
-            {
-                _ = _session.Subtitle?.LoadEmbeddedTracks(
-                [
-                    new EmbeddedSubtitleTrack(0, "MIDI Lyrics", cues),
-                ],
-                selectFirstTrack: ShowMidiLyrics);
-            }
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MIDI", $"Failed to extract MIDI lyrics: {ex.Message}", sourcePath: audioPath, innerException: ex);
-        }
-
-        return true;
-    }
-
-    /// <summary>The MIDI events of the open audio, when the engine reads them; null otherwise.</summary>
-    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine) =>
-        (engine as IMidiEventReaderSource)?.GetMidiEventReader();
 }

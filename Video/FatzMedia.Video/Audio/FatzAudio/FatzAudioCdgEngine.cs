@@ -6,7 +6,7 @@ namespace FatzMedia.Video.Audio;
 
 /// <summary>
 /// CD+G drawn by FatzAudio (037A slice 3), behind the same <see cref="ICdgEngine"/> and
-/// <see cref="ICdgSnapshotSource"/> contract as our <see cref="CdgEngine"/>, so every renderer draws it
+/// <see cref="ICdgSnapshotSource"/> contract, so every renderer draws it
 /// as today: the classic 300x216 picture as colour indices and a palette, the palette applied on the GPU.
 /// </summary>
 /// <remarks>
@@ -19,7 +19,7 @@ namespace FatzMedia.Video.Audio;
 /// with floor (<see cref="ToTime"/> asks for the middle of our last pack), so both engines show the
 /// same pack at the same position.</para>
 /// <para>Colours: FatzAudio's palette, with our background opacity and override applied as
-/// <see cref="CdgEngine"/> applies them (<see cref="FatzAudioMappings.ToCdgPaletteArgb"/>).</para>
+/// the palette settings apply them (<see cref="FatzAudioMappings.ToCdgPaletteArgb"/>).</para>
 /// </remarks>
 sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
 {
@@ -195,7 +195,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
 
     /// <summary>
     /// A push stream holding the graphics and an indexed surface on it; no stream for data with no
-    /// whole pack (an empty song, as <see cref="CdgEngine"/> loads it).
+    /// whole pack (an empty song).
     /// </summary>
     (Fa.PushAudioStream? Carrier, Fa.CdgSurface? Surface, long Packs) CreateCarrier(ReadOnlySpan<byte> cdg, string label)
     {
@@ -237,7 +237,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
         State = CdgEngineState.Stopped;
     }
 
-    /// <summary>Back to a blank picture, as <see cref="CdgEngine"/> resets; the next render draws the whole frame.</summary>
+    /// <summary>Back to a blank picture; the next render draws the whole frame.</summary>
     public void Reset()
     {
         bool washChanged;
@@ -289,18 +289,18 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
 
     /// <summary>
     /// The time to ask FatzAudio for: it shows packs [0, ceil(t x 300)), we show floor(position x 300)
-    /// (<see cref="CdgEngine.PacketCountAt"/>), so the middle of our last pack's slot gives the same
+    /// (<see cref="CdgConstants.PacketCountAt"/>), so the middle of our last pack's slot gives the same
     /// pack at every position, pack boundaries included. Before the start is the start.
     /// </summary>
     internal static TimeSpan ToTime(double seconds)
     {
         // Our pack count, then the middle of that pack's slot: ceil lands on the same count however
         // the time rounds to TimeSpan ticks (100 ns), so no boundary case differs.
-        var packs = Math.Min(CdgEngine.PacketCountAt(seconds), MaxPacks);
+        var packs = Math.Min(CdgConstants.PacketCountAt(seconds), MaxPacks);
         return packs > 0 ? TimeSpan.FromSeconds((packs - 0.5) / CdgConstants.PacketsPerSecond) : TimeSpan.Zero;
     }
 
-    const long MaxPacks = 10_000_000L * CdgConstants.PacketsPerSecond; // 1e7 s, as CdgEngine caps a position
+    const long MaxPacks = 10_000_000L * CdgConstants.PacketsPerSecond; // 1e7 s
 
     /// <summary>Copies what changed into our frame; true when the picture or its colours changed.</summary>
     bool ApplyFrameLocked(Fa.CdgFrame frame)
@@ -365,7 +365,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     }
 
     /// <summary>
-    /// An immutable snapshot, as <see cref="CdgStateMachine.CreateSnapshot(bool)"/> makes them: the
+    /// An immutable snapshot, Snapshots are immutable: the
     /// previous one again when nothing changed, its buffers shared when only its dirty list is stale.
     /// </summary>
     CdgRenderSnapshot CreateSnapshotLocked(bool consumeDirtyRegions)

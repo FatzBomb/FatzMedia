@@ -60,6 +60,7 @@ public sealed class AudioEngineSelectionTests
         }
 
         _ = Assert.IsType<SilentAudioEngine>(services.GetRequiredService<IAudioEngine>());
+        _ = Assert.IsType<UnavailableCdgEngine>(services.GetRequiredService<ICdgEngine>());
         Assert.Null(services.GetService<IAudioDeviceMonitor>());
         Assert.StartsWith("Audio engine Test could not start (no fatzaudio).", services.GetRequiredService<AudioEngineStartup>().Problem, StringComparison.Ordinal);
         Assert.Contains(diagnostics, info => info.Level == MediaDiagnosticLevel.Warning

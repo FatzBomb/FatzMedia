@@ -50,13 +50,12 @@ public static class PlayerServiceProvider
         _ = services.AddSingleton(_ => audioEngine ?? new SilentAudioEngine());
         _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
             provider.GetRequiredService<IAudioEngine>() as IMediaFileAnalyzer ?? UnavailableMediaFileAnalyzer.Instance);
-        // An engine that brings its own CD+G drawing (FatzAudio) supplies the CD+G engine.
+        // The audio engine (FatzAudio) draws CD+G; without it CD+G is not shown (one warning says why).
         _ = services.AddSingleton(provider => provider.GetRequiredService<IAudioEngine>() is ICdgEngineSource source
             ? source.CreateCdgEngine()
-            : new CdgEngine());
+            : new UnavailableCdgEngine());
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();
-        _ = services.AddSingleton<IMidiLyricProvider, MidiLyricProvider>();
     }
 
     static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
@@ -80,7 +79,6 @@ public static class PlayerServiceProvider
                 provider.GetRequiredService<ISubtitleEngine>(),
                 provider.GetRequiredService<IArchiveService>(),
                 provider.GetRequiredService<IVideoEngineFactory>(),
-                provider.GetRequiredService<IMidiLyricProvider>(),
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
                 provider.GetRequiredService<RendererVideoDecodeServices>(),
                 configuration,

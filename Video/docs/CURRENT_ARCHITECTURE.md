@@ -275,8 +275,7 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1), which the FatzAudio engine implements with FatzAudio's MIDI texts and marks (`FatzAudioMidiEventReader`) through `IMidiEventReaderSource`; an engine without that seam has no MIDI lyrics. The internal `IMidiLyricProvider` (`MidiLyricProvider`) builds the cues.
-- `MidiMetadataExtractor` (internal) reads, through the same reader, Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
+- MIDI lyrics are drawn only by FatzAudio's `LyricSurface` (`FatzAudioEngine.Lyrics`, through `IKaraokeOverlaySource` on the subtitle layer). Core no longer builds lyric cues from MIDI events (the managed `MidiLyricCueBuilder`, `MidiMetadataExtractor` and `IMidiEventReader` seam were removed, 2026-11-12); when the audio engine did not start, MIDI audio does not open and no lyrics are shown. `KaraokeMetadata` stays as the data the Core renderers draw on a lyric intro card.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
@@ -1000,11 +999,10 @@ reference from Core) behind `IAudioEngine` and Core's internal seams. BASS was r
   (`SilentAudioEngine`; ENG-033). The engine's `ICdgEngineSource` supplies the CD+G engine, and its
   `IPushAudioOutputSource` the outputs that video audio, soundtracks and network audio through FFmpeg
   play on (`VideoAudioEngine` keeps the FFmpeg side; `FatzAudioPushAudioOutput` is the FatzAudio side).
-  An engine without them leaves video silent and CD+G on Core's `CdgEngine`.
+  An engine without them leaves video silent; without any engine CD+G is not shown (`UnavailableCdgEngine` raises one Warning).
 - **Seams:** `IAudioFadeGainTarget` (fades), `IAudioFilterHost` (equalizer), `IAudioAnalysisOpenControl`
   and `IAudioTrimWindowProvider` (trim), `IAudioLoopControl`, `IAudioVolumeSlide`, the normalization
-  members of `IAudioEngine`, `IMidiEventReaderSource` / `IMidiEventReader` (MIDI lyrics and karaoke
-  metadata), `IAudioDeviceChangeSource` (device events), `ICdgEngineSource`, `IPushAudioOutputSource`.
+  members of `IAudioEngine`, `IAudioDeviceChangeSource` (device events), `ICdgEngineSource`, `IPushAudioOutputSource`.
 - **`FatzAudioEngine`:** one FatzAudio engine, output device and mix bus per player. Position is the
   stream's presentation clock (device latency included). The stream's volume is the fade stage (volume
   ramps); the bus carries the user volume. Loop is FatzAudio's (`Looped` becomes one `PlaybackEnded` per
@@ -1012,15 +1010,14 @@ reference from Core) behind `IAudioEngine` and Core's internal seams. BASS was r
   limiter from `MediaPlayerConfiguration.Normalization`; `NormalizationGain` reports FatzAudio's gain for
   the song, `NormalizationGainChanged` fires when its loudness is final, and `IsNormalizationReady` is
   always true (FatzAudio starts on its estimate and glides). Silence trim calls FatzAudio's
-  `DetectSilence` at open and sets the window as CUE_IN/CUE_OUT. MIDI lyrics and metadata come from
-  `FatzAudioMidiEventReader`. The audio extensions FatzAudio opens are registered as
+  `DetectSilence` at open and sets the window as CUE_IN/CUE_OUT. The audio extensions FatzAudio opens are registered as
   `FileTypes.Audio` when the first engine starts (`FatzAudioFileTypes`); formats it cannot decode go
   through `FfmpegAudioFallback`. It is not an `IMediaFileAnalyzer` (prepared-next analysis is skipped)
   nor an `INetworkAudioSource`: all network audio opens through FFmpeg into the soundtrack engine.
 - **Lyrics and CD+G:** `FatzAudioCdgEngine` draws CD+G (classic or scaled with effects,
   `CdgScalingOptions`, changeable while a song plays through `PlayerCore.CdgScaling` and the internal
   `ICdgScalingTarget`); FatzAudio's `LyricSurface` draws MIDI lyrics through `IKaraokeOverlaySource`
-  on the subtitle layer, with Core's renderers as the fallback.
+  on the subtitle layer. There is no managed CD+G or lyric fallback.
 - **Devices:** see "Audio Output Devices".
 
 ## CDG Snapshot Ownership (Stage 018A, slice 1)
@@ -1028,8 +1025,7 @@ reference from Core) behind `IAudioEngine` and Core's internal seams. BASS was r
 `CdgRenderSnapshot` is immutable and garbage-collected; it is never pooled. The
 presentation coordinator caches the latest one for retained refreshes and video
 composition, and renderers only read it during `PresentComposition` (Direct3D11's layer
-cache drops the payload). `CdgStateMachine.CreateSnapshot` returns the previous snapshot
-when nothing changed and shares immutable buffers otherwise where possible. See
+cache drops the payload). `FatzAudioCdgEngine` builds each snapshot as immutable copies of FatzAudio's picture. See
 `roadmap/complete/018A_COMPLETED_CDGSnapshotOwnershipRedesignPooling.md`.
 
 ## Session Reset
