@@ -88,6 +88,7 @@ public sealed class AudioEngineSelectionTests
     [InlineData(new[] { "--cdg-scale=6", "--cdg-style=curved" }, CdgScale.High, CdgScaleStyle.Curved, false)]
     [InlineData(new[] { "--cdg-scale=none", "--cdg-style=pixel" }, CdgScale.None, CdgScaleStyle.Pixel, false)]
     [InlineData(new[] { "--cdg-scale=0", "--cdg-style=traced" }, CdgScale.None, CdgScaleStyle.Traced, false)]
+    [InlineData(new[] { "--cdg-scale=high", "--cdg-style=clean" }, CdgScale.High, CdgScaleStyle.Clean, false)]
     public void PlayerOption_ParsesTheCdgScaling(string[] args, CdgScale scale, CdgScaleStyle style, bool effects)
     {
         var scaling = PlayerStartupOptions.Parse(args).CdgScaling;
@@ -136,6 +137,7 @@ public sealed class AudioEngineSelectionTests
         var presentation = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options);
         Assert.True(presentation.PixelArt);
         Assert.Equal(10, FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options with { Style = CdgScaleStyle.Curved }).Smoothness);
+        Assert.Equal(10, FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options with { Style = CdgScaleStyle.Clean }).Smoothness);
         Assert.True(FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options with { Style = CdgScaleStyle.AntiAliased }).EdgeBlend);
         var effects = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgEffects(options)!;
         Assert.Equal(1f, effects.Outline!.Size);       // 1.5 CD+G pixels, FatzAudio's unit
