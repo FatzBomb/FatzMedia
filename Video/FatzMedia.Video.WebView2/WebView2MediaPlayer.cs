@@ -77,6 +77,7 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
         Current = item;
         State = WebMediaState.Unstarted;
         Position = Duration = TimeSpan.Zero;
+        _ready?.TrySetCanceled(CancellationToken.None);
         var ready = _ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
 
@@ -118,6 +119,7 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
         ObjectDisposedException.ThrowIf(_disposed, this);
         Current = null;
         State = WebMediaState.Unstarted;
+        _ready?.TrySetCanceled(CancellationToken.None);
         _web.Navigate("https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F");
         return Task.CompletedTask;
     }
@@ -139,7 +141,7 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
         _web.WebResourceRequested -= OnWebResourceRequested;
         _web.WebMessageReceived -= OnWebMessageReceived;
         _web.RemoveWebResourceRequestedFilter($"https://{PageHost}/*", CoreWebView2WebResourceContext.All);
-        _ready?.TrySetCanceled();
+        _ready?.TrySetCanceled(CancellationToken.None);
         return ValueTask.CompletedTask;
     }
 
@@ -169,7 +171,8 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
 
     void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (Current is null)
+        if (Current is null || !Uri.TryCreate(e.Source, UriKind.Absolute, out var from)
+            || !string.Equals(from.Host, PageHost, StringComparison.OrdinalIgnoreCase))
             return;
 
         var message = YouTubePlayerMessage.Parse(e.WebMessageAsJson);
