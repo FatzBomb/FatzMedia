@@ -37,6 +37,40 @@ public sealed class FfmpegAudioFallbackTests
     }
 
     [Fact]
+    public void Pcm16WavHeader_DescribesThe16BitIntegerData()
+    {
+        var header = new byte[Pcm16Wav.HeaderBytes];
+        Pcm16Wav.WriteHeader(header, sampleRate: 44100, channels: 2, dataBytes: 44100 * 2 * 2);
+
+        Assert.Equal(44, Pcm16Wav.HeaderBytes);
+        Assert.Equal("RIFF", Ascii(header, 0));
+        Assert.Equal((uint)(36 + (44100 * 4)), BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4)));
+        Assert.Equal("WAVE", Ascii(header, 8));
+        Assert.Equal("fmt ", Ascii(header, 12));
+        Assert.Equal(16u, BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(16)));
+        Assert.Equal(1, BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(20)));
+        Assert.Equal(2, BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(22)));
+        Assert.Equal(44100u, BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(24)));
+        Assert.Equal(44100u * 4, BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(28)));
+        Assert.Equal(4, BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(32)));
+        Assert.Equal(16, BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(34)));
+        Assert.Equal("data", Ascii(header, 36));
+        Assert.Equal(44100u * 4, BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(40)));
+    }
+
+    [Fact]
+    public void PlanOutput_16BitIntegers_NeedHalfTheMemoryOfFloat()
+    {
+        // A 4-minute stereo 48 kHz song: about 92 MB as float (a temp file above the limit), 46 MB as integers.
+        (var floatTarget, _) = FfmpegAudioFallback.PlanOutput(240, 48000, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes);
+        (var intTarget, var capacity) = FfmpegAudioFallback.PlanOutput(240, 48000, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes, bytesPerSample: sizeof(short));
+
+        Assert.Equal(FfmpegAudioFallback.ConversionTarget.File, floatTarget);
+        Assert.Equal(FfmpegAudioFallback.ConversionTarget.Memory, intTarget);
+        Assert.InRange(capacity, 240L * 48000 * 2 * 2, 52L * 1024 * 1024);
+    }
+
+    [Fact]
     public void FloatWavHeader_RejectsDataBeyondTheRiffLimit() =>
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             FloatWav.WriteHeader(new byte[FloatWav.HeaderBytes], 44100, 2, uint.MaxValue));
