@@ -43,4 +43,10 @@ public enum MediaErrorCode
     /// (for example Direct3D11 or the software renderer); sound continues. Raised once per loss.
     /// </summary>
     RendererDeviceLost,
+
+    /// <summary>
+    /// The source is an online item (Stage 060A) but this player has no web view host to play it.
+    /// Hosts play web media through a UI adapter's web view (for example FatzMedia.Video.WebView2).
+    /// </summary>
+    WebMediaUnavailable,
 }

@@ -19,7 +19,10 @@ public enum MediaSourceClass
     NetworkFile = 3,
 
     /// <summary>A live or unknown-length network stream (internet radio, live feed).</summary>
-    NetworkLive = 4
+    NetworkLive = 4,
+
+    /// <summary>An online item played by a UI adapter's web view (Stage 060A).</summary>
+    WebStream = 5
 }
 
 /// <summary>
@@ -116,6 +119,23 @@ public static class MediaSourceCapabilityMatrix
         SupportsAnalysis = false,
     };
 
+    /// <summary>
+    /// Gets the web-media row (Stage 060A): seekable with a known duration, but the service owns the
+    /// picture and sound, so there are no sidecars, analysis or retries of ours.
+    /// </summary>
+    public static MediaSourceCapabilities WebStream { get; } = new()
+    {
+        SourceClass = MediaSourceClass.WebStream,
+        IsSeekable = true,
+        IsDurationKnown = true,
+        IsLive = false,
+        IsBuffered = true,
+        SupportsRetry = false,
+        HasStreamMetadata = false,
+        SupportsSidecars = false,
+        SupportsAnalysis = false,
+    };
+
     /// <summary>Gets the in-memory image row.</summary>
     public static MediaSourceCapabilities InMemoryImage { get; } = new()
     {
@@ -145,6 +165,7 @@ public static class MediaSourceCapabilityMatrix
             MediaInputSourceKind.FilePath => LocalFile,
             MediaInputSourceKind.Bgra32Image => InMemoryImage,
             MediaInputSourceKind.NetworkUri => NetworkUnprobed,
+            MediaInputSourceKind.WebMedia => WebStream,
             _ => InMemoryImage,
         };
     }

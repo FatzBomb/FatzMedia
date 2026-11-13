@@ -58,6 +58,12 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
   (`updates/043A_1`, `updates/043A_2`).
 
+- `active/060A_ACTIVE_WebMediaPlayer.md` - YouTube in a system web view, built into Video (owner
+  2026-11-13). Spike passed (virtual https host, IFrame API control, Google sign-in kept across restarts;
+  Premium no-ads inconclusive). Slice 1 (Core contract and address detection, `FatzMedia.Video.WebView2` with the
+  WPF `WebMediaView`) implemented, pending manual smoke (`updates/060A_1`). Avalonia, WinForms and `Player`
+  wiring later. Design: `WEB_PLAYER_DESIGN.md`.
+
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF
   player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
@@ -145,9 +151,6 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   or nonfree build; replaces the host-owned FFmpeg policy (023A).
 - `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
   `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
-- `future/060A_IDEA_WebMediaPlayer.md` - **planned** (owner 2026-11-13): `Player.Open(url)` plays YouTube
-  through a system web view (Windows WPF/WinForms and Avalonia first); a spike comes first (sign-in, Premium,
-  cookies, error 153, Avalonia Mac/Linux). Design: `WEB_PLAYER_DESIGN.md`.
 - `future/061A_IDEA_VideoOnMacOS.md` - **planned** (owner 2026-11-13): Video on macOS (FFmpeg package,
   renderer, Avalonia; includes osx-arm64).
 - `future/062A_IDEA_MoreUiAdapters.md` - **planned** (owner 2026-11-13): WinUI, Uno and MAUI adapters,

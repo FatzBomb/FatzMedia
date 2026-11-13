@@ -1,4 +1,4 @@
-# Stage 060A (planned) - Web media player (YouTube first)
+# Stage 060A (active) - Web media player (YouTube first)
 
 Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `../../WEB_PLAYER_DESIGN.md`.
 
@@ -20,3 +20,11 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   (4) the Referer / error 153 fix (serve the player page from a virtual https host); (5) Avalonia
   `NativeWebView` coverage on macOS and Linux. Results decide the scope.
 - Effort: about 1 to 2 weeks after the spike.
+
+## Slices
+- **Slice 1 (implemented, pending manual smoke):** Core contract (`IWebMediaProvider`, `WebMediaProviders`,
+  `IWebMediaPlayer`, `WebMediaSupport`), YouTube address detection, `MediaInputSourceKind.WebMedia` and
+  `MediaInputSource.Parse`; the WebView2 adapter `FatzMedia.Video.WebView2` (`WebView2MediaPlayer`, the WPF
+  `WebMediaView`). Spike results: `docs/roadmap/updates/060A_1/SpikeResults.md`. `updates/060A_1/StageUpdate.md`.
+- **Slice 2 (not started):** Avalonia `NativeWebView` adapter, WinForms WebView2 control, wiring web items into
+  `Player` so `Player.Load(url)` plays them, Premium no-ads re-check in the real app.

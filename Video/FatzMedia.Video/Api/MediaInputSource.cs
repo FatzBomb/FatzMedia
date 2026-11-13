@@ -16,8 +16,10 @@ public sealed class MediaInputSource
         int height,
         int stride,
         Uri? uri = null,
-        MediaNetworkContent networkContent = MediaNetworkContent.Auto)
+        MediaNetworkContent networkContent = MediaNetworkContent.Auto,
+        WebMediaReference? webMedia = null)
     {
+        WebMedia = webMedia;
         Uri = uri;
         NetworkContent = networkContent;
         Kind = kind;
@@ -40,11 +42,15 @@ public sealed class MediaInputSource
     /// <summary>Gets the network address for <see cref="MediaInputSourceKind.NetworkUri"/> sources.</summary>
     public Uri? Uri { get; }
 
+    /// <summary>Gets the online item for <see cref="MediaInputSourceKind.WebMedia"/> sources (Stage 060A).</summary>
+    public WebMediaReference? WebMedia { get; }
+
     /// <summary>Gets the host's content hint for a network source.</summary>
     public MediaNetworkContent NetworkContent { get; }
 
     public bool IsFile => Kind == MediaInputSourceKind.FilePath && !string.IsNullOrWhiteSpace(FilePath);
     public bool IsNetwork => Kind == MediaInputSourceKind.NetworkUri && Uri is not null;
+    public bool IsWebMedia => Kind == MediaInputSourceKind.WebMedia && WebMedia is not null;
     public bool IsBgraImage => Kind == MediaInputSourceKind.Bgra32Image && BgraPixels is { Length: > 0 } && Width > 0 && Height > 0 && Stride >= Width * 4;
 
     public static MediaInputSource FromFile(string path)
@@ -73,6 +79,40 @@ public sealed class MediaInputSource
         var segment = uri.Segments.Length > 0 ? Uri.UnescapeDataString(uri.Segments[^1]).Trim('/') : string.Empty;
         var displayName = string.IsNullOrWhiteSpace(segment) ? uri.Host : segment;
         return new MediaInputSource(MediaInputSourceKind.NetworkUri, displayName, null, null, 0, 0, 0, uri, content);
+    }
+
+    /// <summary>
+    /// Creates a source for an online item a UI adapter plays in its web view (Stage 060A). Core only
+    /// carries the reference; a player without a web view host reports an error when it loads it.
+    /// </summary>
+    public static MediaInputSource FromWebMedia(WebMediaReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        return new MediaInputSource(MediaInputSourceKind.WebMedia, reference.DisplayName, null, null, 0, 0, 0, reference.OriginalUri, webMedia: reference);
+    }
+
+    /// <summary>
+    /// Makes a source from the text a host passes to <c>Open</c>: a YouTube address becomes a web
+    /// source, any other http or https address a network source (<see cref="FromUri"/>), anything else a
+    /// file path. YouTube addresses that name no single video (playlist, channel, search) throw
+    /// <see cref="NotSupportedException"/> with the reason, never reaching network playback.
+    /// </summary>
+    public static MediaInputSource Parse(string address)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        var web = WebMediaProviders.Parse(address);
+        switch (web.Outcome)
+        {
+            case WebMediaParseOutcome.Recognized:
+                return FromWebMedia(web.Reference!);
+            case WebMediaParseOutcome.Unsupported:
+                throw new NotSupportedException(web.Message);
+        }
+
+        return Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? FromUri(uri)
+            : FromFile(address);
     }
 
     public static MediaInputSource FromBgra32Image(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, string? displayName = null)
@@ -150,7 +190,10 @@ public enum MediaInputSourceKind
 {
     FilePath = 0,
     Bgra32Image = 1,
-    NetworkUri = 2
+    NetworkUri = 2,
+
+    /// <summary>An online item played by a UI adapter's web view (Stage 060A).</summary>
+    WebMedia = 3
 }
 
 /// <summary>

@@ -21,6 +21,8 @@ plans/
 # Exclude all standalone build reports and HTML logs recursively
 *.htm
 *.html
+# The WebView2 adapter embeds its player page; it is source, not a report.
+!FatzMedia.Video.WebView2/WebMedia/*.html
 
 TestResults/
 artifacts/

@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%}</style>
+</head>
+<body>
+<div id="p"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const post = o => window.chrome.webview.postMessage(o);
+let player = null, ticker = null;
+
+function startTicker() {
+  stopTicker();
+  ticker = setInterval(() => {
+    if (player && player.getPlayerState && player.getPlayerState() === 1)
+      post({ type: 'time', t: player.getCurrentTime(), dur: player.getDuration() });
+  }, 250);
+}
+function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
+
+const tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+tag.onerror = () => post({ type: 'loadfailed' });
+document.head.appendChild(tag);
+
+function onYouTubeIframeAPIReady() {
+  const vars = { playsinline: 1, rel: 0, origin: location.origin, autoplay: q.get('autoplay') === '1' ? 1 : 0 };
+  player = new YT.Player('p', {
+    videoId: q.get('v'),
+    playerVars: vars,
+    events: {
+      onReady: () => {
+        post({ type: 'ready', dur: player.getDuration(), vol: player.getVolume(), muted: player.isMuted(),
+               rate: player.getPlaybackRate(), rates: player.getAvailablePlaybackRates() });
+        startTicker();
+      },
+      onStateChange: e => post({ type: 'state', state: e.data, t: player.getCurrentTime(), dur: player.getDuration() }),
+      onPlaybackRateChange: e => post({ type: 'rate', rate: e.data }),
+      onError: e => post({ type: 'error', code: e.data })
+    }
+  });
+}
+
+// The player applies volume and mute a moment after the call, so read them back after a short wait.
+function reportVolume() {
+  setTimeout(() => post({ type: 'volume', vol: player.getVolume(), muted: player.isMuted() }), 150);
+}
+
+window.chrome.webview.addEventListener('message', ev => {
+  const m = ev.data;
+  if (!player) return;
+  switch (m.cmd) {
+    case 'play': player.playVideo(); break;
+    case 'pause': player.pauseVideo(); break;
+    case 'seek': player.seekTo(m.value, true); break;
+    case 'volume': player.setVolume(m.value); reportVolume(); break;
+    case 'mute': player.mute(); reportVolume(); break;
+    case 'unmute': player.unMute(); reportVolume(); break;
+    case 'rate': player.setPlaybackRate(m.value); break;
+  }
+});
+</script>
+</body>
+</html>
