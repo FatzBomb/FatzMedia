@@ -150,8 +150,8 @@ public sealed record PlayerStartupOptions
 
     /// <summary>
     /// Gets the scaled CD+G picture: <c>--cdg-scale</c> (<see cref="DefaultCdgScale"/>) or
-    /// <c>--cdg-scale=none|low|med|high</c>, <c>--cdg-style=pixel|clean|pixelart (aa, traced and curved still work)</c>
-    /// (<see cref="DefaultCdgStyle"/> without it), and <c>--cdg-effects</c> for an outline and a shadow; off (the classic
+    /// <c>--cdg-enhance=off|low|med|high</c> (also <c>--cdg-scale=none|low|med|high</c>), <c>--cdg-style=pixel|clean|pixelart (aa, traced and curved still work)</c>
+    /// (<see cref="DefaultCdgStyle"/> without it; the test players' Enhance setting decides the style), and <c>--cdg-effects</c> for an outline and a shadow; off (the classic
     /// picture) without <c>--cdg-scale</c>.
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
@@ -178,10 +178,10 @@ public sealed record PlayerStartupOptions
 
     static CdgScalingOptions ParseCdgScaling(IReadOnlyList<string> args)
     {
-        var scale = Values(args, "--cdg-scale=").LastOrDefault();
+        var scale = Values(args, "--cdg-enhance=").LastOrDefault() ?? Values(args, "--cdg-scale=").LastOrDefault();
         var scaling = new CdgScalingOptions
         {
-            Scale = scale is not null ? ParseCdgScale(scale) : args.Contains("--cdg-scale") ? DefaultCdgScale : CdgScale.None,
+            Scale = scale is not null ? ParseCdgScale(scale) : args.Contains("--cdg-scale") || args.Contains("--cdg-enhance") ? DefaultCdgScale : CdgScale.None,
             Style = ParseCdgStyle(Values(args, "--cdg-style=").LastOrDefault()),
         };
         return args.Contains("--cdg-effects") ? scaling.WithDefaultEffects() : scaling;

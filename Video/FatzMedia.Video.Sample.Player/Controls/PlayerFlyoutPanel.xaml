@@ -238,30 +238,19 @@
                         Margin="0,0,10,0"
                         VerticalAlignment="Center"
                         Style="{StaticResource LabelTextStyle}"
-                        Text="CD+G SCALE" />
+                        Text="ENHANCE" />
                     <ComboBox
                         MinWidth="130"
                         Margin="0,0,14,0"
-                        ItemsSource="{Binding CdgScales}"
-                        SelectedItem="{Binding CdgScaleChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="None: the classic picture. Low: 2x. Med: the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). Higher costs more CPU, mostly for the outline, shadow and bevel" />
-                    <TextBlock
-                        Margin="0,0,6,0"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource LabelTextStyle}"
-                        Text="STYLE" />
-                    <ComboBox
-                        MinWidth="110"
-                        Margin="0,0,14,0"
-                        ItemsSource="{Binding CdgStyles}"
-                        SelectedItem="{Binding CdgStyleChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Pixel: sharp squares. Anti-aliased: sharp, stair steps smoothed. Pixel art: diagonal steps cut into clean slopes, square corners kept. Traced: straight slopes, sharp corners. Curved: traced with curves" />
+                        ItemsSource="{Binding CdgEnhances}"
+                        SelectedItem="{Binding CdgEnhanceChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Off: plain pixels. Low: Clean at 2x. Med: Clean at the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). An outline, shadow or bevel with Enhance Off draws 2x plain pixels. Higher costs more CPU, mostly for the effects" />
                     <Button
                         Width="92"
                         Command="{Binding ResetCdgLookCommand}"
                         Content="Reset Look"
                         Style="{StaticResource SyncButtonStyle}"
-                        ToolTip="Traced, no outline, shadow or bevel; the scale stays" />
+                        ToolTip="No outline, shadow or bevel; Enhance stays" />
                 </DockPanel>
                 <WrapPanel Margin="0,4,0,0" HorizontalAlignment="Center">
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">

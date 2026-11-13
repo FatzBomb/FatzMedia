@@ -89,6 +89,9 @@ public sealed class AudioEngineSelectionTests
     [InlineData(new[] { "--cdg-scale=none", "--cdg-style=pixel" }, CdgScale.None, CdgScaleStyle.Pixel, false)]
     [InlineData(new[] { "--cdg-scale=0", "--cdg-style=traced" }, CdgScale.None, CdgScaleStyle.Traced, false)]
     [InlineData(new[] { "--cdg-scale=high", "--cdg-style=clean" }, CdgScale.High, CdgScaleStyle.Clean, false)]
+    [InlineData(new[] { "--cdg-enhance=low" }, CdgScale.Low, PlayerStartupOptions.DefaultCdgStyle, false)]
+    [InlineData(new[] { "--cdg-enhance" }, PlayerStartupOptions.DefaultCdgScale, PlayerStartupOptions.DefaultCdgStyle, false)]
+    [InlineData(new[] { "--cdg-enhance=off" }, CdgScale.None, PlayerStartupOptions.DefaultCdgStyle, false)]
     public void PlayerOption_ParsesTheCdgScaling(string[] args, CdgScale scale, CdgScaleStyle style, bool effects)
     {
         var scaling = PlayerStartupOptions.Parse(args).CdgScaling;
