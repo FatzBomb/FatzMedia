@@ -26,5 +26,21 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   `IWebMediaPlayer`, `WebMediaSupport`), YouTube address detection, `MediaInputSourceKind.WebMedia` and
   `MediaInputSource.Parse`; the WebView2 adapter `FatzMedia.Video.WebView2` (`WebView2MediaPlayer`, the WPF
   `WebMediaView`). Spike results: `docs/roadmap/updates/060A_1/SpikeResults.md`. `updates/060A_1/StageUpdate.md`.
-- **Slice 2 (not started):** Avalonia `NativeWebView` adapter, WinForms WebView2 control, wiring web items into
-  `Player` so `Player.Load(url)` plays them, Premium no-ads re-check in the real app.
+- **Slice 2 (WinForms implemented, pending manual smoke):** the WinForms `WebMediaControl` in
+  `FatzMedia.Video.WebView2` (`updates/060A_2`). The Avalonia adapter waits for the owner's go-ahead on the
+  package (`Avalonia.Controls.WebView`, MIT, free; see `updates/060A_2/StageUpdate.md`).
+- **Slice 3 (deferred by the owner 2026-11-13: "later, own careful slice"): `Player.Load(url)` plays web items.**
+  Design review (recommendation, 70% confidence, not yet read against `MediaFile` and `MediaControls`):
+  a Core `WebMediaSession` owned by `PlayerCore`; a host attaches its `IWebMediaPlayer` (through `PlayerOptions` or
+  `AttachWebMediaPlayer`); `MediaFile.Load/LoadAsync` close the pipeline engine and hand a `WebMedia` source to the
+  session; `MediaControls.Play/Pause/Stop/Seek` and `PlayerCore` `IsOpen/State/Position/Duration/volume` read from the
+  session while it is active; web state and error events map onto the existing events under
+  `DiagnosticRouter.EnterOwner`; pitch, tempo, EQ, CD+G, fades and prepared-next report not supported through one
+  guard (`WebMediaSupport.Describe`). The web-active flag changes only inside a control-queue turn. Do not wrap
+  `IWebMediaPlayer` as an `IMediaEngine`. Risks: the synchronous `Load`/`Pause` block the UI thread while WebView2
+  needs it (the adapter must marshal internally and sync web calls must not wait on the web view); web events from a
+  replaced item (tag with the load generation); regressions to normal playback (pin with `TestMediaEngine` tests
+  that run with no session attached).
+- **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
+  `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
+  host (Avalonia) is added.
