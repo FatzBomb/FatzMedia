@@ -41,3 +41,6 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   needs it (the adapter must marshal internally and sync web calls must not wait on the web view); web events from a
   replaced item (tag with the load generation); regressions to normal playback (pin with `TestMediaEngine` tests
   that run with no session attached).
+- **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
+  `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
+  host (Avalonia) is added.

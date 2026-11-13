@@ -14,6 +14,7 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
 {
     readonly WpfWebView2 _web = new();
     WebView2MediaPlayer? _player;
+    Task? _initialize;
 
     /// <summary>Creates the control. Set <see cref="UserDataFolder"/> before it first loads.</summary>
     public WebMediaView() => Content = _web;
@@ -29,10 +30,10 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
     public IWebMediaPlayer Player => _player ?? throw new InvalidOperationException("Call InitializeAsync first.");
 
     /// <summary>Starts the web view (needs the WebView2 runtime) and creates <see cref="Player"/>.</summary>
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => _initialize ??= InitializeCoreAsync();
+
+    async Task InitializeCoreAsync()
     {
-        if (_player is not null)
-            return;
         var environment = await CoreWebView2Environment.CreateAsync(null, UserDataFolder).ConfigureAwait(true);
         await _web.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
         _player = new WebView2MediaPlayer(_web.CoreWebView2);
@@ -53,6 +54,7 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
     {
         if (_player is not null)
             await _player.DisposeAsync().ConfigureAwait(true);
+        _player = null;
         _web.Dispose();
     }
 }

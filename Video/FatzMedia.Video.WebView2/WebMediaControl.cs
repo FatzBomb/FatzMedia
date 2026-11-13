@@ -16,6 +16,7 @@ public sealed class WebMediaControl : UserControl, IAsyncDisposable
 {
     readonly WinFormsWebView2 _web = new() { Dock = DockStyle.Fill };
     WebView2MediaPlayer? _player;
+    Task? _initialize;
 
     /// <summary>Creates the control. Set <see cref="UserDataFolder"/> before <see cref="InitializeAsync"/>.</summary>
     public WebMediaControl() => Controls.Add(_web);
@@ -33,10 +34,10 @@ public sealed class WebMediaControl : UserControl, IAsyncDisposable
     public IWebMediaPlayer Player => _player ?? throw new InvalidOperationException("Call InitializeAsync first.");
 
     /// <summary>Starts the web view (needs the WebView2 runtime) and creates <see cref="Player"/>.</summary>
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => _initialize ??= InitializeCoreAsync();
+
+    async Task InitializeCoreAsync()
     {
-        if (_player is not null)
-            return;
         var environment = await CoreWebView2Environment.CreateAsync(null, UserDataFolder).ConfigureAwait(true);
         await _web.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
         _player = new WebView2MediaPlayer(_web.CoreWebView2);
@@ -53,11 +54,21 @@ public sealed class WebMediaControl : UserControl, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_player is not null)
-            await _player.DisposeAsync().ConfigureAwait(true);
-        _web.Dispose();
         Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _player is not null)
+        {
+            // The player's disposal completes synchronously: it only unhooks the web view's events.
+            _player.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _player = null;
+        }
+        base.Dispose(disposing);
     }
 }
