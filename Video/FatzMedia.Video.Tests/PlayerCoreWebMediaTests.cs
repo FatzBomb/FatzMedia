@@ -201,6 +201,44 @@ public sealed class PlayerCoreWebMediaTests
     }
 
     [Fact]
+    public async Task AWebLoadThatFails_LeavesNoPhantomItem()
+    {
+        var (player, _) = CreatePlayer();
+        using var owner = player;
+        var gate = new TaskCompletionSource();
+        var web = new FakeWebPlayer { LoadGate = gate };
+        player.AttachWebMediaPlayer(web);
+
+        var loading = player.LoadAsync(Video);
+        gate.SetException(new InvalidOperationException("web view failed"));
+
+        Assert.False(await loading);
+        Assert.False(player.IsOpen);
+        Assert.False(player.IsWebMedia);
+    }
+
+    [Fact]
+    public async Task AStaleWebError_IsIgnoredAfterANewItemLoaded()
+    {
+        var (player, _) = CreatePlayer();
+        using var owner = player;
+        var web = new FakeWebPlayer();
+        player.AttachWebMediaPlayer(web);
+        Assert.True(await player.LoadAsync(Video));
+        Assert.True(await player.LoadAsync("https://youtu.be/bbbbbbbbbbb"));
+        var errors = 0;
+        player.MediaError += (_, _) => Interlocked.Increment(ref errors);
+
+        // An error for an item that is no longer current (the web player's Current moved on).
+        web.SetCurrent(new WebMediaReference("youtube", "stale000000", new Uri("https://youtu.be/stale000000")));
+        web.RaiseError(WebMediaErrorKind.NotFound, "gone", 100);
+        await player.FlushControlOperationsAsync();
+
+        Assert.Equal(0, Volatile.Read(ref errors));
+        Assert.True(player.IsWebMedia);
+    }
+
+    [Fact]
     public async Task TheVolumeTheHostSets_AppliesToTheWebItem()
     {
         var (player, _) = CreatePlayer();
@@ -360,6 +398,8 @@ public sealed class PlayerCoreWebMediaTests
         public bool HasSubscribers => StateChanged is not null || PositionChanged is not null || Error is not null;
 
         public WebMediaReference? Current { get; private set; }
+
+        public void SetCurrent(WebMediaReference item) => Current = item;
 
         public WebMediaState State { get; private set; }
 

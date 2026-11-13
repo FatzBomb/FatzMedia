@@ -138,9 +138,15 @@ public partial class PlayerCore
                 DeactivateWeb(pause: true);
             throw;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
         {
-            // The player raised Error as well; the load failed.
+            // Superseded by a newer load (the player cancelled this one): not an error, the load did not complete.
+            return false;
+        }
+        catch (Exception)
+        {
+            // The load failed; end the item so the session does not stay "active" with nothing loaded.
+            AbandonWebLoad(generation);
             return false;
         }
 
@@ -182,12 +188,15 @@ public partial class PlayerCore
         else if (_mediaEngine.IsOpen)
             File.Close();
 
-        var generation = Interlocked.Increment(ref _webGeneration);
-        _webItem = source.WebMedia;
-        _webInfo = new MediaSourceInfo(source, MediaContent.None, MediaSourceCapabilityMatrix.WebStream);
-        Volatile.Write(ref _webState, (int)MediaPlayerState.Stopped);
-        _webActive = true;
-        return generation;
+        lock (_webGate)
+        {
+            var generation = Interlocked.Increment(ref _webGeneration);
+            _webItem = source.WebMedia;
+            _webInfo = new MediaSourceInfo(source, MediaContent.None, MediaSourceCapabilityMatrix.WebStream);
+            Volatile.Write(ref _webState, (int)MediaPlayerState.Stopped);
+            _webActive = true;
+            return generation;
+        }
     }
 
     /// <summary>Raises <see cref="MediaLoaded"/> for the item the web player reported ready.</summary>
@@ -218,24 +227,41 @@ public partial class PlayerCore
             {
                 if (task.IsCompletedSuccessfully)
                     CompleteWebLoad(generation);
+                else if (task.IsFaulted)
+                {
+                    _ = task.Exception; // observed
+                    AbandonWebLoad(generation);
+                }
             },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
+    /// <summary>Ends a web item whose load failed, unless a newer load or an error already replaced it.</summary>
+    void AbandonWebLoad(int generation)
+    {
+        if (generation == Volatile.Read(ref _webGeneration))
+            DeactivateWeb(pause: false);
+    }
+
     /// <summary>Ends the web item: pauses the web view and raises <see cref="MediaStopped"/> and <see cref="MediaClosed"/>.</summary>
     void DeactivateWeb(bool pause)
     {
-        if (!_webActive)
-            return;
+        MediaSourceInfo? info;
+        bool wasPlaying;
+        lock (_webGate)
+        {
+            if (!_webActive)
+                return;
 
-        var info = _webInfo;
-        var wasPlaying = (MediaPlayerState)Volatile.Read(ref _webState) is MediaPlayerState.Playing or MediaPlayerState.Buffering;
-        _webActive = false;
-        _webItem = null;
-        _webInfo = null;
-        Volatile.Write(ref _webState, (int)MediaPlayerState.Stopped);
-        Interlocked.Increment(ref _webGeneration);
+            info = _webInfo;
+            wasPlaying = (MediaPlayerState)Volatile.Read(ref _webState) is MediaPlayerState.Playing or MediaPlayerState.Buffering;
+            _webActive = false;
+            _webItem = null;
+            _webInfo = null;
+            Volatile.Write(ref _webState, (int)MediaPlayerState.Stopped);
+            Interlocked.Increment(ref _webGeneration);
+        }
 
         if (pause && _webPlayer is { } player)
             ObserveWeb(player.PauseAsync());
@@ -270,8 +296,8 @@ public partial class PlayerCore
             return false;
         ObserveWeb(player.PauseAsync());
         ObserveWeb(player.SeekAsync(TimeSpan.Zero));
-        SetWebState(MediaPlayerState.Stopped);
-        HostEventDispatcher.Raise(this, MediaStopped, nameof(MediaStopped));
+        if (SetWebState(MediaPlayerState.Stopped))
+            HostEventDispatcher.Raise(this, MediaStopped, nameof(MediaStopped));
         return true;
     }
 
@@ -352,7 +378,7 @@ public partial class PlayerCore
     void OnWebError(object? sender, WebMediaErrorEventArgs e)
     {
         var item = _webItem;
-        if (!_webActive || item is null)
+        if (!_webActive || item is null || sender is not IWebMediaPlayer { Current: { } current } || !ReferenceEquals(current, item))
             return;
 
         var code = e.Kind == WebMediaErrorKind.NotFound ? MediaErrorCode.FileNotFound : MediaErrorCode.OpenFailed;

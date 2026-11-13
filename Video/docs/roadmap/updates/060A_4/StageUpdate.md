@@ -33,10 +33,10 @@ Pitch, tempo, equalizer, fades, normalization, CD+G, prepared-next, mute (use th
 `WebMediaSupport.Describe` gives the message. They do not raise errors; they simply do not apply.
 
 ## Tests
-`PlayerCoreWebMediaTests` (20): routing, unsupported addresses, no-player error, the no-wait rule for load and
+`PlayerCoreWebMediaTests` (22): routing, unsupported addresses, no-player error, the no-wait rule for load and
 controls, state and event mapping, looping, error handling, volume, modes, and that file paths, other URL strings,
 explicit network sources and a file loaded after a web item go to the engine exactly as before. The whole Windows
-suite (1566) and the portable suite (1712) pass.
+suite (1568) and the portable suite (1714) pass.
 
 ## Manual smoke
 Windows (WPF host is enough), WebView2 runtime, network:
