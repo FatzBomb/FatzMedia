@@ -63,7 +63,8 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--lightweight-surfaces` | Opens a smoke window with the adapter's `BackgroundSurface` and `KaraokeSurface`. |
 | `--audio-device=<id or name>` | The FatzAudio output device (see [Output devices](../audio/output-devices.md)). The Log lists the names when it is not found. The default is the system default device. |
 | `--cdg-scale[=low\|med\|high]` | The scaled CD+G picture: Low 2x, Med the largest multiple at or below half the screen height, High (when left out) at or below the screen height. Off (the classic picture) without it. |
-| `--cdg-style=pixel\|aa\|pixelart\|traced\|curved` | How the scaled CD+G picture is drawn (traced when left out). |
+| `--cdg-enhance=off\|low\|med\|high` | The Enhance setting, the same as `--cdg-scale`: Off is plain pixels; Low, Med and High draw the Clean look. |
+| `--cdg-style=pixel\|clean\|pixelart` | The style of the scaled picture through the API (Clean when left out); the test players' Enhance setting sets it. |
 | `--cdg-effects` | Adds an outline and a shadow to the scaled CD+G picture. The WPF player's Video flyout (CD+G SCALE) changes the scale, the style and the outline, shadow and bevel (0-10 half CD+G pixels) live. |
 | `--video-audio=fatz` | FatzAudio decodes video soundtracks from FFmpeg's packets; FFmpeg decodes otherwise. |
 | `--no-auto-hide` | Surfaces keep the last frame after stop (`AutoHide = false`). |

@@ -203,13 +203,10 @@
             <!-- Scaled CD+G look (ENG-064): applied live by FatzAudio, playing or paused -->
             <Border Height="1" Background="#40808080" Margin="0,4" />
             <WrapPanel ItemSpacing="8" LineSpacing="4">
-              <TextBlock Classes="label" Text="CD+G SCALE" />
-              <ComboBox MinWidth="130" ItemsSource="{Binding CdgScales}" SelectedItem="{Binding CdgScaleChoice}"
-                        ToolTip.Tip="None: the classic picture. Low: 2x. Med: the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). Higher costs more CPU, mostly for the outline, shadow and bevel" />
-              <TextBlock Classes="label" Text="STYLE" />
-              <ComboBox MinWidth="110" ItemsSource="{Binding CdgStyles}" SelectedItem="{Binding CdgStyleChoice}"
-                        ToolTip.Tip="Pixel: sharp squares. Anti-aliased: sharp, stair steps smoothed. Pixel art: diagonal steps cut into clean slopes, square corners kept. Traced: straight slopes, sharp corners. Curved: traced with curves" />
-              <Button Classes="small" Content="Reset look" Command="{Binding ResetCdgLookCommand}" ToolTip.Tip="Traced, no outline, shadow or bevel; the scale stays" />
+              <TextBlock Classes="label" Text="ENHANCE" />
+              <ComboBox MinWidth="130" ItemsSource="{Binding CdgEnhances}" SelectedItem="{Binding CdgEnhanceChoice}"
+                        ToolTip.Tip="Off: plain pixels. Low: Clean at 2x. Med: Clean at the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). An outline, shadow or bevel with Enhance Off draws 2x plain pixels. Higher costs more CPU, mostly for the effects" />
+              <Button Classes="small" Content="Reset look" Command="{Binding ResetCdgLookCommand}" ToolTip.Tip="No outline, shadow or bevel; Enhance stays" />
             </WrapPanel>
             <WrapPanel>
               <StackPanel Classes="parameter">

@@ -12,46 +12,34 @@ public sealed record CdgLookChoice<T>(T Value, string Label)
 }
 
 /// <summary>
-/// The scaled CD+G look (ENG-064): the scale (None, Low, Med, High, which follow the screen), the style, and outline,
+/// The scaled CD+G look (ENG-064): one Enhance setting (Off, Low, Med, High; the multiples follow the screen) and outline,
 /// shadow and bevel on 0-10 steps of half a CD+G pixel, applied live through <see cref="PlayerCore.CdgScaling"/>.
-/// <c>--cdg-scale[=..]</c>, <c>--cdg-style=</c> and <c>--cdg-effects</c> set the starting values. Any player can bind
-/// these; the WPF player shows them in the Video flyout.
+/// Off is plain pixels (the classic picture); Low, Med and High draw the Clean look. An outline, shadow or bevel needs
+/// the scaled picture, so with Enhance Off and any of them on, the picture is drawn at 2x as plain pixels.
+/// <c>--cdg-enhance=off|low|med|high</c> (or the older <c>--cdg-scale[=..]</c>) and <c>--cdg-effects</c> set the starting
+/// values. Any player can bind these; the WPF player shows them in the Video flyout.
 /// </summary>
 public partial class PlayerViewModel
 {
     const int DefaultBevelSize = 2;
     bool _suppressCdgLookApply;
 
-    /// <summary>The scales, None (the classic picture) first.</summary>
-    public IReadOnlyList<CdgLookChoice<CdgScale>> CdgScales { get; } =
+    /// <summary>The Enhance levels, Off (plain pixels) first.</summary>
+    public IReadOnlyList<CdgLookChoice<CdgScale>> CdgEnhances { get; } =
     [
-        new(CdgScale.None, "None"),
+        new(CdgScale.None, "Off"),
         new(CdgScale.Low, "Low (2x)"),
         new(CdgScale.Medium, "Med (half screen)"),
         new(CdgScale.High, "High (screen)"),
     ];
 
-    /// <summary>The styles.</summary>
-    public IReadOnlyList<CdgLookChoice<CdgScaleStyle>> CdgStyles { get; } =
-    [
-        new(CdgScaleStyle.Pixel, "Pixel"),
-        new(CdgScaleStyle.Clean, "Clean"),
-        new(CdgScaleStyle.PixelArt, "Pixel art"),
-    ];
-
     public RelayCommand ResetCdgLookCommand { get; private set; } = null!;
 
-    public CdgLookChoice<CdgScale> CdgScaleChoice
+    public CdgLookChoice<CdgScale> CdgEnhanceChoice
     {
         get;
-        // A list that loses its selection (null) keeps the current scale rather than turning scaling off.
-        set => SetCdgLook(ref field, value ?? field ?? CdgScales[0]);
-    } = null!;
-
-    public CdgLookChoice<CdgScaleStyle> CdgStyleChoice
-    {
-        get;
-        set => SetCdgLook(ref field, value ?? field ?? StyleChoice(PlayerStartupOptions.DefaultCdgStyle));
+        // A list that loses its selection (null) keeps the current level rather than turning Enhance off.
+        set => SetCdgLook(ref field, value ?? field ?? CdgEnhances[0]);
     } = null!;
 
     public int CdgOutlineSize
@@ -89,8 +77,7 @@ public partial class PlayerViewModel
         ResetCdgLookCommand = new RelayCommand(ResetCdgLook);
         var options = Options.CdgScaling;
         _suppressCdgLookApply = true;
-        CdgScaleChoice = CdgScales.FirstOrDefault(choice => choice.Value == options.Scale) ?? CdgScales[0];
-        CdgStyleChoice = StyleChoice(options.Style);
+        CdgEnhanceChoice = CdgEnhances.FirstOrDefault(choice => choice.Value == options.Scale) ?? CdgEnhances[0];
         CdgOutlineSize = options.OutlineSize;
         CdgShadowSize = options.ShadowSize;
         CdgShadowDistance = options.ShadowDistance;
@@ -100,20 +87,26 @@ public partial class PlayerViewModel
         _suppressCdgLookApply = false;
     }
 
-    CdgLookChoice<CdgScaleStyle> StyleChoice(CdgScaleStyle style) =>
-        CdgStyles.FirstOrDefault(choice => choice.Value == style) ?? CdgStyles[0];
+    bool CdgHasEffects => CdgOutlineSize > 0 || CdgShadowSize > 0 || CdgShadowDistance > 0 || CdgBevelStrength > 0;
 
     /// <summary>The look as the player's options; the safety zone stays the startup one.</summary>
-    CdgScalingOptions BuildCdgScaling() => Options.CdgScaling with
+    CdgScalingOptions BuildCdgScaling()
     {
-        Scale = CdgScaleChoice.Value,
-        Style = CdgStyleChoice.Value,
-        OutlineSize = CdgOutlineSize,
-        ShadowSize = CdgShadowSize,
-        ShadowDistance = CdgShadowDistance,
-        BevelStrength = CdgBevelStrength,
-        BevelSize = CdgBevelSize,
-    };
+        // Off is plain pixels; effects need the scaled picture, so they bring Off to 2x. Low and up are Clean.
+        var scale = CdgEnhanceChoice.Value;
+        if (scale == CdgScale.None && CdgHasEffects)
+            scale = CdgScale.Low;
+        return Options.CdgScaling with
+        {
+            Scale = scale,
+            Style = CdgEnhanceChoice.Value == CdgScale.None ? CdgScaleStyle.Pixel : CdgScaleStyle.Clean,
+            OutlineSize = CdgOutlineSize,
+            ShadowSize = CdgShadowSize,
+            ShadowDistance = CdgShadowDistance,
+            BevelStrength = CdgBevelStrength,
+            BevelSize = CdgBevelSize,
+        };
+    }
 
     void SetCdgLook<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
     {
@@ -129,11 +122,10 @@ public partial class PlayerViewModel
         player.CdgScaling = BuildCdgScaling();
     }
 
-    /// <summary>The default style with no outline, shadow or bevel; the scale stays as it is.</summary>
+    /// <summary>No outline, shadow or bevel; Enhance stays as it is.</summary>
     void ResetCdgLook()
     {
         _suppressCdgLookApply = true;
-        CdgStyleChoice = StyleChoice(PlayerStartupOptions.DefaultCdgStyle);
         CdgOutlineSize = 0;
         CdgShadowSize = 0;
         CdgShadowDistance = 0;

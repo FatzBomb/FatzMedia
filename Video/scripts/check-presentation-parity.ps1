@@ -198,7 +198,7 @@ foreach ($player in @(
 }
 
 # The test players show the shared view model's CD+G look (ENG-064), in the markup or code each one builds its panel in.
-$cdgLookMembers = @('CdgScaleChoice', 'CdgStyleChoice', 'CdgOutlineSize', 'CdgShadowSize', 'CdgShadowDistance', 'CdgBevelStrength', 'CdgBevelSize', 'ResetCdgLookCommand')
+$cdgLookMembers = @('CdgEnhanceChoice', 'CdgOutlineSize', 'CdgShadowSize', 'CdgShadowDistance', 'CdgBevelStrength', 'CdgBevelSize', 'ResetCdgLookCommand')
 foreach ($panel in @(
         @{ Name = 'WPF'; Path = 'FatzMedia.Video.Sample.Player/Controls/PlayerFlyoutPanel.xaml' },
         @{ Name = 'Avalonia'; Path = 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml' },
