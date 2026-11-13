@@ -28,9 +28,9 @@ public partial class PlayerViewModel
     public IReadOnlyList<CdgLookChoice<CdgScale>> CdgEnhances { get; } =
     [
         new(CdgScale.None, "Off"),
-        new(CdgScale.Low, "Low (2x)"),
-        new(CdgScale.Medium, "Med (half screen)"),
-        new(CdgScale.High, "High (screen)"),
+        new(CdgScale.Low, "Low"),
+        new(CdgScale.Medium, "Med"),
+        new(CdgScale.High, "High"),
     ];
 
     public RelayCommand ResetCdgLookCommand { get; private set; } = null!;
