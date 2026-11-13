@@ -145,6 +145,15 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   or nonfree build; replaces the host-owned FFmpeg policy (023A).
 - `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
   `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
+- `future/060A_IDEA_WebMediaPlayer.md` - **planned** (owner 2026-11-13): `Player.Open(url)` plays YouTube
+  through a system web view (Windows WPF/WinForms and Avalonia first); a spike comes first (sign-in, Premium,
+  cookies, error 153, Avalonia Mac/Linux). Design: `WEB_PLAYER_DESIGN.md`.
+- `future/061A_IDEA_VideoOnMacOS.md` - **planned** (owner 2026-11-13): Video on macOS (FFmpeg package,
+  renderer, Avalonia; includes osx-arm64).
+- `future/062A_IDEA_MoreUiAdapters.md` - **planned** (owner 2026-11-13): WinUI, Uno and MAUI adapters,
+  after 061A.
+- `future/063A_IDEA_MobileAudioDeviceTestPass.md` - **planned** (owner 2026-11-13): FatzAudio smoke on a
+  real iPhone and Android phone.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy: **planned, next (queue item 2; 051A completed 2026-11-07)** (owner 2026-11-05; UI-thread
   time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5

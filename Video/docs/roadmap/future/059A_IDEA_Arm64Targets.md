@@ -13,3 +13,4 @@ ARM64 Windows, and Vulkan or the Software renderer serve ARM64 Linux.
 - **Smoke:** on an ARM64 Windows laptop (WPF, Avalonia, WinForms; Direct3D11 and hardware decoding)
   and an ARM64 Linux machine (Vulkan or Software). Not possible in this sandbox.
 - After the FatzAudio pin with the arm64 libraries, and 058A's first packages.
+- macOS arm64 is part of 061A (Video on macOS), not this stage.
