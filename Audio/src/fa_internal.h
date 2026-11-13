@@ -414,8 +414,7 @@ int fa_midi_var_process(fa_midi_var* v, const float* in, float* wet, int frames,
  * parameter's range. */
 void fa_midi_var_control(fa_midi_var* v, int which, float amount);
 /* GS EFX SysEx 40 03 `addr` (00 type MSB, 01 LSB, 03-16 parameters 1-20): the block
- * becomes the EFX (Thru first). Returns whether its type is one we play. gs_efx_get
- * reads one back. */
+ * becomes the EFX (Thru first). Returns whether its type is one we play. */
 int fa_midi_var_gs_efx(fa_midi_var* v, int addr, int value);
 /* The insertion effect types midi_var.c's families don't cover (src/midi_efx.c,
  * src/midi_efx_types.c): the SC-88 Pro EFX (gs = 1) and the MU100's XG additions.
