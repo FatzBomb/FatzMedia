@@ -365,7 +365,7 @@ sealed partial class FatzAudioCdgEngine : ICdgEngine, ICdgSnapshotSource
     }
 
     /// <summary>
-    /// An immutable snapshot, Snapshots are immutable: the
+    /// An immutable snapshot: the
     /// previous one again when nothing changed, its buffers shared when only its dirty list is stale.
     /// </summary>
     CdgRenderSnapshot CreateSnapshotLocked(bool consumeDirtyRegions)

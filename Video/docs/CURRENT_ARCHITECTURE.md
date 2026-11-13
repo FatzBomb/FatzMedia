@@ -280,7 +280,7 @@ named `window` handle.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
-- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IPlayerSession` and `PlayerCore`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
+- `ShowMidiLyrics` (default `true`) is kept on the API but no longer changes anything: the managed MIDI lyric track it toggled was removed, and FatzAudio always draws the lyrics. Exposed on `IPlayerSession` and `PlayerCore`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
 - MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style

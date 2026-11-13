@@ -51,7 +51,7 @@ sealed class UnavailableCdgEngine : ICdgEngine
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Warning,
             "CDG",
-            "CD+G graphics and MIDI lyrics are drawn by the audio engine (FatzAudio), which is not running, so they are not shown.",
+            "CD+G graphics are drawn by the audio engine (FatzAudio), which is not running, so they are not shown.",
             sourcePath: source);
     }
 }

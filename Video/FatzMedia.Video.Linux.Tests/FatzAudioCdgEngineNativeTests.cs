@@ -308,8 +308,7 @@ public sealed class FatzAudioCdgEngineNativeTests : IDisposable
 
     /// <summary>
     /// Shaped like a real disc: mostly tile blocks, rare clears and
-    /// colour loads. Scrolls carry no fine offset,
-    /// and the colour tables come first so every colour in use is a loaded one.
+    /// colour loads. Scrolls carry no fine offset, and the colour tables come first so every colour in use is a loaded one.
     /// </summary>
     static byte[] CreateStream(int packets, int seed)
     {

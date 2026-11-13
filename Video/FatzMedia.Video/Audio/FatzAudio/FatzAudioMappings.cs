@@ -143,7 +143,7 @@ static class FatzAudioMappings
     }
 
     /// <summary>
-    /// The full-viewport background wash for a FatzAudio CD+G frame, as the player works it out: transparent until the first screen clear unless an
+    /// The full-viewport background wash for a FatzAudio CD+G frame: transparent until the first screen clear unless an
     /// override is set, then the background colour (or the override's) at the override's alpha (else
     /// 255) times <paramref name="opacityAlpha"/>.
     /// </summary>
