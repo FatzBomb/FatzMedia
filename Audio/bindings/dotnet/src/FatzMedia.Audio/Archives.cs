@@ -233,12 +233,8 @@ public sealed unsafe class Archive : IDisposable
         try
         {
             var rc = NativeMethods.fa_archive_open_memory_ref(pin.Pointer, (nuint)data.Length, o.Pointer, out var native);
+            // Finish gives the pin to the archive handle (which unpins it, also when reading the entries fails).
             return Finish(rc, native, null, options, ref o, pin);
-        }
-        catch
-        {
-            pin.Dispose();   // the archive did not take it over
-            throw;
         }
         finally { o.Dispose(); }
     }
@@ -269,6 +265,7 @@ public sealed unsafe class Archive : IDisposable
 
     static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o, MemoryHandle? pin = null)
     {
+        if (rc != 0) pin?.Dispose();   // the archive did not take it over
         AudioException.ThrowIfFailed(rc);
         var handle = new ArchiveHandle();
         handle.Initialize(native, io);

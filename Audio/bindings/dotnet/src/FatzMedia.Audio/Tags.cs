@@ -275,6 +275,13 @@ public sealed class Tags
                 pictures[i] = new TagPicture((PictureType)p.Type, NativeText.Read(p.Mime),
                     NativeText.Read(p.Description), data, (TagFormat)p.Format);
             }
+            if (hasCover && coverIndex < 0 && pictures.Length > 0)
+            {
+                // The library's pick was not matched by pointer: fall back to the same rule (front cover, else first).
+                coverIndex = 0;
+                for (var i = 0; i < pictures.Length; i++)
+                    if (pictures[i].Type == PictureType.FrontCover) { coverIndex = i; break; }
+            }
             var n = NativeSized.New<FaStreamInfo>();
             StreamInfo? info = NativeMethods.fa_tags_get_info(native, ref n) == 0 ? StreamInfo.FromNative(n) : null;
             return new Tags(fields, items, pictures, info, coverIndex);
