@@ -23,6 +23,25 @@ public class DjMixerTests
     }
 
     [Fact]
+    public void OpenAndClose_ManyTimes_ReleasesTheMixerWithItsDevice()
+    {
+        using var engine = CreateHeadless();
+        // Disposing the mixer closes its device, which destroys the native mixer (fa_mixer_destroy): nothing is
+        // left to free, so cycles neither throw nor pile up devices.
+        for (var i = 0; i < 25; i++)
+        {
+            var mixer = engine.CreateDjMixer(new DjMixerOptions { Latency = LatencyMode.Normal });
+            Assert.True(mixer.Output.IsStarted);
+            mixer.Dispose();
+            Assert.True(mixer.Output.IsDisposed);
+            mixer.Dispose();   // a second dispose is harmless
+        }
+
+        using var again = engine.CreateDjMixer(new DjMixerOptions { Latency = LatencyMode.Normal });
+        Assert.Equal(2, again.Decks.Count);
+    }
+
+    [Fact]
     public void Channels34_OpensFourChannels()
     {
         using var engine = CreateHeadless();

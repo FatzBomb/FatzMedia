@@ -110,6 +110,16 @@ public class CrossfadeTests
         s.Markers.FadeInCurve = Curve.Linear;
         Assert.Equal(Curve.Linear, s.Markers.FadeInCurve);
         Assert.Equal(Curve.EqualPower, s.Markers.FadeOutCurve);
+        // What is read is what the stream holds, for every kind of shape; a points shape is the one set here.
+        foreach (var shape in new[] { Curve.Logarithmic, Curve.Exponential, Curve.SCurve, Curve.Bezier(0.25f, 0.1f, 0.25f, 1f) })
+        {
+            s.Markers.FadeOutCurve = shape;
+            Assert.Equal(shape, s.Markers.FadeOutCurve);
+        }
+        var points = Curve.Points(0f, 0.05f, 0.1f, 1f);
+        s.Markers.FadeOutCurve = points;
+        Assert.Equal(points, s.Markers.FadeOutCurve);
+        s.Markers.FadeOutCurve = Curve.EqualPower;
         s.PlayOn(output);
         await ended.Task.WaitAsync(Timeout);
         Assert.Equal(1.2, s.Position.TotalSeconds, 3);

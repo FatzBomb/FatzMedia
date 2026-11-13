@@ -69,15 +69,26 @@ public sealed class StreamMarkers
     }
 
     /// <summary>Shape of the <see cref="FadeInEnd"/> fade-in. Defaults to <see cref="Curve.EqualPower"/>.</summary>
+    /// <remarks>
+    /// Read from the stream, so it is what is really set (also when another part of the app set it through the C API).
+    /// A <see cref="Curve.Points"/> shape is the one this object last set: the stream does not return its points.
+    /// </remarks>
     /// <exception cref="ArgumentNullException">The value is null.</exception>
-    public Curve FadeInCurve { get; set => field = SetCurve(0, value); } = Curve.EqualPower;
+    public Curve FadeInCurve { get => GetCurve(0, field); set => field = SetCurve(0, value); } = Curve.EqualPower;
 
     /// <summary>
     /// Shape of the <see cref="FadeOutStart"/> fade-out, described as a fade-in and played backwards.
     /// Defaults to <see cref="Curve.EqualPower"/>, so overlapping marker fades keep constant loudness.
     /// </summary>
     /// <exception cref="ArgumentNullException">The value is null.</exception>
-    public Curve FadeOutCurve { get; set => field = SetCurve(1, value); } = Curve.EqualPower;
+    public Curve FadeOutCurve { get => GetCurve(1, field); set => field = SetCurve(1, value); } = Curve.EqualPower;
+
+    unsafe Curve GetCurve(int fade, Curve own)
+    {
+        FaRamp r = default;
+        AudioException.ThrowIfFailed(NativeMethods.fa_stream_get_fade_curve(_stream.Handle, fade, &r));
+        return Curve.FromNative(r) ?? own;
+    }
 
     unsafe Curve SetCurve(int fade, Curve curve)
     {

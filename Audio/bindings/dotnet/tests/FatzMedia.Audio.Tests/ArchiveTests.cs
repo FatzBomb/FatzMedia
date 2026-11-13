@@ -29,6 +29,33 @@ public class ArchiveTests
     static byte[] OneSecondCdg() => new byte[24 * 300];
 
     [Fact]
+    public void OpenReference_ReadsTheCallersBytesInPlace_WithoutCopying()
+    {
+        var wav = TestAudio.SineWav(0.5);
+        var zip = Zip(("Song.wav", wav, CompressionLevel.NoCompression), ("note.txt", "hello"u8.ToArray(), CompressionLevel.NoCompression));
+        using (var archive = Archive.OpenReference(zip))
+        {
+            Assert.Equal(ArchiveFormat.Zip, archive.Format);
+            Assert.Equal(2, archive.Entries.Count);
+            var note = archive.Find("note.txt")!;
+            Assert.Equal("hello"u8.ToArray(), archive.ReadAllBytes(note));
+            // The bytes are read where they are: a change in the caller's array is seen (the stored entry then fails its CRC).
+            var at = zip.AsSpan().IndexOf("hello"u8);
+            Assert.True(at > 0);
+            zip[at] = (byte)'j';
+            Assert.ThrowsAny<AudioException>(() => archive.ReadAllBytes(note));
+        }
+
+        // A copy (Open) is not affected by a later change; and both open the same archive.
+        zip[zip.AsSpan().IndexOf("jello"u8)] = (byte)'h';
+        using var copy = Archive.Open(zip);
+        zip[zip.AsSpan().IndexOf("hello"u8)] = (byte)'j';
+        Assert.Equal("hello"u8.ToArray(), copy.ReadAllBytes(copy.Find("note.txt")!));
+        Assert.Throws<ArgumentException>(() => Archive.OpenReference(ReadOnlyMemory<byte>.Empty));
+        Assert.ThrowsAny<AudioException>(() => Archive.OpenReference("not an archive at all"u8.ToArray()));
+    }
+
+    [Fact]
     public void Open_ListsEntriesFromPathMemoryAndStream()
     {
         var wav = TestAudio.SineWav(0.5);

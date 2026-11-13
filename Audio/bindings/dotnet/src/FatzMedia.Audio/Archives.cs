@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 using FatzMedia.Audio.Native;
 
@@ -214,6 +215,34 @@ public sealed unsafe class Archive : IDisposable
         finally { o.Dispose(); }
     }
 
+    /// <summary>
+    /// Opens an archive held in memory without copying it: the bytes are pinned and read in place until the archive is
+    /// disposed (and every stream read from it), so a large archive costs no second copy.
+    /// </summary>
+    /// <param name="data">The archive's bytes. They must not change, and the memory must stay valid, until the archive is disposed.</param>
+    /// <param name="options">Memory limit, temp folder and cancellation; null = defaults.</param>
+    /// <returns>The archive; dispose it when done.</returns>
+    /// <exception cref="ArgumentException"><paramref name="data"/> is empty.</exception>
+    /// <exception cref="AudioException">Not a ZIP this build reads (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    public static Archive OpenReference(ReadOnlyMemory<byte> data, ArchiveOptions? options = null)
+    {
+        if (data.IsEmpty) throw new ArgumentException("No data.", nameof(data));
+        NativeLoader.EnsureInitialized();
+        var o = NativeArchiveOptions.Create(options);
+        var pin = data.Pin();
+        try
+        {
+            var rc = NativeMethods.fa_archive_open_memory_ref(pin.Pointer, (nuint)data.Length, o.Pointer, out var native);
+            return Finish(rc, native, null, options, ref o, pin);
+        }
+        catch
+        {
+            pin.Dispose();   // the archive did not take it over
+            throw;
+        }
+        finally { o.Dispose(); }
+    }
+
     /// <summary>Opens an archive from a seekable <see cref="Stream"/>.</summary>
     /// <param name="source">A readable, seekable stream. Reads are serialized.</param>
     /// <param name="options">Memory limit, temp folder and cancellation; null = defaults.</param>
@@ -238,11 +267,12 @@ public sealed unsafe class Archive : IDisposable
         finally { o.Dispose(); }
     }
 
-    static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o)
+    static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o, MemoryHandle? pin = null)
     {
         AudioException.ThrowIfFailed(rc);
         var handle = new ArchiveHandle();
         handle.Initialize(native, io);
+        handle.Pin = pin;
         ArchiveEntry[] entries;
         try { entries = ReadEntries(handle); }
         catch { handle.Dispose(); throw; }
