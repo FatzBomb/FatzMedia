@@ -27,7 +27,6 @@ public sealed partial class MediaSurface : Grid
     bool _layoutRefreshQueued;
     bool _primarySurfaceLiveResize;
     volatile bool _showPrimarySurfaceAfterPresentation;
-    SecondaryPresentationWindow? _secondaryWindow;
     MediaOverlayWindow? _overlayWindow;
     WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
 
@@ -184,80 +183,6 @@ public sealed partial class MediaSurface : Grid
         set => SetValue(OverlayHitTestVisibleProperty, value);
     }
 
-    const string SecondaryOutputObsolete =
-        "Open a SecondaryPresentationWindow with ShowOnScreen instead (the test players do). Removed in a later release (ENG-039).";
-
-    [Obsolete(SecondaryOutputObsolete)]
-    public event EventHandler? SecondaryOutputsChanged;
-
-    [Obsolete(SecondaryOutputObsolete)]
-    public bool ShowSecondaryOutput()
-    {
-        if (Player == null)
-            return false;
-
-        if (_secondaryWindow is { IsVisible: true })
-        {
-            _ = _secondaryWindow.Activate();
-            return true;
-        }
-
-        OpenSecondaryWindow(Player, Rect.Empty, WindowState.Normal);
-        return true;
-    }
-
-    void OpenSecondaryWindow(IPlayerSession session, Rect bounds, WindowState state)
-    {
-        // The secondary window presents the same way as this surface, so software mode, which
-        // draws only into frame sinks, reaches it too (ENG-016).
-        _secondaryWindow = new SecondaryPresentationWindow(
-            session,
-            DefaultSecondarySurfaceId,
-            MediaPresentationSurfaceRole.Projector,
-            _appliedPresentationMode)
-        {
-            Owner = Window.GetWindow(this),
-            Title = "FatzMedia.Video Secondary Output"
-        };
-
-        // The second screen hides and shows like this surface.
-        _secondaryWindow.Surface.AutoHide = AutoHide;
-        if (!bounds.IsEmpty)
-        {
-            // Placed before it shows, so a reopened window neither jumps nor attaches at the
-            // default size first.
-            _secondaryWindow.WindowStartupLocation = WindowStartupLocation.Manual;
-            _secondaryWindow.Left = bounds.Left;
-            _secondaryWindow.Top = bounds.Top;
-            _secondaryWindow.Width = bounds.Width;
-            _secondaryWindow.Height = bounds.Height;
-            _secondaryWindow.WindowState = state;
-        }
-
-        _secondaryWindow.Closed += OnSecondaryWindowClosed;
-        _secondaryWindow.Show();
-        SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    [Obsolete(SecondaryOutputObsolete)]
-    public bool CloseSecondaryOutput() => CloseSecondaryWindow();
-
-    bool CloseSecondaryWindow()
-    {
-        if (_secondaryWindow == null)
-            return false;
-
-        _secondaryWindow.Closed -= OnSecondaryWindowClosed;
-        var window = _secondaryWindow;
-        _secondaryWindow = null;
-        window.Close();
-        SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
-        return true;
-    }
-
-    [Obsolete(SecondaryOutputObsolete)]
-    public bool IsSecondaryOutputOpen() => _secondaryWindow is { IsVisible: true };
-
     public void RefreshPresentationLayout()
     {
         if (_layoutRefreshQueued)
@@ -359,22 +284,6 @@ public sealed partial class MediaSurface : Grid
         surface.ConfigurePresentationHost();
         surface.UpdateOverlayWindow();
         surface.AttachOrResizePrimarySurface();
-        surface.ReopenSecondaryOutputInAppliedMode();
-    }
-
-    /// <summary>
-    /// The secondary window's surface payload follows the presentation mode (ENG-016), so an
-    /// open secondary is reopened in the new mode, in the same place.
-    /// </summary>
-    void ReopenSecondaryOutputInAppliedMode()
-    {
-        if (Player is not { } session || _secondaryWindow is not { IsVisible: true } previous)
-            return;
-
-        var bounds = previous.RestoreBounds;
-        var state = previous.WindowState;
-        _ = CloseSecondaryWindow();
-        OpenSecondaryWindow(session, bounds, state);
     }
 
     static void OnOverlayContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -432,16 +341,6 @@ public sealed partial class MediaSurface : Grid
     }
 
     void OnNativeSurfaceChanged(object? sender, EventArgs e) => RefreshPresentationLayout();
-
-    void OnSecondaryWindowClosed(object? sender, EventArgs e)
-    {
-        if (_secondaryWindow != null)
-        {
-            _secondaryWindow.Closed -= OnSecondaryWindowClosed;
-            _secondaryWindow = null;
-            SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
-        }
-    }
 
     void AttachOrResizePrimarySurface()
     {

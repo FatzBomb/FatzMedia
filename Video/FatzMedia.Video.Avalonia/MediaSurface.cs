@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Media;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
@@ -63,6 +64,12 @@ public class MediaSurface : Control
     public static readonly StyledProperty<bool> AutoHideProperty =
         AvaloniaProperty.Register<MediaSurface, bool>(nameof(AutoHide), true);
 
+    public static readonly StyledProperty<object?> OverlayContentProperty =
+        AvaloniaProperty.Register<MediaSurface, object?>(nameof(OverlayContent));
+
+    public static readonly StyledProperty<bool> OverlayHitTestVisibleProperty =
+        AvaloniaProperty.Register<MediaSurface, bool>(nameof(OverlayHitTestVisible));
+
     public static readonly DirectProperty<MediaSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
@@ -86,6 +93,7 @@ public class MediaSurface : Control
     bool _gpuLeavingContextLoss;
     string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
     readonly MediaSurfaceContentTracker _contentTracker = new();
+    readonly FrameHost _frameHost = new();
     int _contentStateQueued;
     bool _contentShown;
     int _firstFrameReadyLoad;
@@ -96,7 +104,15 @@ public class MediaSurface : Control
         ClipToBoundsProperty.OverrideDefaultValue<MediaSurface>(true);
     }
 
-    public MediaSurface() => _contentTracker.Changed += OnContentTrackerChanged;
+    public MediaSurface()
+    {
+        _contentTracker.Changed += OnContentTrackerChanged;
+        // The frames (the shared GPU image's composition visual hangs on the frame host) come first and the overlay
+        // after, so the overlay is always drawn above the video on either presentation path.
+        VisualChildren.Add(_frameHost);
+        VisualChildren.Add(OverlayPresenter);
+        LogicalChildren.Add(OverlayPresenter);
+    }
 
     /// <summary>Raised on the UI thread when <see cref="PresentationPath"/> or its reason changes.</summary>
     public event EventHandler? PresentationPathChanged;
@@ -140,6 +156,29 @@ public class MediaSurface : Control
         get => GetValue(BackgroundProperty);
         set => SetValue(BackgroundProperty, value);
     }
+
+    /// <summary>
+    /// Gets or sets a control shown above the video (default <see langword="null"/>), for example full-screen
+    /// transport controls. It fills the surface and is drawn above the frames on both presentation paths, like
+    /// <see cref="BackgroundSurface.OverlayContent"/>; the surface never disposes it.
+    /// </summary>
+    public object? OverlayContent
+    {
+        get => GetValue(OverlayContentProperty);
+        set => SetValue(OverlayContentProperty, value);
+    }
+
+    /// <summary>Gets or sets whether <see cref="OverlayContent"/> takes pointer input (default <see langword="false"/>).</summary>
+    public bool OverlayHitTestVisible
+    {
+        get => GetValue(OverlayHitTestVisibleProperty);
+        set => SetValue(OverlayHitTestVisibleProperty, value);
+    }
+
+    /// <summary>The visual that carries the shared GPU image's composition visual (tests look there).</summary>
+    internal Visual GpuImageHost => _frameHost;
+
+    internal ContentPresenter OverlayPresenter { get; } = new() { IsHitTestVisible = false, IsVisible = false };
 
     /// <summary>
     /// Gets or sets whether the surface uses the shared GPU image path when the compositor and the
@@ -228,6 +267,24 @@ public class MediaSurface : Control
 
     /// <summary>How many times it is asked before the frame sink is kept for the session.</summary>
     internal const int GpuContextLossRetryAttempts = 30;
+
+    /// <inheritdoc />
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        _frameHost.Measure(availableSize);
+        OverlayPresenter.Measure(availableSize);
+        // The surface takes the size its parent gives it; the overlay never asks for more.
+        return default;
+    }
+
+    /// <inheritdoc />
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var area = new Rect(finalSize);
+        _frameHost.Arrange(area);
+        OverlayPresenter.Arrange(area);
+        return finalSize;
+    }
 
     public override void Render(DrawingContext context)
     {
@@ -327,6 +384,15 @@ public class MediaSurface : Control
             && change.NewValue is VideoDisplayMode mode)
         {
             session.VideoDisplayMode = mode;
+        }
+        else if (change.Property == OverlayContentProperty)
+        {
+            OverlayPresenter.Content = change.NewValue;
+            OverlayPresenter.IsVisible = change.NewValue is not null;
+        }
+        else if (change.Property == OverlayHitTestVisibleProperty)
+        {
+            OverlayPresenter.IsHitTestVisible = change.NewValue is true;
         }
         else if (change.Property == AutoHideProperty)
         {
@@ -532,7 +598,7 @@ public class MediaSurface : Control
         double scaling,
         out string fallbackReason)
     {
-        var gpuSurface = new AvaloniaSharedImageSurface(this, session, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
+        var gpuSurface = new AvaloniaSharedImageSurface(_frameHost, session, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
         gpuSurface.SetSize(Bounds.Size);
         gpuSurface.SetVisible(_contentShown);
         bool attached;
@@ -803,5 +869,11 @@ public class MediaSurface : Control
         _gpuSurface = null;
         FrameSink?.Clear();
         SetPath(MediaSurfacePresentationPath.None, null);
+    }
+
+    /// <summary>The visual the shared GPU image's composition visual hangs on: a child that never draws or takes input.</summary>
+    sealed class FrameHost : Control
+    {
+        public FrameHost() => IsHitTestVisible = false;
     }
 }

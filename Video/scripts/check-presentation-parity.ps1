@@ -34,6 +34,23 @@ function Assert-Match {
     }
 }
 
+function Assert-NotMatch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Text,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Pattern,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Message
+    )
+
+    if ($Text -match $Pattern) {
+        throw "Presentation parity check failed: $Message"
+    }
+}
+
 $mediaSurface = Read-Text 'FatzMedia.Video.Wpf/MediaSurface.cs'
 $compositedSurface = Read-Text 'FatzMedia.Video.Wpf/WpfCompositedSurfaceHost.cs'
 $secondaryWindow = Read-Text 'FatzMedia.Video.Wpf/SecondaryPresentationWindow.cs'
@@ -56,7 +73,9 @@ Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+
 Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+surfaceId\s*\)' 'IPlayerSession must expose neutral presentation-surface detach.'
 
 Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaSurface must keep a stable default secondary surface id.'
-Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*(Player|session),\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
+# The second screen is a SecondaryPresentationWindow the host opens (every adapter has one, checked below); the old
+# WPF MediaSurface.ShowSecondaryOutput family is gone and must not come back.
+Assert-NotMatch $mediaSurface 'ShowSecondaryOutput|CloseSecondaryOutput|IsSecondaryOutputOpen' 'The WPF MediaSurface must not bring back the obsolete secondary-output members; hosts open a SecondaryPresentationWindow.'
 Assert-Match $mediaSurface 'nativeSurface\s*=\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Native-HWND WPF mode must create a neutral Win32 surface payload.'
 Assert-Match $mediaSurface 'nativeSurface\s*=\s*host\.CreateSurfaceDescriptor\s*\(\s*\)' 'WPF-composited mode must create a neutral managed frame-sink payload.'
 # Stage 046A: the WPF surface has a Role and SurfaceId like the Avalonia and WinForms surfaces. It
@@ -137,6 +156,14 @@ Assert-Match $winFormsSurface 'MediaSurfacePresentationPath\.FrameSink' 'WinForm
 Assert-Match $winFormsSurface 'public\s+Control\?\s+OverlayContent' 'WinForms MediaSurface must expose OverlayContent (like the WPF surface).'
 Assert-Match $winFormsSurface 'new\s+MediaOverlayForm' 'WinForms OverlayContent must be shown in the layered overlay window.'
 Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurface must keep OverlayContent.'
+# Every adapter's MediaSurface offers the overlay and its hit-test switch (the Avalonia one draws it above both paths).
+foreach ($surface in @(
+        @{ Name = 'WPF'; Text = $mediaSurface },
+        @{ Name = 'Avalonia'; Text = $avaloniaSurface },
+        @{ Name = 'WinForms'; Text = $winFormsSurface })) {
+    Assert-Match $surface.Text 'public\s+(object|Control)\?\s+OverlayContent' "$($surface.Name) MediaSurface must expose OverlayContent."
+    Assert-Match $surface.Text 'public\s+bool\s+OverlayHitTestVisible' "$($surface.Name) MediaSurface must expose OverlayHitTestVisible."
+}
 
 # Stage 046A slice 3: every adapter offers a Player facade with CreateAsync, and every test player
 # binds the helpers in Player.Shared (chrome rule, stats line, screen choice, renderer request,
@@ -170,6 +197,26 @@ foreach ($player in @(
     Assert-Match $renderer 'PlayerRendererRequest' "$name player must map the shared renderer request."
 }
 
+# The test players show the shared view model's CD+G look (ENG-064), in the markup or code each one builds its panel in.
+$cdgLookMembers = @('CdgScaleChoice', 'CdgStyleChoice', 'CdgOutlineSize', 'CdgShadowSize', 'CdgShadowDistance', 'CdgBevelStrength', 'CdgBevelSize', 'ResetCdgLookCommand')
+foreach ($panel in @(
+        @{ Name = 'WPF'; Path = 'FatzMedia.Video.Sample.Player/Controls/PlayerFlyoutPanel.xaml' },
+        @{ Name = 'Avalonia'; Path = 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml' },
+        @{ Name = 'WinForms'; Path = 'FatzMedia.Video.Sample.Player.WinForms/PlayerPanel.cs' })) {
+    $text = Read-Text $panel.Path
+    foreach ($member in $cdgLookMembers) {
+        Assert-Match $text $member "The $($panel.Name) test player must show the shared view model's $member."
+    }
+}
+
+# Avalonia is the reference player: it also shows the busy indicator, the startup error and runs the A/B swap demo.
+$avaloniaPanel = Read-Text 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml'
+foreach ($member in @('IsBusy', 'LoadingMediaText', 'StartupError')) {
+    Assert-Match $avaloniaPanel $member "The Avalonia test player must show the shared view model's $member."
+}
+Assert-Match (Read-Text 'FatzMedia.Video.Sample.Player.Avalonia/MainWindow.axaml.cs') 'new\s+AbSwapDemoWindow\s*\(' 'The Avalonia test player must run the A/B swap demo (--ab-demo=).'
+Assert-Match (Read-Text 'FatzMedia.Video.Sample.Player.Avalonia/AbSwapDemoWindow.cs') 'FirstFrameReady' 'The Avalonia A/B swap demo must swap on the surface''s FirstFrameReady.'
+
 Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescriptor>\s+_surfaces' 'Core coordinator must retain all attached surface descriptors in one registry.'
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
 Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+(?:var|MediaPresentationSurfaceDescriptor\?)\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
@@ -196,4 +243,4 @@ Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets
 Assert-Match $compositionPresenter 'foreach\s*\(\s*(?:var|D3D11PresentationTargetSnapshot)\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
-Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, every adapter offers a Player facade, every test player uses the Player.Shared helpers, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
+Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, every adapter offers a Player facade, every MediaSurface offers OverlayContent, every test player uses the Player.Shared helpers and shows the CD+G look (Avalonia also the busy indicator, startup error and A/B swap demo), and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'

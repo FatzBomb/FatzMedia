@@ -66,6 +66,36 @@ public sealed class AdapterParityTests
     }
 
     [AvaloniaFact]
+    public void OverlayContent_FillsTheSurfaceAboveTheFrames_OnBothPaths()
+    {
+        var overlay = new TextBlock { Text = "overlay" };
+        (var session, _) = RecordingSession.Create();
+        var surface = new MediaSurface
+        {
+            GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
+            Player = session,
+            OverlayContent = overlay,
+        };
+        var window = Show(surface, 320, 180);
+
+        Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
+        Assert.Same(overlay, surface.OverlayPresenter.Content);
+        Assert.True(surface.OverlayPresenter.IsVisible);
+        Assert.False(surface.OverlayPresenter.IsHitTestVisible);
+        Assert.Equal(surface.Bounds.Size, surface.OverlayPresenter.Bounds.Size);
+        // The shared image hangs on the frame host, which comes before the overlay.
+        var children = global::Avalonia.VisualTree.VisualExtensions.GetVisualChildren(surface).ToList();
+        Assert.Same(surface.GpuImageHost, children[0]);
+        Assert.Same(surface.OverlayPresenter, children[^1]);
+
+        surface.OverlayHitTestVisible = true;
+        Assert.True(surface.OverlayPresenter.IsHitTestVisible);
+        surface.OverlayContent = null;
+        Assert.False(surface.OverlayPresenter.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void AutoHide_HidesTheSharedImageVisualWhileNothingIsShown_AndOffShowsIt()
     {
         (var session, var recorder) = RecordingSession.Create();
@@ -77,7 +107,7 @@ public sealed class AdapterParityTests
         };
         var window = Show(surface, 320, 180);
         Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
-        var visual = global::Avalonia.Rendering.Composition.ElementComposition.GetElementChildVisual(surface)!;
+        var visual = global::Avalonia.Rendering.Composition.ElementComposition.GetElementChildVisual(surface.GpuImageHost)!;
         Assert.False(visual.Visible);
 
         surface.AutoHide = false;

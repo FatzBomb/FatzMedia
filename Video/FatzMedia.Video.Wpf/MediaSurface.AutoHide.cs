@@ -57,10 +57,6 @@ public sealed partial class MediaSurface
         var surface = (MediaSurface)d;
         surface._contentTracker.AutoHide = e.NewValue is true;
         surface.ApplyContentState(forceVisibilityWrite: true);
-
-        // The second screen hides and shows like this surface.
-        if (surface._secondaryWindow is { } secondary)
-            secondary.Surface.AutoHide = e.NewValue is true;
     }
 
     void InitializeAutoHide()
