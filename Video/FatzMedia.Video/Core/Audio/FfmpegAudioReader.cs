@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Media;
 using FFmpeg.AutoGen;
 
@@ -88,8 +89,8 @@ sealed unsafe class FfmpegAudioReader : IDisposable
             return [];
 
         return IsInt16
-            ? System.Runtime.InteropServices.MemoryMarshal.AsBytes(_shorts.AsSpan(0, count))
-            : System.Runtime.InteropServices.MemoryMarshal.AsBytes(_samples.AsSpan(0, count));
+            ? MemoryMarshal.AsBytes(_shorts.AsSpan(0, count))
+            : MemoryMarshal.AsBytes(_samples.AsSpan(0, count));
     }
 
     // The next frame's samples (all channels) in the buffer of the output format; 0 at the end of the stream.
@@ -228,24 +229,25 @@ sealed unsafe class FfmpegAudioReader : IDisposable
             if (_shorts.Length < required)
                 _shorts = new short[required];
 
-            fixed (short* destination = _shorts)
-            {
-                var output = (byte*)destination;
-                converted = ffmpeg.swr_convert(_resampler, &output, capacity, _frame->extended_data, _frame->nb_samples);
-            }
+            converted = Convert(_shorts, capacity);
         }
         else
         {
             if (_samples.Length < required)
                 _samples = new float[required];
 
-            fixed (float* destination = _samples)
-            {
-                var output = (byte*)destination;
-                converted = ffmpeg.swr_convert(_resampler, &output, capacity, _frame->extended_data, _frame->nb_samples);
-            }
+            converted = Convert(_samples, capacity);
         }
 
         return converted > 0 ? converted * Channels : 0;
+    }
+
+    int Convert<T>(T[] buffer, int capacity) where T : unmanaged
+    {
+        fixed (T* destination = buffer)
+        {
+            var output = (byte*)destination;
+            return ffmpeg.swr_convert(_resampler, &output, capacity, _frame->extended_data, _frame->nb_samples);
+        }
     }
 }
