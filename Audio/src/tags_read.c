@@ -23,8 +23,6 @@
 #define MKV_MAX_ELEMENTS 200000       /* top-level elements visited before giving up */
 
 static int read_exact(fa_source* src, void* buf, size_t n) { return fa_source_read(src, buf, n) == (int64_t)n; }
-static uint32_t synchsafe(const uint8_t* p) { return ((uint32_t)(p[0] & 0x7f) << 21) | ((uint32_t)(p[1] & 0x7f) << 14) | ((uint32_t)(p[2] & 0x7f) << 7) | (p[3] & 0x7f); }
-
 /* Reads n bytes at `pos` into a malloc'ed, NUL-terminated block. */
 static uint8_t* read_block(fa_source* src, int64_t pos, size_t n)
 {
@@ -315,7 +313,7 @@ static void id3_frames(fa_source* src, int64_t pos, int64_t end, int ver, int un
             memcpy(id, fh, 4);
             id[4] = '\0';
             /* ID3v2.4 sizes are synchsafe, but some writers store them plain. */
-            fsize = ver == 4 && !((fh[4] | fh[5] | fh[6] | fh[7]) & 0x80) ? synchsafe(fh + 4) : fa_be32(fh + 4);
+            fsize = ver == 4 && !((fh[4] | fh[5] | fh[6] | fh[7]) & 0x80) ? fa_synchsafe(fh + 4) : fa_be32(fh + 4);
             if (ver == 4 && pos + hl + fsize + hl <= end && fsize >= 0x80) {
                 uint8_t nx[4];
                 int64_t plain = fa_be32(fh + 4);
@@ -353,7 +351,7 @@ static void id3_frames(fa_source* src, int64_t pos, int64_t end, int ver, int un
                 }
                 if (ver == 4) {
                     if ((flags & 0x40) && n > 0) { p++; n--; }                     /* group ID */
-                    if ((flags & 0x01) && n >= 4) { dsize = synchsafe(p); p += 4; n -= 4; }   /* data length */
+                    if ((flags & 0x01) && n >= 4) { dsize = fa_synchsafe(p); p += 4; n -= 4; }   /* data length */
                     if ((flags & 0x02) || unsync_all) n = id3_unsync(p, n);
                 }
                 if (compressed) {
@@ -385,7 +383,7 @@ static int64_t read_id3v2(fa_source* src, int64_t at, fa_tag_sink* sink)
     if (memcmp(h, "ID3", 3) != 0 || h[3] < 2 || h[3] > 4 || ((h[6] | h[7] | h[8] | h[9]) & 0x80)) return 0;
     ver = h[3];
     flags = h[5];
-    size = synchsafe(h + 6);
+    size = fa_synchsafe(h + 6);
     end = at + 10 + size;
     if (!sink) return 10 + size + ((flags & 0x10) ? 10 : 0);
     pos = at + 10;
@@ -407,7 +405,7 @@ static int64_t read_id3v2(fa_source* src, int64_t at, fa_tag_sink* sink)
         if (ver >= 3 && (flags & 0x40)) {                /* extended header */
             uint8_t e[4];
             if (!read_exact(src, e, 4)) return end - at;
-            pos += ver == 4 ? synchsafe(e) : (int64_t)fa_be32(e) + 4;
+            pos += ver == 4 ? fa_synchsafe(e) : (int64_t)fa_be32(e) + 4;
         }
         id3_frames(src, pos, end, ver, ver == 4 && (flags & 0x80), sink);
     }

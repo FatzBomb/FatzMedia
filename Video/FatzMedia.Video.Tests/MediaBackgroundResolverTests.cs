@@ -16,7 +16,7 @@ public class MediaBackgroundResolverTests : IDisposable
 
     public MediaBackgroundResolverTests()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaTests_" + Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(Path.GetTempPath(), "FatzMediaVideoTests_" + Guid.NewGuid().ToString("N"));
         _ = Directory.CreateDirectory(_tempDir);
     }
 

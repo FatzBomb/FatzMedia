@@ -1016,7 +1016,7 @@ public partial class PlayerCore : IPlayerSession
             // Reset reattaches them) and Reset gets a fresh operation queue (the old one is disposed
             // when Reset returns). Until then control calls fail with ObjectDisposedException.
             if (!keepOperationQueue && ReferenceEquals(_controlOperations, oldOperations))
-                _controlOperations = new PlayerOperationQueue("MediaControl");
+                _controlOperations = new PlayerOperationQueue("FatzMedia.Video");
 
             // Free what the failed build created; the rest was freed above, so neither a retried
             // rebuild nor Dispose frees it again (ENG-024).
@@ -1152,7 +1152,7 @@ public partial class PlayerCore : IPlayerSession
             archiveService,
             configuration.ResetPitchOnMediaLoad,
             configuration.ResetTempoOnMediaLoad);
-        _controlOperations = operations ?? new PlayerOperationQueue("MediaControl");
+        _controlOperations = operations ?? new PlayerOperationQueue("FatzMedia.Video");
         _positionNotifier = CreatePositionNotifier();
 
         // The carried settings, then the mode and the host's options, before the events below are

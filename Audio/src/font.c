@@ -108,18 +108,11 @@ uint32_t fa_font_face_count(const uint8_t* data, size_t size)
 
 static void put_utf8(char* out, size_t cap, size_t* at, uint32_t c)
 {
-    uint8_t b[4];
-    size_t n, i;
-    if (c < 0x80) { b[0] = (uint8_t)c; n = 1; }
-    else if (c < 0x800) { b[0] = (uint8_t)(0xC0 | c >> 6); b[1] = (uint8_t)(0x80 | (c & 0x3F)); n = 2; }
-    else if (c < 0x10000) {
-        b[0] = (uint8_t)(0xE0 | c >> 12); b[1] = (uint8_t)(0x80 | ((c >> 6) & 0x3F)); b[2] = (uint8_t)(0x80 | (c & 0x3F)); n = 3;
-    } else {
-        b[0] = (uint8_t)(0xF0 | c >> 18); b[1] = (uint8_t)(0x80 | ((c >> 12) & 0x3F));
-        b[2] = (uint8_t)(0x80 | ((c >> 6) & 0x3F)); b[3] = (uint8_t)(0x80 | (c & 0x3F)); n = 4;
-    }
+    char b[4];
+    size_t n = fa_put_utf8(b, c);
     if (*at + n >= cap) return;
-    for (i = 0; i < n; i++) out[(*at)++] = (char)b[i];
+    memcpy(out + *at, b, n);
+    *at += n;
     out[*at] = 0;
 }
 

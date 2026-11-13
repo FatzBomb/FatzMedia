@@ -32,7 +32,7 @@ sealed class PlayerOperationQueue : IDisposable
 
     public PlayerOperationQueue(string name)
     {
-        _name = string.IsNullOrWhiteSpace(name) ? "MediaControl" : name;
+        _name = string.IsNullOrWhiteSpace(name) ? "FatzMedia.Video" : name;
         _workerTask = Task.Run(RunAsync);
     }
 

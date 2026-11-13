@@ -5,6 +5,7 @@
  * also breaks before a syllable that starts with a space (Q8), and a line leaving the
  * top of the window fades out as it scrolls instead of vanishing. */
 #include "lyric_time.h"
+#include "fa_util.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -73,14 +74,8 @@ typedef struct builder {
 
 static void* grow(void* p, size_t* cap, size_t need, size_t item, int* failed)
 {
-    size_t c = *cap ? *cap : 16;
-    void* n;
-    if (need <= *cap) return p;
-    while (c < need) c *= 2;
-    n = realloc(p, c * item);
-    if (!n) { *failed = 1; return NULL; }
-    *cap = c;
-    return n;
+    if (!fa_grow(&p, cap, need, item, 16)) { *failed = 1; return NULL; }
+    return p;
 }
 
 static int raw_append(builder* b, const char* s, fa_time t)

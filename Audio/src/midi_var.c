@@ -149,8 +149,6 @@ struct fa_midi_var {
     int nsec;
 };
 
-static float lowpass1(float x, float a, float* z) { return a > 0.0f ? (*z = x * (1.0f - a) + *z * a) : x; }
-
 /* ---- XG and GS tables --------------------------------------------------------- */
 
 double fa_xg_lfo_hz(int v)
@@ -573,14 +571,6 @@ int fa_midi_var_gs_efx(fa_midi_var* v, int addr, int value)
     return v->efx_on;
 }
 
-int fa_midi_var_gs_efx_get(const fa_midi_var* v, int addr)
-{
-    if (!v || v->family != FAM_EFX || !v->gs_efx) return 0;
-    if (addr == 0x00) return v->efx_msb;
-    if (addr == 0x01) return v->efx_lsb;
-    return addr >= 0x03 && addr <= 0x16 ? fa_midi_efx_param(v->efx, addr - 3) : 0;
-}
-
 void fa_midi_var_gs(fa_midi_var* v, int addr, int value)
 {
     int i;
@@ -608,14 +598,6 @@ int fa_midi_var_gs_get(const fa_midi_var* v, int addr)
 }
 
 /* ---- processing --------------------------------------------------------------- */
-
-static float peak_of(const float* x, int n)
-{
-    float p = 0.0f;
-    int i;
-    for (i = 0; i < n; i++) if (fabsf(x[i]) > p) p = fabsf(x[i]);
-    return p;
-}
 
 static float rd(const fa_midi_var* v, int line, int time)
 {
@@ -657,9 +639,9 @@ static float run_lines(fa_midi_var* v, const float* in, float* wet, int frames)
         }
         for (k = 0; k < v->nlines; k++) fbv[k] = v->fb_gain[k] != 0.0f ? rd(v, v->fb_from[k], v->fb_time[k]) : 0.0f;
         for (k = 0; k < v->nlines; k++) {
-            float w = lowpass1(x[k], v->pre_a, &v->pre_z[k]);
-            if (v->hp_a > 0.0f) w -= lowpass1(w, v->hp_a, &v->hp_z[k]);
-            if (v->fb_gain[k] != 0.0f) w += lowpass1(fbv[k], v->damp, &v->damp_z[k]) * v->fb_gain[k];
+            float w = fa_lowpass1(x[k], v->pre_a, &v->pre_z[k]);
+            if (v->hp_a > 0.0f) w -= fa_lowpass1(w, v->hp_a, &v->hp_z[k]);
+            if (v->fb_gain[k] != 0.0f) w += fa_lowpass1(fbv[k], v->damp, &v->damp_z[k]) * v->fb_gain[k];
             v->line[k][v->pos] = w;
             if (fabsf(w) > loud) loud = fabsf(w);
         }
@@ -775,7 +757,7 @@ int fa_midi_var_process(fa_midi_var* v, const float* in, float* wet, int frames,
     if (quiet && v->idle) return 0;
     if ((v->family >= FAM_GS_DELAY && v->family <= FAM_ROTARY) && !make_lines(v)) return 0;   /* no memory: silent */
     v->idle = 0;
-    loud = quiet ? 0.0f : peak_of(in, frames * 2);
+    loud = quiet ? 0.0f : fa_peak_of(in, frames * 2);
     switch (v->family) {
     case FAM_THRU:
         memcpy(wet, in, (size_t)frames * 2 * sizeof(float));
@@ -793,7 +775,7 @@ int fa_midi_var_process(fa_midi_var* v, const float* in, float* wet, int frames,
     }
     }
     {
-        float out = peak_of(wet, frames * 2);
+        float out = fa_peak_of(wet, frames * 2);
         if (out > loud) loud = out;
     }
     v->soft = loud >= VAR_QUIET ? 0 : v->soft + frames;

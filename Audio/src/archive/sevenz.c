@@ -2,6 +2,7 @@
  * our own reader, written from that description. */
 #include "archive/sevenz.h"
 #include "archive/archive.h"
+#include "fa_util.h"
 #include "LzmaDec.h"
 #include "Lzma2Dec.h"
 #include <stdlib.h>
@@ -730,13 +731,7 @@ static fa_result read_at(fa_source* src, uint64_t off, uint8_t* buf, size_t n)
 static fa_result decode_whole(const folder* f, uint32_t index, fa_source* src, uint8_t* out, size_t size, const volatile int32_t* cancel,
                               uint64_t* stat);
 
-static void put_utf8(char* out, size_t* at, uint32_t c)
-{
-    if (c < 0x80) out[(*at)++] = (char)c;
-    else if (c < 0x800) { out[(*at)++] = (char)(0xC0 | (c >> 6)); out[(*at)++] = (char)(0x80 | (c & 63)); }
-    else if (c < 0x10000) { out[(*at)++] = (char)(0xE0 | (c >> 12)); out[(*at)++] = (char)(0x80 | ((c >> 6) & 63)); out[(*at)++] = (char)(0x80 | (c & 63)); }
-    else { out[(*at)++] = (char)(0xF0 | (c >> 18)); out[(*at)++] = (char)(0x80 | ((c >> 12) & 63)); out[(*at)++] = (char)(0x80 | ((c >> 6) & 63)); out[(*at)++] = (char)(0x80 | (c & 63)); }
-}
+static void put_utf8(char* out, size_t* at, uint32_t c) { *at += fa_put_utf8(out + *at, c); }
 
 /* One UTF-16LE name (up to its zero) as UTF-8, then the archive layer's normalization. */
 static char* read_name(rd* r)

@@ -449,7 +449,7 @@ sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLo
 
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) => Task.FromResult(1d);
     public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) => Task.FromResult(1d);
-    public bool Init(int device = -1, int sampleRate = 44100) => true;
+    public bool Init(int sampleRate = 44100) => true;
     public bool Open(string filePath) => true;
     bool IAudioAnalysisOpenControl.Open(string filePath, bool analyzeSilence)
     {

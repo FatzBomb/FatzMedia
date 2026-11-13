@@ -215,8 +215,7 @@ static char* latin1_to_utf8(const uint8_t* s, size_t n)
     if (!out) return NULL;
     for (i = 0; i < n; i++) {
         uint8_t ch = s[i];
-        if (ch < 0x80) out[o++] = (char)ch;
-        else { out[o++] = (char)(0xC0 | (ch >> 6)); out[o++] = (char)(0x80 | (ch & 0x3F)); }
+        o += fa_put_utf8(out + o, ch);
     }
     while (o > 0 && out[o - 1] == ' ') o--;
     out[o] = 0;

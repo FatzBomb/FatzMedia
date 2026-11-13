@@ -16,7 +16,7 @@
 #  include <windows.h>
 #endif
 
-static int file_seek(FILE* f, int64_t offset, int origin)
+int fa_fseek64(FILE* f, int64_t offset, int origin)
 {
 #ifdef _WIN32
     return _fseeki64(f, offset, origin);
@@ -42,9 +42,9 @@ fa_result fa_source_open_path(fa_source* src, const char* path)
     if (!src->file) return FA_ERROR_NOT_FOUND;
     src->seekable = 1;
     src->length = -1;
-    if (file_seek(src->file, 0, SEEK_END) == 0) {
+    if (fa_fseek64(src->file, 0, SEEK_END) == 0) {
         src->length = file_tell(src->file);
-        file_seek(src->file, 0, SEEK_SET);
+        fa_fseek64(src->file, 0, SEEK_SET);
     }
     return FA_OK;
 }
@@ -102,7 +102,7 @@ static size_t file_read_at(fa_source* src, int64_t offset, void* buf, size_t n, 
 {
     size_t got;
     fa_mutex_lock(&src->shared->lock);
-    file_seek(src->file, offset, SEEK_SET);
+    fa_fseek64(src->file, offset, SEEK_SET);
     got = fread(buf, 1, n, src->file);
     /* The error flag is the file's, not this source's: taken and cleared here, so one
      * failed read is not seen by every other source. */
@@ -190,9 +190,9 @@ size_t fa_source_peek(fa_source* src, const uint8_t** out_data)
                     int failed;
                     got = (int64_t)file_read_at(src, src->base, src->prefix_buf, want, &failed);
                 } else {
-                    file_seek(src->file, src->base, SEEK_SET);
+                    fa_fseek64(src->file, src->base, SEEK_SET);
                     got = (int64_t)fread(src->prefix_buf, 1, want, src->file);
-                    file_seek(src->file, src->base + src->pos, SEEK_SET);
+                    fa_fseek64(src->file, src->base + src->pos, SEEK_SET);
                 }
             } else {
                 size_t want = FA_PROBE_BYTES;
@@ -291,7 +291,7 @@ fa_result fa_source_seek(fa_source* src, int64_t offset)
         if (offset > (int64_t)src->mem_size) return FA_ERROR_INVALID_ARG;
         break;
     case FA_SOURCE_FILE:
-        if (!src->shared && file_seek(src->file, src->base + offset, SEEK_SET) != 0) return FA_ERROR_IO;
+        if (!src->shared && fa_fseek64(src->file, src->base + offset, SEEK_SET) != 0) return FA_ERROR_IO;
         break;
     default:
         if (src->seekable && offset >= (int64_t)src->prefix_len) {
@@ -383,7 +383,7 @@ fa_result fa_source_set_window(fa_source* src, int64_t base, int64_t size)
     if (whole < 0 || base < 0 || size < 0 || base > whole || size > whole - base) return FA_ERROR_INVALID_ARG;
     if (src->kind == FA_SOURCE_IO && !src->seekable) return FA_ERROR_NOT_SEEKABLE;
     if (src->kind == FA_SOURCE_IO && src->io.seek(src->io_user, base) != FA_OK) return FA_ERROR_IO;
-    if (src->kind == FA_SOURCE_FILE && !src->shared && file_seek(src->file, base, SEEK_SET) != 0) return FA_ERROR_IO;
+    if (src->kind == FA_SOURCE_FILE && !src->shared && fa_fseek64(src->file, base, SEEK_SET) != 0) return FA_ERROR_IO;
     if (src->kind == FA_SOURCE_MEMORY) {
         src->mem = src->mem - src->base + base;
         src->mem_size = (size_t)size;

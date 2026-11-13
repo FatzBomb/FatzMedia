@@ -5,7 +5,7 @@ using Fa = global::FatzMedia.Audio;
 
 namespace FatzMedia.Video.Audio;
 
-/// <summary>How MediaControl's audio settings map onto FatzAudio's (037A slice 2). Pure functions.</summary>
+/// <summary>How FatzMedia.Video's audio settings map onto FatzAudio's (037A slice 2). Pure functions.</summary>
 static class FatzAudioMappings
 {
     /// <summary>

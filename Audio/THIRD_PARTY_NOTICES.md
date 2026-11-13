@@ -2,7 +2,7 @@
 
 FatzAudio's own code is original. The libraries below are built into the shared library (`fatzaudio.dll`, `libfatzaudio.so`, `libfatzaudio.dylib`, the xcframework), each in the folder named, with its license text in that folder. They are statically linked: nothing else is loaded or needs to be shipped for them.
 
-FatzAudio's own code is proprietary (see [LICENSE](LICENSE)). This file covers the third-party code FatzAudio includes, which keeps its own licenses.
+FatzAudio's own code is proprietary (see [LICENSE](../LICENSE)). This file covers the third-party code FatzAudio includes, which keeps its own licenses.
 
 | Component | Version | License | Folder | Used for |
 |---|---|---|---|---|

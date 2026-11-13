@@ -159,7 +159,7 @@ sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFa
         remove { }
     }
 
-    public bool Init(int device = -1, int sampleRate = 44100) => true;
+    public bool Init(int sampleRate = 44100) => true;
 
     internal int AudioStreamIndex { get; private set; } = -1;
 

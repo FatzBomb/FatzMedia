@@ -84,15 +84,6 @@ static fa_lazy_mutex tap_lock;
 
 /* ---- sink ---------------------------------------------------------------------- */
 
-static int file_seek(FILE* f, int64_t pos)
-{
-#if defined(_WIN32)
-    return _fseeki64(f, pos, SEEK_SET);
-#else
-    return fseeko(f, (off_t)pos, SEEK_SET);
-#endif
-}
-
 static fa_result sink_out(fa_enc_sink* s, const void* data, size_t size)
 {
     if (size == 0) return FA_OK;
@@ -161,7 +152,7 @@ fa_result fa_sink_seek(fa_enc_sink* s, int64_t pos)
     fa_result r;
     if (!s->seekable) return FA_ERROR_NOT_SEEKABLE;
     if (fa_sink_flush(s) != FA_OK) return s->error;
-    if (s->file) r = file_seek(s->file, pos) == 0 ? FA_OK : FA_ERROR_IO;
+    if (s->file) r = fa_fseek64(s->file, pos, SEEK_SET) == 0 ? FA_OK : FA_ERROR_IO;
     else r = s->out.seek(s->user, pos);
     if (r != FA_OK) { s->error = r < 0 ? r : FA_ERROR_IO; return s->error; }
     s->pos = pos;

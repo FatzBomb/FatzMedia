@@ -281,8 +281,6 @@ fa_result fa_cdg_data_from_path(const char* path, fa_cdg_data** out)
 
 static int ends_with_cdg(const char* name, size_t len) { return fa_ends_with_ci_n(name, len, ".cdg"); }
 
-int fa_cdg_is_cdg_name(const char* name) { return ends_with_cdg(name, strlen(name)); }
-
 #if !defined(_WIN32)
 /* Case-sensitive file systems: any spelling of the extension ("song.cDg"). */
 static fa_cdg_data* find_any_case(const char* stem_path, size_t stem)

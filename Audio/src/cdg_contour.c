@@ -38,6 +38,7 @@
  * sum starts there again (or at the screen's left edge, with the colour of the row's
  * first pixel), so a pixel's value depends only on the segments near it. */
 #include "cdg_contour.h"
+#include "fa_util.h"
 #include "raster.h"
 #include <math.h>
 #include <stdlib.h>
@@ -94,18 +95,7 @@ int cdg_contour_reach(int level)
     return level >= 9 ? 16 : level >= 7 ? 11 : level >= 6 ? 10 : 6;
 }
 
-static int grow(void** p, size_t* cap, size_t need, size_t elem)
-{
-    size_t c = *cap ? *cap : 256;
-    void* q;
-    if (need <= *cap) return 1;
-    while (c < need) c *= 2;
-    q = realloc(*p, c * elem);
-    if (!q) return 0;
-    *p = q;
-    *cap = c;
-    return 1;
-}
+static int grow(void** p, size_t* cap, size_t need, size_t elem) { return fa_grow(p, cap, need, elem, 256); }
 
 /* ---- tracing ------------------------------------------------------------------------ */
 

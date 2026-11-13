@@ -22,15 +22,10 @@
 
 static fa_result grow(float** buf, int64_t* cap, int64_t frames, uint32_t channels)
 {
-    float* b;
-    int64_t n;
+    size_t n = (size_t)(*cap > 0 ? *cap : 0);
     if (frames <= *cap) return FA_OK;
-    n = *cap > 0 ? *cap : 1024;
-    while (n < frames) n *= 2;
-    b = (float*)realloc(*buf, (size_t)n * channels * sizeof(float));
-    if (!b) return FA_ERROR_OUT_OF_MEMORY;
-    *buf = b;
-    *cap = n;
+    if (!fa_grow((void**)buf, &n, (size_t)frames, (size_t)channels * sizeof(float), 1024)) return FA_ERROR_OUT_OF_MEMORY;
+    *cap = (int64_t)n;
     return FA_OK;
 }
 

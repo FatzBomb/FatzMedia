@@ -180,7 +180,7 @@ public sealed class AudioEngineSelectionTests
 
         public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) => Task.FromResult(0.0);
         public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) => Task.FromResult(0.0);
-        public bool Init(int device = -1, int sampleRate = 44100) => true;
+        public bool Init(int sampleRate = 44100) => true;
         public bool Open(string filePath) => false;
         public bool Open(IArchiveEntryInfo archiveEntry) => false;
         public bool Play() => false;
