@@ -1,8 +1,8 @@
-using System.IO;
 using System.ComponentModel;
+using System.IO;
+using Microsoft.Web.WebView2.Core;
 using DockStyle = System.Windows.Forms.DockStyle;
 using UserControl = System.Windows.Forms.UserControl;
-using Microsoft.Web.WebView2.Core;
 using WinFormsWebView2 = Microsoft.Web.WebView2.WinForms.WebView2;
 
 namespace FatzMedia.Video.WebView2;

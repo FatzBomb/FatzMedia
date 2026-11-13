@@ -1,6 +1,6 @@
 using System.IO;
-using UserControl = System.Windows.Controls.UserControl;
 using Microsoft.Web.WebView2.Core;
+using UserControl = System.Windows.Controls.UserControl;
 using WpfWebView2 = Microsoft.Web.WebView2.Wpf.WebView2;
 
 namespace FatzMedia.Video.WebView2;
