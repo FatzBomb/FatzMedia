@@ -1,5 +1,5 @@
 using System.IO;
-using System.Windows.Controls;
+using UserControl = System.Windows.Controls.UserControl;
 using Microsoft.Web.WebView2.Core;
 using WpfWebView2 = Microsoft.Web.WebView2.Wpf.WebView2;
 
