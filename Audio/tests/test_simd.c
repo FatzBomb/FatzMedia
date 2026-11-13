@@ -63,6 +63,10 @@ static void test_eq_matches_double_precision(void)
     fa_eq_shared_set(&sh, bands, 3);
     memset(&st, 0, sizeof(st));
     CHECK(fa_eq_begin(&st, &sh, RATE, 1));
+    /* Let the bands glide in on silence first: until the coefficients are designed and steady
+     * the filter is all zeros and the comparison below would pass without testing anything. */
+    memset(out, 0, sizeof(out));
+    for (i = 0; i < 20; i++) fa_eq_process(&st, out, FRAMES);
     /* Different left and right, so a mixed-up lane shows. */
     for (i = 0; i < FRAMES; i++) {
         in[i * 2] = noise(&seed);
@@ -77,6 +81,7 @@ static void test_eq_matches_double_precision(void)
         if (d > worst) worst = d;
     }
     CHECK(worst < 2e-4);
+    CHECK(fabs((double)out[FRAMES]) > 1e-3 || fabs((double)out[FRAMES + 1]) > 1e-3);   /* not silent */
 }
 
 /* One block at a time gives the same result as one call: the state a call leaves is the

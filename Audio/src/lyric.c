@@ -1291,7 +1291,7 @@ static int ensure_cols(fa_lyric* l, size_t n)
 #if LY_SIMD
 /* One RGBA pixel to four floats and back (clamped at 255, truncated): the SIMD
  * paths below do the scalar arithmetic in the same order, so the result is the
- * same to the bit. The ly_* operations are SSE or NEON (multiply and add stay separate). */
+ * same to the bit. The ly_* operations are SSE or NEON (a compiler may fuse a multiply and add on NEON, so its result can differ by float rounding). */
 #  if LY_SSE
 typedef __m128 ly_f4;
 #    define ly_set1(x) _mm_set1_ps(x)

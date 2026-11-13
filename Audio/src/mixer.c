@@ -25,7 +25,8 @@
 #endif
 
 /* The vector operations of the SIMD isolator (four lanes), so SSE and NEON share one body.
- * Multiply and add stay separate (no fused multiply-add), as the scalar code does. */
+ * Multiply and add are separate intrinsics, as in the scalar code; a compiler may still fuse them, so a NEON result
+ * can differ from the scalar one by float rounding. */
 #ifdef FA_ISO_SSE
 typedef __m128 iso_f4;
 #  define iso_loadu(f) _mm_loadu_ps(f)

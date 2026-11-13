@@ -350,7 +350,7 @@ static void filter_bands(fa_eq_bandstate** act, uint32_t nb, float* buf, int64_t
     }
 }
 #elif EQ_NEON
-/* The same, with left and right as the two lanes of a float32x2_t (no fused multiply-add). */
+/* The same, with left and right as the two lanes of a float32x2_t (a compiler may fuse a multiply and add: float rounding only). */
 static void filter_bands(fa_eq_bandstate** act, uint32_t nb, float* buf, int64_t n)
 {
     float32x2_t b0[FA_EQ_MAX_BANDS], b1[FA_EQ_MAX_BANDS], b2[FA_EQ_MAX_BANDS], a1[FA_EQ_MAX_BANDS], a2[FA_EQ_MAX_BANDS];

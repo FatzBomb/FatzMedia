@@ -23,7 +23,8 @@
 #endif
 
 /* The few vector operations the multichannel loops use, so SSE and NEON share one body.
- * Multiply and add stay separate (no fused multiply-add), as the scalar code does. */
+ * Multiply and add are separate intrinsics, as in the scalar code; a compiler may still fuse them, so a NEON result
+ * can differ from the scalar one by float rounding. */
 #if VS_SSE
 typedef __m128 vs_f4;
 #  define vs_zero() _mm_setzero_ps()

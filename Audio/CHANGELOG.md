@@ -39,7 +39,7 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 ### Changed
 
 - ARM: the varispeed resampler (rate and pitch changes, device-rate conversion), the stream equalizer, the DJ mixer's
-  isolator and the lyric surface's blend now have NEON versions (the SSE ones already existed), so iPhone, Android and
+  isolator and the lyric surface's blend (64-bit ARM only) now have NEON versions (the SSE ones already existed), so iPhone, Android and
   Apple Silicon no longer run the scalar loops. Results match the scalar code within float rounding; x86 is unchanged.
 
 ### Added
