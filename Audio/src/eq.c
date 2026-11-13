@@ -12,6 +12,10 @@
 #include <string.h>
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #  include <emmintrin.h>
+#  define EQ_SSE 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
+#  include <arm_neon.h>
+#  define EQ_NEON 1
 #endif
 
 #define EQ_GLIDE_S 0.010f       /* time constant of a change */
@@ -313,7 +317,7 @@ static float glide(float cur, float target, float k, float snap)
  * band before the next frame (the bands' recursions overlap instead of each
  * waiting on its own last result), left and right side by side in one vector. The
  * arithmetic per channel is the scalar loop's, in the same order. */
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if EQ_SSE
 static void filter_bands(fa_eq_bandstate** act, uint32_t nb, float* buf, int64_t n)
 {
     __m128 b0[FA_EQ_MAX_BANDS], b1[FA_EQ_MAX_BANDS], b2[FA_EQ_MAX_BANDS], a1[FA_EQ_MAX_BANDS], a2[FA_EQ_MAX_BANDS];
@@ -341,6 +345,40 @@ static void filter_bands(fa_eq_bandstate** act, uint32_t nb, float* buf, int64_t
         float lo[4], hi[4];
         _mm_storeu_ps(lo, z0[i]);
         _mm_storeu_ps(hi, z1[i]);
+        act[i]->z[0][0] = lo[0]; act[i]->z[1][0] = lo[1];
+        act[i]->z[0][1] = hi[0]; act[i]->z[1][1] = hi[1];
+    }
+}
+#elif EQ_NEON
+/* The same, with left and right as the two lanes of a float32x2_t (no fused multiply-add). */
+static void filter_bands(fa_eq_bandstate** act, uint32_t nb, float* buf, int64_t n)
+{
+    float32x2_t b0[FA_EQ_MAX_BANDS], b1[FA_EQ_MAX_BANDS], b2[FA_EQ_MAX_BANDS], a1[FA_EQ_MAX_BANDS], a2[FA_EQ_MAX_BANDS];
+    float32x2_t z0[FA_EQ_MAX_BANDS], z1[FA_EQ_MAX_BANDS];
+    uint32_t i;
+    int64_t j;
+    for (i = 0; i < nb; i++) {
+        const fa_eq_bandstate* b = act[i];
+        const float s0[2] = { b->z[0][0], b->z[1][0] }, s1[2] = { b->z[0][1], b->z[1][1] };
+        b0[i] = vdup_n_f32(b->b0); b1[i] = vdup_n_f32(b->b1); b2[i] = vdup_n_f32(b->b2);
+        a1[i] = vdup_n_f32(b->a1); a2[i] = vdup_n_f32(b->a2);
+        z0[i] = vld1_f32(s0);
+        z1[i] = vld1_f32(s1);
+    }
+    for (j = 0; j < n; j++) {
+        float32x2_t x = vld1_f32(buf + j * 2);
+        for (i = 0; i < nb; i++) {
+            float32x2_t y = vadd_f32(vmul_f32(b0[i], x), z0[i]);
+            z0[i] = vadd_f32(vsub_f32(vmul_f32(b1[i], x), vmul_f32(a1[i], y)), z1[i]);
+            z1[i] = vsub_f32(vmul_f32(b2[i], x), vmul_f32(a2[i], y));
+            x = y;
+        }
+        vst1_f32(buf + j * 2, x);
+    }
+    for (i = 0; i < nb; i++) {
+        float lo[2], hi[2];
+        vst1_f32(lo, z0[i]);
+        vst1_f32(hi, z1[i]);
         act[i]->z[0][0] = lo[0]; act[i]->z[1][0] = lo[1];
         act[i]->z[0][1] = hi[0]; act[i]->z[1][1] = hi[1];
     }

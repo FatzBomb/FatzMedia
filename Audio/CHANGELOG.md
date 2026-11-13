@@ -36,6 +36,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 - Windows HTTPS: a request on a pooled connection the server had just closed could still fail at once (about one in 450 in a stress run): WinHTTP sometimes reports that dead connection as "operation cancelled", which was not retried. It is now; a real cancel is still told by the request's cancel flag.
 - macOS and iOS: render-ahead fell behind on a busy CPU (most lyric frames flagged `behind` during a tempo ramp in the iOS simulator). A worker rendering ahead dropped to QoS utility, which the scheduler can keep waiting 75-150 ms while default-QoS threads of any process are busy; it now stays in its QoS class at a lower relative priority, so decoding still wins.
 
+### Changed
+
+- ARM: the varispeed resampler (rate and pitch changes, device-rate conversion), the stream equalizer, the DJ mixer's
+  isolator and the lyric surface's blend now have NEON versions (the SSE ones already existed), so iPhone, Android and
+  Apple Silicon no longer run the scalar loops. Results match the scalar code within float rounding; x86 is unchanged.
+
 ### Added
 
 - CD+G presentation: `fa_cdg_presentation.pixel_art` (.NET `CdgPresentation.PixelArt`), a pixel-art scaler: sharp pixels with the corners of diagonal steps cut at 45 degrees, square corners and lone pixels kept, at any whole multiple. ([CD+G](docs/features/cdg.md#presentation-options-fa_cdg_surface_set_presentation))

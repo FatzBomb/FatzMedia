@@ -16,6 +16,42 @@
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #  include <emmintrin.h>
 #  define FA_ISO_SSE 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
+#  include <arm_neon.h>
+#  define FA_ISO_NEON 1
+#endif
+#if defined(FA_ISO_SSE) || defined(FA_ISO_NEON)
+#  define FA_ISO_SIMD 1
+#endif
+
+/* The vector operations of the SIMD isolator (four lanes), so SSE and NEON share one body.
+ * Multiply and add stay separate (no fused multiply-add), as the scalar code does. */
+#ifdef FA_ISO_SSE
+typedef __m128 iso_f4;
+#  define iso_loadu(f) _mm_loadu_ps(f)
+#  define iso_storeu(f, v) _mm_storeu_ps(f, v)
+#  define iso_add(a, b) _mm_add_ps(a, b)
+#  define iso_sub(a, b) _mm_sub_ps(a, b)
+#  define iso_mul(a, b) _mm_mul_ps(a, b)
+#  define iso_set1(x) _mm_set1_ps(x)
+#  define iso_setr(a, b, c, d) _mm_setr_ps(a, b, c, d)
+#  define iso_high_dup(v) _mm_movehl_ps(v, v)                 /* v2 v3 v2 v3 */
+#  define iso_low_zero(v) _mm_movelh_ps(v, _mm_setzero_ps())  /* v0 v1 0 0 */
+#elif defined(FA_ISO_NEON)
+typedef float32x4_t iso_f4;
+#  define iso_loadu(f) vld1q_f32(f)
+#  define iso_storeu(f, v) vst1q_f32(f, v)
+#  define iso_add(a, b) vaddq_f32(a, b)
+#  define iso_sub(a, b) vsubq_f32(a, b)
+#  define iso_mul(a, b) vmulq_f32(a, b)
+#  define iso_set1(x) vdupq_n_f32(x)
+static inline iso_f4 iso_setr(float a, float b, float c, float d)
+{
+    const float t[4] = { a, b, c, d };
+    return vld1q_f32(t);
+}
+#  define iso_high_dup(v) vcombine_f32(vget_high_f32(v), vget_high_f32(v))
+#  define iso_low_zero(v) vcombine_f32(vget_low_f32(v), vdup_n_f32(0.0f))
 #endif
 
 
@@ -41,7 +77,7 @@ biquad fa_mixer_design(int type, double hz, double rate)
 }
 
 
-#ifndef FA_ISO_SSE
+#ifndef FA_ISO_SIMD
 /* One sample of one channel: the three bands, weighted. */
 static inline float isolate(const struct fa_mixer* m, float (*z)[2][2], int c, float x, float gl, float gm, float gh)
 {
@@ -54,7 +90,7 @@ static inline float isolate(const struct fa_mixer* m, float (*z)[2][2], int c, f
 }
 #endif
 
-#ifdef FA_ISO_SSE
+#ifdef FA_ISO_SIMD
 /* The isolator four sections at a time: both channels of two sections per vector,
  * so its 9 sections x 2 channels take 5 vector steps a frame instead of 18. Each lane
  * does the scalar section's arithmetic in the same order, so the output is the
@@ -62,13 +98,13 @@ static inline float isolate(const struct fa_mixer* m, float (*z)[2][2], int c, f
  *   0: lp1 (section 0), hp1 (2) on the input     1: lp1 (1), hp1 (3) -> lo, up
  *   2: lp2 (4), hp2 (6) on up                    3: lp2 (5), hp2 (7) -> mid, hi
  *   4: ap2 (8) on lo (lanes 2 and 3 unused, kept at 0) */
-typedef struct iso_sse {
-    __m128 b0[5], b1[5], b2[5], a1[5], a2[5], z0[5], z1[5];
-} iso_sse;
+typedef struct iso_simd {
+    iso_f4 b0[5], b1[5], b2[5], a1[5], a2[5], z0[5], z1[5];
+} iso_simd;
 
 static const int8_t iso_lane_sec[5][4] = { { 0, 0, 2, 2 }, { 1, 1, 3, 3 }, { 4, 4, 6, 6 }, { 5, 5, 7, 7 }, { 8, 8, -1, -1 } };
 
-static void iso_sse_load(iso_sse* v, const struct fa_mixer* m, float (*z)[2][2])
+static void iso_simd_load(iso_simd* v, const struct fa_mixer* m, float (*z)[2][2])
 {
     const biquad* q[9] = { &m->lp1, &m->lp1, &m->hp1, &m->hp1, &m->lp2, &m->lp2, &m->hp2, &m->hp2, &m->ap2 };
     int s, l;
@@ -81,19 +117,19 @@ static void iso_sse_load(iso_sse* v, const struct fa_mixer* m, float (*z)[2][2])
             z0[l] = z[sec][l & 1][0];
             z1[l] = z[sec][l & 1][1];
         }
-        v->b0[s] = _mm_loadu_ps(b0); v->b1[s] = _mm_loadu_ps(b1); v->b2[s] = _mm_loadu_ps(b2);
-        v->a1[s] = _mm_loadu_ps(a1); v->a2[s] = _mm_loadu_ps(a2);
-        v->z0[s] = _mm_loadu_ps(z0); v->z1[s] = _mm_loadu_ps(z1);
+        v->b0[s] = iso_loadu(b0); v->b1[s] = iso_loadu(b1); v->b2[s] = iso_loadu(b2);
+        v->a1[s] = iso_loadu(a1); v->a2[s] = iso_loadu(a2);
+        v->z0[s] = iso_loadu(z0); v->z1[s] = iso_loadu(z1);
     }
 }
 
-static void iso_sse_store(const iso_sse* v, float (*z)[2][2])
+static void iso_simd_store(const iso_simd* v, float (*z)[2][2])
 {
     int s, l;
     for (s = 0; s < 5; s++) {
         float z0[4], z1[4];
-        _mm_storeu_ps(z0, v->z0[s]);
-        _mm_storeu_ps(z1, v->z1[s]);
+        iso_storeu(z0, v->z0[s]);
+        iso_storeu(z1, v->z1[s]);
         for (l = 0; l < 4; l++) {
             int sec = iso_lane_sec[s][l];
             if (sec < 0) continue;
@@ -103,25 +139,25 @@ static void iso_sse_store(const iso_sse* v, float (*z)[2][2])
     }
 }
 
-static inline __m128 iso_sse_step(iso_sse* v, int s, __m128 x)
+static inline iso_f4 iso_simd_step(iso_simd* v, int s, iso_f4 x)
 {
-    __m128 y = _mm_add_ps(_mm_mul_ps(v->b0[s], x), v->z0[s]);
-    v->z0[s] = _mm_add_ps(_mm_sub_ps(_mm_mul_ps(v->b1[s], x), _mm_mul_ps(v->a1[s], y)), v->z1[s]);
-    v->z1[s] = _mm_sub_ps(_mm_mul_ps(v->b2[s], x), _mm_mul_ps(v->a2[s], y));
+    iso_f4 y = iso_add(iso_mul(v->b0[s], x), v->z0[s]);
+    v->z0[s] = iso_add(iso_sub(iso_mul(v->b1[s], x), iso_mul(v->a1[s], y)), v->z1[s]);
+    v->z1[s] = iso_sub(iso_mul(v->b2[s], x), iso_mul(v->a2[s], y));
     return y;
 }
 
 /* One frame (left, right) through the isolator, as isolate() on each channel. */
-static inline void iso_sse_frame(iso_sse* v, float xl, float xr, float gl, float gm, float gh, float* y)
+static inline void iso_simd_frame(iso_simd* v, float xl, float xr, float gl, float gm, float gh, float* y)
 {
     float o[4];
-    __m128 in = _mm_setr_ps(xl, xr, xl, xr);
-    __m128 lu = iso_sse_step(v, 1, iso_sse_step(v, 0, in));                       /* lo, lo, up, up */
-    __m128 mh = iso_sse_step(v, 3, iso_sse_step(v, 2, _mm_movehl_ps(lu, lu)));    /* mid, mid, hi, hi */
-    __m128 lo = iso_sse_step(v, 4, _mm_movelh_ps(lu, _mm_setzero_ps()));
-    __m128 r = _mm_add_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(gl), lo), _mm_mul_ps(_mm_set1_ps(gm), mh)),
-                          _mm_mul_ps(_mm_set1_ps(gh), _mm_movehl_ps(mh, mh)));
-    _mm_storeu_ps(o, r);
+    iso_f4 in = iso_setr(xl, xr, xl, xr);
+    iso_f4 lu = iso_simd_step(v, 1, iso_simd_step(v, 0, in));                       /* lo, lo, up, up */
+    iso_f4 mh = iso_simd_step(v, 3, iso_simd_step(v, 2, iso_high_dup(lu)));    /* mid, mid, hi, hi */
+    iso_f4 lo = iso_simd_step(v, 4, iso_low_zero(lu));
+    iso_f4 r = iso_add(iso_add(iso_mul(iso_set1(gl), lo), iso_mul(iso_set1(gm), mh)),
+                          iso_mul(iso_set1(gh), iso_high_dup(mh)));
+    iso_storeu(o, r);
     y[0] = o[0];
     y[1] = o[1];
 }
@@ -201,8 +237,8 @@ static void deck_process(struct fa_mixer* m, struct fa_deck* d, const mix_edges*
     int side = fa_load32(&d->side), cue_on = m->cue_mode != FA_CUE_NONE;
     uint32_t off, k;
     fa_tap* tap;
-#ifdef FA_ISO_SSE
-    iso_sse iv;
+#ifdef FA_ISO_SIMD
+    iso_simd iv;
 #endif
     for (off = 0, k = 0; off < frames; off += MIXER_SUB, k++) {
         uint32_t n = frames - off < MIXER_SUB ? frames - off : MIXER_SUB, i, j;
@@ -223,8 +259,8 @@ static void deck_process(struct fa_mixer* m, struct fa_deck* d, const mix_edges*
         /* This deck's crossfader gain (its side mix) at both ends of the sub-block. */
         x0 = w0[0] + w0[1] * me->ga[k] + w0[2] * me->gb[k];
         x1 = w1[0] + w1[1] * me->gae[k + 1] + w1[2] * me->gbe[k + 1];
-#ifdef FA_ISO_SSE
-        iso_sse_load(&iv, m, d->z);
+#ifdef FA_ISO_SIMD
+        iso_simd_load(&iv, m, d->z);
 #endif
         for (i = 0; i < n; i++) {
             float f = (float)i * inv;
@@ -233,12 +269,12 @@ static void deck_process(struct fa_mixer* m, struct fa_deck* d, const mix_edges*
             float* p = buf + (size_t)(off + i) * 2;
             float* o = out + (size_t)(off + i) * 2;
             int c;
-#ifdef FA_ISO_SSE
+#ifdef FA_ISO_SIMD
             float ys[2];
-            iso_sse_frame(&iv, p[0] * tr, p[1] * tr, gl, gm, gh, ys);
+            iso_simd_frame(&iv, p[0] * tr, p[1] * tr, gl, gm, gh, ys);
 #endif
             for (c = 0; c < 2; c++) {
-#ifdef FA_ISO_SSE
+#ifdef FA_ISO_SIMD
                 float y = ys[c];
 #else
                 float y = isolate(m, d->z, c, p[c] * tr, gl, gm, gh);
@@ -249,8 +285,8 @@ static void deck_process(struct fa_mixer* m, struct fa_deck* d, const mix_edges*
                 o[c] += y * xf;
             }
         }
-#ifdef FA_ISO_SSE
-        iso_sse_store(&iv, d->z);
+#ifdef FA_ISO_SIMD
+        iso_simd_store(&iv, d->z);
 #endif
         /* Flush denormals so a deck left silent stays cheap: every sub-block, since the
          * upper sections decay from 1e-20 into the denormal range in about 180 frames. */
