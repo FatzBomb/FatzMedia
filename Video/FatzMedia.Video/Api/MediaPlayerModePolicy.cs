@@ -56,6 +56,8 @@ static class MediaPlayerModePolicy
     /// </summary>
     public static bool AcceptsSource(MediaPlayerMode mode, MediaInputSourceKind kind, bool networkIsVideo = false) => mode switch
     {
+        // Web media takes over the media surface: no Background or Audio mode (no background playback).
+        MediaPlayerMode.Background or MediaPlayerMode.Audio when kind == MediaInputSourceKind.WebMedia => false,
         MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image
             || (kind == MediaInputSourceKind.NetworkUri && networkIsVideo),
         MediaPlayerMode.Audio => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.NetworkUri,
@@ -124,6 +126,7 @@ static class MediaPlayerModePolicy
     public static string Describe(MediaInputSourceKind kind, bool networkIsVideo = false) => kind switch
     {
         MediaInputSourceKind.Bgra32Image => "BGRA image sources",
+        MediaInputSourceKind.WebMedia => "web media",
         MediaInputSourceKind.NetworkUri => networkIsVideo ? "network video" : "network audio",
         _ => "files",
     };

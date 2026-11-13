@@ -275,6 +275,7 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
             MediaInputSourceKind.FilePath when !string.IsNullOrWhiteSpace(source.FilePath) => Open(source.FilePath),
             MediaInputSourceKind.Bgra32Image => OpenInMemoryImage(source),
             MediaInputSourceKind.NetworkUri when source.Uri is not null => OpenNetwork(source),
+            MediaInputSourceKind.WebMedia => RejectWebMedia(source),
             _ => RejectUnknownSource(source)
         };
     }
@@ -535,6 +536,15 @@ sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoo
         var message = $"{MediaPlayerModePolicy.AudioUnavailableMessage}; {displayName} was not loaded.";
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", message, sourcePath: sourcePath);
         RaiseError(MediaErrorCode.NativeLibraryMissing, message, sourcePath);
+        return false;
+    }
+
+    // Stage 060A: the engine only plays what it decodes; an online item belongs to a UI adapter's web view.
+    bool RejectWebMedia(MediaInputSource source)
+    {
+        RaiseError(MediaErrorCode.WebMediaUnavailable,
+            $"{source.DisplayName} is an online item; it plays in a web view hosted by a UI adapter, not in the media engine.",
+            source.DisplayName);
         return false;
     }
 
