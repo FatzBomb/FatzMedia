@@ -238,67 +238,46 @@
                         Margin="0,0,10,0"
                         VerticalAlignment="Center"
                         Style="{StaticResource LabelTextStyle}"
-                        Text="CD+G LOOK" />
-                    <CheckBox
+                        Text="CD+G SCALE" />
+                    <ComboBox
+                        MinWidth="130"
                         Margin="0,0,14,0"
-                        VerticalAlignment="Center"
-                        Content="Scaled"
-                        IsChecked="{Binding CdgScaled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Draw CD+G smoothed in full colour (FatzAudio) instead of the classic 300x216 picture scaled up" />
-                    <CheckBox
-                        Margin="0,0,14,0"
-                        VerticalAlignment="Center"
-                        Content="Edge blend"
-                        IsChecked="{Binding CdgEdgeBlend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Anti-alias stair steps along colour edges (no effect at smoothness 5 and up)" />
+                        ItemsSource="{Binding CdgScales}"
+                        SelectedItem="{Binding CdgScaleChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="None: the classic picture. Low: 2x. Med: the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). Higher costs more CPU, mostly for the outline, shadow and bevel" />
                     <TextBlock
                         Margin="0,0,6,0"
                         VerticalAlignment="Center"
                         Style="{StaticResource LabelTextStyle}"
-                        Text="RENDER" />
+                        Text="STYLE" />
                     <ComboBox
                         MinWidth="110"
                         Margin="0,0,14,0"
-                        ItemsSource="{Binding CdgRenderHeights}"
-                        SelectedItem="{Binding CdgRenderHeight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Height the picture is drawn at before the GPU scales it to the screen; it is drawn at the largest whole multiple of 216 that fits" />
+                        ItemsSource="{Binding CdgStyles}"
+                        SelectedItem="{Binding CdgStyleChoice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Pixel: sharp squares. Anti-aliased: sharp, stair steps smoothed. Pixel art: diagonal steps cut into clean slopes, square corners kept. Traced: straight slopes, sharp corners. Curved: traced with curves" />
                     <Button
                         Width="92"
                         Command="{Binding ResetCdgLookCommand}"
                         Content="Reset Look"
                         Style="{StaticResource SyncButtonStyle}"
-                        ToolTip="Smoothness 6, edge blend on, no outline, shadow or bevel, drawn at the canvas size" />
+                        ToolTip="Traced, no outline, shadow or bevel; the scale stays" />
                 </DockPanel>
                 <WrapPanel Margin="0,4,0,0" HorizontalAlignment="Center">
-                    <StackPanel Style="{StaticResource ValidationParameterStyle}">
-                        <DockPanel>
-                            <TextBlock Style="{StaticResource LabelTextStyle}" Text="SMOOTHNESS" />
-                            <TextBlock
-                                DockPanel.Dock="Right"
-                                Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgSmoothness}" />
-                        </DockPanel>
-                        <Slider
-                            IsSnapToTickEnabled="True"
-                            Maximum="10"
-                            Minimum="0"
-                            TickFrequency="1"
-                            ToolTip="0 sharp pixels, 1-4 softer, 5-10 traced outlines: straighter diagonals, rounder corners, curves at 9 and 10"
-                            Value="{Binding CdgSmoothness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">
                         <DockPanel>
                             <TextBlock Style="{StaticResource LabelTextStyle}" Text="OUTLINE" />
                             <TextBlock
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgOutlineSize, StringFormat={}{0:0.00}}" />
+                                Text="{Binding CdgOutlineSize}" />
                         </DockPanel>
                         <Slider
-                            Maximum="1"
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
                             Minimum="0"
-                            TickFrequency="0.05"
-                            ToolTip="Black outline width: 0 none, 1 is 1.5 CD+G pixels"
+                            TickFrequency="1"
+                            ToolTip="Black outline width in half CD+G pixels: 0 none, 10 is 5 CD+G pixels"
                             Value="{Binding CdgOutlineSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">
@@ -307,13 +286,14 @@
                             <TextBlock
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgShadowSize, StringFormat={}{0:0.00}}" />
+                                Text="{Binding CdgShadowSize}" />
                         </DockPanel>
                         <Slider
-                            Maximum="1"
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
                             Minimum="0"
-                            TickFrequency="0.05"
-                            ToolTip="How far the soft shadow spreads: 1 is 2 CD+G pixels"
+                            TickFrequency="1"
+                            ToolTip="How far the soft shadow spreads, in half CD+G pixels"
                             Value="{Binding CdgShadowSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">
@@ -322,13 +302,14 @@
                             <TextBlock
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgShadowDistance, StringFormat={}{0:0.00}}" />
+                                Text="{Binding CdgShadowDistance}" />
                         </DockPanel>
                         <Slider
-                            Maximum="1"
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
                             Minimum="0"
-                            TickFrequency="0.05"
-                            ToolTip="How far down and right the shadow falls: 1 is 2 CD+G pixels. Shadow is off when size and distance are both 0"
+                            TickFrequency="1"
+                            ToolTip="How far down and right the shadow falls, in half CD+G pixels. No shadow when size and distance are both 0"
                             Value="{Binding CdgShadowDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">
@@ -337,13 +318,14 @@
                             <TextBlock
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgBevelStrength, StringFormat={}{0:0.00}}" />
+                                Text="{Binding CdgBevelStrength}" />
                         </DockPanel>
                         <Slider
-                            Maximum="1"
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
                             Minimum="0"
-                            TickFrequency="0.05"
-                            ToolTip="Bevel strength: a highlight top left and a shade bottom right; 0 none"
+                            TickFrequency="1"
+                            ToolTip="Bevel strength: a highlight top left and a shade bottom right; 0 none, 10 full"
                             Value="{Binding CdgBevelStrength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                     <StackPanel Style="{StaticResource ValidationParameterStyle}">
@@ -352,13 +334,14 @@
                             <TextBlock
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource ValueTextStyle}"
-                                Text="{Binding CdgBevelSize, StringFormat={}{0:0.00}}" />
+                                Text="{Binding CdgBevelSize}" />
                         </DockPanel>
                         <Slider
-                            Maximum="1"
+                            IsSnapToTickEnabled="True"
+                            Maximum="10"
                             Minimum="0"
-                            TickFrequency="0.05"
-                            ToolTip="How far the bevel reaches in from the edge: 1 is 1 CD+G pixel"
+                            TickFrequency="1"
+                            ToolTip="How far the bevel reaches in from the edge, in half CD+G pixels"
                             Value="{Binding CdgBevelSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                 </WrapPanel>

@@ -80,14 +80,17 @@ public sealed class AudioEngineSelectionTests
         Assert.Equal(engineDecodes, PlayerStartupOptions.Parse(args).AudioEngineDecodesSoundtracks);
 
     [Theory]
-    [InlineData(new string[0], false, 0, false)]
-    [InlineData(new[] { "--cdg-scale" }, true, PlayerStartupOptions.DefaultCdgSmoothness, false)]
-    [InlineData(new[] { "--cdg-scale=6", "--cdg-effects" }, true, 6, true)]
-    [InlineData(new[] { "--cdg-scale=42" }, true, 10, false)]
-    public void PlayerOption_ParsesTheCdgScaling(string[] args, bool enabled, int smoothness, bool effects)
+    [InlineData(new string[0], CdgScale.None, PlayerStartupOptions.DefaultCdgStyle, false)]
+    [InlineData(new[] { "--cdg-scale" }, PlayerStartupOptions.DefaultCdgScale, PlayerStartupOptions.DefaultCdgStyle, false)]
+    [InlineData(new[] { "--cdg-scale=low", "--cdg-style=pixelart", "--cdg-effects" }, CdgScale.Low, CdgScaleStyle.PixelArt, true)]
+    [InlineData(new[] { "--cdg-scale=Med", "--cdg-style=aa" }, CdgScale.Medium, CdgScaleStyle.AntiAliased, false)]
+    [InlineData(new[] { "--cdg-scale=6", "--cdg-style=curved" }, CdgScale.High, CdgScaleStyle.Curved, false)]
+    [InlineData(new[] { "--cdg-scale=none", "--cdg-style=pixel" }, CdgScale.None, CdgScaleStyle.Pixel, false)]
+    [InlineData(new[] { "--cdg-scale=0", "--cdg-style=traced" }, CdgScale.None, CdgScaleStyle.Traced, false)]
+    public void PlayerOption_ParsesTheCdgScaling(string[] args, CdgScale scale, CdgScaleStyle style, bool effects)
     {
         var scaling = PlayerStartupOptions.Parse(args).CdgScaling;
-        Assert.Equal((enabled, smoothness, effects), (scaling.Enabled, scaling.Smoothness, scaling.HasEffects));
+        Assert.Equal((scale, style, effects), (scaling.Scale, scaling.Style, scaling.HasEffects));
         if (effects)
             Assert.Equal(scaling, scaling.WithDefaultEffects());
     }
@@ -95,13 +98,51 @@ public sealed class AudioEngineSelectionTests
     [Fact]
     public void CdgScalingOptions_ClampTheirValues()
     {
-        var options = new CdgScalingOptions { OutlineSize = 2, ShadowSize = -1, ShadowDistance = float.NaN, BevelStrength = 0.4f, BevelSize = 7, RenderHeight = 100 };
-        Assert.Equal((1f, 0f, 0f, 0.4f, 1f), (options.OutlineSize, options.ShadowSize, options.ShadowDistance, options.BevelStrength, options.BevelSize));
-        Assert.Equal(CdgScalingOptions.MinimumRenderHeight, options.RenderHeight);
-        Assert.Equal(CdgScalingOptions.MaximumRenderHeight, (options with { RenderHeight = 9999 }).RenderHeight);
-        Assert.Equal(0, (options with { RenderHeight = -5 }).RenderHeight);
+        var options = new CdgScalingOptions { Scale = (CdgScale)9, Style = (CdgScaleStyle)9, OutlineSize = 12, ShadowSize = -1, BevelStrength = 4, BevelSize = 11 };
+        Assert.Equal((CdgScale.None, CdgScaleStyle.Pixel), (options.Scale, options.Style));
+        Assert.False(options.Enabled);
+        Assert.Equal((10, 0, 0, 4, 10), (options.OutlineSize, options.ShadowSize, options.ShadowDistance, options.BevelStrength, options.BevelSize));
         Assert.True(options.HasEffects);
         Assert.False(new CdgScalingOptions { BevelSize = 1 }.HasEffects);
+        Assert.False(new CdgScalingOptions { BevelStrength = 5 }.HasEffects);
+    }
+
+    [Theory]
+    [InlineData(CdgScale.Low, 1080, 432)]
+    [InlineData(CdgScale.Low, 2160, 432)]
+    [InlineData(CdgScale.Medium, 720, 432)]
+    [InlineData(CdgScale.Medium, 1080, 432)]
+    [InlineData(CdgScale.Medium, 1440, 648)]
+    [InlineData(CdgScale.Medium, 2160, 1080)]
+    [InlineData(CdgScale.High, 720, 648)]
+    [InlineData(CdgScale.High, 1080, 1080)]
+    [InlineData(CdgScale.High, 1440, 1296)]
+    [InlineData(CdgScale.High, 2160, 2160)]
+    [InlineData(CdgScale.High, 0, 1080)]
+    [InlineData(CdgScale.High, 100, 216)]
+    [InlineData(CdgScale.High, 100_000, 4320)]
+    public void CdgScale_FollowsTheScreenHeight(CdgScale scale, int display, int height)
+    {
+        var size = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgRenderSize(scale, display);
+        Assert.Equal(height, size.Height);
+        Assert.Equal((int)Math.Round(height * 16 / 9.0), size.Width);
+    }
+
+    [Fact]
+    public void CdgLook_MapsToFatzAudio()
+    {
+        var options = new CdgScalingOptions { Scale = CdgScale.High, Style = CdgScaleStyle.PixelArt, OutlineSize = 3, ShadowSize = 2, ShadowDistance = 4, BevelStrength = 5, BevelSize = 2 };
+        var presentation = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options);
+        Assert.True(presentation.PixelArt);
+        Assert.Equal(10, FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options with { Style = CdgScaleStyle.Curved }).Smoothness);
+        Assert.True(FatzMedia.Video.Audio.FatzAudioMappings.ToCdgPresentation(options with { Style = CdgScaleStyle.AntiAliased }).EdgeBlend);
+        var effects = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgEffects(options)!;
+        Assert.Equal(1f, effects.Outline!.Size);       // 1.5 CD+G pixels, FatzAudio's unit
+        Assert.Equal((0.5f, 1f), (effects.Shadow!.Size, effects.Shadow.Distance));
+        Assert.Equal((0.5f, 1f), (effects.Bevel!.Strength, effects.Bevel.Size));
+        var most = options with { OutlineSize = 10, ShadowSize = 10, ShadowDistance = 10, BevelSize = 10 };
+        effects = FatzMedia.Video.Audio.FatzAudioMappings.ToCdgEffects(most)!;
+        Assert.All([effects.Outline!.Size, effects.Shadow!.Size, effects.Shadow.Distance, effects.Bevel!.Size], size => Assert.InRange(size, 0f, FatzMedia.Audio.SurfaceEffects.MaxSize));
     }
 
     static IServiceProvider Create(MediaPlayerConfiguration configuration) =>

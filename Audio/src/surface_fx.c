@@ -44,15 +44,16 @@
 #define FX_STRIP 64               /* columns max_cols works on at a time */
 
 static int unit(float v) { return v >= 0.0f && v <= 1.0f; }
+static int span(float v) { return v >= 0.0f && v <= FA_FX_MAX_SIZE; }
 
 int fa_fx_valid(const fa_surface_effects* e)
 {
     const fa_fx_outline* o = &e->outline;
     const fa_fx_shadow* s = &e->shadow;
     const fa_fx_bevel* b = &e->bevel;
-    return (o->on == 0 || o->on == 1) && unit(o->opacity) && unit(o->size) && unit(o->fade) &&
-           (s->on == 0 || s->on == 1) && unit(s->opacity) && unit(s->size) && unit(s->distance) && unit(s->fade) &&
-           isfinite(s->angle_degrees) && (b->on == 0 || b->on == 1) && unit(b->strength) && unit(b->size) &&
+    return (o->on == 0 || o->on == 1) && unit(o->opacity) && span(o->size) && unit(o->fade) &&
+           (s->on == 0 || s->on == 1) && unit(s->opacity) && span(s->size) && span(s->distance) && unit(s->fade) &&
+           isfinite(s->angle_degrees) && (b->on == 0 || b->on == 1) && unit(b->strength) && span(b->size) &&
            unit(b->fade) && isfinite(b->light_angle_degrees);
 }
 

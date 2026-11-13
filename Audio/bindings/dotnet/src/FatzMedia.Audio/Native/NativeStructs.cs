@@ -366,6 +366,7 @@ struct FaCdgPresentation
     public int Smoothness;
     public int EdgeBlend;
     public uint Flags;
+    public int PixelArt;
 }
 
 [StructLayout(LayoutKind.Sequential)]

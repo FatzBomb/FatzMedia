@@ -3235,7 +3235,8 @@ FA_API fa_result FA_CALL fa_surface_update_into(fa_surface* surface, fa_time tim
  * CD+G: the shape is every pixel that is not the background (or transparent), and the
  * effects apply with presentation scaling on (fa_cdg_presentation.scale); the classic
  * picture ignores them. Effects reaching past the edge of the picture are cut there.
- * Sizes and distances run 0..1, 1 the maximum, in units of the surface:
+ * Sizes and distances run 0..5 (FA_FX_MAX_SIZE; it was 0..1 before) in units of the
+ * surface, a bigger one costing more time to draw:
  *
  *                outline size   shadow size   shadow distance   bevel size
  *     CD+G       1.5 px         2 px          2 px              1 px     (CD+G pixels)
@@ -3245,6 +3246,8 @@ FA_API fa_result FA_CALL fa_surface_update_into(fa_surface* surface, fa_time tim
  * `fade` 0..1 is the part of the size that eases out to nothing: 0 a hard edge, 1 a
  * glow. Angles are in degrees, counter-clockwise from the right (315 = down right).
  * `sung_color` is for lyrics; CD+G ignores it. */
+
+#define FA_FX_MAX_SIZE 5.0f            /* the largest effect size or distance */
 
 typedef struct fa_fx_outline {
     int32_t on;
@@ -3282,8 +3285,8 @@ typedef struct fa_surface_effects {
  * black at 50 %, strength 0.5, size 0.5, light from 135 degrees, fade 0.5. */
 FA_API void FA_CALL fa_surface_effects_init(fa_surface_effects* effects);
 /* Sets the effects (NULL = none, the default). FA_ERROR_INVALID_ARG for values out
- * of range (on not 0/1, opacity, size, distance, strength or fade outside 0..1, an
- * angle that is not finite). The next frame is drawn again in full. */
+ * of range (on not 0/1, opacity, strength or fade outside 0..1, size or distance
+ * outside 0..FA_FX_MAX_SIZE, an angle that is not finite). The next frame is drawn again in full. */
 FA_API fa_result FA_CALL fa_surface_set_effects(fa_surface* surface, const fa_surface_effects* effects);
 /* The effects in use (all off when none were set), up to out_effects->struct_size. */
 FA_API fa_result FA_CALL fa_surface_get_effects(fa_surface* surface, fa_surface_effects* out_effects);
@@ -3345,6 +3348,12 @@ typedef struct fa_cdg_presentation {
                                           the edges between colours (MLAA); no effect at
                                           smoothness 5-10, which are smooth already */
     uint32_t flags;                    /* fa_cdg_presentation_flags */
+    int32_t pixel_art;                 /* 0/1, scale on only: the pixel-art scaler instead of
+                                          smoothness and edge_blend (both ignored): sharp
+                                          pixels, with the corners of each diagonal step cut
+                                          at 45 degrees so staircases become clean slopes;
+                                          square corners and lone pixels stay. Added after
+                                          v1: 0 for an older struct_size */
 } fa_cdg_presentation;
 
 /* Defaults: scale off, SHOW, nothing else. */

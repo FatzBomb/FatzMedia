@@ -2037,11 +2037,12 @@ static void free_maps(fa_cdg_surface* f)
 static fa_result layout_apply(fa_cdg_surface* f, const cdg_layout* l)
 {
     int smooth = f->has_pres ? f->pres.smoothness : 0, blend = f->has_pres ? f->pres.edge_blend : 0;
+    int art = f->has_pres ? f->pres.pixel_art : 0;
     uint32_t i;
     if (l->scaled) {
-        cdg_scaler_init(&f->sc, l->n, smooth, blend);
+        cdg_scaler_init(&f->sc, l->n, smooth, blend, art);
         /* The effects' 2N master at N 1-3, blended as at N. */
-        if (l->n <= 3) cdg_scaler_init_look(&f->sc2, 2 * l->n, l->n, smooth, blend);
+        if (l->n <= 3) cdg_scaler_init_look(&f->sc2, 2 * l->n, l->n, smooth, blend, art);
     }
     if (f->lay.buf_w && memcmp(l, &f->lay, sizeof(*l)) == 0) return FA_OK;
     free_maps(f);
@@ -3589,7 +3590,8 @@ FA_API fa_result FA_CALL fa_cdg_surface_set_presentation(fa_surface* surface, co
     if ((p.scale != 0 && p.scale != 1) || (uint32_t)p.safety_zone > FA_SAFETY_SUPER ||
         !(p.auto_ignore_seconds >= 0.0f && p.auto_ignore_seconds <= 86400.0f) ||
         (p.super_centered != 0 && p.super_centered != 1) || p.padding > CDG_MAX_PADDING || p.smoothness < 0 ||
-        p.smoothness > 10 || (p.edge_blend != 0 && p.edge_blend != 1) || (p.flags & ~(uint32_t)FA_CDG_TRANSPARENT_BORDER))
+        p.smoothness > 10 || (p.edge_blend != 0 && p.edge_blend != 1) || (p.flags & ~(uint32_t)FA_CDG_TRANSPARENT_BORDER) ||
+        (p.pixel_art != 0 && p.pixel_art != 1))
         return FA_ERROR_INVALID_ARG;
     fa_mutex_lock(&surface->work_lock);
     surface->pres = p;

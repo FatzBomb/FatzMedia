@@ -149,8 +149,10 @@ public sealed record PlayerStartupOptions
     public string? AudioDevice { get; init; }
 
     /// <summary>
-    /// Gets the scaled CD+G picture (<c>--cdg-scale</c>, smoothness <see cref="DefaultCdgSmoothness"/>, or <c>--cdg-scale=0..10</c>; <c>--cdg-effects</c>
-    /// adds an outline and a shadow); off (the classic picture) without it.
+    /// Gets the scaled CD+G picture: <c>--cdg-scale</c> (<see cref="DefaultCdgScale"/>) or
+    /// <c>--cdg-scale=none|low|med|high</c>, <c>--cdg-style=pixel|aa|pixelart|traced|curved</c>
+    /// (<see cref="DefaultCdgStyle"/> without it), and <c>--cdg-effects</c> for an outline and a shadow; off (the classic
+    /// picture) without <c>--cdg-scale</c>.
     /// </summary>
     public CdgScalingOptions CdgScaling { get; init; }
 
@@ -176,21 +178,38 @@ public sealed record PlayerStartupOptions
 
     static CdgScalingOptions ParseCdgScaling(IReadOnlyList<string> args)
     {
-        var smoothness = Values(args, "--cdg-scale=").LastOrDefault();
-        if (smoothness is null && !args.Contains("--cdg-scale"))
-            return default;
-
+        var scale = Values(args, "--cdg-scale=").LastOrDefault();
         var scaling = new CdgScalingOptions
         {
-            Enabled = true,
-            Smoothness = int.TryParse(smoothness, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : DefaultCdgSmoothness,
-            EdgeBlend = true,
+            Scale = scale is not null ? ParseCdgScale(scale) : args.Contains("--cdg-scale") ? DefaultCdgScale : CdgScale.None,
+            Style = ParseCdgStyle(Values(args, "--cdg-style=").LastOrDefault()),
         };
         return args.Contains("--cdg-effects") ? scaling.WithDefaultEffects() : scaling;
     }
 
-    /// <summary>The smoothness of a bare <c>--cdg-scale</c>: traced straight edges with sharp corners (owner pick, ENG-064).</summary>
-    public const int DefaultCdgSmoothness = 6;
+    static CdgScale ParseCdgScale(string value) => value.ToUpperInvariant() switch
+    {
+        "NONE" or "OFF" or "0" or "FALSE" => CdgScale.None,
+        "LOW" => CdgScale.Low,
+        "MED" or "MEDIUM" => CdgScale.Medium,
+        _ => CdgScale.High,
+    };
+
+    static CdgScaleStyle ParseCdgStyle(string? value) => value?.ToUpperInvariant() switch
+    {
+        "PIXEL" => CdgScaleStyle.Pixel,
+        "AA" or "ANTIALIASED" => CdgScaleStyle.AntiAliased,
+        "PIXELART" or "PIXEL-ART" => CdgScaleStyle.PixelArt,
+        "TRACED" => CdgScaleStyle.Traced,
+        "CURVED" => CdgScaleStyle.Curved,
+        _ => DefaultCdgStyle,
+    };
+
+    /// <summary>The scale of a bare <c>--cdg-scale</c>: the screen's own height (owner pick, ENG-064).</summary>
+    public const CdgScale DefaultCdgScale = CdgScale.High;
+
+    /// <summary>The style without <c>--cdg-style=</c>: traced straight slopes with sharp corners (owner pick, ENG-064).</summary>
+    public const CdgScaleStyle DefaultCdgStyle = CdgScaleStyle.Traced;
 
     /// <summary>Parses <paramref name="args"/>. Unknown flags are ignored.</summary>
     public static PlayerStartupOptions Parse(IReadOnlyList<string> args)

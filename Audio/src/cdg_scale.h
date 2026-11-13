@@ -1,6 +1,6 @@
 /* Drawing a CD+G screen at a whole-number multiple, for the presentation options:
- * smoothness 0-10 and edge blend, into a premultiplied 4-byte-per-pixel bitmap
- * (5-10 in cdg_contour.c). */
+ * smoothness 0-10 and edge blend, or the pixel-art scaler, into a premultiplied
+ * 4-byte-per-pixel bitmap (5-10 in cdg_contour.c). */
 #ifndef FA_CDG_SCALE_H
 #define FA_CDG_SCALE_H
 
@@ -29,17 +29,20 @@ typedef struct cdg_scaler {
      * it (edge blend follows edges for a few pixels). */
     int reach_across, reach_along;
     int contour;                  /* smoothness 5..10: contour mode (else 0) */
+    int pixel_art;                /* the pixel-art scaler (smoothness and edge blend off) */
+    uint32_t look;                /* the multiple its anti-aliasing is sized for */
     struct cdg_contours* ct;      /* its outlines, from cdg_scale_prepare */
     int ct_ok;                    /* 0: none (out of memory), drawn as smoothness 4 */
     int ct_failed;                /* some of the picture was drawn that way */
 } cdg_scaler;
 
-/* smoothness 0..10, edge_blend 0/1 (no effect at 5..10), n 1..CDG_SCALE_MAX_N. Keeps
- * the contour buffers of an earlier init, so `sc` must be zeroed before the first. */
-void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend);
+/* smoothness 0..10, edge_blend 0/1 (no effect at 5..10), pixel_art 0/1 (both ignored
+ * then), n 1..CDG_SCALE_MAX_N. Keeps the contour buffers of an earlier init, so `sc`
+ * must be zeroed before the first. */
+void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend, int pixel_art);
 /* As cdg_scaler_init, drawing at n with the blend of size `look` (n a multiple of it),
  * so the picture box-filtered down to `look` looks as it does drawn there. */
-void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend);
+void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend, int pixel_art);
 /* Before drawing rectangles of a changed `screen` (contour mode traces it). Returns 1
  * when the whole screen must be drawn: contours are back after a trace that ran out
  * of memory (drawn as smoothness 4 meanwhile). */

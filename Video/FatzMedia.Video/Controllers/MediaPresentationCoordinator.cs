@@ -665,6 +665,23 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     void PublishSurfaceSnapshotNoLock() => Volatile.Write(ref _surfaceSnapshot, [.. _surfaces.Values]);
 
     /// <summary>
+    /// The height in pixels the 16:9 overlay canvas is shown at on the largest attached surface (a wide window shows it
+    /// as high as the window, a narrow one less), or 0 with none. The scaled CD+G picture's scale follows it.
+    /// </summary>
+    int LargestCanvasHeight()
+    {
+        var largest = 0;
+        foreach (var surface in Volatile.Read(ref _surfaceSnapshot))
+        {
+            var shown = (int)Math.Min(surface.PixelHeight, surface.PixelWidth * 9L / 16);
+            if (shown > largest)
+                largest = shown;
+        }
+
+        return largest;
+    }
+
+    /// <summary>
     /// The displays showing the attached surfaces and their vertical-blank timing, for
     /// display-locked video timing (Stage 017A slices 4 and 5). Surfaces on one monitor form one
     /// group; a surface the renderer has no timing for joins the primary's group. Nothing is
@@ -1583,7 +1600,11 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             // A scaled CD+G picture (it draws the position the CD+G engine last rendered), else engine-drawn lyrics.
             if (_attachedCdg is IKaraokeOverlaySource { DrawsOverlay: true } cdgPicture)
+            {
+                if (cdgPicture is Core.Cdg.ICdgScalingTarget scaled)
+                    scaled.DisplayHeight = LargestCanvasHeight();
                 return UpdateEngineOverlay(cdgPicture, TimeSpan.FromSeconds(subtitlePosition));
+            }
             if (_mediaEngine.Audio is IKaraokeOverlaySource { DrawsOverlay: true } engineLyrics)
                 return UpdateEngineOverlay(engineLyrics, TimeSpan.FromSeconds(subtitlePosition));
 

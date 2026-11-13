@@ -148,7 +148,7 @@ public sealed record OutlineEffect
     public CdgColor SungColor { get; init; } = new(0, 0, 0, 255);
     /// <summary>0..1, multiplies the colour's alpha.</summary>
     public float Opacity { get; init; } = 1.0f;
-    /// <summary>0..1: the width, 1 = 1.5 CD+G pixels (lyrics: 0.12 em).</summary>
+    /// <summary>0..<see cref="SurfaceEffects.MaxSize"/>: the width, 1 = 1.5 CD+G pixels (lyrics: 0.12 em).</summary>
     public float Size { get; init; } = 0.5f;
     /// <summary>0..1: the part of the width that eases out, 0 a hard edge, 1 a glow.</summary>
     public float Fade { get; init; }
@@ -163,9 +163,9 @@ public sealed record ShadowEffect
     public CdgColor SungColor { get; init; } = new(0, 0, 0, 255);
     /// <summary>0..1, multiplies the colour's alpha.</summary>
     public float Opacity { get; init; } = 0.6f;
-    /// <summary>0..1: how far it spreads beyond the shape and outline, 1 = 2 CD+G pixels (lyrics: 0.20 em).</summary>
+    /// <summary>0..<see cref="SurfaceEffects.MaxSize"/>: how far it spreads beyond the shape and outline, 1 = 2 CD+G pixels (lyrics: 0.20 em).</summary>
     public float Size { get; init; }
-    /// <summary>0..1: how far away it falls, 1 = 2 CD+G pixels (lyrics: 0.15 em).</summary>
+    /// <summary>0..<see cref="SurfaceEffects.MaxSize"/>: how far away it falls, 1 = 2 CD+G pixels (lyrics: 0.15 em).</summary>
     public float Distance { get; init; } = 0.5f;
     /// <summary>Where it falls, degrees counter-clockwise from the right (315 = down right).</summary>
     public float AngleDegrees { get; init; } = 315.0f;
@@ -182,7 +182,7 @@ public sealed record BevelEffect
     public CdgColor Shade { get; init; } = new(0, 0, 0, 128);
     /// <summary>0..1.</summary>
     public float Strength { get; init; } = 0.5f;
-    /// <summary>0..1: how far in from the edge, 1 = 1 CD+G pixel (lyrics: 0.08 em).</summary>
+    /// <summary>0..<see cref="SurfaceEffects.MaxSize"/>: how far in from the edge, 1 = 1 CD+G pixel (lyrics: 0.08 em).</summary>
     public float Size { get; init; } = 0.5f;
     /// <summary>Where the light comes from, degrees counter-clockwise from the right (135 = top left).</summary>
     public float LightAngleDegrees { get; init; } = 135.0f;
@@ -198,6 +198,9 @@ public sealed record BevelEffect
 /// </summary>
 public sealed record SurfaceEffects
 {
+    /// <summary>The largest size or distance of an effect, in its units (a bigger one costs more time to draw).</summary>
+    public const float MaxSize = 5.0f;
+
     /// <summary>The outline, or null.</summary>
     public OutlineEffect? Outline { get; init; }
     /// <summary>The shadow, or null.</summary>
@@ -304,6 +307,9 @@ static unsafe class SurfaceInterop
     public static float Unit(float v) =>
         v is >= 0.0f and <= 1.0f ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "Must be 0 .. 1.");
 
+    public static float Size(float v) =>
+        v is >= 0.0f and <= SurfaceEffects.MaxSize ? v : throw new ArgumentOutOfRangeException(nameof(v), v, $"Must be 0 .. {SurfaceEffects.MaxSize}.");
+
     public static float Angle(float v) =>
         float.IsFinite(v) ? v : throw new ArgumentOutOfRangeException(nameof(v), v, "Must be finite.");
 
@@ -318,7 +324,7 @@ static unsafe class SurfaceInterop
             e->Outline.Color = Argb(o.Color);
             e->Outline.SungColor = Argb(o.SungColor);
             e->Outline.Opacity = Unit(o.Opacity);
-            e->Outline.Size = Unit(o.Size);
+            e->Outline.Size = Size(o.Size);
             e->Outline.Fade = Unit(o.Fade);
         }
         if (value.Shadow is { } s)
@@ -327,8 +333,8 @@ static unsafe class SurfaceInterop
             e->Shadow.Color = Argb(s.Color);
             e->Shadow.SungColor = Argb(s.SungColor);
             e->Shadow.Opacity = Unit(s.Opacity);
-            e->Shadow.Size = Unit(s.Size);
-            e->Shadow.Distance = Unit(s.Distance);
+            e->Shadow.Size = Size(s.Size);
+            e->Shadow.Distance = Size(s.Distance);
             e->Shadow.AngleDegrees = Angle(s.AngleDegrees);
             e->Shadow.Fade = Unit(s.Fade);
         }
@@ -338,7 +344,7 @@ static unsafe class SurfaceInterop
             e->Bevel.Highlight = Argb(b.Highlight);
             e->Bevel.Shade = Argb(b.Shade);
             e->Bevel.Strength = Unit(b.Strength);
-            e->Bevel.Size = Unit(b.Size);
+            e->Bevel.Size = Size(b.Size);
             e->Bevel.LightAngleDegrees = Angle(b.LightAngleDegrees);
             e->Bevel.Fade = Unit(b.Fade);
         }

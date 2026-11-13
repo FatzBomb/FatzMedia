@@ -144,8 +144,7 @@ public sealed class NetworkVideoPlaybackTests
         var cancel = Stopwatch.StartNew();
         engine.CancelPendingNetworkOpen();
 
-        Assert.Same(open, await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))));
-        Assert.False(await open);
+        Assert.False(await open.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.True(cancel.Elapsed < TimeSpan.FromSeconds(2), $"cancel took {cancel.Elapsed}");
         Assert.Single(video.NetworkUrls);
         Assert.Contains("cancelled", error!.Message, StringComparison.Ordinal);
@@ -180,8 +179,7 @@ public sealed class NetworkVideoPlaybackTests
         Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
         load.Cancel();
 
-        Assert.Same(open, await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))));
-        Assert.False(await open);
+        Assert.False(await open.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Single(video.NetworkUrls);
         Assert.Null(error);
     }

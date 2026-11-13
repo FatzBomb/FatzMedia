@@ -88,6 +88,12 @@ Added 2026-11-11 at the owner's request: the scaled CD+G look changes live (`Pla
 it is drawn at before the GPU scales it). The WPF test player's Video flyout has a CD+G LOOK row to try them on a
 playing song; the owner picks the defaults from there.
 
+Changed 2026-11-12 after the owner tried it (5-10% CPU at 4K with everything maxed, under 1% unscaled): a scale
+tier replaces the render height (`CdgScale` None, Low 2x, Med half the screen, High the screen, following the largest
+surface showing the picture), a style replaces smoothness and edge blend (`CdgScaleStyle` Pixel, Anti-aliased, Pixel
+art, Traced = 6, Curved = 10; 1-4 dropped), and the outline, shadow and bevel count half CD+G pixels, 0-10 (FatzAudio
+now takes effect sizes up to 5). Pixel art is new in FatzAudio (`fa_cdg_presentation.pixel_art`, own corner rules).
+
 Reported: 2026-11-11 (owner, not blocking):
 - Scaled CD+G (`--cdg-scale`, opt-in): smoothness 4 is a bilinear blur, so the outline and shadow follow the
   stair steps; smoothness 8 traces rounded edges and passed, but the owner is not a fan of how the traced letters

@@ -1,4 +1,5 @@
 using FatzMedia.Video.Core.Audio;
+using FatzMedia.Video.Core.Cdg;
 using FatzMedia.Video.Core.Configuration;
 using Fa = global::FatzMedia.Audio;
 
@@ -211,7 +212,7 @@ static class FatzAudioMappings
     /// <summary>An ARGB colour as FatzAudio's straight-alpha colour.</summary>
     public static Fa.CdgColor ToColor(uint argb) => new((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24));
 
-    /// <summary>Our scaled CD+G options as FatzAudio's presentation: scaled, with the zone, smoothing and edge blend.</summary>
+    /// <summary>Our scaled CD+G options as FatzAudio's presentation: scaled, with the zone and the style.</summary>
     public static Fa.CdgPresentation ToCdgPresentation(CdgScalingOptions options) => new()
     {
         Scale = true,
@@ -222,33 +223,56 @@ static class FatzAudioMappings
             CdgSafetyZone.Super => Fa.SafetyZone.Super,
             _ => Fa.SafetyZone.Show,
         },
-        Smoothness = options.Smoothness, // already 0..10 (CdgScalingOptions clamps it)
-        EdgeBlend = options.EdgeBlend,
+        // The traced levels look alike from 6 up (owner, ENG-064): 6 for straight slopes, 10 for curves; 1-4 blur.
+        Smoothness = options.Style switch
+        {
+            CdgScaleStyle.Traced => 6,
+            CdgScaleStyle.Curved => 10,
+            _ => 0,
+        },
+        EdgeBlend = options.Style == CdgScaleStyle.AntiAliased,
+        PixelArt = options.Style == CdgScaleStyle.PixelArt,
     };
 
     /// <summary>
     /// The scaled CD+G effects of <paramref name="options"/>, or null for none: a black outline, a soft black shadow down
-    /// right and a bevel lit from the top left, each off at 0.
+    /// right and a bevel lit from the top left, each off at 0. Our sizes count half CD+G pixels; FatzAudio's units are 1.5
+    /// CD+G pixels for the outline, 2 for the shadow and 1 for the bevel.
     /// </summary>
     public static Fa.SurfaceEffects? ToCdgEffects(CdgScalingOptions options) => options.HasEffects
         ? new Fa.SurfaceEffects
         {
-            Outline = options.OutlineSize > 0 ? new Fa.OutlineEffect { Size = options.OutlineSize } : null,
+            Outline = options.OutlineSize > 0 ? new Fa.OutlineEffect { Size = options.OutlineSize / 3f } : null,
             Shadow = options.ShadowSize > 0 || options.ShadowDistance > 0
-                ? new Fa.ShadowEffect { Size = options.ShadowSize, Distance = options.ShadowDistance, Fade = 0.5f }
+                ? new Fa.ShadowEffect { Size = options.ShadowSize / 4f, Distance = options.ShadowDistance / 4f, Fade = 0.5f }
                 : null,
-            Bevel = options.BevelStrength > 0 ? new Fa.BevelEffect { Strength = options.BevelStrength, Size = options.BevelSize } : null,
+            Bevel = options.BevelStrength > 0 && options.BevelSize > 0
+                ? new Fa.BevelEffect { Strength = options.BevelStrength / (float)CdgScalingOptions.MaximumEffect, Size = options.BevelSize / 2f }
+                : null,
         }
         : null;
 
+    /// <summary>The largest multiple of the CD+G screen drawn (20x, 4320 high), so an 8K screen does not draw past it.</summary>
+    public const int MaximumCdgMultiple = 20;
+
     /// <summary>
-    /// The size the scaled CD+G picture is drawn at on a <paramref name="canvasWidth"/> x <paramref name="canvasHeight"/>
-    /// canvas: the canvas, or <see cref="CdgScalingOptions.RenderHeight"/> high at the canvas's shape.
+    /// The size the scaled CD+G picture is drawn at for <paramref name="scale"/> on a screen <paramref name="displayHeight"/>
+    /// high (0 or less: 1080): a whole multiple of the 216-pixel CD+G screen, at 16:9, which FatzAudio fills exactly and
+    /// the renderers fit to the screen.
     /// </summary>
-    public static Fa.PixelSize ToCdgRenderSize(CdgScalingOptions options, int canvasWidth, int canvasHeight) =>
-        options.RenderHeight <= 0 || canvasHeight <= 0
-            ? new Fa.PixelSize(canvasWidth, canvasHeight)
-            : new Fa.PixelSize(Math.Max(1, (int)Math.Round((double)canvasWidth * options.RenderHeight / canvasHeight)), options.RenderHeight);
+    public static Fa.PixelSize ToCdgRenderSize(CdgScale scale, int displayHeight)
+    {
+        const int ScreenHeight = CdgConstants.FrameHeight;
+        var display = displayHeight > 0 ? displayHeight : 1080;
+        var multiple = scale switch
+        {
+            CdgScale.Low => 2,
+            CdgScale.Medium => Math.Max(2, display / 2 / ScreenHeight), // never below Low on a small screen
+            _ => display / ScreenHeight,
+        };
+        var height = Math.Clamp(multiple, 1, MaximumCdgMultiple) * ScreenHeight;
+        return new Fa.PixelSize((int)Math.Round(height * 16 / 9.0), height);
+    }
 
     // Codecs FatzAudio decodes itself on every platform (no system decoder needed), by FFmpeg's names.
     static readonly HashSet<string> PacketCodecs = new(StringComparer.Ordinal) { "mp3", "mp2", "aac", "ac3", "eac3", "flac", "opus", "vorbis" };
