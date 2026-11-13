@@ -4475,6 +4475,10 @@ static void test_smoothness_and_edge_blend(void)
             CHECK_EQ(a[((size_t)top * l.width + mid) * 4 + 3], 255);
             CHECK_EQ(a[((size_t)(top - 1) * l.width + mid) * 4 + 3], 0);
             CHECK(mixed > 0);
+            /* Nor is the block's square corner: only stair steps are blended, so a
+             * stroke's square end does not taper into a wedge. */
+            CHECK_EQ(a[((size_t)top * l.width + 120 * 8 + 8) * 4 + 3], 255);
+            CHECK_EQ(a[((size_t)(top + 1) * l.width + 120 * 8 + 8) * 4 + 3], 255);
         }
         prev = level >= 1 && level <= 4 ? mixed : prev;
         free(a);

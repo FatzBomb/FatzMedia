@@ -9,8 +9,10 @@
  * Edge blend is morphological anti-aliasing (after Reshetov's MLAA) on the CD+G
  * grid: an edge is where two neighbouring pixels have different colours. Each
  * straight run of one edge (the same two colours on either side) is looked at from
- * both ends: where the colour on one side steps over the edge at an end (an L, Z or
- * U shape), a line runs from half a pixel off the edge at that end back to the edge,
+ * both ends: where the colour on one side steps over the edge at an end and the edge
+ * goes on one pixel over (a stair step: Z or U shapes; the L of a square corner or of
+ * a stroke's end stays square), a line runs from half a pixel off the edge at that end
+ * back to the edge,
  * over half the run (both ends step) or all of it (one end does), at most
  * EDGE_SPAN pixels; the output pixels between that line and the edge take the other
  * colour by the area they cover. The grid is exact, so no threshold is needed and
@@ -379,6 +381,14 @@ static void edge_pass(const edge_ctx* m, int vertical, const uint8_t screen[CDG_
             d1 = t0 != END_NONE ? 0.5f * (float)len : (float)len;
             if (d0 > EDGE_SPAN) d0 = EDGE_SPAN;
             if (d1 > EDGE_SPAN) d1 = EDGE_SPAN;
+            /* An end is blended only where the edge goes on one cell over (a stair
+             * step). The end of a stroke or a square corner (an L) is left alone:
+             * blending there tapered a stroke's square end into a wedge. Its run still
+             * shares the length with the other end as before. */
+            if (t0 == END_NEAR && !(e > 0 && CELL(start - 1, -1) == a)) t0 = END_NONE;
+            if (t0 == END_FAR && !(e + 2 < across && CELL(start - 1, 2) == b)) t0 = END_NONE;
+            if (t1 == END_NEAR && !(e > 0 && CELL(end, -1) == a)) t1 = END_NONE;
+            if (t1 == END_FAR && !(e + 2 < across && CELL(end, 2) == b)) t1 = END_NONE;
             if (t0 == END_NEAR) blend_end(m, vertical, e, start, 1, d0, 0, pm[b]);
             if (t0 == END_FAR) blend_end(m, vertical, e, start, 1, d0, 1, pm[a]);
             if (t1 == END_NEAR) blend_end(m, vertical, e, end, -1, d1, 0, pm[b]);
