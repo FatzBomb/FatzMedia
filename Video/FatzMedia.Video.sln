@@ -52,6 +52,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzMedia.Video.Text", "Fat
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzMedia.Video.WebView2", "FatzMedia.Video.WebView2\FatzMedia.Video.WebView2.csproj", "{23F9FBF4-CAFF-4365-8D77-5B7D0FC46C48}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzMedia.Video.WebView2.Avalonia", "FatzMedia.Video.WebView2.Avalonia\FatzMedia.Video.WebView2.Avalonia.csproj", "{852A171B-6494-4EAD-918C-52B860B850E6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -314,6 +316,18 @@ Global
 		{23F9FBF4-CAFF-4365-8D77-5B7D0FC46C48}.Release|x64.Build.0 = Release|Any CPU
 		{23F9FBF4-CAFF-4365-8D77-5B7D0FC46C48}.Release|x86.ActiveCfg = Release|Any CPU
 		{23F9FBF4-CAFF-4365-8D77-5B7D0FC46C48}.Release|x86.Build.0 = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|x64.Build.0 = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Debug|x86.Build.0 = Debug|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|x64.ActiveCfg = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|x64.Build.0 = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|x86.ActiveCfg = Release|Any CPU
+		{852A171B-6494-4EAD-918C-52B860B850E6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -29,7 +29,10 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
 - **Slice 2 (WinForms implemented, pending manual smoke):** the WinForms `WebMediaControl` in
   `FatzMedia.Video.WebView2` (`updates/060A_2`). The Avalonia adapter waits for the owner's go-ahead on the
   package (`Avalonia.Controls.WebView`, MIT, free; see `updates/060A_2/StageUpdate.md`).
-- **Slice 3 (deferred by the owner 2026-11-13: "later, own careful slice"): `Player.Load(url)` plays web items.**
+- **Slice 3 (Avalonia implemented on Windows, pending manual smoke):** `FatzMedia.Video.WebView2.Avalonia`
+  (`AvaloniaWebMediaPlayer`, `WebMediaView`, a loopback page server) on Avalonia's `NativeWebView`
+  (`Avalonia.Controls.WebView` 12.1.2, MIT, $0, owner OK 2026-11-13). `updates/060A_3`.
+- **Slice 4 (deferred by the owner 2026-11-13: "later, own careful slice"): `Player.Load(url)` plays web items.**
   Design review (recommendation, 70% confidence, not yet read against `MediaFile` and `MediaControls`):
   a Core `WebMediaSession` owned by `PlayerCore`; a host attaches its `IWebMediaPlayer` (through `PlayerOptions` or
   `AttachWebMediaPlayer`); `MediaFile.Load/LoadAsync` close the pipeline engine and hand a `WebMedia` source to the

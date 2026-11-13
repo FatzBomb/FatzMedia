@@ -62,8 +62,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   2026-11-13). Spike passed (virtual https host, IFrame API control, Google sign-in kept across restarts;
   Premium no-ads inconclusive). Slice 1 (Core contract and address detection, `FatzMedia.Video.WebView2` with the
   WPF `WebMediaView`) implemented, pending manual smoke (`updates/060A_1`). The WinForms `WebMediaControl` is
-  implemented, pending manual smoke (`updates/060A_2`); Avalonia (after the owner's package OK) and `Player.Load`
-  wiring (own careful slice, design in the stage file) later. Design: `WEB_PLAYER_DESIGN.md`.
+  implemented, pending manual smoke (`updates/060A_2`); The Avalonia adapter
+  (`FatzMedia.Video.WebView2.Avalonia`, `Avalonia.Controls.WebView` 12.1.2) is implemented on Windows, pending manual
+  smoke (`updates/060A_3`); `Player.Load` wiring is its own careful later slice (design in the stage file). Design: `WEB_PLAYER_DESIGN.md`.
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF

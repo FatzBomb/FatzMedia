@@ -7,7 +7,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $adapters = @(
     'FatzMedia.Video.Avalonia',
     'FatzMedia.Video.WinForms',
-    'FatzMedia.Video.WebView2'
+    'FatzMedia.Video.WebView2',
+    'FatzMedia.Video.WebView2.Avalonia'
 )
 
 $forbiddenPatterns = @(

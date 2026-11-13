@@ -28,6 +28,7 @@
 		<ProjectReference Include="..\FatzMedia.Video.Wpf\FatzMedia.Video.Wpf.csproj" />
 		<ProjectReference Include="..\FatzMedia.Video.WinForms\FatzMedia.Video.WinForms.csproj" />
 		<ProjectReference Include="..\FatzMedia.Video.WebView2\FatzMedia.Video.WebView2.csproj" />
+		<ProjectReference Include="..\FatzMedia.Video.WebView2.Avalonia\FatzMedia.Video.WebView2.Avalonia.csproj" />
 	</ItemGroup>
 
 </Project>
