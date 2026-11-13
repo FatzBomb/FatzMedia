@@ -150,7 +150,7 @@ public sealed record PlayerStartupOptions
 
     /// <summary>
     /// Gets the scaled CD+G picture: <c>--cdg-scale</c> (<see cref="DefaultCdgScale"/>) or
-    /// <c>--cdg-scale=none|low|med|high</c>, <c>--cdg-style=pixel|aa|pixelart|traced|curved</c>
+    /// <c>--cdg-scale=none|low|med|high</c>, <c>--cdg-style=pixel|clean|pixelart (aa, traced and curved still work)</c>
     /// (<see cref="DefaultCdgStyle"/> without it), and <c>--cdg-effects</c> for an outline and a shadow; off (the classic
     /// picture) without <c>--cdg-scale</c>.
     /// </summary>
@@ -202,14 +202,15 @@ public sealed record PlayerStartupOptions
         "PIXELART" or "PIXEL-ART" => CdgScaleStyle.PixelArt,
         "TRACED" => CdgScaleStyle.Traced,
         "CURVED" => CdgScaleStyle.Curved,
+        "CLEAN" => CdgScaleStyle.Clean,
         _ => DefaultCdgStyle,
     };
 
     /// <summary>The scale of a bare <c>--cdg-scale</c>: the screen's own height (owner pick, ENG-064).</summary>
     public const CdgScale DefaultCdgScale = CdgScale.High;
 
-    /// <summary>The style without <c>--cdg-style=</c>: traced straight slopes with sharp corners (owner pick, ENG-064).</summary>
-    public const CdgScaleStyle DefaultCdgStyle = CdgScaleStyle.Traced;
+    /// <summary>The style without <c>--cdg-style=</c>: Clean (owner pick, 2026-11-13).</summary>
+    public const CdgScaleStyle DefaultCdgStyle = CdgScaleStyle.Clean;
 
     /// <summary>Parses <paramref name="args"/>. Unknown flags are ignored.</summary>
     public static PlayerStartupOptions Parse(IReadOnlyList<string> args)

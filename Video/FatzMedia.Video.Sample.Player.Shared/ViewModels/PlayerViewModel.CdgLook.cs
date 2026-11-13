@@ -35,10 +35,8 @@ public partial class PlayerViewModel
     public IReadOnlyList<CdgLookChoice<CdgScaleStyle>> CdgStyles { get; } =
     [
         new(CdgScaleStyle.Pixel, "Pixel"),
-        new(CdgScaleStyle.AntiAliased, "Anti-aliased"),
+        new(CdgScaleStyle.Clean, "Clean"),
         new(CdgScaleStyle.PixelArt, "Pixel art"),
-        new(CdgScaleStyle.Traced, "Traced"),
-        new(CdgScaleStyle.Curved, "Curved"),
     ];
 
     public RelayCommand ResetCdgLookCommand { get; private set; } = null!;

@@ -44,17 +44,23 @@ public enum CdgScaleStyle
     /// <summary>Sharp square pixels.</summary>
     Pixel = 0,
 
-    /// <summary>Sharp pixels with the stair steps along colour edges anti-aliased.</summary>
+    /// <summary>Sharp pixels with the stair steps along colour edges anti-aliased. Superseded by <see cref="Clean"/>; not offered in the player.</summary>
     AntiAliased,
 
     /// <summary>A pixel-art scaler: diagonal steps become clean slopes, square corners and single pixels stay.</summary>
     PixelArt,
 
-    /// <summary>Traced outlines with straight diagonals and slopes and sharp corners.</summary>
+    /// <summary>Traced outlines with straight diagonals and slopes and sharp corners. Superseded by <see cref="Clean"/>; not offered in the player.</summary>
     Traced,
 
-    /// <summary>Traced outlines fitted with curves.</summary>
+    /// <summary>Traced outlines fitted with curves. <see cref="Clean"/> draws the same; not offered in the player.</summary>
     Curved,
+
+    /// <summary>
+    /// The clean look, the player's default: crisp even strokes with square ends and smooth curves, edges about one output
+    /// pixel soft at any scale (outlines fitted with curves). One setting that follows the scale; nothing to tune.
+    /// </summary>
+    Clean,
 }
 
 /// <summary>

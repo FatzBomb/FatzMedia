@@ -226,7 +226,7 @@ static class FatzAudioMappings
         Smoothness = options.Style switch
         {
             CdgScaleStyle.Traced => 6,
-            CdgScaleStyle.Curved => 10,
+            CdgScaleStyle.Curved or CdgScaleStyle.Clean => 10,
             _ => 0,
         },
         EdgeBlend = options.Style == CdgScaleStyle.AntiAliased,
