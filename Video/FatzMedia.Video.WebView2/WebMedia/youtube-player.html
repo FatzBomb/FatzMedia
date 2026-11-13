@@ -8,7 +8,12 @@
 <div id="p"></div>
 <script>
 const q = new URLSearchParams(location.search);
-const post = o => window.chrome.webview.postMessage(o);
+// WebView2 hosts receive objects through chrome.webview; other hosts (Avalonia NativeWebView) receive a JSON string
+// through invokeCSharpAction.
+const post = o => {
+  if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(o);
+  else invokeCSharpAction(JSON.stringify(o));
+};
 let player = null, ticker = null;
 
 function startTicker() {
@@ -48,8 +53,7 @@ function reportVolume() {
   setTimeout(() => post({ type: 'volume', vol: player.getVolume(), muted: player.isMuted() }), 150);
 }
 
-window.chrome.webview.addEventListener('message', ev => {
-  const m = ev.data;
+function handleCommand(m) {
   if (!player) return;
   switch (m.cmd) {
     case 'play': player.playVideo(); break;
@@ -60,7 +64,11 @@ window.chrome.webview.addEventListener('message', ev => {
     case 'unmute': player.unMute(); reportVolume(); break;
     case 'rate': player.setPlaybackRate(m.value); break;
   }
-});
+}
+
+// Commands: WebView2 posts a message; hosts without one call fmCommand(json).
+if (window.chrome && window.chrome.webview) window.chrome.webview.addEventListener('message', ev => handleCommand(ev.data));
+window.fmCommand = json => handleCommand(JSON.parse(json));
 </script>
 </body>
 </html>

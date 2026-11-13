@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzMedia.Video.WebView2.Avalonia</PackageId>
+    <Description>Avalonia adapter for FatzMedia.Video web media (YouTube): plays an online item in Avalonia's NativeWebView through the official embedded player.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb/FatzMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+    <AssemblyName>FatzMedia.Video.WebView2.Avalonia</AssemblyName>
+    <RootNamespace>FatzMedia.Video.WebView2.Avalonia</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzMedia.Video\FatzMedia.Video.csproj" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The message parser and the player page are shared with FatzMedia.Video.WebView2 (which is Windows only). -->
+    <Compile Include="..\FatzMedia.Video.WebView2\YouTubePlayerMessage.cs" Link="YouTubePlayerMessage.cs" />
+    <EmbeddedResource Include="..\FatzMedia.Video.WebView2\WebMedia\youtube-player.html" LogicalName="youtube-player.html" Link="WebMedia\youtube-player.html" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+</Project>
