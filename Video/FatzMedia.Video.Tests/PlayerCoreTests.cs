@@ -1212,7 +1212,7 @@ public sealed class PlayerCoreTests
             throw new InvalidOperationException("analysis unavailable");
     }
 
-    sealed class TestPlatformFactory : IPlatformFactory
+    internal sealed class TestPlatformFactory : IPlatformFactory
     {
         readonly Queue<TestMediaEngine> _engines;
         int _createServiceProviderCount;

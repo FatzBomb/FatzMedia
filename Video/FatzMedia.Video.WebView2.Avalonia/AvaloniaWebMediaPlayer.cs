@@ -69,15 +69,20 @@ public sealed class AvaloniaWebMediaPlayer : IWebMediaPlayer
         if (item.ProviderId != WebMediaProviders.YouTubeId)
             throw new NotSupportedException($"{item.ProviderId} is not supported yet; only YouTube is.");
 
-        Current = item;
-        State = WebMediaState.Unstarted;
-        Position = Duration = TimeSpan.Zero;
-        _ready?.TrySetCanceled(CancellationToken.None);
-        var ready = _ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
 
-        _web.Navigate(_server.PageUri($"?v={Uri.EscapeDataString(item.ItemId)}&autoplay={(autoplay ? 1 : 0)}"));
-        await ready.Task.ConfigureAwait(true);
+        // The web view belongs to the UI thread; callers on other threads (the Core control queue) are marshalled.
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            Current = item;
+            State = WebMediaState.Unstarted;
+            Position = Duration = TimeSpan.Zero;
+            _ready?.TrySetCanceled(CancellationToken.None);
+            _ready = ready;
+            _web.Navigate(_server.PageUri($"?v={Uri.EscapeDataString(item.ItemId)}&autoplay={(autoplay ? 1 : 0)}"));
+        }).GetTask().ConfigureAwait(false);
+        await ready.Task.ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -112,25 +117,30 @@ public sealed class AvaloniaWebMediaPlayer : IWebMediaPlayer
     public Task SignInAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        Current = null;
-        State = WebMediaState.Unstarted;
-        _ready?.TrySetCanceled(CancellationToken.None);
-        _web.Navigate(new Uri("https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F"));
-        return Task.CompletedTask;
+        return Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            Current = null;
+            State = WebMediaState.Unstarted;
+            _ready?.TrySetCanceled(CancellationToken.None);
+            _web.Navigate(new Uri("https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F"));
+        }).GetTask();
     }
 
     /// <inheritdoc />
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_web.TryGetCookieManager() is not { } cookies)
-            throw new NotSupportedException("This platform's web view does not offer cookie management, so it cannot sign out.");
-
-        foreach (var cookie in await cookies.GetCookiesAsync().ConfigureAwait(true))
+        await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            cookies.DeleteCookie(cookie);
-        }
+            if (_web.TryGetCookieManager() is not { } cookies)
+                throw new NotSupportedException("This platform's web view does not offer cookie management, so it cannot sign out.");
+
+            foreach (var cookie in await cookies.GetCookiesAsync().ConfigureAwait(true))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                cookies.DeleteCookie(cookie);
+            }
+        }).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

@@ -19,6 +19,7 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
     static readonly Lazy<byte[]> PageBytes = new(LoadPage);
 
     readonly CoreWebView2 _web;
+    readonly SynchronizationContext? _context = SynchronizationContext.Current;
     TaskCompletionSource? _ready;
     double[] _rates = [];
     bool _disposed;
@@ -74,15 +75,20 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
         if (item.ProviderId != WebMediaProviders.YouTubeId)
             throw new NotSupportedException($"{item.ProviderId} is not supported yet; only YouTube is.");
 
-        Current = item;
-        State = WebMediaState.Unstarted;
-        Position = Duration = TimeSpan.Zero;
-        _ready?.TrySetCanceled(CancellationToken.None);
-        var ready = _ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
 
-        _web.Navigate($"https://{PageHost}/youtube-player.html?v={Uri.EscapeDataString(item.ItemId)}&autoplay={(autoplay ? 1 : 0)}");
-        await ready.Task.ConfigureAwait(true);
+        // The web view belongs to the UI thread; callers on other threads (the Core control queue) are marshalled.
+        await OnUiThread(() =>
+        {
+            Current = item;
+            State = WebMediaState.Unstarted;
+            Position = Duration = TimeSpan.Zero;
+            _ready?.TrySetCanceled(CancellationToken.None);
+            _ready = ready;
+            _web.Navigate($"https://{PageHost}/youtube-player.html?v={Uri.EscapeDataString(item.ItemId)}&autoplay={(autoplay ? 1 : 0)}");
+        }).ConfigureAwait(false);
+        await ready.Task.ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -117,18 +123,33 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
     public Task SignInAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        Current = null;
-        State = WebMediaState.Unstarted;
-        _ready?.TrySetCanceled(CancellationToken.None);
-        _web.Navigate("https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F");
-        return Task.CompletedTask;
+        return OnUiThread(() =>
+        {
+            Current = null;
+            State = WebMediaState.Unstarted;
+            _ready?.TrySetCanceled(CancellationToken.None);
+            _web.Navigate("https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F");
+        });
     }
 
     /// <inheritdoc />
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await _web.Profile.ClearBrowsingDataAsync().ConfigureAwait(true);
+        var clear = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await OnUiThread(async () =>
+        {
+            try
+            {
+                await _web.Profile.ClearBrowsingDataAsync().ConfigureAwait(true);
+                clear.SetResult();
+            }
+            catch (Exception ex)
+            {
+                clear.SetException(ex);
+            }
+        }).ConfigureAwait(false);
+        await clear.Task.ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -148,8 +169,35 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
     Task Send(string cmd, double? value = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _web.PostWebMessageAsJson(YouTubePlayerMessage.Command(cmd, value));
-        return Task.CompletedTask;
+        var json = YouTubePlayerMessage.Command(cmd, value);
+        return OnUiThread(() => _web.PostWebMessageAsJson(json));
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the UI thread the web view lives on, without blocking the caller.</summary>
+    Task OnUiThread(Action action)
+    {
+        if (_context is null || SynchronizationContext.Current == _context)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _context.Post(
+            _ =>
+            {
+                try
+                {
+                    action();
+                    done.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    done.SetException(ex);
+                }
+            },
+            null);
+        return done.Task;
     }
 
     void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
