@@ -86,7 +86,7 @@ public sealed class SoundFont : IDisposable
     }
 
     /// <summary>
-    /// Several soundfonts played as one (BASSMIDI's font stacks): a new soundfont made of presets of others, used like any
+    /// Several soundfonts played as one (a font stack): a new soundfont made of presets of others, used like any
     /// soundfont. When two entries give the same bank and program, the earlier entry wins. The stack shares the samples of
     /// its soundfonts and keeps them alive, so they may be disposed once the stack is made.
     /// </summary>
@@ -205,7 +205,7 @@ public sealed record SoundFontStackEntry(SoundFont Font)
     /// <summary>The program they play as; null for their own.</summary>
     public int? ToProgram { get; init; }
 
-    /// <summary>Their notes' level, 1 as is (0..16; BASSMIDI's font volume).</summary>
+    /// <summary>Their notes' level, 1 as is (0..16).</summary>
     public float Volume { get; init; } = 1f;
 }
 

@@ -1,5 +1,5 @@
 /* Callback streams (fa_stream_open_callback): the decoder asks the app's
- * fa_stream_proc for audio whenever the stream wants more, like BASS's STREAMPROC.
+ * fa_stream_proc for audio whenever the stream wants more (pull-style, not pushed by the app).
  *
  * The proc runs where any decoder runs: on a decode worker (or the thread calling
  * fa_stream_read for decode-only streams), under the stream's decode_lock, so it is

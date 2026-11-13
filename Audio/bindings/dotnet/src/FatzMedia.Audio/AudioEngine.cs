@@ -39,7 +39,7 @@ public sealed partial class AudioEngine : IDisposable
     public const int EndOfStream = -1;
 
     /// <summary>
-    /// How busy the engine is (BASS_GetCPU), for a diagnostics panel: the output callbacks' load and the decode
+    /// How busy the engine is for a diagnostics panel: the output callbacks' load and the decode
     /// workers'. Cheap enough to call from a UI timer.
     /// </summary>
     /// <returns>The current figures.</returns>
@@ -176,7 +176,7 @@ public sealed partial class AudioEngine : IDisposable
 
     /// <summary>
     /// Every format the native library can open. All formats are built in and detected from the
-    /// content, so there is nothing to load or register (unlike BASS plugins).
+    /// content, so there is nothing to load or register, as there would be for plugins.
     /// </summary>
     /// <example>
     /// <code>
@@ -534,7 +534,7 @@ public sealed partial class AudioEngine : IDisposable
         return Sound.Wrap(this, NativeMethods.fa_sound_load_memory(h, pin.Pointer, (nuint)data.Length, &o, out var s), s);
     }
 
-    /// <summary>Makes a sound from your own samples (BASS_SampleCreate + BASS_SampleSetData). They are copied.</summary>
+    /// <summary>Makes a sound from your own samples. They are copied.</summary>
     /// <param name="samples">Interleaved 32-bit float samples, a whole number of frames.</param>
     /// <param name="sampleRate">1000 to 768000 Hz.</param>
     /// <param name="channels">1 to 32.</param>
@@ -693,7 +693,7 @@ public sealed partial class AudioEngine : IDisposable
 
     /// <summary>
     /// Opens a URL (as <see cref="OpenUrl(string, StreamOptions?)"/>) on a worker thread, so the caller does not wait
-    /// for the server (BASS_StreamCreateURL on a thread, with BASS_StreamCancel). Cancelling stops the name lookup,
+    /// for the server. Cancelling stops the name lookup,
     /// connection or download in progress within about 100 ms and throws <see cref="OperationCanceledException"/>:
     /// the user picked another station before this one answered.
     /// </summary>
@@ -780,7 +780,7 @@ public sealed partial class AudioEngine : IDisposable
     }
 
     /// <summary>
-    /// Opens a stream that asks your callback for audio whenever it wants more (BASS_StreamCreate with a STREAMPROC):
+    /// Opens a stream that asks your callback for audio whenever it wants more:
     /// a synthesizer, a tone generator, audio from a library of your own. It plays, decodes, records and takes tempo,
     /// effects and meters like any other stream; it cannot seek or loop.
     /// </summary>
@@ -850,7 +850,7 @@ public sealed partial class AudioEngine : IDisposable
     }
 
     /// <summary>
-    /// Opens an input (a microphone, a line input) as an ordinary stream (BASS_RecordStart): record it to a file
+    /// Opens an input (a microphone, a line input) as an ordinary stream: record it to a file
     /// (<see cref="StreamOptions.DecodeOnly"/> and <see cref="AudioEncoder.Encode"/>), read its samples, meter
     /// it, or play it to check it. The stream begins with the audio of its first read (or of <see cref="AudioStream.PlayOn(OutputDevice)"/>), not with what came before.
     /// To sing or talk through the speakers use a mixer mic (<see cref="DjMixer.AddMic"/>), which corrects the clock

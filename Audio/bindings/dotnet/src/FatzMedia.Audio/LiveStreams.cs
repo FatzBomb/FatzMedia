@@ -44,7 +44,7 @@ public sealed class CaptureOptions
 
     /// <summary>
     /// Record what an output plays (every app's sound, the system's mix before its master volume) instead of an input
-    /// (BASS_DEVICE_LOOPBACK). Windows only: elsewhere the open throws with <see cref="ErrorCode.NotImplemented"/>.
+    /// (loopback). Windows only: elsewhere the open throws with <see cref="ErrorCode.NotImplemented"/>.
     /// Gaps where nothing plays are recorded as silence. <see cref="KeepOsProcessing"/> has no effect with it.
     /// </summary>
     public bool Loopback { get; init; }

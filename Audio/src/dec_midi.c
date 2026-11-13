@@ -13,7 +13,7 @@
  * A seek replays the events before the target into a fresh synth without
  * rendering: programs, controllers, pitch bends, the pedal and SysEx state are
  * restored, and notes held across the target (by a key or the pedal) start again
- * from their attack, as BASSMIDI does, so a held chord or pad is not silent after
+ * from their attack, so a held chord or pad is not silent after
  * a seek into it. Drum notes are not restarted (they would sound as a new hit).
  * With effects on, the replay stops FA_MIDI_PREROLL_S before the target instead
  * and the synth renders from there, unheard, so the reverb and chorus tails (and
@@ -879,7 +879,7 @@ static void reset_channels(struct fa_midi* m, int mode, fa_frames frame)
         tsf_channel_midi_control(m->synth, ch, 94, 0);   /* delay / variation send */
         /* Sound controllers (CC71-78, the part NRPNs) back to normal, portamento time 0.
          * Channel pressure adds vibrato on GM devices only: GS, XG and GM2 default to none
-         * (BASSMIDI: GS none, its own default 50 cents). */
+         * (GS: none; the synth's own default is 50 cents). */
         for (cc = 71; cc <= 78; cc++) tsf_channel_midi_control(m->synth, ch, cc, 64);
         tsf_channel_midi_control(m->synth, ch, TML_PORTAMENTO_TIME_MSB, 0);
         tsf_channel_set_pressure_vibrato(m->synth, ch, mode == MODE_GM ? 50.0f : 0.0f);

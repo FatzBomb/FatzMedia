@@ -1,5 +1,5 @@
 /* Sounds (fa_sound_*): a short sound decoded once into memory and played as many
- * overlapping voices, BASS_Sample* style.
+ * overlapping voices.
  *
  * Every voice is an ordinary stream whose decoder reads the sound's one PCM buffer
  * (reference-counted, so a voice closed late keeps it alive), which gives each copy

@@ -5,9 +5,9 @@ namespace FatzMedia.Audio;
 /// <summary>Which voice a <see cref="Sound"/> takes over when all of them are busy.</summary>
 public enum SoundSteal
 {
-    /// <summary>The voice that started longest ago restarts as the new copy (the default; BASS_SAMPLE_OVER_POS).</summary>
+    /// <summary>The voice that started longest ago restarts as the new copy (the default).</summary>
     Oldest = 0,
-    /// <summary>The voice with the lowest volume right now; the older one on a tie (BASS_SAMPLE_OVER_VOL).</summary>
+    /// <summary>The voice with the lowest volume right now; the older one on a tie.</summary>
     Quietest = 1,
     /// <summary>None: <see cref="Sound.Play(OutputDevice, float, float)"/> throws <see cref="AudioException"/>
     /// with <see cref="ErrorCode.Busy"/>.</summary>
@@ -41,7 +41,7 @@ public sealed record SoundInfo(int SampleRate, int Channels, long Frames, long M
 
 /// <summary>
 /// A short sound decoded once into memory and played as many overlapping copies (voices) as you like, each with
-/// its own volume and pan: jingles, applause, air horns, sound-effect pads (BASS_Sample*). All voices read the one
+/// its own volume and pan: jingles, applause, air horns, sound-effect pads. All voices read the one
 /// copy of the audio.
 /// </summary>
 /// <remarks>
@@ -242,10 +242,10 @@ public sealed unsafe class Sound : IDisposable
         return voice;
     }
 
-    /// <summary>Stops every copy (BASS_SampleStop).</summary>
+    /// <summary>Stops every copy.</summary>
     public void Stop() => AudioException.ThrowIfFailed(NativeMethods.fa_sound_stop(Handle));
 
-    /// <summary>The voices busy now, oldest first (BASS_SampleGetChannels).</summary>
+    /// <summary>The voices busy now, oldest first.</summary>
     /// <returns>A snapshot; voices may end at any time after.</returns>
     public IReadOnlyList<AudioStream> GetPlayingVoices()
     {
