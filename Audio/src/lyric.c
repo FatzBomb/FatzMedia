@@ -31,9 +31,17 @@
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #  include <emmintrin.h>
 #  define LY_SSE 1
+#  define LY_NEON 0
+#elif defined(__aarch64__) || defined(_M_ARM64)
+/* 64-bit ARM only: the blend divides vectors (vdivq_f32), which 32-bit NEON lacks. */
+#  include <arm_neon.h>
+#  define LY_SSE 0
+#  define LY_NEON 1
 #else
 #  define LY_SSE 0
+#  define LY_NEON 0
 #endif
+#define LY_SIMD (LY_SSE || LY_NEON)
 
 #define LY_DESIGN_W 1920u
 #define LY_DESIGN_H 1080u
@@ -1280,11 +1288,23 @@ static int ensure_cols(fa_lyric* l, size_t n)
     return ensure_scratch(&l->cols, &l->cols_cap, n, sizeof(taps));
 }
 
-#if LY_SSE
-/* One RGBA pixel to four floats and back (clamped at 255, truncated): the SSE
+#if LY_SIMD
+/* One RGBA pixel to four floats and back (clamped at 255, truncated): the SIMD
  * paths below do the scalar arithmetic in the same order, so the result is the
- * same to the bit. */
-static inline __m128 px_to_ps(const uint8_t* p)
+ * same to the bit. The ly_* operations are SSE or NEON (a compiler may fuse a multiply and add on NEON, so its result can differ by float rounding). */
+#  if LY_SSE
+typedef __m128 ly_f4;
+#    define ly_set1(x) _mm_set1_ps(x)
+#    define ly_zero() _mm_setzero_ps()
+#    define ly_add(a, b) _mm_add_ps(a, b)
+#    define ly_sub(a, b) _mm_sub_ps(a, b)
+#    define ly_mul(a, b) _mm_mul_ps(a, b)
+#    define ly_div(a, b) _mm_div_ps(a, b)
+#    define ly_loadu(f) _mm_loadu_ps(f)
+#    define ly_storeu(f, v) _mm_storeu_ps(f, v)
+#    define ly_lane3(v) _mm_shuffle_ps(v, v, 0xFF)
+#    define ly_first(v) _mm_cvtss_f32(v)
+static inline ly_f4 px_to_ps(const uint8_t* p)
 {
     uint32_t v;
     __m128i z = _mm_setzero_si128(), x;
@@ -1293,12 +1313,38 @@ static inline __m128 px_to_ps(const uint8_t* p)
     x = _mm_unpacklo_epi16(_mm_unpacklo_epi8(x, z), z);
     return _mm_cvtepi32_ps(x);
 }
-static inline void ps_to_px(uint8_t* p, __m128 m)
+static inline void ps_to_px(uint8_t* p, ly_f4 m)
 {
     __m128i x = _mm_cvttps_epi32(_mm_min_ps(m, _mm_set1_ps(255.0f)));
     uint32_t v = (uint32_t)_mm_cvtsi128_si32(_mm_packus_epi16(_mm_packs_epi32(x, x), x));
     memcpy(p, &v, 4);
 }
+#  else
+typedef float32x4_t ly_f4;
+#    define ly_set1(x) vdupq_n_f32(x)
+#    define ly_zero() vdupq_n_f32(0.0f)
+#    define ly_add(a, b) vaddq_f32(a, b)
+#    define ly_sub(a, b) vsubq_f32(a, b)
+#    define ly_mul(a, b) vmulq_f32(a, b)
+#    define ly_div(a, b) vdivq_f32(a, b)
+#    define ly_loadu(f) vld1q_f32(f)
+#    define ly_storeu(f, v) vst1q_f32(f, v)
+#    define ly_lane3(v) vdupq_laneq_f32(v, 3)
+#    define ly_first(v) vgetq_lane_f32(v, 0)
+static inline ly_f4 px_to_ps(const uint8_t* p)
+{
+    uint32_t v;
+    memcpy(&v, p, 4);
+    return vcvtq_f32_u32(vmovl_u16(vget_low_u16(vmovl_u8(vcreate_u8((uint64_t)v)))));
+}
+static inline void ps_to_px(uint8_t* p, ly_f4 m)
+{
+    uint32x4_t x = vcvtq_u32_f32(vminq_f32(m, vdupq_n_f32(255.0f)));   /* truncates; a negative becomes 0 */
+    uint16x4_t n = vmovn_u32(x);
+    uint32_t v = vget_lane_u32(vreinterpret_u32_u8(vqmovn_u16(vcombine_u16(n, n))), 0);
+    memcpy(p, &v, 4);
+}
+#  endif
 #endif
 
 /* Draws a layer's picture over the master inside [x0, x1) x [y0, y1), its point
@@ -1330,17 +1376,17 @@ static void draw_place(fa_lyric* l, const ly_layer* L, float cx, float cy, float
             if (b > x1) b = x1;
             d = l->master + ((size_t)y * (size_t)l->bw + (size_t)a) * 4;
             src = L->px + ((size_t)v * (size_t)L->w + (size_t)(a - ox)) * 4;
-#if LY_SSE
+#if LY_SIMD
             {
-                __m128 vop = _mm_set1_ps(op), v255 = _mm_set1_ps(255.0f), vh = _mm_set1_ps(0.5f), one = _mm_set1_ps(1.0f);
+                ly_f4 vop = ly_set1(op), v255 = ly_set1(255.0f), vh = ly_set1(0.5f), one = ly_set1(1.0f);
                 for (x = a; x < b; x++, d += 4, src += 4) {
-                    __m128 sp, dd, keep, m;
+                    ly_f4 sp, dd, keep, m;
                     uint32_t sv;
                     memcpy(&sv, src, 4);
                     if (!sv) continue;
                     sp = px_to_ps(src); dd = px_to_ps(d);
-                    keep = _mm_sub_ps(one, _mm_div_ps(_mm_mul_ps(_mm_shuffle_ps(sp, sp, 0xFF), vop), v255));
-                    m = _mm_add_ps(_mm_add_ps(_mm_mul_ps(sp, vop), _mm_mul_ps(dd, keep)), vh);
+                    keep = ly_sub(one, ly_div(ly_mul(ly_lane3(sp), vop), v255));
+                    m = ly_add(ly_add(ly_mul(sp, vop), ly_mul(dd, keep)), vh);
                     ps_to_px(d, m);
                 }
             }
@@ -1388,11 +1434,11 @@ static void draw_place(fa_lyric* l, const ly_layer* L, float cx, float cy, float
             if (b > sb) sb = b;
             src = L->px + ((size_t)v * (size_t)L->w + (size_t)a) * 4;
             o = l->tmp + (size_t)(a - ua) * 4;
-#if LY_SSE
+#if LY_SIMD
             {
-                __m128 vw = _mm_set1_ps(w);
+                ly_f4 vw = ly_set1(w);
                 for (i = a; i < b; i++, src += 4, o += 4)
-                    _mm_storeu_ps(o, _mm_add_ps(_mm_loadu_ps(o), _mm_mul_ps(vw, px_to_ps(src))));
+                    ly_storeu(o, ly_add(ly_loadu(o), ly_mul(vw, px_to_ps(src))));
             }
 #else
             for (i = a; i < b; i++, src += 4, o += 4) {
@@ -1406,17 +1452,17 @@ static void draw_place(fa_lyric* l, const ly_layer* L, float cx, float cy, float
         if (sa >= sb) continue;
         for (x = x0; x < x1; x++, d += 4) {
             const taps* t = &cols[x - x0];
-#if LY_SSE
-            __m128 acc = _mm_setzero_ps(), a3, kp;
+#if LY_SIMD
+            ly_f4 acc = ly_zero(), a3, kp;
             const float* s;
             if (!t->n || t->first >= sb || t->first + t->n <= sa) continue;
             s = l->tmp + (size_t)(t->first - ua) * 4;
             for (k = 0; k < t->n; k++, s += 4)
-                acc = _mm_add_ps(acc, _mm_mul_ps(_mm_set1_ps(t->w[k]), _mm_loadu_ps(s)));
-            a3 = _mm_shuffle_ps(acc, acc, 0xFF);
-            if (_mm_cvtss_f32(a3) <= 0.0f) continue;
-            kp = _mm_sub_ps(_mm_set1_ps(1.0f), _mm_div_ps(_mm_mul_ps(a3, _mm_set1_ps(op)), _mm_set1_ps(255.0f)));
-            acc = _mm_add_ps(_mm_add_ps(_mm_mul_ps(acc, _mm_set1_ps(op)), _mm_mul_ps(px_to_ps(d), kp)), _mm_set1_ps(0.5f));
+                acc = ly_add(acc, ly_mul(ly_set1(t->w[k]), ly_loadu(s)));
+            a3 = ly_lane3(acc);
+            if (ly_first(a3) <= 0.0f) continue;
+            kp = ly_sub(ly_set1(1.0f), ly_div(ly_mul(a3, ly_set1(op)), ly_set1(255.0f)));
+            acc = ly_add(ly_add(ly_mul(acc, ly_set1(op)), ly_mul(px_to_ps(d), kp)), ly_set1(0.5f));
             ps_to_px(d, acc);
         }
 #else

@@ -14,6 +14,33 @@
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #  include <emmintrin.h>
 #  define VS_SSE 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
+#  include <arm_neon.h>
+#  define VS_NEON 1
+#endif
+#if defined(VS_SSE) || defined(VS_NEON)
+#  define VS_SIMD 1
+#endif
+
+/* The few vector operations the multichannel loops use, so SSE and NEON share one body.
+ * Multiply and add are separate intrinsics, as in the scalar code; a compiler may still fuse them, so a NEON result
+ * can differ from the scalar one by float rounding. */
+#if VS_SSE
+typedef __m128 vs_f4;
+#  define vs_zero() _mm_setzero_ps()
+#  define vs_set1(x) _mm_set1_ps(x)
+#  define vs_add(a, b) _mm_add_ps(a, b)
+#  define vs_mul(a, b) _mm_mul_ps(a, b)
+#  define vs_loadu(f) _mm_loadu_ps(f)
+#  define vs_storeu(f, v) _mm_storeu_ps(f, v)
+#elif VS_NEON
+typedef float32x4_t vs_f4;
+#  define vs_zero() vdupq_n_f32(0.0f)
+#  define vs_set1(x) vdupq_n_f32(x)
+#  define vs_add(a, b) vaddq_f32(a, b)
+#  define vs_mul(a, b) vmulq_f32(a, b)
+#  define vs_loadu(f) vld1q_f32(f)
+#  define vs_storeu(f, v) vst1q_f32(f, v)
 #endif
 
 #define VS_HALF FA_VARISPEED_HALF  /* taps on each side at ratio <= 1 */
@@ -122,9 +149,10 @@ fa_result fa_varispeed_write(fa_varispeed* v, const float* in, int64_t frames)
     return FA_OK;
 }
 
-#if VS_SSE
+#if VS_SIMD
+#  if VS_SSE
 /* The first `n` (1 to 4) floats at f, the rest of the vector 0 (unaligned loads). */
-static inline __m128 load_upto4(const float* f, uint32_t n)
+static inline vs_f4 load_upto4(const float* f, uint32_t n)
 {
     if (n >= 4) return _mm_loadu_ps(f);
     if (n == 3) return _mm_movelh_ps(_mm_castsi128_ps(_mm_loadl_epi64((const __m128i*)(const void*)f)), _mm_load_ss(f + 2));
@@ -133,12 +161,30 @@ static inline __m128 load_upto4(const float* f, uint32_t n)
 }
 
 /* Stores the first `n` (0 to 4) floats of v at f. */
-static inline void store_upto4(float* f, uint32_t n, __m128 v)
+static inline void store_upto4(float* f, uint32_t n, vs_f4 v)
 {
     if (n >= 4) { _mm_storeu_ps(f, v); return; }
     if (n >= 2) { _mm_storel_epi64((__m128i*)(void*)f, _mm_castps_si128(v)); f += 2; n -= 2; v = _mm_movehl_ps(v, v); }
     if (n == 1) _mm_store_ss(f, v);
 }
+#  else
+/* The first `n` (1 to 4) floats at f, the rest of the vector 0. */
+static inline vs_f4 load_upto4(const float* f, uint32_t n)
+{
+    if (n >= 4) return vld1q_f32(f);
+    if (n == 3) return vcombine_f32(vld1_f32(f), vset_lane_f32(f[2], vdup_n_f32(0.0f), 0));
+    if (n == 2) return vcombine_f32(vld1_f32(f), vdup_n_f32(0.0f));
+    return vsetq_lane_f32(f[0], vdupq_n_f32(0.0f), 0);
+}
+
+/* Stores the first `n` (0 to 4) floats of v at f. */
+static inline void store_upto4(float* f, uint32_t n, vs_f4 v)
+{
+    if (n >= 4) { vst1q_f32(f, v); return; }
+    if (n >= 2) { vst1_f32(f, vget_low_f32(v)); f += 2; n -= 2; v = vcombine_f32(vget_high_f32(v), vget_high_f32(v)); }
+    if (n == 1) vst1q_lane_f32(f, v, 0);
+}
+#  endif
 
 /* 3 to 8 channels: acc[c] = sum of x[k * ch + c] * h[k] for k < m, the channels
  * in two vectors (0-3, 4-7). Two frames per step, so the adds overlap. With a
@@ -146,26 +192,26 @@ static inline void store_upto4(float* f, uint32_t n, __m128 v)
 static inline void dot_frames(const float* x, const float* h, int64_t m, uint32_t ch, float* acc)
 {
     const uint32_t lo = ch < 4 ? ch : 4, hi = ch - lo;
-    __m128 a0 = _mm_setzero_ps(), a1 = _mm_setzero_ps(), b0 = _mm_setzero_ps(), b1 = _mm_setzero_ps();
+    vs_f4 a0 = vs_zero(), a1 = vs_zero(), b0 = vs_zero(), b1 = vs_zero();
     int64_t k;
     for (k = 0; k + 1 < m; k += 2) {
         const float* f = x + k * ch;
-        __m128 h0 = _mm_set1_ps(h[k]), h1 = _mm_set1_ps(h[k + 1]);
-        a0 = _mm_add_ps(a0, _mm_mul_ps(load_upto4(f, lo), h0));
-        b0 = _mm_add_ps(b0, _mm_mul_ps(load_upto4(f + ch, lo), h1));
+        vs_f4 h0 = vs_set1(h[k]), h1 = vs_set1(h[k + 1]);
+        a0 = vs_add(a0, vs_mul(load_upto4(f, lo), h0));
+        b0 = vs_add(b0, vs_mul(load_upto4(f + ch, lo), h1));
         if (hi) {
-            a1 = _mm_add_ps(a1, _mm_mul_ps(load_upto4(f + 4, hi), h0));
-            b1 = _mm_add_ps(b1, _mm_mul_ps(load_upto4(f + ch + 4, hi), h1));
+            a1 = vs_add(a1, vs_mul(load_upto4(f + 4, hi), h0));
+            b1 = vs_add(b1, vs_mul(load_upto4(f + ch + 4, hi), h1));
         }
     }
     if (k < m) {
         const float* f = x + k * ch;
-        __m128 h0 = _mm_set1_ps(h[k]);
-        a0 = _mm_add_ps(a0, _mm_mul_ps(load_upto4(f, lo), h0));
-        if (hi) a1 = _mm_add_ps(a1, _mm_mul_ps(load_upto4(f + 4, hi), h0));
+        vs_f4 h0 = vs_set1(h[k]);
+        a0 = vs_add(a0, vs_mul(load_upto4(f, lo), h0));
+        if (hi) a1 = vs_add(a1, vs_mul(load_upto4(f + 4, hi), h0));
     }
-    store_upto4(acc, lo, _mm_add_ps(a0, b0));
-    store_upto4(acc + 4, hi, _mm_add_ps(a1, b1));
+    store_upto4(acc, lo, vs_add(a0, b0));
+    store_upto4(acc + 4, hi, vs_add(a1, b1));
 }
 
 /* dot_frames with `ch` a constant in each call, so each is compiled for its count. */
@@ -180,7 +226,7 @@ static void dot_frames_ch(const float* x, const float* h, int64_t m, uint32_t ch
     default: dot_frames(x, h, m, 8, acc); break;
     }
 }
-#endif
+#endif /* VS_SIMD */
 
 /* Adds the taps on one side of the output time: input frames x, x - step, ...
  * (step -1 or +1 frame) at kernel positions t, t + dt, ... until the kernel ends. */
@@ -190,20 +236,20 @@ static void taps(const fa_varispeed* v, const float* x, int64_t avail, int dir, 
     uint32_t ch = v->channels, c;
     const float end = (float)(VS_HALF * VS_PHASES);
     int64_t m;
-#if VS_SSE
+#if VS_SIMD
     if (ch >= 3 && ch <= 8) {
         /* The channels in two vectors (as dot_frames), added to acc at the end. */
         const uint32_t lo = ch < 4 ? ch : 4, hi = ch - lo;
-        __m128 a0 = _mm_setzero_ps(), a1 = _mm_setzero_ps();
+        vs_f4 a0 = vs_zero(), a1 = vs_zero();
         for (m = 0; m < avail && t < end; m++, t += dt) {
             int32_t ti = (int32_t)t;
-            __m128 h = _mm_set1_ps((table[ti] + (table[ti + 1] - table[ti]) * (t - (float)ti)) * scale);
+            vs_f4 h = vs_set1((table[ti] + (table[ti + 1] - table[ti]) * (t - (float)ti)) * scale);
             const float* f = x + (ptrdiff_t)dir * m * (ptrdiff_t)ch;
-            a0 = _mm_add_ps(a0, _mm_mul_ps(load_upto4(f, lo), h));
-            if (hi) a1 = _mm_add_ps(a1, _mm_mul_ps(load_upto4(f + 4, hi), h));
+            a0 = vs_add(a0, vs_mul(load_upto4(f, lo), h));
+            if (hi) a1 = vs_add(a1, vs_mul(load_upto4(f + 4, hi), h));
         }
-        store_upto4(acc, lo, _mm_add_ps(a0, load_upto4(acc, lo)));
-        if (hi) store_upto4(acc + 4, hi, _mm_add_ps(a1, load_upto4(acc + 4, hi)));
+        store_upto4(acc, lo, vs_add(a0, load_upto4(acc, lo)));
+        if (hi) store_upto4(acc + 4, hi, vs_add(a1, load_upto4(acc + 4, hi)));
         return;
     }
 #endif
@@ -324,16 +370,22 @@ static void phased_frame(const fa_varispeed* v, const fa_vs_phases* p, uint32_t 
     uint32_t c;
     row += from;
     if (ch == 2) {
-#if VS_SSE
+#if VS_SIMD
         /* The scalar loop below, its four sums as the lanes l0 r0 l1 r1 of one
          * register: the same products added in the same order. */
-        __m128 a = _mm_setzero_ps();
+        vs_f4 a = vs_zero();
         float t[4];
         for (k = 0; k + 1 < m; k += 2) {
-            __m128 h = load_upto4(row + k, 2);
-            a = _mm_add_ps(a, _mm_mul_ps(_mm_loadu_ps(x + k * 2), _mm_unpacklo_ps(h, h)));
+#  if VS_SSE
+            vs_f4 h = load_upto4(row + k, 2);
+            h = _mm_unpacklo_ps(h, h);
+#  else
+            float32x2_t pair = vld1_f32(row + k);
+            vs_f4 h = vcombine_f32(vdup_lane_f32(pair, 0), vdup_lane_f32(pair, 1));
+#  endif
+            a = vs_add(a, vs_mul(vs_loadu(x + k * 2), h));
         }
-        _mm_storeu_ps(t, a);
+        vs_storeu(t, a);
         if (k < m) { t[0] += x[k * 2] * row[k]; t[1] += x[k * 2 + 1] * row[k]; }
         o[0] = t[0] + t[2];
         o[1] = t[1] + t[3];
@@ -360,7 +412,7 @@ static void phased_frame(const fa_varispeed* v, const fa_vs_phases* p, uint32_t 
         }
         for (; k < m; k++) a0 += x[k] * row[k];
         o[0] = (a0 + a1) + (a2 + a3);
-#if VS_SSE
+#if VS_SIMD
     } else if (ch <= 8) {
         dot_frames_ch(x, row, m, ch, o);
 #endif
