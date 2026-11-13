@@ -86,8 +86,6 @@ typedef struct fa_cdg_data {
 fa_result fa_cdg_data_adopt(uint8_t* bytes, size_t size, fa_cdg_data** out);
 fa_result fa_cdg_data_from_path(const char* path, fa_cdg_data** out);
 void fa_cdg_data_free(fa_cdg_data* data);
-/* 1 when the file name ends in ".cdg" (any case). */
-int fa_cdg_is_cdg_name(const char* name);
 
 /* Stream glue. fa_stream_cdg_attach hands `data` to the stream (replacing what it
  * had; NULL removes the graphics). fa_stream_cdg_close, at fa_stream_close, frees

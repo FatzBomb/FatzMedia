@@ -83,6 +83,8 @@ void fa_source_drop_prefix(fa_source* src);
 size_t fa_source_peek_held(const fa_source* src, const uint8_t** out_data);
 int64_t fa_source_read(fa_source* src, void* buf, size_t n); /* bytes read, 0 at end, <0 fa_result */
 fa_result fa_source_seek(fa_source* src, int64_t offset);
+/* Seeks a FILE to a 64-bit offset (origin as fseek): whatever the platform calls it. */
+int fa_fseek64(FILE* f, int64_t offset, int origin);
 int64_t fa_source_tell(const fa_source* src);
 /* The whole source in one malloc'ed block (archives, .cdg files); needs a known
  * length of at most `max_size`, else FA_ERROR_UNSUPPORTED_FORMAT. */
@@ -415,7 +417,6 @@ void fa_midi_var_control(fa_midi_var* v, int which, float amount);
  * becomes the EFX (Thru first). Returns whether its type is one we play. gs_efx_get
  * reads one back. */
 int fa_midi_var_gs_efx(fa_midi_var* v, int addr, int value);
-int fa_midi_var_gs_efx_get(const fa_midi_var* v, int addr);
 /* The insertion effect types midi_var.c's families don't cover (src/midi_efx.c,
  * src/midi_efx_types.c): the SC-88 Pro EFX (gs = 1) and the MU100's XG additions.
  * known: whether (msb, lsb) is a type (exact: that LSB, else any LSB of the MSB).
@@ -432,6 +433,15 @@ int fa_midi_efx_known(int gs, int msb, int lsb, int exact);
 int fa_midi_efx_set_type(fa_midi_efx* e, int gs, int msb, int lsb);
 void fa_midi_efx_set_param(fa_midi_efx* e, int index, int value);
 int fa_midi_efx_param(const fa_midi_efx* e, int index);
+/* A one-pole low-pass (state *z; a = 0 passes x through) and the peak of n samples, for the MIDI effect code. */
+static inline float fa_lowpass1(float x, float a, float* z) { return a > 0.0f ? (*z = x * (1.0f - a) + *z * a) : x; }
+static inline float fa_peak_of(const float* x, int n)
+{
+    float p = 0.0f;
+    int i;
+    for (i = 0; i < n; i++) if (fabsf(x[i]) > p) p = fabsf(x[i]);
+    return p;
+}
 int fa_midi_efx_dry_wet(const fa_midi_efx* e);
 void fa_midi_efx_control(fa_midi_efx* e, int which, float amount);
 int fa_midi_efx_process(fa_midi_efx* e, const float* in, float* out, int frames, fa_frames song_frame);
@@ -1070,7 +1080,6 @@ void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, cons
 void fa_lcache_set_limit(fa_lcache* c, uint64_t bytes);   /* 0 = default */
 void fa_lcache_clear(fa_lcache* c);
 int fa_lcache_write_failed(fa_lcache* c);       /* 1 when the last write of the file failed */
-double fa_lcache_load_ms(fa_lcache* c);         /* how long reading the file took; -1 before */
 /* Gain normalization gives a stream of loudness `lufs` with the engine's current settings. */
 float fa_engine_norm_gain_db(fa_engine* engine, double lufs);
 

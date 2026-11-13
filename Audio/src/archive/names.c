@@ -1,6 +1,7 @@
 /* Names inside archives: UTF-8 checks, the DOS code page 437 old ZIP tools write,
  * simple Unicode case folding, and the stem/kind rules of the pairing (archive.h). */
 #include "archive/archive.h"
+#include "fa_util.h"
 #include <string.h>
 
 /* ---- UTF-8 ------------------------------------------------------------------ */
@@ -33,17 +34,10 @@ int fa_name_is_utf8(const char* s)
 
 static size_t put_utf8(char* out, size_t cap, size_t at, uint32_t cp)
 {
-    if (cp < 0x80) { if (at + 1 < cap) out[at] = (char)cp; return 1; }
-    if (cp < 0x800) {
-        if (at + 2 < cap) { out[at] = (char)(0xC0 | (cp >> 6)); out[at + 1] = (char)(0x80 | (cp & 0x3F)); }
-        return 2;
-    }
-    if (at + 3 < cap) {
-        out[at] = (char)(0xE0 | (cp >> 12));
-        out[at + 1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out[at + 2] = (char)(0x80 | (cp & 0x3F));
-    }
-    return 3;
+    char b[4];
+    size_t n = fa_put_utf8(b, cp);
+    if (at + n < cap) memcpy(out + at, b, n);
+    return n;
 }
 
 /* Code page 437 for the bytes 0x80..0xFF. */

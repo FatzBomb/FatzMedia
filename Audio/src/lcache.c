@@ -66,7 +66,6 @@ struct fa_lcache {
     uint32_t nslots;
     int64_t file_bytes;   /* the file's size as far as we know */
     int64_t stale_bytes;  /* records in it that a newer one replaced, or garbage */
-    double load_ms;
     uint64_t seq;         /* the last lc_entry.seq handed out */
     int write_failed;     /* the last write of the file failed (folder or file not writable) */
 };
@@ -317,12 +316,9 @@ static void* file_lock(fa_lcache* c)
 
 static void ensure_loaded(fa_lcache* c)
 {
-    int64_t t0;
     if (c->loaded) return;
     c->loaded = 1;
-    t0 = fa_monotonic_ns();
     if (read_file(c, 0) || c->file_bytes > (int64_t)c->limit) rewrite_from(c, 0);   /* just read */
-    c->load_ms = (double)(fa_monotonic_ns() - t0) / 1e6;
 }
 
 /* ---- Internal API ----------------------------------------------------------------- */
@@ -511,16 +507,6 @@ int fa_lcache_write_failed(fa_lcache* c)
     failed = c->write_failed;
     fa_mutex_unlock(&c->lock);
     return failed;
-}
-
-double fa_lcache_load_ms(fa_lcache* c)
-{
-    double ms;
-    if (!c) return -1.0;
-    fa_mutex_lock(&c->lock);
-    ms = c->loaded ? c->load_ms : -1.0;
-    fa_mutex_unlock(&c->lock);
-    return ms;
 }
 
 /* ---- Public API ------------------------------------------------------------------- */

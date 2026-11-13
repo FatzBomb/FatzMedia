@@ -11,11 +11,6 @@
 #define FLAC_MAX_BLOCKS 4096
 #define APE_MAX_TAG (16u << 20)
 
-static uint32_t synchsafe(const uint8_t* p)
-{
-    return ((uint32_t)(p[0] & 0x7f) << 21) | ((uint32_t)(p[1] & 0x7f) << 14) | ((uint32_t)(p[2] & 0x7f) << 7) | (p[3] & 0x7f);
-}
-
 static void put_synchsafe(fa_tw_buf* b, uint32_t v)
 {
     uint8_t q[4] = { (uint8_t)((v >> 21) & 0x7f), (uint8_t)((v >> 14) & 0x7f), (uint8_t)((v >> 7) & 0x7f), (uint8_t)(v & 0x7f) };
@@ -49,7 +44,7 @@ static int64_t frame_size(const uint8_t* b, size_t pos, size_t n, int ver)
     int64_t fsize, plain;
     if (ver == 3) return fa_be32(fh + 4);
     plain = fa_be32(fh + 4);
-    fsize = !((fh[4] | fh[5] | fh[6] | fh[7]) & 0x80) ? synchsafe(fh + 4) : plain;
+    fsize = !((fh[4] | fh[5] | fh[6] | fh[7]) & 0x80) ? fa_synchsafe(fh + 4) : plain;
     if (fsize >= 0x80 && pos + 10 + (size_t)fsize + 10 <= n) {
         const uint8_t* nx = b + pos + 10 + fsize;
         int synch_ok = (nx[0] >= 'A' && nx[0] <= 'Z') || (nx[0] >= '0' && nx[0] <= '9') || nx[0] == 0;
@@ -140,7 +135,7 @@ fa_result fa_tw_plan_id3v2(fa_source* src, const fa_tw_set* set, fa_tw_plan* pla
         ver = h[3];
         flags = h[5];
         if (ver < 3 || ver > 4) return FA_ERROR_UNSUPPORTED_FORMAT;   /* ID3v2.2: too old to rewrite */
-        old_size = synchsafe(h + 6);
+        old_size = fa_synchsafe(h + 6);
         old_total = 10 + (int64_t)old_size + ((flags & 0x10) ? 10 : 0);
         body = fa_tw_read(src, 10, old_size);
         if (!body) return FA_ERROR_UNSUPPORTED_FORMAT;
@@ -150,7 +145,7 @@ fa_result fa_tw_plan_id3v2(fa_source* src, const fa_tw_set* set, fa_tw_plan* pla
             flags &= ~0x80;
         }
         if (flags & 0x40) {                              /* the extended header (its CRC would be stale): dropped */
-            int64_t ext = n >= 4 ? (ver == 4 ? (int64_t)synchsafe(body) : (int64_t)fa_be32(body) + 4) : -1;
+            int64_t ext = n >= 4 ? (ver == 4 ? (int64_t)fa_synchsafe(body) : (int64_t)fa_be32(body) + 4) : -1;
             if (ext < 4 || ext > (int64_t)n) r = FA_ERROR_UNSUPPORTED_FORMAT;
             else pos = (size_t)ext;
             flags &= ~0x40;
@@ -299,7 +294,7 @@ fa_result fa_tw_plan_flac(fa_source* src, const fa_tw_set* set, fa_tw_plan* plan
     int64_t new_total = 0, pad_len;
 
     if (fa_source_seek(src, 0) != FA_OK || fa_source_read(src, h, 10) != 10) return FA_ERROR_IO;
-    if (memcmp(h, "ID3", 3) == 0) start = 10 + (int64_t)synchsafe(h + 6) + ((h[5] & 0x10) ? 10 : 0);
+    if (memcmp(h, "ID3", 3) == 0) start = 10 + (int64_t)fa_synchsafe(h + 6) + ((h[5] & 0x10) ? 10 : 0);
     if (fa_source_seek(src, start) != FA_OK || fa_source_read(src, h, 4) != 4 || memcmp(h, "fLaC", 4) != 0)
         return FA_ERROR_UNSUPPORTED_FORMAT;
     blocks = (flac_block*)malloc(FLAC_MAX_BLOCKS * sizeof(*blocks));

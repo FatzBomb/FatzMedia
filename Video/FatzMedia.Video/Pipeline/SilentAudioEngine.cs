@@ -30,7 +30,7 @@ sealed class SilentAudioEngine : IAudioEngine
     public event EventHandler? PlaybackEnded { add { } remove { } }
 
     /// <summary>Does nothing and reports no output: the player has no audio device.</summary>
-    public bool Init(int device = -1, int sampleRate = 44100) => false;
+    public bool Init(int sampleRate = 44100) => false;
 
     public bool Open(string filePath) => false;
 

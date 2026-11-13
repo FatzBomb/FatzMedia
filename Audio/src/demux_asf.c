@@ -86,7 +86,7 @@ static void utf16_to_utf8(const uint8_t* p, size_t n, char* out, size_t cap)
     if (cap == 0) return;
     while (i + 1 < n) {
         uint32_t u = fa_le16(p + i);
-        uint8_t b[4];
+        char b[4];
         size_t m;
         i += 2;
         if (u == 0) break;
@@ -96,14 +96,7 @@ static void utf16_to_utf8(const uint8_t* p, size_t n, char* out, size_t cap)
         } else if (u >= 0xD800 && u < 0xE000) {
             u = 0xFFFD;
         }
-        if (u < 0x80) { b[0] = (uint8_t)u; m = 1; }
-        else if (u < 0x800) { b[0] = (uint8_t)(0xC0 | (u >> 6)); b[1] = (uint8_t)(0x80 | (u & 63)); m = 2; }
-        else if (u < 0x10000) {
-            b[0] = (uint8_t)(0xE0 | (u >> 12)); b[1] = (uint8_t)(0x80 | ((u >> 6) & 63)); b[2] = (uint8_t)(0x80 | (u & 63)); m = 3;
-        } else {
-            b[0] = (uint8_t)(0xF0 | (u >> 18)); b[1] = (uint8_t)(0x80 | ((u >> 12) & 63));
-            b[2] = (uint8_t)(0x80 | ((u >> 6) & 63)); b[3] = (uint8_t)(0x80 | (u & 63)); m = 4;
-        }
+        m = fa_put_utf8(b, u);
         if (k + m + 1 > cap) break;
         memcpy(out + k, b, m);
         k += m;

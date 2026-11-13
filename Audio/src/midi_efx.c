@@ -37,8 +37,6 @@ float efx_pole(uint32_t rate, double hz)
     return hz <= 0.0 || hz >= 0.45 * rate ? 0.0f : (float)exp(-2.0 * FA_PI * hz / rate);
 }
 
-static float lowpass1(float x, float a, float* z) { return a > 0.0f ? (*z = x * (1.0f - a) + *z * a) : x; }
-
 /* RBJ cookbook sections with any Q (fa_mixer_design is fixed at 1/sqrt(2), fa_eq_design
  * has no low-pass or band-pass). */
 biquad efx_biquad(int type, double hz, double q, double db, uint32_t rate)
@@ -198,7 +196,7 @@ static void run_enhance(efx_stage* s, const float* in, float* w, int n)
 {
     int i;
     for (i = 0; i < n * 2; i++) {
-        float h = in[i] - lowpass1(in[i], s->pre_a, &s->pre_z[i & 1]);
+        float h = in[i] - fa_lowpass1(in[i], s->pre_a, &s->pre_z[i & 1]);
         w[i] = in[i] + tanhf(h * s->drive) * s->level;
     }
 }
@@ -289,7 +287,7 @@ static void run_rotary(fa_midi_efx* e, efx_stage* s, const float* in, float* w, 
     double base = 1.2 * e->rate / 1000.0, swing = 0.6 * e->rate / 1000.0;
     int i, k;
     for (i = 0; i < n; i++) {
-        float m = (in[i * 2] + in[i * 2 + 1]) * 0.5f, lo = lowpass1(m, s->xover_a, &s->xz[0]), hi = m - lo;
+        float m = (in[i * 2] + in[i * 2 + 1]) * 0.5f, lo = fa_lowpass1(m, s->xover_a, &s->xz[0]), hi = m - lo;
         float sl, sh;
         for (k = 0; k < 2; k++) {
             float to = (float)(s->fast_on ? s->fast[k] : s->slow[k]);
@@ -323,7 +321,7 @@ static void run_mod(fa_midi_efx* e, efx_stage* s, const float* in, float* w, int
         float l = in[i * 2], r = in[i * 2 + 1], ol = 0.0f, orr = 0.0f, first[2] = { 0.0f, 0.0f };
         int got[2] = { 0, 0 };
         if (s->pre_a > 0.0f) {
-            float fl = lowpass1(l, s->pre_a, &s->pre_z[0]), fr = lowpass1(r, s->pre_a, &s->pre_z[1]);
+            float fl = fa_lowpass1(l, s->pre_a, &s->pre_z[0]), fr = fa_lowpass1(r, s->pre_a, &s->pre_z[1]);
             l = s->pre_hp ? l - fl : fl;
             r = s->pre_hp ? r - fr : fr;
         }
@@ -415,9 +413,9 @@ static void run_delay(fa_midi_efx* e, efx_stage* s, const float* in, float* w, i
             int from = s->fb_cross ? 1 - c : c;
             float t = s->fb_t[from];
             if (s->glide > 0.0f && t > 0.0f) t = s->tap_now;
-            fbv[c] = t > 0.0f && s->fb_gain != 0.0f ? lowpass1(rd(&s->line, from, t + mod[from]), s->damp_a, &s->damp_z[c]) * s->fb_gain : 0.0f;
+            fbv[c] = t > 0.0f && s->fb_gain != 0.0f ? fa_lowpass1(rd(&s->line, from, t + mod[from]), s->damp_a, &s->damp_z[c]) * s->fb_gain : 0.0f;
             if (s->pre_a > 0.0f) {
-                float f = lowpass1(x[c], s->pre_a, &s->pre_z[c]);
+                float f = fa_lowpass1(x[c], s->pre_a, &s->pre_z[c]);
                 x[c] = s->pre_hp ? x[c] - f : f;
             }
         }
@@ -481,7 +479,7 @@ static void run_lofi(fa_midi_efx* e, efx_stage* s, const float* in, float* w, in
         float lvl = fabsf(in[i * 2]) + fabsf(in[i * 2 + 1]), nz[2] = { 0.0f, 0.0f };
         s->env += (lvl - s->env) * (lvl > s->env ? 0.01f : 0.0002f);
         if (s->hold_i == 0)
-            for (c = 0; c < 2; c++) s->hold[c] = lowpass1(in[i * 2 + c], s->pre_a, &s->pre_z[c]);
+            for (c = 0; c < 2; c++) s->hold[c] = fa_lowpass1(in[i * 2 + c], s->pre_a, &s->pre_z[c]);
         if (++s->hold_i >= s->hold_n) s->hold_i = 0;
         /* Noises ride on the sound (they follow the input's level, so silence stays silent). */
         for (k = 0; k < 4; k++) {
@@ -497,7 +495,7 @@ static void run_lofi(fa_midi_efx* e, efx_stage* s, const float* in, float* w, in
                 v = noise_at(frame + i, (uint32_t)k + 1u);
             }
             for (c = 0; c < 2; c++) {
-                float x = lowpass1(c ? noise_at(frame + i, (uint32_t)k + 5u) * (k < 2) + v * (k >= 2) : v, s->noise_lp[k], &s->noise_z[k][c]);
+                float x = fa_lowpass1(c ? noise_at(frame + i, (uint32_t)k + 5u) * (k < 2) + v * (k >= 2) : v, s->noise_lp[k], &s->noise_z[k][c]);
                 nz[c] += x * s->noise[k];
             }
         }
@@ -528,8 +526,8 @@ static void run_cancel(efx_stage* s, const float* in, float* w, int n)
         float lo[2], hi[2], mid[2];
         for (c = 0; c < 2; c++) {
             float x = in[i * 2 + c];
-            lo[c] = lowpass1(x, s->pre_a, &s->pre_z[c]);
-            hi[c] = x - lowpass1(x, s->damp_a, &s->damp_z[c]);
+            lo[c] = fa_lowpass1(x, s->pre_a, &s->pre_z[c]);
+            hi[c] = x - fa_lowpass1(x, s->damp_a, &s->damp_z[c]);
             mid[c] = x - lo[c] - hi[c];
         }
         w[i * 2] = lo[0] + hi[0] + (mid[0] - mid[1]);
@@ -685,14 +683,6 @@ void fa_midi_efx_control(fa_midi_efx* e, int which, float amount)
     rebuild(e);
 }
 
-static float peak_of(const float* x, int n)
-{
-    float p = 0.0f;
-    int i;
-    for (i = 0; i < n; i++) if (fabsf(x[i]) > p) p = fabsf(x[i]);
-    return p;
-}
-
 int fa_midi_efx_process(fa_midi_efx* e, const float* in, float* out, int frames, fa_frames song_frame)
 {
     float loud;
@@ -701,7 +691,7 @@ int fa_midi_efx_process(fa_midi_efx* e, const float* in, float* out, int frames,
     if (fa_all_zero(in, (uint32_t)frames * 2) && e->idle) return 0;
     for (k = 0; k < e->nst; k++) if (!efx_stage_ready(e, &e->st[k])) return 0;   /* no memory: silent */
     e->idle = 0;
-    loud = peak_of(in, frames * 2);
+    loud = fa_peak_of(in, frames * 2);
     for (off = 0; off < frames; off += n) {
         float* a = out + off * 2;
         fa_frames f = song_frame + off;
@@ -731,7 +721,7 @@ int fa_midi_efx_process(fa_midi_efx* e, const float* in, float* out, int frames,
         }
     }
     {
-        float o = peak_of(out, frames * 2);
+        float o = fa_peak_of(out, frames * 2);
         if (o > loud) loud = o;
     }
     e->soft = loud >= EFX_QUIET ? 0 : e->soft + frames;

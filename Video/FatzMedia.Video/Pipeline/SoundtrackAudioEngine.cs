@@ -116,7 +116,7 @@ sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilt
     public event EventHandler? PlaybackEnded;
 
     /// <summary>Audio output is initialized by the player's audio engine; nothing to do here.</summary>
-    public bool Init(int device = -1, int sampleRate = 44100) => true;
+    public bool Init(int sampleRate = 44100) => true;
 
     public bool Open(string filePath) => OpenCore(() => _audio.Open(filePath));
 

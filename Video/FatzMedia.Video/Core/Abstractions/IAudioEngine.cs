@@ -45,10 +45,9 @@ public interface IAudioEngine : IDisposable
     /// <summary>
     /// Initializes the audio engine/device.
     /// </summary>
-    /// <param name="device">Unused (the device is chosen when the engine is created); kept for hosts.</param>
     /// <param name="sampleRate">Device sample rate (e.g., 44100).</param>
     /// <returns>True if initialized.</returns>
-    bool Init(int device = -1, int sampleRate = 44100);
+    bool Init(int sampleRate = 44100);
 
     /// <summary>
     /// Opens a media file for playback.

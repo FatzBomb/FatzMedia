@@ -345,7 +345,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
         new FatzAudioPushAudioOutput(this, _engine, OutputDevice, _normalization, _decodesSoundtracks);
 
     /// <summary>The engine is ready from construction (the factory opens the device).</summary>
-    public bool Init(int device = -1, int sampleRate = 44100) => !_disposed;
+    public bool Init(int sampleRate = 44100) => !_disposed;
 
     public bool Open(string filePath) => Open(filePath, analyzeSilence: true);
 

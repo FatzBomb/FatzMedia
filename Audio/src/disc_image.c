@@ -59,15 +59,6 @@ typedef struct image {
     uint32_t cdtext_len;
 } image;
 
-static int file_seek(FILE* f, int64_t off)
-{
-#ifdef _WIN32
-    return _fseeki64(f, off, SEEK_SET);
-#else
-    return fseeko(f, (off_t)off, SEEK_SET);
-#endif
-}
-
 static int64_t file_size(FILE* f)
 {
 #ifdef _WIN32
@@ -135,7 +126,7 @@ static fa_result open_wave(img_file* f)
         return FA_ERROR_UNSUPPORTED_FORMAT;
     for (;;) {
         uint32_t len;
-        if (file_seek(f->f, pos) != 0 || fread(ck, 1, 8, f->f) != 8) return FA_ERROR_UNSUPPORTED_FORMAT;
+        if (fa_fseek64(f->f, pos, SEEK_SET) != 0 || fread(ck, 1, 8, f->f) != 8) return FA_ERROR_UNSUPPORTED_FORMAT;
         len = fa_le32(ck + 4);
         if (memcmp(ck, "fmt ", 4) == 0 && len >= 16) {
             if (fread(fmt, 1, 16, f->f) != 16) return FA_ERROR_UNSUPPORTED_FORMAT;
@@ -600,7 +591,7 @@ static fa_result img_read_cd(void* h, int64_t lba, uint32_t count, uint32_t area
             if (!g->audio) return FA_ERROR_IO;      /* a data sector read as CD-DA */
             if (g->file < 0) break;                 /* pregap silence */
             f = &m->files[g->file];
-            if (file_seek(f->f, f->data_offset + (g->file_sector + (at - g->lba)) * (int64_t)f->sector_bytes) != 0 ||
+            if (fa_fseek64(f->f, f->data_offset + (g->file_sector + (at - g->lba)) * (int64_t)f->sector_bytes, SEEK_SET) != 0 ||
                 fread(out, 1, FA_CD_SECTOR_BYTES, f->f) != FA_CD_SECTOR_BYTES)
                 return FA_ERROR_IO;
             if (f->swap) {
@@ -609,7 +600,7 @@ static fa_result img_read_cd(void* h, int64_t lba, uint32_t count, uint32_t area
             }
             /* A short or missing .sub leaves zeros: no graphics there. */
             if ((areas & FA_CD_AREA_SUB) && f->sub &&
-                file_seek(f->sub, (g->file_sector + (at - g->lba)) * (int64_t)FA_CD_SUB_BYTES) == 0 &&
+                fa_fseek64(f->sub, (g->file_sector + (at - g->lba)) * (int64_t)FA_CD_SUB_BYTES, SEEK_SET) == 0 &&
                 fread(out + sub_at, 1, FA_CD_SUB_BYTES, f->sub) != FA_CD_SUB_BYTES)
                 memset(out + sub_at, 0, FA_CD_SUB_BYTES);
             break;
@@ -653,7 +644,7 @@ fa_result fa_disc_image_open(const char* cue_path, const fa_disc_ops** out_ops, 
     fa_result r;
     if (!f) return FA_ERROR_NOT_FOUND;
     size = file_size(f);
-    if (size <= 0 || size > (1 << 20) || file_seek(f, 0) != 0) { fclose(f); return FA_ERROR_UNSUPPORTED_FORMAT; }
+    if (size <= 0 || size > (1 << 20) || fa_fseek64(f, 0, SEEK_SET) != 0) { fclose(f); return FA_ERROR_UNSUPPORTED_FORMAT; }
     text = (char*)malloc((size_t)size + 1);
     m = (image*)calloc(1, sizeof(*m));
     if (!text || !m) { free(text); free(m); fclose(f); return FA_ERROR_OUT_OF_MEMORY; }

@@ -38,7 +38,7 @@ sealed class ClockAudioEngine(IClockSource clock) : IAudioEngine, IAudioLoopCont
     public event EventHandler? PlaybackEnded;
 #pragma warning restore CS0067
 
-    public bool Init(int device = -1, int sampleRate = 44100) =>
+    public bool Init(int sampleRate = 44100) =>
         throw new NotSupportedException("ClockAudioEngine does not support device initialization.");
     public bool Open(string filePath) =>
         throw new NotSupportedException("ClockAudioEngine does not support opening audio files.");

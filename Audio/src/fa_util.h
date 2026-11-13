@@ -32,7 +32,6 @@ static inline void fa_put_le64(uint8_t* p, uint64_t v)
     fa_put_le32(p, (uint32_t)v);
     fa_put_le32(p + 4, (uint32_t)(v >> 32));
 }
-static inline void fa_put_be16(uint8_t* p, uint32_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 static inline void fa_put_be32(uint8_t* p, uint32_t v)
 {
     p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
@@ -98,6 +97,33 @@ static inline int fa_utf8_valid(const void* s, size_t n)
             (c == 0xF0 && p[i + 1] < 0x90) || (c == 0xF4 && p[i + 1] > 0x8F)) return 0;
         i += len;
     }
+    return 1;
+}
+
+/* An ID3v2 synchsafe integer: 4 bytes of 7 bits each (sizes in tag headers and ID3v2.4 frames). */
+static inline uint32_t fa_synchsafe(const uint8_t* p)
+{
+    return ((uint32_t)(p[0] & 0x7f) << 21) | ((uint32_t)(p[1] & 0x7f) << 14) | ((uint32_t)(p[2] & 0x7f) << 7) | (p[3] & 0x7f);
+}
+
+/* Grows the array *p (elements of `elem` bytes, *cap of them allocated) to hold at least `need`:
+ * the capacity doubles from `first` (the first allocation's size), with the overflow checked.
+ * 1 on success; 0 when memory is short or the size does not fit, with *p and *cap unchanged. */
+static inline int fa_grow(void** p, size_t* cap, size_t need, size_t elem, size_t first)
+{
+    size_t c = *cap ? *cap : first;
+    void* q;
+    if (need <= *cap) return 1;
+    if (elem == 0) return 0;
+    while (c < need) {
+        if (c > SIZE_MAX / 2) return 0;
+        c *= 2;
+    }
+    if (c > SIZE_MAX / elem) return 0;
+    q = realloc(*p, c * elem);
+    if (!q) return 0;
+    *p = q;
+    *cap = c;
     return 1;
 }
 

@@ -630,14 +630,10 @@ typedef struct conv {
 
 static void* grow(void* p, uint32_t* cap, uint32_t need, size_t elem, int* oom)
 {
-    uint32_t c = *cap ? *cap : 64;
-    void* q;
-    if (need <= *cap) return p;
-    while (c < need) c *= 2;
-    q = realloc(p, (size_t)c * elem);
-    if (!q) { *oom = 1; return p; }
-    *cap = c;
-    return q;
+    size_t c = *cap;
+    if (!fa_grow(&p, &c, need, elem, 64) || c > UINT32_MAX) { *oom = 1; return p; }
+    *cap = (uint32_t)c;
+    return p;
 }
 
 static uint32_t sample_for(conv* cv, uint32_t wave, int channel, const dls_wsmp* w)

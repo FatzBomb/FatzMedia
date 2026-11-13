@@ -150,16 +150,7 @@ typedef struct dts_codec {
 
 static fa_result grow(uint8_t** p, size_t* cap, size_t need)
 {
-    size_t c;
-    uint8_t* q;
-    if (need <= *cap) return FA_OK;
-    c = *cap ? *cap : 16384;
-    while (c < need) c *= 2;
-    q = (uint8_t*)realloc(*p, c);
-    if (!q) return FA_ERROR_OUT_OF_MEMORY;
-    *p = q;
-    *cap = c;
-    return FA_OK;
+    return fa_grow((void**)p, cap, need, 1, 16384) ? FA_OK : FA_ERROR_OUT_OF_MEMORY;
 }
 
 /* Appends what the system's decoder put out to c->out. A change of format drops the
