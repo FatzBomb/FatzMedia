@@ -217,7 +217,7 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
 /* Close every stream and device of the engine before destroying it. */
 FA_API void FA_CALL fa_engine_destroy(fa_engine* engine);
 
-/* How busy the engine is (BASS_GetCPU), for a diagnostics panel: cheap enough to
+/* How busy the engine is, for a diagnostics panel: cheap enough to
  * call from a UI timer. Set struct_size (sizeof(fa_engine_stats)) first. */
 typedef struct fa_engine_stats {
     uint32_t struct_size;
@@ -258,8 +258,8 @@ FA_API fa_result FA_CALL fa_engine_get_cache_info(fa_engine* engine, fa_cache_in
 
 /* ---- Supported formats -------------------------------------------------- */
 
-/* Everything the built-in decoder registry can open. Replaces BASS_PluginGetInfo:
- * there are no plugins, every format is compiled in. */
+/* Everything the built-in decoder registry can open. There are no plugins to load or
+ * query: every format is compiled in. */
 typedef struct fa_format_info {
     char name[32];          /* registry name, e.g. "flac" */
     char description[64];   /* e.g. "Free Lossless Audio Codec" */
@@ -443,7 +443,7 @@ typedef struct fa_open_options {
                                 every event that way */
     const volatile int32_t* cancel; /* NULL = none. A flag the app sets to non-zero (from
                                 another thread) to stop the open, which then returns
-                                FA_ERROR_CANCELLED and opens nothing (BASS_StreamCancel):
+                                FA_ERROR_CANCELLED and opens nothing:
                                 - fa_stream_open_url: the name lookup, connection,
                                   playlist and wait for the first bytes, within about
                                   100 ms (the request in flight is aborted);
@@ -618,8 +618,8 @@ FA_API fa_result FA_CALL fa_stream_get_buffered(fa_stream* stream, fa_time* out_
 
 /* ---- Callback streams ----------------------------------------------------
  *
- * The stream asks your function for audio whenever it wants more (BASS_StreamCreate
- * with a STREAMPROC), instead of you pushing it: a synthesizer, a tone generator,
+ * The stream asks your function for audio whenever it wants more (a callback
+ * stream), instead of you pushing it: a synthesizer, a tone generator,
  * audio from a library of your own. It plays, decodes, records and takes tempo,
  * effects and meters like any other stream.
  *
@@ -651,8 +651,8 @@ FA_API fa_result FA_CALL fa_stream_open_callback(fa_engine* engine, const fa_aud
 
 /* ---- Capture streams -----------------------------------------------------
  *
- * An input device (a microphone, a line input) as an ordinary stream (BASS_RecordStart
- * for uses other than a live mic): record it to a file, read its samples, meter it, or
+ * An input device (a microphone, a line input) as an ordinary stream
+ * (not only for a live mic): record it to a file, read its samples, meter it, or
  * play it like any other stream. The input starts at the open; the stream begins with
  * the audio of its first read (the first fa_stream_read, an encoder's first read, or
  * fa_stream_attach, which starts reading ahead), not with what waited before. Input nobody reads for about 1 s is
@@ -678,7 +678,7 @@ FA_API fa_result FA_CALL fa_stream_open_callback(fa_engine* engine, const fa_aud
 #define FA_CAPTURE_OS_PROCESSING (1u << 0)  /* keep the system's voice processing (echo
                                                cancelling, noise suppression, automatic
                                                gain): for calls, not for music */
-/* Loopback (BASS_DEVICE_LOOPBACK): record what an output plays (every app's sound, the
+/* Loopback: record what an output plays (every app's sound, the
  * system's mix before its master volume) instead of an input. device_id is then an FA_DEVICE_PLAYBACK device's id, NULL =
  * the default output (following default-output changes). Windows only (WASAPI):
  * FA_ERROR_NOT_IMPLEMENTED elsewhere and on an engine with FA_ENGINE_NULL_OUTPUT.
@@ -710,7 +710,7 @@ FA_API void FA_CALL fa_stream_close(fa_stream* stream);
 /* ---- Sounds: one short sound, many voices ---------------------------------
  *
  * A sound is decoded once into memory and played as many overlapping copies
- * (voices) as you like, each with its own volume and pan (BASS_Sample*): jingles,
+ * (voices) as you like, each with its own volume and pan: jingles,
  * applause, air horns, sound-effect pads. Every voice reads the one copy of the
  * PCM, so ten voices of a 2 MB sound still use 2 MB.
  *
@@ -740,13 +740,11 @@ FA_API void FA_CALL fa_stream_close(fa_stream* stream);
 typedef struct fa_sound fa_sound;
 
 typedef enum fa_sound_steal {
-    FA_SOUND_STEAL_OLDEST = 0,   /* default: the voice that started longest ago
-                                    (BASS_SAMPLE_OVER_POS) */
+    FA_SOUND_STEAL_OLDEST = 0,   /* default: the voice that started longest ago */
     FA_SOUND_STEAL_QUIETEST,     /* the voice with the lowest volume (FA_PARAM_VOLUME now,
-                                    ramps included); the older one on a tie
-                                    (BASS_SAMPLE_OVER_VOL) */
-    FA_SOUND_STEAL_NONE          /* none: fa_sound_play returns FA_ERROR_BUSY (BASS's
-                                    default without an OVER flag) */
+                                    ramps included); the older one on a tie */
+    FA_SOUND_STEAL_NONE          /* none: fa_sound_play returns FA_ERROR_BUSY (no
+                                    voice is ever taken over) */
 } fa_sound_steal;
 
 #define FA_SOUND_MAX_VOICES 1024
@@ -782,7 +780,7 @@ FA_API fa_result FA_CALL fa_sound_load_path(fa_engine* engine, const char* path,
 /* The same from a file in memory; the data is decoded at once and not kept. */
 FA_API fa_result FA_CALL fa_sound_load_memory(fa_engine* engine, const void* data, size_t size, const fa_sound_options* options,
                                               fa_sound** out_sound);
-/* Your own PCM (BASS_SampleCreate + BASS_SampleSetData): `frames` interleaved frames in
+/* Your own PCM: `frames` interleaved frames in
  * `format` (any interleaved sample format, 1..32 channels, 1000..FA_MAX_SAMPLE_RATE Hz; planar is
  * FA_ERROR_INVALID_ARG). Copied. */
 FA_API fa_result FA_CALL fa_sound_load_pcm(fa_engine* engine, const fa_audio_format* format, const void* data, fa_frames frames,
@@ -803,9 +801,9 @@ FA_API fa_result FA_CALL fa_sound_set_options(fa_sound* sound, const fa_sound_op
  * another engine and a bus of another device are FA_ERROR_INVALID_ARG. */
 FA_API fa_result FA_CALL fa_sound_play(fa_sound* sound, fa_device* device, fa_bus* bus, float volume, float pan,
                                        fa_stream** out_voice);
-/* Stops every voice (BASS_SampleStop). */
+/* Stops every voice. */
 FA_API fa_result FA_CALL fa_sound_stop(fa_sound* sound);
-/* The busy voices, oldest first (BASS_SampleGetChannels): up to `capacity` into
+/* The busy voices, oldest first: up to `capacity` into
  * `out_voices` (may be NULL with capacity 0); out_count gets how many are busy, which
  * may be more than capacity. */
 FA_API fa_result FA_CALL fa_sound_get_voices(fa_sound* sound, fa_stream** out_voices, uint32_t capacity, uint32_t* out_count);
@@ -1593,7 +1591,7 @@ FA_API fa_result FA_CALL fa_stream_get_position(fa_stream* stream, fa_frames* ou
 FA_API fa_result FA_CALL fa_stream_set_loop(fa_stream* stream, int32_t on);
 FA_API fa_result FA_CALL fa_stream_get_loop(fa_stream* stream, int32_t* out_on);
 
-/* Reverse playback (bass_fx's BASS_FX_ReverseCreate and BASS_ATTRIB_REVERSE_DIR), on
+/* Reverse playback, on
  * or off at any time, also while playing. Reversed, the stream plays backwards from
  * where it is: the position and the clock count down, and it ends (FA_EVENT_ENDED)
  * at CUE_IN or the start. Playing from stopped or ended starts at CUE_OUT or the end.
@@ -3451,7 +3449,7 @@ typedef struct fa_soundfont_preset {
 
 FA_API fa_result FA_CALL fa_soundfont_get_preset(fa_soundfont* font, uint32_t index, fa_soundfont_preset* out_preset);
 
-/* Several soundfonts played as one (BASSMIDI's font stacks): a new soundfont made of the
+/* Several soundfonts played as one (a font stack): a new soundfont made of the
  * presets of others, used like any soundfont (fa_engine_set_soundfont,
  * fa_open_options.soundfont). Each entry takes presets from one soundfont, all of them or
  * one bank or one program, optionally under another bank and program number; when two
@@ -3627,7 +3625,7 @@ FA_API fa_result FA_CALL fa_stream_set_midi_channel_mute(fa_stream* stream, uint
 FA_API fa_result FA_CALL fa_stream_get_midi_channel_mute(fa_stream* stream, uint32_t channel, int32_t* out_muted);
 /* Reverb and chorus: on by default, following each channel's CC91 / CC93 (reverb
  * 40 and chorus 0 until the file sets them) and the soundfont's effect sends.
- * Off plays the dry synth (BASS_MIDI_NOFX); the tails stop at once. Live, like
+ * Off plays the dry synth; the tails stop at once. Live, like
  * the controls above. */
 FA_API fa_result FA_CALL fa_stream_set_midi_effects(fa_stream* stream, int32_t enabled);
 FA_API fa_result FA_CALL fa_stream_get_midi_effects(fa_stream* stream, int32_t* out_enabled);
@@ -3698,14 +3696,14 @@ typedef struct fa_midi_stream_options {
 } fa_midi_stream_options;
 
 FA_API void FA_CALL fa_midi_stream_options_init(fa_midi_stream_options* options);
-/* A real-time MIDI stream (BASS_MIDI_StreamCreate): silent until sent events, endless,
+/* A real-time MIDI stream: silent until sent events, endless,
  * not seekable. It plays with fa_open_options.soundfont, else the engine's, else the
  * OS's instruments (FA_ERROR_NO_SOUNDFONT where there are none). Starts as after a GM
  * reset; the GS and XG resets and settings work as in files. FA_OPEN_LOOP is not
  * allowed. fa_stream_get_midi_info gives zeros, no texts and no marks. */
 FA_API fa_result FA_CALL fa_stream_open_midi(fa_engine* engine, const fa_midi_stream_options* midi_options,
                                              const fa_open_options* options, fa_stream** out_stream);
-/* A MIDI stream that plays a list of events as a file would (BASS_MIDI_StreamCreateEvents):
+/* A MIDI stream that plays a list of events as a file would:
  * seekable, its length measured as a file's (until the last events' sound dies away). `events` in time order
  * (frames at midi_options->sample_rate; FA_MIDI_NOW is frame 0), copied; `track` sets
  * the track for fa_stream_set_midi_track_volume (0..65534). SysEx longer than 65 bytes
@@ -3714,11 +3712,11 @@ FA_API fa_result FA_CALL fa_stream_open_midi(fa_engine* engine, const fa_midi_st
 FA_API fa_result FA_CALL fa_stream_open_midi_events(fa_engine* engine, const fa_midi_event* events, uint32_t count,
                                                     const fa_midi_stream_options* midi_options,
                                                     const fa_open_options* options, fa_stream** out_stream);
-/* Sends `count` events (BASS_MIDI_StreamEvent / StreamEvents), all or none: FA_ERROR_BUSY
+/* Sends `count` events, all or none: FA_ERROR_BUSY
  * when the queue has no room for them all. FA_ERROR_INVALID_ARG for streams that are
  * not MIDI, more than FA_MIDI_QUEUE events, or an event out of range. */
 FA_API fa_result FA_CALL fa_stream_send_midi_events(fa_stream* stream, const fa_midi_event* events, uint32_t count);
-/* Sends MIDI bytes as they come from a device or a file's track (BASS_MIDI_EVENTS_RAW):
+/* Sends MIDI bytes as they come from a device or a file's track:
  * status bytes with running status, SysEx from F0 to F7; real-time (F8..FF) and
  * system common bytes are skipped, and so is an incomplete message at the end. All
  * play at `frame`. Running status does not carry over to the next call. FA_ERROR_BUSY
@@ -3726,20 +3724,20 @@ FA_API fa_result FA_CALL fa_stream_send_midi_events(fa_stream* stream, const fa_
  * MIDI or bytes holding more than FA_MIDI_QUEUE messages (nothing is sent). */
 FA_API fa_result FA_CALL fa_stream_send_midi(fa_stream* stream, fa_frames frame, const void* bytes, size_t size);
 /* A file's note, controller, program, pitch bend, pressure and SysEx events, in time
- * order (BASS_MIDI_StreamGetEvents): `track` -1 for all tracks, `type` -1 for all
+ * order: `track` -1 for all tracks, `type` -1 for all
  * types. Copies up to `capacity` into `out_events` (NULL with capacity 0 to count them)
  * and gives how many match in *out_count. A note on with velocity 0 is given as a note
  * off. Texts are fa_stream_get_midi_text, tempo and signatures fa_stream_get_midi_marks.
  * Sent events are not listed. */
 FA_API fa_result FA_CALL fa_stream_get_midi_events(fa_stream* stream, int32_t track, int32_t type,
                                                    fa_midi_event* out_events, uint32_t capacity, uint32_t* out_count);
-/* A channel's current value as the synth has it (BASS_MIDI_StreamGetEvent): `type`
+/* A channel's current value as the synth has it: `type`
  * FA_MIDI_EVENT_CONTROL (param = controller), PROGRAM, PITCH_BEND or CHANNEL_PRESSURE.
  * It is the value where the synth has rendered to, up to the decode-ahead past what is
  * heard. */
 FA_API fa_result FA_CALL fa_stream_get_midi_value(fa_stream* stream, uint32_t channel, int32_t type, int32_t param,
                                                   int32_t* out_value);
-/* A track's volume (BASS_ATTRIB_MIDI_TRACK_VOL): 0 (silent) to 4, 1 by default. It
+/* A track's volume: 0 (silent) to 4, 1 by default. It
  * scales the level of the track's notes from the next note on (held notes keep theirs),
  * whatever channel they are on. FA_ERROR_INVALID_ARG past the file's tracks. */
 FA_API fa_result FA_CALL fa_stream_set_midi_track_volume(fa_stream* stream, uint32_t track, float volume);
@@ -4005,7 +4003,7 @@ FA_API fa_result FA_CALL fa_stream_get_tracker_position(fa_stream* stream, uint3
 FA_API fa_result FA_CALL fa_stream_set_tracker_channel_mute(fa_stream* stream, uint32_t channel, int32_t muted);
 FA_API fa_result FA_CALL fa_stream_get_tracker_channel_mute(fa_stream* stream, uint32_t channel, int32_t* out_muted);
 
-/* Live state of the module itself (BASS_ATTRIB_MUSIC_BPM / SPEED / VOL_GLOBAL / VOL_CHAN / VOL_INST). These change
+/* Live state of the module itself (tempo, speed, global volume, channel volumes, instrument volumes). These change
  * the song's own tempo and speed, not a time-stretch of its audio (FA_PARAM_TEMPO does that), and are heard after
  * the decode-ahead buffer. The module's own commands change them again (a Fxx or Gxx later in the song), and a
  * seek puts the module back in its own state at the target, except channel volumes and instrument mutes, which
@@ -4026,7 +4024,7 @@ FA_API fa_result FA_CALL fa_stream_get_tracker_channel_volume(fa_stream* stream,
 FA_API fa_result FA_CALL fa_stream_set_tracker_instrument_mute(fa_stream* stream, uint32_t instrument, int32_t muted);
 FA_API fa_result FA_CALL fa_stream_get_tracker_instrument_mute(fa_stream* stream, uint32_t instrument, int32_t* out_muted);
 
-/* The order list: the pattern of each order (BASS_TAG_MUSIC_ORDERS). `out_count` is the number of orders
+/* The order list: the pattern of each order. `out_count` is the number of orders
  * (fa_tracker_info.orders); up to `capacity` patterns are written (capacity 0 asks only for the count).
  * 65534 marks a skipped order ("+++") and 65535 the end of the song ("---"). */
 FA_API fa_result FA_CALL fa_stream_get_tracker_orders(fa_stream* stream, uint32_t* patterns, uint32_t capacity,
@@ -4633,8 +4631,8 @@ FA_API fa_result FA_CALL fa_stream_remove_dsp(fa_stream* stream, uint32_t dsp_id
 /* Peak and RMS (linear, 1.0 = full scale) of the last `window` of audio being
  * heard now: for a VU meter, call it from a timer. channels 1 gives one value for
  * both sides, 2 gives left and right. A stream's levels are of its own audio,
- * after its equalizer and DSP, before volume, pan, fades and normalization (as
- * BASS_ChannelGetLevel); a device's are of its whole output after the limiter.
+ * after its equalizer and DSP, before volume, pan, fades and normalization;
+ * a device's are of its whole output after the limiter.
  * The window ends at the audio the speaker plays now. Zeros while the stream is
  * not playing or the device is stopped. The first call starts recording, so it
  * reads silence; a window over about 1 s is shortened. Either output may be NULL.
@@ -4642,7 +4640,7 @@ FA_API fa_result FA_CALL fa_stream_remove_dsp(fa_stream* stream, uint32_t dsp_id
 FA_API fa_result FA_CALL fa_stream_get_levels(fa_stream* stream, fa_time window, float* out_peak, float* out_rms, uint32_t channels);
 FA_API fa_result FA_CALL fa_device_get_levels(fa_device* device, fa_time window, float* out_peak, float* out_rms, uint32_t channels);
 
-/* Loudness meters (BASSloud's BASS_LOUDNESS_CURRENT, EBU R128): the momentary (last
+/* Loudness meters (EBU R128): the momentary (last
  * 400 ms) and short-term (last 3 s) loudness of what is heard now, in LUFS, both
  * channels K-weighted to ITU-R BS.1770. Same source and timing as the levels above: a
  * stream's own audio before volume, pan, fades and normalization; a device's whole
@@ -4658,7 +4656,7 @@ FA_API fa_result FA_CALL fa_device_get_loudness_meter(fa_device* device, double*
 typedef enum fa_spectrum_flags {
     FA_SPECTRUM_LEFT      = 1 << 0,  /* the left channel only (default: both, mixed) */
     FA_SPECTRUM_RIGHT     = 1 << 1,  /* the right channel only */
-    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window (BASS_DATA_FFT_NOWINDOW) */
+    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window */
 } fa_spectrum_flags;
 
 /* The magnitude spectrum of the last `size` frames being heard now, for a

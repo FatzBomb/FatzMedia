@@ -155,7 +155,7 @@ unsafe ref struct NativeMidiEvents
 public sealed partial class AudioEngine
 {
     /// <summary>
-    /// Opens a real-time MIDI stream (BASS_MIDI_StreamCreate): a synthesizer with no file that plays the events you
+    /// Opens a real-time MIDI stream: a synthesizer with no file that plays the events you
     /// send it (<see cref="AudioStream.SendMidi(in MidiEvent)"/>) — a keyboard, your own sequencer, a game's music. It
     /// is silent until then, never ends and cannot seek. It plays with <see cref="StreamOptions.SoundFont"/>, else
     /// <see cref="DefaultSoundFont"/>, else the system's instruments. It renders only <see cref="MidiStreamOptions.Latency"/>
@@ -206,7 +206,7 @@ public sealed partial class AudioEngine
     }
 
     /// <summary>
-    /// Opens a MIDI stream that plays a list of events as a MIDI file would (BASS_MIDI_StreamCreateEvents): seekable,
+    /// Opens a MIDI stream that plays a list of events as a MIDI file would: seekable,
     /// its length measured as a file's (until the last events' sound has died away). Frames count at <see cref="MidiStreamOptions.SampleRate"/> (set it to
     /// know them; <see cref="MidiEvent.Now"/> is frame 0). The events are copied and sorted by frame (equal frames keep
     /// their order); <see cref="MidiEvent.Track"/> picks the track for <see cref="AudioStream.SetMidiTrackVolume"/>.
@@ -233,7 +233,7 @@ public sealed partial class AudioEngine
 public unsafe partial class AudioStream
 {
     /// <summary>
-    /// MIDI streams: sends one event (BASS_MIDI_StreamEvent). It is heard at its <see cref="MidiEvent.Frame"/>, to the
+    /// MIDI streams: sends one event. It is heard at its <see cref="MidiEvent.Frame"/>, to the
     /// sample, or at once for <see cref="MidiEvent.Now"/> and frames already rendered. Works on real-time streams
     /// (<see cref="AudioEngine.OpenMidi"/>) and on MIDI files, on top of what the file plays. Any thread may send; it
     /// never waits for the audio.
@@ -246,7 +246,7 @@ public unsafe partial class AudioStream
     public bool SendMidi(in MidiEvent midiEvent) => SendMidi(new ReadOnlySpan<MidiEvent>(in midiEvent));
 
     /// <summary>
-    /// MIDI streams: sends events, all or none (BASS_MIDI_StreamEvents); see <see cref="SendMidi(in MidiEvent)"/>.
+    /// MIDI streams: sends events, all or none; see <see cref="SendMidi(in MidiEvent)"/>.
     /// </summary>
     /// <returns>True if sent; false if the queue has no room for them all (nothing was sent).</returns>
     /// <exception cref="AudioException">Not a MIDI stream, more than 8192 events, or an event out of range
@@ -283,7 +283,7 @@ public unsafe partial class AudioStream
         TrySendMidi(new ReadOnlySpan<MidiEvent>(in midiEvent), out error);
 
     /// <summary>
-    /// MIDI streams: sends MIDI bytes as a device or a file's track gives them (BASS_MIDI_EVENTS_RAW): status bytes
+    /// MIDI streams: sends MIDI bytes as a device or a file's track gives them: status bytes
     /// with running status, SysEx from F0 to F7. Real-time and system common bytes are skipped, and so is an incomplete
     /// message at the end. All play at <paramref name="frame"/>.
     /// </summary>
@@ -301,8 +301,8 @@ public unsafe partial class AudioStream
     }
 
     /// <summary>
-    /// MIDI files: the note, controller, program, pressure, pitch bend and SysEx events, in time order
-    /// (BASS_MIDI_StreamGetEvents). A note on with velocity 0 comes as a note off. Texts are <see cref="MidiTexts"/>,
+    /// MIDI files: the note, controller, program, pressure, pitch bend and SysEx events, in time order.
+    /// A note on with velocity 0 comes as a note off. Texts are <see cref="MidiTexts"/>,
     /// tempo and signatures <see cref="MidiMarks"/>. Empty for other streams and for real-time ones.
     /// </summary>
     /// <param name="track">One track (0-based), or -1 for all.</param>
@@ -345,7 +345,7 @@ public unsafe partial class AudioStream
     }
 
     /// <summary>
-    /// MIDI streams: a channel's current value as the synthesizer has it (BASS_MIDI_StreamGetEvent): a controller
+    /// MIDI streams: a channel's current value as the synthesizer has it: a controller
     /// (<see cref="MidiEventType.Control"/> with its number), the <see cref="MidiEventType.Program"/>, the
     /// <see cref="MidiEventType.PitchBend"/> or the <see cref="MidiEventType.ChannelPressure"/>. It is where the synth
     /// has rendered to, up to the decode-ahead past what is heard.
@@ -361,7 +361,7 @@ public unsafe partial class AudioStream
     }
 
     /// <summary>
-    /// MIDI streams: a track's volume (BASS_ATTRIB_MIDI_TRACK_VOL), 0 (silent) to 4, 1 by default. It scales the level
+    /// MIDI streams: a track's volume, 0 (silent) to 4, 1 by default. It scales the level
     /// of the track's notes from their next note on (held notes keep theirs), whatever channel they are on.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The volume is outside 0..4.</exception>

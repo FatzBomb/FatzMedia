@@ -942,7 +942,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// Tracker modules: volume ramping, -1 (default), 0 off (may click), 1..10 softer ramps (<c>BASS_MUSIC_RAMP</c>). Live.
+    /// Tracker modules: volume ramping, -1 (default), 0 off (may click), 1..10 softer ramps. Live.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside -1..10.</exception>
     /// <exception cref="AudioException">The stream is not a module.</exception>
@@ -1024,7 +1024,7 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>
     /// Tracker modules: the module's output gain in decibels, -60 to 60; 0 by default. Live, heard after the decode-ahead
-    /// buffer. Independent of the module's own commands (<c>BASS_ATTRIB_MUSIC_AMPLIFY</c>).
+    /// buffer. Independent of the module's own commands.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside -60 to 60.</exception>
     /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
@@ -1054,7 +1054,7 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>
     /// Tracker modules: the song's own tempo in beats per minute (32 to 512; the exact meaning depends on the format's
-    /// tempo mode). Not a time-stretch: it changes the module's tempo, as <c>BASS_ATTRIB_MUSIC_BPM</c> does, until a
+    /// tempo mode). Not a time-stretch: it changes the module's tempo until a
     /// tempo command in the song changes it again. A seek puts the module back in its own state at the target. The
     /// stream keeps its length: a faster song ends early (silence follows), a slower one is cut. Heard after the
     /// decode-ahead buffer; reads the song as decoded so far.
@@ -1078,7 +1078,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// Tracker modules: the song's own speed in ticks per row, 1 to 255 (<c>BASS_ATTRIB_MUSIC_SPEED</c>); see
+    /// Tracker modules: the song's own speed in ticks per row, 1 to 255; see
     /// <see cref="TrackerTempo"/> for how it behaves.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside 1 to 255.</exception>
@@ -1100,7 +1100,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// Tracker modules: the song's own global volume, 0.0 to 1.0 (<c>BASS_ATTRIB_MUSIC_VOL_GLOBAL</c>). The song's
+    /// Tracker modules: the song's own global volume, 0.0 to 1.0. The song's
     /// commands change it again; a seek puts it back.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Outside 0 to 1.</exception>
@@ -1121,7 +1121,7 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
-    /// <summary>Sets a pattern channel's volume, 0.0 to 1.0 (<c>BASS_ATTRIB_MUSIC_VOL_CHAN</c>); it stays through seeks.</summary>
+    /// <summary>Sets a pattern channel's volume, 0.0 to 1.0; it stays through seeks.</summary>
     /// <param name="channel">Channel 0..Channels-1 (the first 64).</param>
     /// <param name="volume">0.0 (silent) to 1.0 (the song's own).</param>
     /// <exception cref="ArgumentOutOfRangeException">A negative channel, or a volume outside 0 to 1.</exception>
@@ -1148,7 +1148,7 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>
     /// Mutes or unmutes an instrument (the sample, in formats without instruments such as MOD and S3M), live. It stays
-    /// through seeks. (libopenmpt has no per-instrument volume; <c>BASS_ATTRIB_MUSIC_VOL_INST</c> maps to mute.)
+    /// through seeks. (libopenmpt has no per-instrument volume, so muting is all there is.)
     /// </summary>
     /// <param name="instrument">0-based instrument, or sample.</param>
     /// <param name="muted">True to mute.</param>
@@ -1172,7 +1172,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// A tracker module's order list: the pattern of each order (<c>BASS_TAG_MUSIC_ORDERS</c>). 65534 marks a skipped
+    /// A tracker module's order list: the pattern of each order. 65534 marks a skipped
     /// order ("+++") and 65535 the end of the song ("---").
     /// </summary>
     /// <exception cref="AudioException">The stream is not a module (<see cref="ErrorCode.InvalidArgument"/>).</exception>
@@ -1290,8 +1290,8 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// MIDI streams: changes the soundfont while the stream is open, playing or not (<c>BASS_MIDI_StreamSetFonts</c> on
-    /// a playing stream). The native stream keeps its own reference, so <paramref name="font"/> may be disposed
+    /// MIDI streams: changes the soundfont while the stream is open, playing or not, also on
+    /// a playing stream. The native stream keeps its own reference, so <paramref name="font"/> may be disposed
     /// afterwards. Null: the engine's <see cref="AudioEngine.DefaultSoundFont"/>, else the OS's instruments, as at open.
     /// Heard after the decode-ahead buffer (150 ms by default for MIDI files, the latency for a real-time stream),
     /// cross-faded over about 12 ms. A file plays on as after a seek to the same place with the new instruments:
@@ -1357,7 +1357,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>
     /// MIDI streams: reverb and chorus, on by default. How much of each channel goes to them follows the file's
     /// CC91 (reverb, 40 until the file sets it) and CC93 (chorus, 0) and the soundfont's effect sends. False plays the
-    /// dry synthesizer, like <c>BASS_MIDI_NOFX</c>; the tails stop at once. Heard after the decode-ahead buffer.
+    /// dry synthesizer; the tails stop at once. Heard after the decode-ahead buffer.
     /// </summary>
     /// <exception cref="AudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
@@ -1523,7 +1523,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// Plays backwards (bass_fx's <c>BASS_FX_ReverseCreate</c> and <c>BASS_ATTRIB_REVERSE_DIR</c>). Can be changed at any
+    /// Plays backwards. Can be changed at any
     /// time, also while playing: playing or paused, it turns at once (the last 200 ms heard play back the other way while
     /// the decoder catches up, so there is no gap); stopped or ended, it starts over at the position. Reversed, the position and
     /// the clock count down and the stream ends at the cue-in marker (or the start); playing from stopped or ended
@@ -1943,7 +1943,7 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
-    /// Loudness meters (BASSloud, EBU R128) of the stream's audio being heard now: the momentary (last 400 ms) and
+    /// Loudness meters (EBU R128) of the stream's audio being heard now: the momentary (last 400 ms) and
     /// short-term (last 3 s) loudness in LUFS, K-weighted (same source and timing as <see cref="GetLevels(TimeSpan?)"/>:
     /// before volume, pan, fades and normalization). <see cref="double.NegativeInfinity"/> for silence and while the
     /// stream is not playing. The first call starts measuring, so the values read low for 3 s. Each call measures
@@ -2280,14 +2280,14 @@ public unsafe partial class AudioStream : IDisposable
 
     /// <summary>
     /// Raised as a tracker module's notes that carry an instrument number are heard, when <see cref="TrackerCellEvents"/>
-    /// includes <see cref="FatzMedia.Audio.TrackerCellEvents.Instruments"/> (<c>BASS_SYNC_MUSICINST</c>). Raised on the engine's
+    /// includes <see cref="FatzMedia.Audio.TrackerCellEvents.Instruments"/>. Raised on the engine's
     /// event thread; best effort, like <see cref="TrackerRowReached"/>.
     /// </summary>
     public event EventHandler<TrackerCellEventArgs>? TrackerInstrumentPlayed;
 
     /// <summary>
     /// Raised as a tracker module's Zxx commands (IT, S3M) are heard, when <see cref="TrackerCellEvents"/> includes
-    /// <see cref="FatzMedia.Audio.TrackerCellEvents.Sync"/> (<c>BASS_SYNC_MUSICFX</c>). The value is the command's parameter.
+    /// <see cref="FatzMedia.Audio.TrackerCellEvents.Sync"/>. The value is the command's parameter.
     /// Raised on the engine's event thread; best effort.
     /// </summary>
     public event EventHandler<TrackerCellEventArgs>? TrackerSyncReached;

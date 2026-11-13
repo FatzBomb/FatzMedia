@@ -2237,7 +2237,7 @@ static double sine_lag(const float* p, int64_t from, int64_t to, uint32_t ch, ui
 }
 
 /* net/tone.aac starts on the first real sample: FFmpeg's encoder primes with 1024
- * samples, which the ADTS reader drops, so the sine has no lag (bass_aac agrees). */
+ * samples, which the ADTS reader drops, so the sine has no lag. */
 static void test_adts_start(void)
 {
     fa_stream* s;
@@ -2303,7 +2303,7 @@ static void test_mp3_vbr(void) { check_mp3("vbr.mp3", 44100, 2, 176400, 0.0); }
 static void test_mp3_mpeg2(void) { check_mp3("mpeg2.mp3", 22050, 1, 88200, 0.0); }
 
 /* No header: only the decoder's 529-sample delay is known, so the audio starts
- * after LAME's 576-sample encoder delay (as in BASS), and the length is counted
+ * after LAME's 576-sample encoder delay, and the length is counted
  * at open: the frames' samples less those 529. */
 static void test_mp3_no_header(void)
 {

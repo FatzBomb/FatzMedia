@@ -151,7 +151,7 @@ public sealed class OutputDevice : IDisposable
     }
 
     /// <summary>
-    /// Loudness meters (BASSloud, EBU R128) of the device's whole output being heard now (after the limiter): the
+    /// Loudness meters (EBU R128) of the device's whole output being heard now (after the limiter): the
     /// momentary (last 400 ms) and short-term (last 3 s) loudness in LUFS. <see cref="double.NegativeInfinity"/> for
     /// silence and while the device is stopped. The first call starts measuring, so the values read low for 3 s. Each
     /// call measures afresh (about 1 ms): 10 calls a second from a UI timer are plenty.

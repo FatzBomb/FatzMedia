@@ -1,9 +1,8 @@
 #if !defined(_WIN32)
 #  define _POSIX_C_SOURCE 200809L /* nanosleep under strict C11 */
 #endif
-/* Engine and stream parity with BASS: engine stats (BASS_GetCPU), callback streams
- * (STREAMPROC), loudness meters (BASSloud) and capture streams (BASS_RecordStart),
- * all on the silent null output and input. Cancelling a web stream's open is in
+/* Engine and stream features: engine stats, callback streams, loudness meters and
+ * capture streams, all on the silent null output and input. Cancelling a web stream's open is in
  * test_net.c, next to its server. */
 #include "fatzaudio/fatzaudio.h"
 #include <math.h>
