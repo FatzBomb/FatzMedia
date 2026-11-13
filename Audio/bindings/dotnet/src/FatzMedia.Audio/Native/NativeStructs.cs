@@ -367,6 +367,7 @@ struct FaCdgPresentation
     public int EdgeBlend;
     public uint Flags;
     public int PixelArt;
+    public int Clean;
 }
 
 [StructLayout(LayoutKind.Sequential)]

@@ -15,25 +15,65 @@
  * back to the edge, over half the run (the other end steps over the edge too, square
  * or not) or all of it (it does not), at most EDGE_SPAN pixels; the output pixels
  * between that line and the edge take the other colour by the area they cover. The
- * grid is exact, so no threshold is needed and nothing else is touched. */
+ * grid is exact, so no threshold is needed and nothing else is touched.
+ *
+ * Clean has no rules for shapes. Each colour's presence is smoothed into a coverage
+ * field (a sharpened Gaussian over the CD+G pixels' indicator of that colour), and an
+ * output pixel takes the two colours with the most coverage there, mixed by how far
+ * apart they are, over a ramp about one output pixel wide. Every edge, stroke and dot
+ * follows from the one kernel: straight edges stay where they were drawn, and a
+ * staircase is smoothed as much as the kernel's width says. */
 #include "cdg_scale.h"
 #include "cdg_contour.h"
+#include <math.h>
 #include <string.h>
 
 #define EDGE_SPAN 4               /* CD+G pixels a step's line reaches along its edge */
 
-void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend, int pixel_art)
+void cdg_scaler_init(cdg_scaler* sc, uint32_t n, int smoothness, int edge_blend, int pixel_art, int clean)
 {
-    cdg_scaler_init_look(sc, n, n, smoothness, edge_blend, pixel_art);
+    cdg_scaler_init_look(sc, n, n, smoothness, edge_blend, pixel_art, clean);
 }
 
-void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend, int pixel_art)
+/* The Clean kernel along one axis (x in CD+G pixels from the output pixel): a Gaussian
+ * sharpened by subtracting a wider one, so a stroke keeps its width and its square end. */
+#define CLEAN_SIGMA 0.7
+#define CLEAN_SHARPEN 1.0
+static double clean_kernel(double x)
+{
+    double a = x / CLEAN_SIGMA, b = x / (2.0 * CLEAN_SIGMA);
+    return (1.0 + CLEAN_SHARPEN) * exp(-0.5 * a * a) / CLEAN_SIGMA - CLEAN_SHARPEN * exp(-0.5 * b * b) / (2.0 * CLEAN_SIGMA);
+}
+
+static void clean_init(cdg_scaler* sc, uint32_t n, uint32_t look)
+{
+    uint32_t p;
+    int t;
+    double integral = 0.0, x;
+    for (x = -4.0; x < 4.0; x += 0.001) integral += clean_kernel(x) * 0.001;
+    for (p = 0; p < n; p++) {
+        double u = ((double)p + 0.5) / (double)n, sum = 0.0, v[5];
+        for (t = 0; t < 5; t++) sum += v[t] = clean_kernel((double)(t - 2) + 0.5 - u);
+        for (t = 0; t < 5; t++) sc->clean_w[p][t] = (float)(v[t] / sum);
+    }
+    /* Across a straight edge the difference of two fields changes by 2 K(0) per CD+G
+     * pixel (K the kernel as a density), so a ramp of width 2w there is one output pixel
+     * wide at `look` when w = K(0) / look. */
+    sc->clean_ramp = (float)(clean_kernel(0.0) / integral / (double)look);
+    sc->clean = 1;
+    sc->n = n;
+    sc->reach_across = sc->reach_along = 2;
+}
+
+void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothness, int edge_blend, int pixel_art,
+                          int clean)
 {
     static const float band[5] = { 0.0f, 0.0f, 0.25f, 0.5f, 1.0f };
     uint32_t p;
     float width;
     struct cdg_contours* ct = sc->ct;
     int contour, failed = sc->ct_failed;
+    if (clean) smoothness = edge_blend = pixel_art = 0;
     if (pixel_art) smoothness = edge_blend = 0;
     contour = smoothness >= 5 && smoothness <= 10 ? smoothness : 0;
     memset(sc, 0, sizeof(*sc));
@@ -43,6 +83,10 @@ void cdg_scaler_init_look(cdg_scaler* sc, uint32_t n, uint32_t look, int smoothn
     if (n > CDG_SCALE_MAX_N) n = CDG_SCALE_MAX_N;
     if (look < 1 || look > n) look = n;
     sc->look = look;
+    if (clean) {
+        clean_init(sc, n, look);
+        return;
+    }
     if (pixel_art) {
         /* A corner's rule reads the 4x4 pixels around it (see pixel_art_pass). */
         sc->n = n;
@@ -296,6 +340,74 @@ static void pixel_art_pass(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_
         }
 }
 
+/* ---- clean --------------------------------------------------------------------------- */
+
+#define CLEAN_TAPS 25
+
+/* The Clean scaler: see the top of the file. Per CD+G pixel: the colours within two
+ * pixels of it, a field of each along rows then columns, and per output pixel the top
+ * two. A pixel whose 5 x 5 neighbourhood is one colour is a plain block. */
+static void clean_pass(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_H][CDG_SCALE_W],
+                       const uint8_t pm[CDG_SCALE_COLORS][4], uint8_t* out, size_t stride, int ox, int oy, int sx0,
+                       int sy0, int sx1, int sy1)
+{
+    uint32_t n = sc->n, i, j, ch;
+    float inv2w = 1.0f / (2.0f * sc->clean_ramp);
+    int sx, sy;
+    for (sy = sy0; sy < sy1; sy++)
+        for (sx = sx0; sx < sx1; sx++) {
+            uint8_t nb[5][5], cols[CLEAN_TAPS];
+            float hf[CLEAN_TAPS][5][CDG_SCALE_MAX_N];   /* colour, tap row, output column */
+            uint8_t* block = out + (size_t)(sy - oy) * n * stride + (size_t)(sx - ox) * n * 4;
+            int a, b, m = 0, k, flat = 1;
+            for (b = 0; b < 5; b++)
+                for (a = 0; a < 5; a++) {
+                    nb[b][a] = px_at(screen, sx + a - 2, sy + b - 2);
+                    flat &= nb[b][a] == nb[2][2];
+                }
+            if (flat) {
+                for (i = 0; i < n; i++) memcpy(block + i * 4, pm[nb[2][2]], 4);
+                for (j = 1; j < n; j++) memcpy(block + j * stride, block, (size_t)n * 4);
+                continue;
+            }
+            for (b = 0; b < 5; b++)
+                for (a = 0; a < 5; a++) {
+                    for (k = 0; k < m && cols[k] != nb[b][a]; k++) {}
+                    if (k == m) cols[m++] = nb[b][a];
+                }
+            for (k = 0; k < m; k++)
+                for (b = 0; b < 5; b++)
+                    for (i = 0; i < n; i++) {
+                        const float* w = sc->clean_w[i];
+                        float v = 0.0f;
+                        for (a = 0; a < 5; a++)
+                            if (nb[b][a] == cols[k]) v += w[a];
+                        hf[k][b][i] = v;
+                    }
+            for (j = 0; j < n; j++) {
+                const float* wy = sc->clean_w[j];
+                uint8_t* px = block + j * stride;
+                for (i = 0; i < n; i++, px += 4) {
+                    float top = -1e30f, sec = -1e30f, t;
+                    int it = 0, is = -1;
+                    for (k = 0; k < m; k++) {
+                        float f = 0.0f;
+                        for (b = 0; b < 5; b++) f += wy[b] * hf[k][b][i];
+                        if (f > top) { sec = top; is = it; top = f; it = k; }
+                        else if (f > sec) { sec = f; is = k; }
+                    }
+                    if (is < 0) { memcpy(px, pm[cols[it]], 4); continue; }
+                    t = (top - sec) * inv2w + 0.5f;
+                    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+                    for (ch = 0; ch < 4; ch++) {
+                        float o = t * (float)pm[cols[it]][ch] + (1.0f - t) * (float)pm[cols[is]][ch] + 0.5f;
+                        px[ch] = (uint8_t)(o > 255.0f ? 255.0f : o);
+                    }
+                }
+            }
+        }
+}
+
 /* ---- edge blend ---------------------------------------------------------------------- */
 
 typedef struct edge_ctx {
@@ -426,6 +538,10 @@ void cdg_scale_rect(const cdg_scaler* sc, const uint8_t screen[CDG_SCALE_H][CDG_
     if (sx1 > CDG_SCALE_W) sx1 = CDG_SCALE_W;
     if (sy1 > CDG_SCALE_H) sy1 = CDG_SCALE_H;
     if (sx0 >= sx1 || sy0 >= sy1) return;
+    if (sc->clean) {
+        clean_pass(sc, screen, pm, out, out_stride, ox, oy, sx0, sy0, sx1, sy1);
+        return;
+    }
     if (sc->pixel_art) {
         pixel_art_pass(sc, screen, pm, out, out_stride, ox, oy, sx0, sy0, sx1, sy1);
         return;

@@ -96,6 +96,11 @@ public sealed record CdgPresentation
     /// <see cref="EdgeBlend"/> (both ignored): sharp pixels, with the corners of each diagonal step cut at 45 degrees so
     /// staircases become clean slopes; square corners and lone pixels stay.</summary>
     public bool PixelArt { get; init; }
+    /// <summary>With <see cref="Scale"/> only: the Clean scaler instead of <see cref="Smoothness"/>,
+    /// <see cref="EdgeBlend"/> and <see cref="PixelArt"/> (all ignored): every edge is placed where the smoothed coverage of
+    /// the two colours meets and drawn about one output pixel soft, so strokes stay even and their ends square at any
+    /// size.</summary>
+    public bool Clean { get; init; }
 }
 
 /// <summary>Where a stream's CD+G graphics come from.</summary>
@@ -352,6 +357,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
                 p.EdgeBlend = value.EdgeBlend ? 1 : 0;
                 p.Flags = value.TransparentBorder ? 1u : 0;
                 p.PixelArt = value.PixelArt ? 1 : 0;
+                p.Clean = value.Clean ? 1 : 0;
             }
             var h = Enter(out var added);
             try

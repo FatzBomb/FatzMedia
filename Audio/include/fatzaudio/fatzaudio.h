@@ -3354,6 +3354,12 @@ typedef struct fa_cdg_presentation {
                                           at 45 degrees so staircases become clean slopes;
                                           square corners and lone pixels stay. Added after
                                           v1: 0 for an older struct_size */
+    int32_t clean;                     /* 0/1, scale on only: the Clean scaler instead of
+                                          smoothness, edge_blend and pixel_art (all ignored):
+                                          every edge is placed where the colours' smoothed
+                                          coverage meets, then drawn about one output pixel
+                                          soft, so strokes stay even and ends square at any
+                                          size. Added after v1: 0 for an older struct_size */
 } fa_cdg_presentation;
 
 /* Defaults: scale off, SHOW, nothing else. */

@@ -3072,6 +3072,15 @@ static void test_rect_sets(void)
 
 /* ---- presentation options ---------------------------------------------------------- */
 
+/* The look of a table row: smoothness 0..10 and edge blend, or smoothness 11 for the Clean scaler. */
+#define LOOK_CLEAN 11
+static void set_look(fa_cdg_presentation* p, int smooth, int blend)
+{
+    p->smoothness = smooth == LOOK_CLEAN ? 0 : smooth;
+    p->edge_blend = blend;
+    p->clean = smooth == LOOK_CLEAN;
+}
+
 static fa_cdg_presentation pres(int scale, fa_safety_zone zone)
 {
     fa_cdg_presentation p;
@@ -3531,6 +3540,7 @@ static void test_offsets_as_shown(void)
 {
     static const struct { int smooth, blend, fx; uint32_t flags; } cfgs[] = {
         { 4, 1, 0, 0 }, { 10, 0, 1, 0 }, { 2, 1, 2, FA_CDG_TRANSPARENT }, { 4, 1, 3, FA_CDG_TRANSPARENT },
+        { LOOK_CLEAN, 0, 2, 0 }, { LOOK_CLEAN, 0, 0, FA_CDG_TRANSPARENT },
     };
     buf a = { 0 }, b = { 0 };
     fa_stream *sa = open_wav_stream(1, FA_OPEN_DECODE_ONLY), *sb = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
@@ -3591,8 +3601,7 @@ static void test_offsets_as_shown(void)
             cfg.flags = cfgs[ci].flags;
             CHECK_EQ(fa_cdg_surface_create(sa, &cfg, &fa), FA_OK);
             CHECK_EQ(fa_cdg_surface_create(sb, &cfg, &fb), FA_OK);
-            p.smoothness = cfgs[ci].smooth;
-            p.edge_blend = cfgs[ci].blend;
+            set_look(&p, cfgs[ci].smooth, cfgs[ci].blend);
             CHECK_EQ(fa_cdg_surface_set_presentation(fa, &p), FA_OK);
             CHECK_EQ(fa_cdg_surface_set_presentation(fb, &p), FA_OK);
             CHECK_EQ(fa_surface_set_presentation_size(fa, 600 + 300 * (uint32_t)k, 432 + 216 * (uint32_t)k), FA_OK);
@@ -3630,6 +3639,8 @@ static void test_effects_recolor(void)
         { 900, 648, 4, 1, 1, 2 },
         { 1200, 864, 4, 0, 0, 4 },    /* everything at maximum */
         { 1200, 864, 10, 0, 0, 3 },
+        { 900, 648, LOOK_CLEAN, 0, 1, 2 },
+        { 600, 432, LOOK_CLEAN, 0, 0, 4 },   /* the 2N pass */
     };
     buf c = fade_cdg();
     size_t packs = c.n / FA_CDG_PACK_BYTES;
@@ -3653,8 +3664,7 @@ static void test_effects_recolor(void)
         CHECK_EQ(fa_cdg_surface_create(s, &cfg, &ref), FA_OK);
         CHECK_EQ(fa_cdg_surface_create(s, &cfg, &f), FA_OK);
         p = pres(1, FA_SAFETY_SHOW);
-        p.smoothness = cfgs[ci].smooth;
-        p.edge_blend = cfgs[ci].blend;
+        set_look(&p, cfgs[ci].smooth, cfgs[ci].blend);
         CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
         CHECK_EQ(fa_surface_set_presentation_size(f, cfgs[ci].w, cfgs[ci].h), FA_OK);
         CHECK_EQ(fa_surface_set_presentation_size(ref, cfgs[ci].w, cfgs[ci].h), FA_OK);
@@ -4027,6 +4037,10 @@ static void test_presentation_incremental(void)
         { FA_SAFETY_REMOVE, 900, 648, 7, 0, 0, 2, 0, 0 },
         { FA_SAFETY_SHOW, 1200, 864, 8, 0, 1, 0, 0, 1 },
         { FA_SAFETY_SHOW, 900, 648, 10, 0, 0, 0, 1, 2 },
+        { FA_SAFETY_SHOW, 900, 648, LOOK_CLEAN, 0, 0, 0, 0, 0 },
+        { FA_SAFETY_SUPER, 600, 432, LOOK_CLEAN, 0, 1, 1, 1, 0 },
+        { FA_SAFETY_REMOVE, 1200, 864, LOOK_CLEAN, 0, 0, 2, 0, 1 },
+        { FA_SAFETY_SHOW, 300, 216, LOOK_CLEAN, 0, 0, 0, 0, 0 },
     };
     buf data[4];
     unsigned ci, di;
@@ -4054,8 +4068,7 @@ static void test_presentation_incremental(void)
             CHECK_EQ(fa_cdg_surface_create(s, &cfg, &ref), FA_OK);
             CHECK_EQ(fa_cdg_surface_create(s, &cfg, &f), FA_OK);
             p = pres(1, cfgs[ci].zone);
-            p.smoothness = cfgs[ci].smooth;
-            p.edge_blend = cfgs[ci].blend;
+            set_look(&p, cfgs[ci].smooth, cfgs[ci].blend);
             p.flags = cfgs[ci].tb ? FA_CDG_TRANSPARENT_BORDER : 0;
             p.padding = (uint32_t)cfgs[ci].padding;
             CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
@@ -4555,6 +4568,117 @@ static void test_pixel_art(void)
     free(c.p);
 }
 
+/* A tile of lone bits: row/col in tiles, 12 row bytes of 6 bits (the left pixel is bit 5). */
+static void tile_bits(buf* c, int row, int col, const uint8_t bits[12])
+{
+    uint8_t d[16];
+    int i;
+    d[0] = 0; d[1] = 1; d[2] = (uint8_t)row; d[3] = (uint8_t)col;
+    for (i = 0; i < 12; i++) d[4 + i] = (uint8_t)(bits[i] & 0x3F);
+    pack(c, 6, d);
+}
+
+/* The Clean scaler at 8x, from the grid alone: a lone pixel, a 1-pixel diagonal and a 2-pixel stroke
+ * all stay visible and even, a stroke's end is not tapered, the picture is symmetric, red over
+ * transparent never gives another colour, and where red meets green only red and green appear. */
+static void test_clean_scaler(void)
+{
+    static const uint8_t dot[12] = { 0, 0, 0, 0, 0, 0x08, 0, 0, 0, 0, 0, 0 };
+    static const uint8_t diag[12] = { 0x20, 0x10, 0x08, 0x04, 0x02, 0x01, 0, 0, 0, 0, 0, 0 };
+    static const uint8_t stroke[12] = { 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C };
+    fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
+    fa_cdg_surface* f = NULL;
+    fa_cdg_presentation p;
+    fa_surface_layout l;
+    buf c = { 0 };
+    uint8_t* a;
+    int i, x, y;
+    uint32_t xx, yy;
+    colors(&c, 0, k_low);
+    preset(&c, 0, 0);
+    tile_bits(&c, 4, 20, dot);        /* the pixel at (122, 53) */
+    tile_bits(&c, 8, 20, diag);       /* (120 + i, 96 + i), i = 0..5 */
+    tile_bits(&c, 12, 20, stroke);    /* x 122-123, y 144..155 */
+    tile(&c, 0, 1, 2, 16, 20, 0x38);  /* red | green, six pixels wide, 12 tall */
+    CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &f), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(f, 2400, 1728), FA_OK);   /* 8x */
+    p = pres(1, FA_SAFETY_SHOW);
+    p.smoothness = 10;   /* ignored */
+    p.pixel_art = 1;     /* ignored */
+    p.clean = 2;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_ERROR_INVALID_ARG);
+    p.clean = 1;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    a = full_draw(f, 40, 4, &l);
+    CHECK(a);
+    if (!a) { fa_surface_destroy(f); fa_stream_close(s); free(c.p); return; }
+    CHECK(l.scale == 8.0f);
+#define CL_A(cx, cy, ix, iy) a[(((size_t)(cy) * 8 + 8 + (iy)) * l.width + (size_t)(cx) * 8 + 8 + (ix)) * 4 + 3]
+#define CL_Q(cx, cy, ix, iy) (a + (((size_t)(cy) * 8 + 8 + (iy)) * l.width + (size_t)(cx) * 8 + 8 + (ix)) * 4)
+    /* Everything but the red | green tile is red over transparent: premultiplied, so no halo of
+     * another colour. */
+    for (yy = 0; yy < l.height; yy++)
+        for (xx = 0; xx < l.width; xx++) {
+            const uint8_t* q = a + ((size_t)yy * l.width + xx) * 4;
+            int sy = (int)yy / 8 - 1, sx = (int)xx / 8 - 1;
+            if (sy >= 189 && sy <= 206 && sx >= 117 && sx <= 129) continue;
+            CHECK(q[0] == 0 && q[1] == 0 && q[2] == q[3]);
+        }
+    /* A lone pixel survives: its middle is solid and its area is about one pixel. */
+    CHECK(CL_A(122, 53, 4, 4) == 255);
+    {
+        int sum = 0;
+        for (y = 0; y < 8 * 3; y++)
+            for (x = 0; x < 8 * 3; x++) sum += CL_A(121, 52, x, y);
+        CHECK(sum >= 255 * 30 && sum <= 255 * 80);
+    }
+    /* Symmetric about the pixel's middle, both ways and across the diagonal. */
+    for (y = -16; y < 16; y++)
+        for (x = -16; x < 16; x++) {
+            int v0 = CL_A(122, 53, 4 + x, 4 + y);
+            int u = v0 - CL_A(122, 53, 3 - x, 4 + y), v = v0 - CL_A(122, 53, 4 + x, 3 - y);
+            int t = v0 - CL_A(122, 53, 4 + y, 4 + x);
+            CHECK(u >= -1 && u <= 1 && v >= -1 && v <= 1 && t >= -1 && t <= 1);
+        }
+    /* A 1-pixel diagonal: every pixel's middle is solid, and neighbours join at their corners. */
+    for (i = 0; i < 6; i++) {
+        CHECK(CL_A(120 + i, 96 + i, 4, 4) == 255);
+        if (i < 5) CHECK(CL_A(120 + i, 96 + i, 7, 7) > 100);
+    }
+    /* A 2-pixel stroke: the same width, about 16 output pixels, on every row between its ends. */
+    for (y = 3 * 8; y < 9 * 8; y += 5) {
+        int sum = 0, k;
+        for (k = 0; k < 8 * 6; k++) sum += CL_A(121, 144, k, y);
+        CHECK(sum >= 255 * 15 && sum <= 255 * 17);
+    }
+    /* Its end is square: the fourth output row of the stroke is nearly as wide as the middle, and
+     * the row of pixels above the end is empty. */
+    {
+        int top = 0, mid = 0, k;
+        for (k = 0; k < 8 * 6; k++) { top += CL_A(121, 144, k, 3); mid += CL_A(121, 144, k, 40); }
+        CHECK(top >= mid * 3 / 4);
+        for (k = 0; k < 8 * 6; k++) CHECK(CL_A(121, 143, k, 0) == 0);
+    }
+    /* Red meets green: nothing but the two (no blue), opaque, and a ramp between them. */
+    {
+        int mixed = 0;
+        for (y = 2 * 8; y < 10 * 8; y++)
+            for (x = 0; x < 8 * 6; x++) {
+                const uint8_t* q = CL_Q(120, 192, x, y);
+                CHECK(q[0] == 0 && q[3] == 255 && q[1] + q[2] >= 254 && q[1] + q[2] <= 256);
+                if (q[1] > 0 && q[2] > 0) mixed++;
+            }
+        CHECK(mixed > 0 && mixed < 8 * 8 * 8 * 2);
+    }
+#undef CL_Q
+#undef CL_A
+    free(a);
+    fa_surface_destroy(f);
+    fa_stream_close(s);
+    free(c.p);
+}
+
 /* `got` (stride `stride`) against `ref` drawn in full at stream time `t`. */
 static int same_as_at(fa_surface* ref, fa_time t, const uint8_t* got, int32_t stride, uint32_t bpp)
 {
@@ -5005,6 +5129,7 @@ static void test_presentation_costs(void)
         { "+ all effects at maximum", 4, 1, 1 }, { "smoothness 5 (contours)", 5, 0, 0 },
         { "smoothness 6", 6, 0, 0 }, { "smoothness 8", 8, 0, 0 }, { "smoothness 10 (curves)", 10, 0, 0 },
         { "10 + outline 0.5, shadow 0.5", 10, 0, 2 },
+        { "clean", LOOK_CLEAN, 0, 0 }, { "clean + outline 0.5, shadow 0.5", LOOK_CLEAN, 0, 2 },
     };
     static const uint32_t sizes[2][2] = { { 1920, 1080 }, { 3840, 2160 } };
     buf c = { 0 };
@@ -5044,8 +5169,7 @@ static void test_presentation_costs(void)
             int32_t stride;
             uint32_t b;
             int64_t base = (int64_t)(c.n / FA_CDG_PACK_BYTES) - 200;
-            p.smoothness = levels[li].smooth;
-            p.edge_blend = levels[li].blend;
+            set_look(&p, levels[li].smooth, levels[li].blend);
             CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
             CHECK_EQ(fa_surface_set_presentation_size(f, sizes[si][0], sizes[si][1]), FA_OK);
             l = layout_of(f);
@@ -5181,6 +5305,7 @@ int main(void)
     RUN(test_safety_zone_prepass);
     RUN(test_smoothness_and_edge_blend);
     RUN(test_pixel_art);
+    RUN(test_clean_scaler);
     RUN(test_contours);
     RUN(test_effects);
     RUN(test_bevel_half_stroke);
