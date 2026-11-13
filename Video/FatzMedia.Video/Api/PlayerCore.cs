@@ -202,9 +202,9 @@ public partial class PlayerCore : IPlayerSession
         }
     }
 
-    public bool IsOpen => _mediaEngine.IsOpen;
+    public bool IsOpen => _webActive || _mediaEngine.IsOpen;
 
-    public MediaPlayerState State => _mediaEngine.State;
+    public MediaPlayerState State => _webActive ? WebPlayerState : _mediaEngine.State;
 
     public MediaContent Content => _mediaEngine.Content;
 
@@ -257,25 +257,25 @@ public partial class PlayerCore : IPlayerSession
 
     public TimeSpan Position
     {
-        get => TimeSpan.FromSeconds(_mediaEngine.Position);
+        get => _webActive && _webPlayer is { } webPlayer ? webPlayer.Position : TimeSpan.FromSeconds(_mediaEngine.Position);
         set => Seek(value);
     }
 
-    public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
+    public TimeSpan Duration => _webActive && _webPlayer is { } webPlayer ? webPlayer.Duration : TimeSpan.FromSeconds(_mediaEngine.Duration);
 
     public bool Load(string path) => Load(path, ignoreSidecar: false);
 
     public bool Load(string path, bool ignoreSidecar = false) =>
-        LoadOnQueue(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar);
+        LoadOnQueue(() => SourceFromText(path), static () => null, ignoreSidecar);
 
     public bool Load(MediaInputSource source, bool ignoreSidecar = false) =>
         LoadOnQueue(() => source, static () => null, ignoreSidecar);
 
     public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        LoadOnQueue(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar);
+        LoadOnQueue(() => SourceFromText(path), () => FileBackground(backgroundPath), ignoreSidecar);
 
     public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        LoadOnQueue(() => MediaInputSource.FromFile(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar);
+        LoadOnQueue(() => SourceFromText(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar);
 
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         LoadOnQueue(() => source, () => backgroundSource, ignoreSidecar);
@@ -283,16 +283,16 @@ public partial class PlayerCore : IPlayerSession
     public Task<bool> LoadAsync(string path) => LoadAsync(path, ignoreSidecar: false);
 
     public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
-        EnqueueLoad(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar, CancellationToken.None);
+        EnqueueLoad(() => SourceFromText(path), static () => null, ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
         EnqueueLoad(() => source, static () => null, ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        EnqueueLoad(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar, CancellationToken.None);
+        EnqueueLoad(() => SourceFromText(path), () => FileBackground(backgroundPath), ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        EnqueueLoad(() => MediaInputSource.FromFile(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar, CancellationToken.None);
+        EnqueueLoad(() => SourceFromText(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         EnqueueLoad(() => source, () => backgroundSource, ignoreSidecar, CancellationToken.None);
@@ -306,11 +306,11 @@ public partial class PlayerCore : IPlayerSession
 
     /// <inheritdoc cref="LoadAsync(string, CancellationToken)"/>
     public Task<bool> LoadAsync(string path, bool ignoreSidecar, CancellationToken cancellationToken) =>
-        EnqueueLoad(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar, cancellationToken);
+        EnqueueLoad(() => SourceFromText(path), static () => null, ignoreSidecar, cancellationToken);
 
     /// <inheritdoc cref="LoadAsync(string, CancellationToken)"/>
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar, CancellationToken cancellationToken) =>
-        EnqueueLoad(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar, cancellationToken);
+        EnqueueLoad(() => SourceFromText(path), () => FileBackground(backgroundPath), ignoreSidecar, cancellationToken);
 
     /// <inheritdoc cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>
     public Task<bool> LoadAsync(MediaInputSource source, CancellationToken cancellationToken) =>
@@ -345,7 +345,23 @@ public partial class PlayerCore : IPlayerSession
             var file = File;
             try
             {
-                if (!file.Load(source(), backgroundSource(), ignoreSidecar, lifetime, out var loadGeneration))
+                var input = ResolveSource(source);
+                if (input is null)
+                    return false;
+
+                // Stage 060A: a web item plays in the attached web view; the call never waits for it.
+                if (input.IsWebMedia)
+                {
+                    if (!LoadWebStart(input, out var loading, out var webGeneration))
+                        return false;
+                    WatchWebLoad(loading!, webGeneration);
+                    return true;
+                }
+
+                if (_webActive)
+                    DeactivateWeb(pause: true);
+
+                if (!file.Load(input, backgroundSource(), ignoreSidecar, lifetime, out var loadGeneration))
                     return false;
 
                 if (file.PlayOnLoad)
@@ -381,7 +397,18 @@ public partial class PlayerCore : IPlayerSession
                 : null;
             try
             {
-                return await File.LoadAsync(source(), backgroundSource(), ignoreSidecar, linked?.Token ?? lifetime).ConfigureAwait(false);
+                var input = ResolveSource(source);
+                if (input is null)
+                    return false;
+
+                // Stage 060A: a web item plays in the attached web view; this completes when it is ready.
+                if (input.IsWebMedia)
+                    return await LoadWebAsync(input, linked?.Token ?? lifetime).ConfigureAwait(false);
+
+                if (_webActive)
+                    DeactivateWeb(pause: true);
+
+                return await File.LoadAsync(input, backgroundSource(), ignoreSidecar, linked?.Token ?? lifetime).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && lifetime.IsCancellationRequested)
             {
@@ -395,17 +422,17 @@ public partial class PlayerCore : IPlayerSession
         });
     }
 
-    public bool Play() => ExecuteControlOperation(() => Controls.Play());
+    public bool Play() => ExecuteControlOperation(() => _webActive ? WebPlay() : Controls.Play());
 
-    public Task<bool> PlayAsync() => EnqueueControlOperation(() => Controls.Play());
+    public Task<bool> PlayAsync() => EnqueueControlOperation(() => _webActive ? WebPlay() : Controls.Play());
 
-    public bool Pause() => ExecuteControlOperation(() => Controls.Pause());
+    public bool Pause() => ExecuteControlOperation(() => _webActive ? WebPause() : Controls.Pause());
 
-    public Task<bool> PauseAsync() => EnqueueControlOperation(() => Controls.Pause());
+    public Task<bool> PauseAsync() => EnqueueControlOperation(() => _webActive ? WebPause() : Controls.Pause());
 
-    public bool Stop() => ExecuteControlOperation(() => Controls.Stop());
+    public bool Stop() => ExecuteControlOperation(() => _webActive ? WebStop() : Controls.Stop());
 
-    public Task<bool> StopAsync() => EnqueueControlOperation(() => Controls.Stop());
+    public Task<bool> StopAsync() => EnqueueControlOperation(() => _webActive ? WebStop() : Controls.Stop());
 
     public bool BeginScrub() => ExecuteControlOperation(() => Controls.BeginScrub());
 
@@ -422,7 +449,7 @@ public partial class PlayerCore : IPlayerSession
     {
         try
         {
-            return ExecuteControlOperation(() => SeekOperation(seconds, refreshPresentation: true));
+            return ExecuteControlOperation(() => _webActive ? WebSeek(seconds) : SeekOperation(seconds, refreshPresentation: true));
         }
         catch (ObjectDisposedException)
         {
@@ -448,6 +475,10 @@ public partial class PlayerCore : IPlayerSession
     /// </summary>
     public Task<bool> SeekAsync(double seconds)
     {
+        // Stage 060A: a web item seeks in its web view, in order with the other control operations.
+        if (_webActive)
+            return EnqueueControlOperation(() => _webActive ? WebSeek(seconds) : SeekOperation(seconds, refreshPresentation: true));
+
         QueuedSeek queued;
         lock (_queuedSeekGate)
         {
@@ -619,6 +650,7 @@ public partial class PlayerCore : IPlayerSession
         CancelPendingNetworkOpen();
         _ = ExecuteControlOperation(() =>
         {
+            DeactivateWeb(pause: true);
             File.Close();
             return true;
         });
@@ -904,6 +936,9 @@ public partial class PlayerCore : IPlayerSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_controlOperations.IsExecutingOperation)
             throw new InvalidOperationException("Reset cannot run from inside a media control operation or event handler.");
+
+        // Stage 060A: a web item ends with the session it was loaded into; the attached web player stays attached.
+        DeactivateWeb(pause: true);
 
         ResetChanges? changes;
         lock (_lifecycleGate)
@@ -1308,6 +1343,7 @@ public partial class PlayerCore : IPlayerSession
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
         try { ScrubAudioMuter.Dispose(); } catch { }
+        try { SwapWebPlayer(null); } catch { }
         FreeSessionGraph(stopPlayback: true);
     }
 

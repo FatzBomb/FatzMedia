@@ -32,18 +32,11 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
 - **Slice 3 (Avalonia implemented on Windows, pending manual smoke):** `FatzMedia.Video.WebView2.Avalonia`
   (`AvaloniaWebMediaPlayer`, `WebMediaView`, a loopback page server) on Avalonia's `NativeWebView`
   (`Avalonia.Controls.WebView` 12.1.2, MIT, $0, owner OK 2026-11-13). `updates/060A_3`.
-- **Slice 4 (deferred by the owner 2026-11-13: "later, own careful slice"): `Player.Load(url)` plays web items.**
-  Design review (recommendation, 70% confidence, not yet read against `MediaFile` and `MediaControls`):
-  a Core `WebMediaSession` owned by `PlayerCore`; a host attaches its `IWebMediaPlayer` (through `PlayerOptions` or
-  `AttachWebMediaPlayer`); `MediaFile.Load/LoadAsync` close the pipeline engine and hand a `WebMedia` source to the
-  session; `MediaControls.Play/Pause/Stop/Seek` and `PlayerCore` `IsOpen/State/Position/Duration/volume` read from the
-  session while it is active; web state and error events map onto the existing events under
-  `DiagnosticRouter.EnterOwner`; pitch, tempo, EQ, CD+G, fades and prepared-next report not supported through one
-  guard (`WebMediaSupport.Describe`). The web-active flag changes only inside a control-queue turn. Do not wrap
-  `IWebMediaPlayer` as an `IMediaEngine`. Risks: the synchronous `Load`/`Pause` block the UI thread while WebView2
-  needs it (the adapter must marshal internally and sync web calls must not wait on the web view); web events from a
-  replaced item (tag with the load generation); regressions to normal playback (pin with `TestMediaEngine` tests
-  that run with no session attached).
+- **Slice 4 (implemented, pending manual smoke): `Player.Load(url)` plays web items.** Owner 2026-11-13 ("wire
+  Player.Load now"; earlier "later" overridden). `PlayerCore.AttachWebMediaPlayer(IWebMediaPlayer)`; a YouTube
+  address passed to `Load`/`LoadAsync` plays in the attached web view; Play, Pause, Stop, Seek, Position,
+  Duration, State, IsOpen, volume and the events follow; every other source takes the engine path unchanged.
+  Design, deadlock rule and tests: `updates/060A_4/StageUpdate.md`.
 - **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
   `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
   host (Avalonia) is added.

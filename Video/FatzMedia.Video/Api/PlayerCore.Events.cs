@@ -147,8 +147,13 @@ public partial class PlayerCore
     void OnPositionNotifierChanged(object? sender, MediaPositionChangedEventArgs e) =>
         HostEventDispatcher.Raise(this, PositionChanged, e, nameof(PositionChanged));
 
-    void OnEffectsVolumeChanged(object? sender, MediaValueChangedEventArgs<double> e) =>
+    void OnEffectsVolumeChanged(object? sender, MediaValueChangedEventArgs<double> e)
+    {
+        // Stage 060A: the volume the host sets applies to a web item too.
+        if (_webActive && _webPlayer is { } webPlayer)
+            ObserveWeb(webPlayer.SetVolumeAsync(Math.Clamp(e.CurrentValue, 0.0, 1.0)));
         HostEventDispatcher.Raise(this, VolumeChanged, e, nameof(VolumeChanged));
+    }
 
     void OnEffectsPitchChanged(object? sender, MediaValueChangedEventArgs<int> e) =>
         HostEventDispatcher.Raise(this, PitchChanged, e, nameof(PitchChanged));

@@ -123,8 +123,12 @@ sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEve
 
     public bool Open(string path) => Open(MediaInputSource.FromFile(path));
 
+    /// <summary>The sources the engine was asked to open, in order.</summary>
+    public List<MediaInputSource> OpenedSources { get; } = [];
+
     public bool Open(MediaInputSource source)
     {
+        OpenedSources.Add(source);
         BeforeOpen?.Invoke();
         if (!OpenSucceeds)
             return false;
