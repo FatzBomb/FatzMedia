@@ -16,6 +16,7 @@ public sealed class LoopbackPageServer : IDisposable
     readonly TcpListener _listener;
     readonly byte[] _page;
     readonly CancellationTokenSource _stop = new();
+    int _disposed;
 
     /// <summary>Starts serving <paramref name="page"/> on a free loopback port.</summary>
     public LoopbackPageServer(byte[] page)
@@ -36,6 +37,8 @@ public sealed class LoopbackPageServer : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
         _stop.Cancel();
         _listener.Stop();
         _stop.Dispose();
@@ -66,7 +69,9 @@ public sealed class LoopbackPageServer : IDisposable
                 client.ReceiveTimeout = client.SendTimeout = 5000;
                 var stream = client.GetStream();
                 var buffer = new byte[4096];
-                var read = await stream.ReadAsync(buffer, _stop.Token).ConfigureAwait(false);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                var read = await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
                 var request = Encoding.ASCII.GetString(buffer, 0, read);
                 var line = request.Split('\r', 2)[0].Split(' ');
                 var found = line.Length >= 2 && line[0] == "GET" && line[1].Split('?', 2)[0] == PagePath;

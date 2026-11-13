@@ -127,8 +127,10 @@ public sealed class AvaloniaWebMediaPlayer : IWebMediaPlayer
             throw new NotSupportedException("This platform's web view does not offer cookie management, so it cannot sign out.");
 
         foreach (var cookie in await cookies.GetCookiesAsync().ConfigureAwait(true))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             cookies.DeleteCookie(cookie);
-        cancellationToken.ThrowIfCancellationRequested();
+        }
     }
 
     /// <inheritdoc />
@@ -139,6 +141,9 @@ public sealed class AvaloniaWebMediaPlayer : IWebMediaPlayer
         _disposed = true;
         _web.WebMessageReceived -= OnWebMessageReceived;
         _ready?.TrySetCanceled(CancellationToken.None);
+        Current = null;
+        // Leave the player page so the video stops playing; the loopback server is about to go away.
+        _web.Navigate(new Uri("about:blank"));
         _server.Dispose();
         return ValueTask.CompletedTask;
     }

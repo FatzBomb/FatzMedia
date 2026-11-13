@@ -36,3 +36,9 @@ Windows, with the WebView2 runtime, in an Avalonia host that has the manifest:
 3. `SignInAsync`, sign in on Google's page, `OpenAsync` again, restart the host: is the sign-in still there?
    (Record the answer: it decides whether the Avalonia control needs a profile setting.) `SignOutAsync` clears it.
 4. macOS and Linux: not tested; try when a machine is available (WKWebView / WebKitGTK may behave differently).
+
+## Known limits (code review, not fixed)
+- Commands sent while the web view shows another page (after `SignInAsync`, or before `LoadAsync`) do nothing and
+  raise no error.
+- Web messages are not checked against the page that sent them (WebView2's adapter checks the source host;
+  `NativeWebView`'s message event documents no source). Treat the web view as trusted-page-only.

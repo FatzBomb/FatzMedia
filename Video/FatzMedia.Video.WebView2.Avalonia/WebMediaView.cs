@@ -16,8 +16,8 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
     public WebMediaView() => Content = _web;
 
     /// <summary>
-    /// Gets the player. Available once the control has been added to the visual tree (the web view then creates its
-    /// native window); before that it throws.
+    /// Gets the player, created on first use. Load media only after the control has been added to the visual tree
+    /// (the web view creates its native window then).
     /// </summary>
     public IWebMediaPlayer Player => _player ??= new AvaloniaWebMediaPlayer(_web);
 
