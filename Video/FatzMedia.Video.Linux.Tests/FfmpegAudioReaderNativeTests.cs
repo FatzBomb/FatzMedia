@@ -40,6 +40,47 @@ public sealed class FfmpegAudioReaderNativeTests
     }
 
     [Fact]
+    public void RealFfmpeg_Pcm16Source_ReadsAsTheSame16BitSamples_AndFloatOnRequest()
+    {
+        var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
+        if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
+            return;
+
+        ActivateFfmpeg(directory);
+        var wav = Path.Combine(Path.GetTempPath(), $"fatzbomb-pcm16-{Guid.NewGuid():N}.wav");
+        try
+        {
+            WriteStereoTone(wav, sampleRate: 44100, seconds: 1, amplitude: 0.5, burstAtSeconds: 5, burstAmplitude: 0.5);
+
+            using (var integers = FfmpegAudioReader.Open(wav, allowInt16Pcm: true))
+            {
+                Assert.NotNull(integers);
+                Assert.True(integers.IsInt16);
+                Assert.Equal(sizeof(short), integers.BytesPerSample);
+                var first = integers.ReadFrameBytes();
+                Assert.False(first.IsEmpty);
+                // The tone's first samples, rounded to 16 bits exactly as the file holds them.
+                var left = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(first);
+                Assert.Equal((short)Math.Round(Math.Sin(2 * Math.PI * 440 * 1 / 44100d) * 0.5 * short.MaxValue), left[2]);
+            }
+
+            using var floats = FfmpegAudioReader.Open(wav);
+            Assert.NotNull(floats);
+            Assert.False(floats.IsInt16);
+            Assert.Equal(sizeof(float), floats.BytesPerSample);
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var asIntegers = FfmpegAudioReader.Open(wav, allowInt16Pcm: true)!;
+                _ = asIntegers.ReadFrame();
+            });
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
     public void RealFfmpeg_CancelledConversion_Throws()
     {
         // The load's token reaches the conversion: Reset, Dispose or the host stop it.
@@ -64,7 +105,7 @@ public sealed class FfmpegAudioReaderNativeTests
     }
 
     [Fact]
-    public void RealFfmpeg_ConvertsToAFloatWavFfmpegReadsBack_InMemoryAndAsTempFile()
+    public void RealFfmpeg_ConvertsAPcm16Source_To16BitWavFfmpegReadsBack_InMemoryAndAsTempFile()
     {
         var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
         if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
@@ -81,7 +122,8 @@ public sealed class FfmpegAudioReaderNativeTests
             {
                 Assert.NotNull(inMemory);
                 Assert.True(inMemory.IsInMemory);
-                Assert.Equal(FloatWav.HeaderBytes + (48000L * 3 * 2 * sizeof(float)), inMemory.Length);
+                // A 16-bit source stays 16-bit: half the size of float, the same samples.
+                Assert.Equal(Pcm16Wav.HeaderBytes + (48000L * 3 * 2 * sizeof(short)), inMemory.Length);
                 File.WriteAllBytes(roundTrip, inMemory.InMemoryData.ToArray());
                 AssertReadsBack(roundTrip);
             }

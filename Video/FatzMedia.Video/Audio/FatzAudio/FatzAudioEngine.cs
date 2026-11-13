@@ -406,7 +406,7 @@ sealed partial class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioAn
                 && FfmpegAudioFallback.CanRetryWithFfmpeg(path))
             {
                 // A format FatzAudio does not decode (WMA off Windows, DTS, ...): FFmpeg converts it
-                // to a float WAV (archive entries through a temp file).
+                // to a WAV (archive entries through a temp file).
                 converted = (source.Path is null && archiveEntry is not null ? TakeArchiveConversion(archiveEntry) : FfmpegAudioFallback.Take(path, MediaOpenCancellation.Current))
                     ?? throw new InvalidOperationException($"FFmpeg could not convert '{path}'.", ex);
                 source = converted.IsInMemory

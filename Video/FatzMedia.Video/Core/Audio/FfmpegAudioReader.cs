@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Media;
 using FFmpeg.AutoGen;
 
@@ -6,7 +7,8 @@ namespace FatzMedia.Video.Core.Audio;
 /// <summary>
 /// Decodes a file's best audio stream to interleaved 32-bit float PCM at the source sample
 /// rate, downmixed to at most two channels: the same format <see cref="VideoAudioEngine"/>
-/// pushes to its output. It owns its demuxer and decoder, so it can run on a background thread while
+/// pushes to its output. With <c>allowInt16Pcm</c>, a source the decoder produces as 16-bit integers (and
+/// that needs no downmix) comes out as 16-bit integers instead, unchanged and half the size. It owns its demuxer and decoder, so it can run on a background thread while
 /// the same file plays.
 /// </summary>
 sealed unsafe class FfmpegAudioReader : IDisposable
@@ -22,6 +24,7 @@ sealed unsafe class FfmpegAudioReader : IDisposable
     int _streamIndex = -1;
     double _streamStartSeconds;
     float[] _samples = [];
+    short[] _shorts = [];
     bool _draining;
 
     FfmpegAudioReader()
@@ -37,12 +40,24 @@ sealed unsafe class FfmpegAudioReader : IDisposable
     /// <summary>Container duration in seconds, or 0 when unknown.</summary>
     public double DurationSeconds { get; private set; }
 
+    /// <summary>True when the samples are 16-bit integers (<see cref="ReadFrameBytes"/>), false for 32-bit float.</summary>
+    public bool IsInt16 { get; private set; }
+
+    /// <summary>Bytes per sample of the output: 2 for 16-bit integers, 4 for float.</summary>
+    public int BytesPerSample => IsInt16 ? sizeof(short) : sizeof(float);
+
     /// <summary>Opens <paramref name="path"/>; returns <see langword="null"/> when it has no decodable audio.</summary>
-    public static FfmpegAudioReader? Open(string path)
+    public static FfmpegAudioReader? Open(string path) => Open(path, allowInt16Pcm: false);
+
+    /// <summary>
+    /// Opens <paramref name="path"/>, with 16-bit integer output where the source is 16-bit and needs no
+    /// downmix (<paramref name="allowInt16Pcm"/>); returns <see langword="null"/> when it has no decodable audio.
+    /// </summary>
+    public static FfmpegAudioReader? Open(string path, bool allowInt16Pcm)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var reader = new FfmpegAudioReader();
-        if (reader.OpenCore(path))
+        if (reader.OpenCore(path, allowInt16Pcm))
             return reader;
 
         reader.Dispose();
@@ -55,20 +70,46 @@ sealed unsafe class FfmpegAudioReader : IDisposable
     /// </summary>
     public ReadOnlySpan<float> ReadFrame()
     {
+        if (IsInt16)
+            throw new InvalidOperationException("The reader outputs 16-bit integers: use ReadFrameBytes.");
+
+        var count = ReadFrameCore();
+        return count > 0 ? _samples.AsSpan(0, count) : [];
+    }
+
+    /// <summary>
+    /// Decodes the next audio frame as little-endian interleaved bytes of the output format
+    /// (<see cref="IsInt16"/>, <see cref="BytesPerSample"/>). The bytes stay valid until the next call;
+    /// an empty span means the end of the stream.
+    /// </summary>
+    public ReadOnlySpan<byte> ReadFrameBytes()
+    {
+        var count = ReadFrameCore();
+        if (count <= 0)
+            return [];
+
+        return IsInt16
+            ? MemoryMarshal.AsBytes(_shorts.AsSpan(0, count))
+            : MemoryMarshal.AsBytes(_samples.AsSpan(0, count));
+    }
+
+    // The next frame's samples (all channels) in the buffer of the output format; 0 at the end of the stream.
+    int ReadFrameCore()
+    {
         while (true)
         {
             var received = ffmpeg.avcodec_receive_frame(_codecContext, _frame);
             if (received == 0)
             {
-                var samples = ConvertFrame();
-                if (!samples.IsEmpty)
-                    return samples;
+                var count = ConvertFrame();
+                if (count > 0)
+                    return count;
 
                 continue;
             }
 
             if (received != AvErrorAgain || _draining || !SendNextPacket())
-                return [];
+                return 0;
         }
     }
 
@@ -121,7 +162,7 @@ sealed unsafe class FfmpegAudioReader : IDisposable
         _demuxer.Dispose();
     }
 
-    bool OpenCore(string path)
+    bool OpenCore(string path, bool allowInt16Pcm)
     {
         if (!_demuxer.Open(path))
             return false;
@@ -133,8 +174,10 @@ sealed unsafe class FfmpegAudioReader : IDisposable
 
         _demuxer.DiscardAllStreamsExcept([_streamIndex]);
 
-        if (!FfmpegAudioDecoderSetup.TryOpen(_stream, out _codecContext, out _resampler, out var sampleRate, out var channels))
+        if (!FfmpegAudioDecoderSetup.TryOpen(_stream, allowInt16Pcm, out _codecContext, out _resampler, out var sampleRate, out var channels, out var isInt16))
             return false;
+
+        IsInt16 = isInt16;
 
         SampleRate = sampleRate;
         Channels = channels;
@@ -173,23 +216,38 @@ sealed unsafe class FfmpegAudioReader : IDisposable
         }
     }
 
-    ReadOnlySpan<float> ConvertFrame()
+    int ConvertFrame()
     {
         var capacity = ffmpeg.swr_get_out_samples(_resampler, _frame->nb_samples);
         if (capacity <= 0)
-            return [];
+            return 0;
 
         var required = capacity * Channels;
-        if (_samples.Length < required)
-            _samples = new float[required];
-
         int converted;
-        fixed (float* destination = _samples)
+        if (IsInt16)
         {
-            var output = (byte*)destination;
-            converted = ffmpeg.swr_convert(_resampler, &output, capacity, _frame->extended_data, _frame->nb_samples);
+            if (_shorts.Length < required)
+                _shorts = new short[required];
+
+            converted = Convert(_shorts, capacity);
+        }
+        else
+        {
+            if (_samples.Length < required)
+                _samples = new float[required];
+
+            converted = Convert(_samples, capacity);
         }
 
-        return converted > 0 ? _samples.AsSpan(0, converted * Channels) : [];
+        return converted > 0 ? converted * Channels : 0;
+    }
+
+    int Convert<T>(T[] buffer, int capacity) where T : unmanaged
+    {
+        fixed (T* destination = buffer)
+        {
+            var output = (byte*)destination;
+            return ffmpeg.swr_convert(_resampler, &output, capacity, _frame->extended_data, _frame->nb_samples);
+        }
     }
 }

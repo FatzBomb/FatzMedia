@@ -1,13 +1,12 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using FatzMedia.Video.Core.Files;
 
 namespace FatzMedia.Video.Core.Audio;
 
 /// <summary>
-/// An audio file decoded by FFmpeg into a 32-bit float WAV that FatzAudio plays natively, held in
-/// memory or, above <see cref="FfmpegAudioFallback.MaxInMemoryBytes"/>, in a temp file deleted
+/// An audio file decoded by FFmpeg into a WAV that FatzAudio plays natively (16-bit integers when the decoder
+/// produced 16-bit integers and nothing was mixed, otherwise 32-bit float), held in memory or, above <see cref="FfmpegAudioFallback.MaxInMemoryBytes"/>, in a temp file deleted
 /// on dispose. Disposing must follow freeing every stream created from it.
 /// </summary>
 sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, string? tempPath) : IDisposable
@@ -31,14 +30,22 @@ sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long length, st
 
 /// <summary>
 /// Plays audio formats FatzAudio does not decode (Stage 033A slice 2): FFmpeg decodes the file to a
-/// float WAV, which opens through the audio engine's normal stream path, so the file
+/// WAV, which opens through the audio engine's normal stream path, so the file
 /// gets every plain-audio feature (seek, loop, tempo, equalizer, fades, normalization,
-/// trimming, prepared-next). The conversion made for a prepared-next item is kept so the
+/// trimming, prepared-next). The WAV keeps 16-bit integers where the decoder makes them (half the size of
+/// float, and the same samples), else 32-bit float. The conversion made for a prepared-next item is kept so the
 /// transition does not convert again (one per player, up to <see cref="MaxPreparedConversions"/>).
 /// </summary>
+/// <remarks>
+/// It stays a conversion to a seekable WAV rather than a stream pushed into FatzAudio: seeks, loops, tempo,
+/// trim analysis, normalization (a scan of the whole file) and prepared-next all need random access to the
+/// samples, which a push or packet stream does not give.
+/// </remarks>
 static class FfmpegAudioFallback
 {
-    internal const long DefaultMaxInMemoryBytes = 160L * 1024 * 1024;
+    // A 4-minute stereo 48 kHz song is about 92 MB as float and 46 MB as 16-bit integers; with up to four
+    // prepared conversions kept, larger ones go to a temp file instead of piling up in memory.
+    internal const long DefaultMaxInMemoryBytes = 64L * 1024 * 1024;
 
     // RIFF sizes are 32-bit; the header below is 58 bytes.
     const long MaxWavDataBytes = uint.MaxValue - FloatWav.HeaderBytes;
@@ -113,12 +120,12 @@ static class FfmpegAudioFallback
     /// converted size), a temp file when that exceeds <paramref name="maxInMemory"/>, or a refusal
     /// when the data cannot fit in a WAV. An unknown duration starts in memory and spills when needed.
     /// </summary>
-    internal static (ConversionTarget Target, long InitialCapacity) PlanOutput(double durationSeconds, int sampleRate, int channels, long maxInMemory)
+    internal static (ConversionTarget Target, long InitialCapacity) PlanOutput(double durationSeconds, int sampleRate, int channels, long maxInMemory, int bytesPerSample = sizeof(float))
     {
         if (!(durationSeconds > 0) || !double.IsFinite(durationSeconds) || sampleRate <= 0 || channels <= 0)
             return (ConversionTarget.Memory, 0);
 
-        var dataBytes = Math.Ceiling(durationSeconds * sampleRate) * channels * sizeof(float);
+        var dataBytes = Math.Ceiling(durationSeconds * sampleRate) * channels * bytesPerSample;
         if (dataBytes > MaxWavDataBytes)
             return (ConversionTarget.TooLong, 0);
 
@@ -130,14 +137,14 @@ static class FfmpegAudioFallback
     {
         cancellationToken.ThrowIfCancellationRequested();
         var stopwatch = Stopwatch.StartNew();
-        using var reader = FfmpegAudioReader.Open(path);
+        using var reader = FfmpegAudioReader.Open(path, allowInt16Pcm: true);
         if (reader is null)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"FFmpeg found no decodable audio in '{Path.GetFileName(path)}'.", sourcePath: path);
             return null;
         }
 
-        (var target, var capacity) = PlanOutput(reader.DurationSeconds, reader.SampleRate, reader.Channels, MaxInMemoryBytes);
+        (var target, var capacity) = PlanOutput(reader.DurationSeconds, reader.SampleRate, reader.Channels, MaxInMemoryBytes, reader.BytesPerSample);
         if (target == ConversionTarget.TooLong)
         {
             ReportTooLong(path);
@@ -160,17 +167,17 @@ static class FfmpegAudioFallback
 
         try
         {
-            output.Write(new byte[FloatWav.HeaderBytes]);
+            var headerBytes = reader.IsInt16 ? Pcm16Wav.HeaderBytes : FloatWav.HeaderBytes;
+            output.Write(new byte[headerBytes]);
             long dataBytes = 0;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var samples = reader.ReadFrame();
-                if (samples.IsEmpty)
+                // WAV is little-endian, as is every platform the engine runs on.
+                var bytes = reader.ReadFrameBytes();
+                if (bytes.IsEmpty)
                     break;
 
-                // WAV is little-endian, as is every platform the engine runs on.
-                var bytes = MemoryMarshal.AsBytes(samples);
                 if (dataBytes + bytes.Length > MaxWavDataBytes)
                 {
                     // The container's duration ran short of the real length.
@@ -203,8 +210,11 @@ static class FfmpegAudioFallback
             if (dataBytes == 0)
                 return Discard(output, tempPath);
 
-            Span<byte> header = stackalloc byte[FloatWav.HeaderBytes];
-            FloatWav.WriteHeader(header, reader.SampleRate, reader.Channels, dataBytes);
+            Span<byte> header = stackalloc byte[headerBytes];
+            if (reader.IsInt16)
+                Pcm16Wav.WriteHeader(header, reader.SampleRate, reader.Channels, dataBytes);
+            else
+                FloatWav.WriteHeader(header, reader.SampleRate, reader.Channels, dataBytes);
             output.Position = 0;
             output.Write(header);
 
@@ -259,6 +269,39 @@ static class FfmpegAudioFallback
         {
             return path;
         }
+    }
+}
+
+/// <summary>Header of a 16-bit integer PCM WAV: RIFF, a 16-byte <c>fmt </c> chunk (<c>WAVE_FORMAT_PCM</c>), then the <c>data</c> chunk header.</summary>
+static class Pcm16Wav
+{
+    public const int HeaderBytes = 12 + 8 + 16 + 8;
+
+    const ushort WaveFormatPcm = 1;
+    const int BytesPerSample = sizeof(short);
+
+    public static void WriteHeader(Span<byte> header, int sampleRate, int channels, long dataBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(header.Length, HeaderBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);
+        ArgumentOutOfRangeException.ThrowIfNegative(dataBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(dataBytes, uint.MaxValue - HeaderBytes);
+
+        var blockAlign = channels * BytesPerSample;
+        "RIFF"u8.CopyTo(header);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[4..], (uint)(HeaderBytes - 8 + dataBytes));
+        "WAVE"u8.CopyTo(header[8..]);
+        "fmt "u8.CopyTo(header[12..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[16..], 16);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[20..], WaveFormatPcm);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[22..], (ushort)channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[24..], (uint)sampleRate);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[28..], (uint)(sampleRate * blockAlign));
+        BinaryPrimitives.WriteUInt16LittleEndian(header[32..], (ushort)blockAlign);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[34..], BytesPerSample * 8);
+        "data"u8.CopyTo(header[36..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[40..], (uint)dataBytes);
     }
 }
 
