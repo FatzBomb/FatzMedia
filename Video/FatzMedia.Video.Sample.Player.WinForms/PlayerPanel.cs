@@ -353,7 +353,25 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         _binder.Command(reset, _viewModel.ResetBaseVisualTransformCommand);
         _binder.Text(state, () => _viewModel.BaseVisualTransformState, nameof(PlayerViewModel.BaseVisualTransformState));
         panel.Controls.AddRange([overlays, reset, state]);
+        AddCdgLook(panel);
         return panel;
+    }
+
+    /// <summary>The scaled CD+G look (ENG-064), applied live by FatzAudio: scale and style, then the 0-10 effect steps.</summary>
+    void AddCdgLook(Control panel)
+    {
+        var scale = new ComboBox { Width = 140, Margin = new Padding(3, 5, 3, 3) };
+        _binder.Choice(scale, _viewModel.CdgScales, () => _viewModel.CdgScaleChoice, value => _viewModel.CdgScaleChoice = value, nameof(PlayerViewModel.CdgScaleChoice));
+        var style = new ComboBox { Width = 120, Margin = new Padding(3, 5, 3, 3) };
+        _binder.Choice(style, _viewModel.CdgStyles, () => _viewModel.CdgStyleChoice, value => _viewModel.CdgStyleChoice = value, nameof(PlayerViewModel.CdgStyleChoice));
+        var resetLook = SmallButton("Reset look");
+        _binder.Command(resetLook, _viewModel.ResetCdgLookCommand);
+        panel.Controls.AddRange([Caption("CD+G SCALE"), scale, Caption("STYLE"), style, resetLook]);
+        AddSlider(panel, "OUTLINE", () => _viewModel.CdgOutlineSize, value => _viewModel.CdgOutlineSize = (int)Math.Round(value), nameof(PlayerViewModel.CdgOutlineSize), 0, CdgScalingOptions.MaximumEffect, 1, "0", string.Empty);
+        AddSlider(panel, "SHADOW SIZE", () => _viewModel.CdgShadowSize, value => _viewModel.CdgShadowSize = (int)Math.Round(value), nameof(PlayerViewModel.CdgShadowSize), 0, CdgScalingOptions.MaximumEffect, 1, "0", string.Empty);
+        AddSlider(panel, "SHADOW DIST", () => _viewModel.CdgShadowDistance, value => _viewModel.CdgShadowDistance = (int)Math.Round(value), nameof(PlayerViewModel.CdgShadowDistance), 0, CdgScalingOptions.MaximumEffect, 1, "0", string.Empty);
+        AddSlider(panel, "BEVEL", () => _viewModel.CdgBevelStrength, value => _viewModel.CdgBevelStrength = (int)Math.Round(value), nameof(PlayerViewModel.CdgBevelStrength), 0, CdgScalingOptions.MaximumEffect, 1, "0", string.Empty);
+        AddSlider(panel, "BEVEL SIZE", () => _viewModel.CdgBevelSize, value => _viewModel.CdgBevelSize = (int)Math.Round(value), nameof(PlayerViewModel.CdgBevelSize), 0, CdgScalingOptions.MaximumEffect, 1, "0", string.Empty);
     }
 
     FlowLayoutPanel BuildAudioTab()

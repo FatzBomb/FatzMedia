@@ -73,6 +73,8 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         InfoText.Text = $"{PlatformComposition.Name} platform | native: {string.Join(", ", _nativePaths)}";
         if (_options.LightweightSurfacesWindow)
             ShowLightweightSurfaces(chosen);
+        if (StartupOptions.AbSwapDemo.IsEnabled)
+            ShowAbSwapDemo(chosen);
         await _players.StartAsync();
     }
 
@@ -83,6 +85,32 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
             _nativePaths,
             !_options.PreferFrameSinkSurface,
             _options.AutoHideSurfaces).Show(this);
+
+    /// <summary>Stage 051A: the A/B swap demo window (<c>--ab-demo=</c>), with the startup renderer.</summary>
+    void ShowAbSwapDemo(RendererKind kind)
+    {
+        var demo = StartupOptions.AbSwapDemo;
+        var clips = demo.ResolveClips(
+            Directory.Exists,
+            static folder =>
+            {
+                try
+                {
+                    return Directory.EnumerateFiles(folder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            });
+        new AbSwapDemoWindow(
+            () => PlatformComposition.Create(Renderers.Create(kind)),
+            _nativePaths,
+            demo,
+            clips,
+            !_options.PreferFrameSinkSurface,
+            _options.AutoHideSurfaces).Show(this);
+    }
 
     // Before the first build (OpenAsync fills the boxes) the controller rebuilds nothing; a rebuild never throws.
     void OnLayoutChanged(object? sender, SelectionChangedEventArgs e) => _ = _players.RebuildAsync();

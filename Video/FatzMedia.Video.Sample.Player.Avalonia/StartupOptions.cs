@@ -1,4 +1,5 @@
 using FatzMedia.Video.Sample.Player.Shared;
+using FatzMedia.Video.Sample.Player.Shared.Presentation;
 
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
@@ -12,4 +13,7 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 static class StartupOptions
 {
     public static PlayerStartupOptions Current { get; set; } = new();
+
+    /// <summary>The A/B swap demo command line (<c>--ab-demo=</c>, Stage 051A); the demo runs when it has a source.</summary>
+    public static AbSwapDemoOptions AbSwapDemo { get; set; } = new();
 }

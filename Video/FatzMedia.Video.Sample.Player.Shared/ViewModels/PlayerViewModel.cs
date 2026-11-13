@@ -69,7 +69,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     }
 
     /// <summary>Gets the command-line options this player started with.</summary>
-    public PlayerStartupOptions Options { get; }
+    PlayerStartupOptions Options { get; }
 
     /// <summary>
     /// Gets or sets a short name for this player (for example "P2" when a host shows several),
@@ -149,7 +149,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     public bool CanSeek => Player is not null && DurationSeconds > 0;
 
-    public bool CanUseSync => Player?.IsOpen == true;
+    bool CanUseSync => Player?.IsOpen == true;
 
     [ObservableProperty]
     public partial string AudioVideoSyncText { get; private set; } = "+0.0s";

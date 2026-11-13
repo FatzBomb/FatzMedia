@@ -38,7 +38,13 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
 
       <!-- Open, what is loaded, and the URL box (Stage 039A: MP4/MKV progressive or HLS). -->
-      <Grid x:Name="TopBar" Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+      <StackPanel Grid.Row="0" Spacing="4">
+      <!-- The engine could not start (missing native library, ...): why, until the player is rebuilt. -->
+      <Border x:Name="StartupErrorBanner" Background="#40C0392B" CornerRadius="4" Padding="8,4"
+              IsVisible="{Binding StartupError, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock TextWrapping="Wrap" Text="{Binding StartupError.Message, FallbackValue=''}" ToolTip.Tip="{Binding StartupError}" />
+      </Border>
+      <Grid x:Name="TopBar" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
         <Button Content="Open..." Command="{Binding OpenFileCommand}" ToolTip.Tip="Open a media file (or drop one on the player)" />
         <TextBlock Grid.Column="1" Margin="2,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                    Text="{Binding LoadedMediaText}" ToolTip.Tip="{Binding LoadedMediaText}" />
@@ -50,6 +56,18 @@
         </TextBox>
         <Button Grid.Column="3" Content="URL..." Command="{Binding OpenUrlCommand}" ToolTip.Tip="Load the URL as the current item" />
       </Grid>
+      <!-- A load, a transport change or a mode switch is running. -->
+      <Grid x:Name="BusyRow" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+        <Grid.IsVisible>
+          <MultiBinding Converter="{x:Static BoolConverters.Or}">
+            <Binding Path="IsBusy" />
+            <Binding Path="IsSwitchingMode" />
+          </MultiBinding>
+        </Grid.IsVisible>
+        <TextBlock Classes="label" Text="{Binding LoadingMediaText, StringFormat='Working: {0}'}" />
+        <ProgressBar Grid.Column="1" IsIndeterminate="True" Height="4" />
+      </Grid>
+      </StackPanel>
 
       <!-- Double-click (or F11) for full screen; Escape leaves it. -->
       <Border x:Name="SurfaceHost" Grid.Row="1" Background="Black" MinHeight="80">
@@ -90,6 +108,7 @@
         <Slider Width="110" Minimum="0" Maximum="1" Value="{Binding Volume}" VerticalAlignment="Center" />
         <TextBlock Classes="value" MinWidth="38" Text="{Binding Volume, StringFormat='{}{0:P0}'}" />
         <Button x:Name="FullScreenButton" Classes="small" Content="Full screen" ToolTip.Tip="Full screen (double-click the picture or F11; Escape leaves it)" />
+        <TextBlock Classes="label" Text="{Binding PlaybackState}" ToolTip.Tip="The transport state from the latest status read" />
       </WrapPanel>
 
       <Panel x:Name="FlyoutHost" Grid.Row="4">
@@ -180,6 +199,60 @@
               <Button Classes="small" Content="Reset visual" Command="{Binding ResetBaseVisualTransformCommand}" ToolTip.Tip="Restore every transform to identity" />
               <TextBlock Classes="label" Text="{Binding BaseVisualTransformState}" />
             </StackPanel>
+
+            <!-- Scaled CD+G look (ENG-064): applied live by FatzAudio, playing or paused -->
+            <Border Height="1" Background="#40808080" Margin="0,4" />
+            <WrapPanel ItemSpacing="8" LineSpacing="4">
+              <TextBlock Classes="label" Text="CD+G SCALE" />
+              <ComboBox MinWidth="130" ItemsSource="{Binding CdgScales}" SelectedItem="{Binding CdgScaleChoice}"
+                        ToolTip.Tip="None: the classic picture. Low: 2x. Med: the largest multiple of 216 at or below half the screen height. High: at or below the screen height (1080p 5x, 4K 10x). Higher costs more CPU, mostly for the outline, shadow and bevel" />
+              <TextBlock Classes="label" Text="STYLE" />
+              <ComboBox MinWidth="110" ItemsSource="{Binding CdgStyles}" SelectedItem="{Binding CdgStyleChoice}"
+                        ToolTip.Tip="Pixel: sharp squares. Anti-aliased: sharp, stair steps smoothed. Pixel art: diagonal steps cut into clean slopes, square corners kept. Traced: straight slopes, sharp corners. Curved: traced with curves" />
+              <Button Classes="small" Content="Reset look" Command="{Binding ResetCdgLookCommand}" ToolTip.Tip="Traced, no outline, shadow or bevel; the scale stays" />
+            </WrapPanel>
+            <WrapPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding CdgOutlineSize}" />
+                  <TextBlock Classes="label" Text="OUTLINE" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CdgOutlineSize}"
+                        ToolTip.Tip="Black outline width in half CD+G pixels: 0 none, 10 is 5 CD+G pixels" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding CdgShadowSize}" />
+                  <TextBlock Classes="label" Text="SHADOW SIZE" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CdgShadowSize}"
+                        ToolTip.Tip="How far the soft shadow spreads, in half CD+G pixels" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding CdgShadowDistance}" />
+                  <TextBlock Classes="label" Text="SHADOW DIST" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CdgShadowDistance}"
+                        ToolTip.Tip="How far down and right the shadow falls, in half CD+G pixels. No shadow when size and distance are both 0" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding CdgBevelStrength}" />
+                  <TextBlock Classes="label" Text="BEVEL" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CdgBevelStrength}"
+                        ToolTip.Tip="Bevel strength: a highlight top left and a shade bottom right; 0 none, 10 full" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding CdgBevelSize}" />
+                  <TextBlock Classes="label" Text="BEVEL SIZE" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CdgBevelSize}"
+                        ToolTip.Tip="How far the bevel reaches in from the edge, in half CD+G pixels" />
+              </StackPanel>
+            </WrapPanel>
           </StackPanel>
         </Border>
 

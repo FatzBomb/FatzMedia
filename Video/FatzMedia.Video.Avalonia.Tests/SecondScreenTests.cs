@@ -222,7 +222,7 @@ public sealed class SecondScreenTests
         };
         var window = Show(surface, 320, 180);
         Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
-        var visual = ElementComposition.GetElementChildVisual(surface)!;
+        var visual = ElementComposition.GetElementChildVisual(surface.GpuImageHost)!;
         Assert.True(visual.Visible);
 
         recorder.SwitchMode(MediaPlayerMode.Audio);
