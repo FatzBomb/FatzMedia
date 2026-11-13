@@ -404,10 +404,6 @@ static unsafe partial class NativeMethods
 
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_lyric_surface_get_style(nint surface, FaLyricStyle* style);
-
-    [LibraryImport(Lib)]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_read(StreamHandle stream, void* buffer, long frames, out long framesRead);
 
     // ---- Parameters and envelopes -----------------------------------------
@@ -447,6 +443,10 @@ static unsafe partial class NativeMethods
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_set_fade_curve(StreamHandle stream, int fade, FaRamp* shape);
+
+    [LibraryImport(Lib)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_stream_get_fade_curve(StreamHandle stream, int fade, FaRamp* shape);
 
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -680,6 +680,10 @@ static unsafe partial class NativeMethods
 
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_open_memory_ref(void* data, nuint size, FaArchiveOptions* options, out nint archive);
+
+    [LibraryImport(Lib)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_archive_open_io(FaIoCallbacks* io, void* user, FaArchiveOptions* options, out nint archive);
 
     [LibraryImport(Lib)]
@@ -794,6 +798,10 @@ static unsafe partial class NativeMethods
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_tags_get_picture(nint tags, uint index, out FaTagPicture picture);
+
+    [LibraryImport(Lib)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_tags_get_cover(nint tags, out FaTagPicture picture);
 
     [LibraryImport(Lib)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

@@ -98,6 +98,21 @@ public sealed class Curve : IEquatable<Curve>
         PointCount = (uint)(_points?.Length ?? 0),
     };
 
+    /// <summary>
+    /// The curve a native shape describes; null for a <see cref="Points"/> shape, whose points the native getters
+    /// do not return (only their count).
+    /// </summary>
+    internal static Curve? FromNative(in FaRamp ramp) => ramp.Curve switch
+    {
+        NativeConstants.CurveLinear => Linear,
+        NativeConstants.CurveEqualPower => EqualPower,
+        NativeConstants.CurveLog => Logarithmic,
+        NativeConstants.CurveExp => Exponential,
+        NativeConstants.CurveSCurve => SCurve,
+        NativeConstants.CurveBezier => new Curve(NativeConstants.CurveBezier, ramp.BezierX1, ramp.BezierY1, ramp.BezierX2, ramp.BezierY2),
+        _ => null,
+    };
+
     /// <inheritdoc/>
     public bool Equals(Curve? other) =>
         other is not null && _kind == other._kind && _x1 == other._x1 && _y1 == other._y1 && _x2 == other._x2 && _y2 == other._y2

@@ -44,6 +44,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- .NET `Archive.OpenReference` (`fa_archive_open_memory_ref`): opens an archive held in memory without copying it; the bytes are
+  pinned until the archive is disposed. `StreamMarkers.FadeInCurve` and `FadeOutCurve` now read the stream's own shape
+  (`fa_stream_get_fade_curve`; a points curve stays the one set through the same object, as the stream does not return its
+  points) and `Tags.Cover` takes the library's own pick (`fa_tags_get_cover`: the front cover, else the first picture).
+- Tests for `fa_archive_open_io`, `fa_archive_open_memory_ref`, `fa_disc_load` and `fa_stream_get_dolby_downmix`.
 - CD+G presentation: `fa_cdg_presentation.pixel_art` (.NET `CdgPresentation.PixelArt`), a pixel-art scaler: sharp pixels with the corners of diagonal steps cut at 45 degrees, square corners and lone pixels kept, at any whole multiple. ([CD+G](docs/features/cdg.md#presentation-options-fa_cdg_surface_set_presentation))
 - Surface effects: sizes and distances go up to `FA_FX_MAX_SIZE` (5; .NET `SurfaceEffects.MaxSize`) instead of 1, for outlines, shadows and bevels up to 5 CD+G pixels (7.5 for the outline). Values that were valid stay valid.
 - `fa_device_move` (.NET `OutputDevice.MoveTo`): moves a running output to another device (or back to the default) at the same mix rate, everything on it playing on; for bringing the sound back to a chosen device once it is plugged in again. ([devices](docs/features/devices.md#moving-the-output-to-another-device))

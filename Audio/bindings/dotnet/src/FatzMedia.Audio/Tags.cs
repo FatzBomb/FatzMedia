@@ -141,12 +141,15 @@ public sealed class Tags
 {
     readonly string?[] _fields;
 
-    Tags(string?[] fields, TagItem[] items, TagPicture[] pictures, StreamInfo? info)
+    readonly int _coverIndex;
+
+    Tags(string?[] fields, TagItem[] items, TagPicture[] pictures, StreamInfo? info, int coverIndex)
     {
         _fields = fields;
         Items = items;
         Pictures = pictures;
         Info = info;
+        _coverIndex = coverIndex;
     }
 
     /// <summary>Reads the tags of a file.</summary>
@@ -260,17 +263,28 @@ public sealed class Tags
                 items[i] = new TagItem(NativeText.Read(it.Key), NativeText.Read(it.Value), (TagFormat)it.Format);
             }
             var pictures = new TagPicture[NativeMethods.fa_tags_get_picture_count(native)];
+            // The picture the library calls the cover (the front cover, else the first): the same pick as C code gets.
+            var coverIndex = -1;
+            var hasCover = NativeMethods.fa_tags_get_cover(native, out FaTagPicture cover) == 0;
             for (uint i = 0; i < pictures.Length; i++)
             {
                 AudioException.ThrowIfFailed(NativeMethods.fa_tags_get_picture(native, i, out FaTagPicture p));
+                if (hasCover && coverIndex < 0 && p.Data == cover.Data && p.Size == cover.Size) coverIndex = (int)i;
                 var data = new byte[checked((int)p.Size)];
                 Marshal.Copy(p.Data, data, 0, data.Length);
                 pictures[i] = new TagPicture((PictureType)p.Type, NativeText.Read(p.Mime),
                     NativeText.Read(p.Description), data, (TagFormat)p.Format);
             }
+            if (hasCover && coverIndex < 0 && pictures.Length > 0)
+            {
+                // The library's pick was not matched by pointer: fall back to the same rule (front cover, else first).
+                coverIndex = 0;
+                for (var i = 0; i < pictures.Length; i++)
+                    if (pictures[i].Type == PictureType.FrontCover) { coverIndex = i; break; }
+            }
             var n = NativeSized.New<FaStreamInfo>();
             StreamInfo? info = NativeMethods.fa_tags_get_info(native, ref n) == 0 ? StreamInfo.FromNative(n) : null;
-            return new Tags(fields, items, pictures, info);
+            return new Tags(fields, items, pictures, info, coverIndex);
         }
         finally
         {
@@ -330,16 +344,7 @@ public sealed class Tags
     public IReadOnlyList<TagPicture> Pictures { get; }
 
     /// <summary>The front cover, else the first picture; null when there is none.</summary>
-    public TagPicture? Cover
-    {
-        get
-        {
-            var pictures = Pictures;
-            for (var i = 0; i < pictures.Count; i++)
-                if (pictures[i].Type == PictureType.FrontCover) return pictures[i];
-            return pictures.Count > 0 ? pictures[0] : null;
-        }
-    }
+    public TagPicture? Cover => _coverIndex >= 0 ? Pictures[_coverIndex] : null;
 
     /// <summary>
     /// The file's properties (codec, duration, bitrate, sizes, ...), as <see cref="AudioStream.Info"/> gives them

@@ -300,6 +300,78 @@ static void test_deflate64_matches(void)
     free(z.p); free(packed.p); free(expect.p);
 }
 
+/* The callback and by-reference opens: the same archive, entries and bytes as a memory open. The callback
+ * archive calls the app's close once, when the archive closes; the by-reference archive reads the caller's
+ * bytes in place and does not copy them. */
+static void test_open_io_and_memory_ref(void)
+{
+    buf song = make_wav(8000, 800), txt = make_text("hello"), z;
+    zent e[2];
+    fa_archive* a = NULL;
+    fa_archive_entry ent = { .struct_size = sizeof(ent) };
+    fa_io_callbacks io;
+    mem_io m;
+    void* out = NULL;
+    size_t size = 0;
+    uint32_t idx = 99;
+    memset(e, 0, sizeof(e));
+    e[0].name = "song.wav"; e[0].data = &song; e[0].method = 8;
+    e[1].name = "note.txt"; e[1].data = &txt; e[1].method = 0;
+    z = make_zip(e, 2);
+
+    /* Through the app's callbacks. */
+    memset(&io, 0, sizeof(io));
+    io.read = mio_read; io.seek = mio_seek; io.length = mio_length; io.close = mio_close;
+    memset(&m, 0, sizeof(m));
+    m.b = &z;
+    CHECK_EQ(fa_archive_open_io(&io, &m, NULL, &a), FA_OK);
+    CHECK_EQ(m.closes, 0);
+    CHECK_EQ(fa_archive_get_entry_count(a), 2);
+    CHECK_EQ(fa_archive_find(a, "NOTE.TXT", &idx), FA_OK);
+    CHECK_EQ(idx, 1);
+    CHECK_EQ(fa_archive_get_entry(a, 0, &ent), FA_OK);
+    CHECK_STR(ent.name, "song.wav");
+    CHECK_EQ(ent.size, (long long)song.n);
+    CHECK_EQ(fa_archive_read(a, 0, &out, &size), FA_OK);
+    CHECK_EQ(size, song.n);
+    CHECK(memcmp(out, song.p, size) == 0);
+    fa_free(out);
+    fa_archive_close(a);
+    CHECK_EQ(m.closes, 1);                          /* the app's close, once */
+    /* Not an archive: the call fails and the app's close is still called. */
+    memset(&m, 0, sizeof(m));
+    m.b = &txt;
+    a = NULL;
+    CHECK_EQ(fa_archive_open_io(&io, &m, NULL, &a), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK(a == NULL);
+    CHECK_EQ(m.closes, 1);
+    CHECK_EQ(fa_archive_open_io(NULL, &m, NULL, &a), FA_ERROR_INVALID_ARG);
+
+    /* By reference: the caller's bytes are read in place (not copied), so a change after the open shows. */
+    CHECK_EQ(fa_archive_open_memory_ref(z.p, z.n, NULL, &a), FA_OK);
+    CHECK_EQ(fa_archive_get_entry_count(a), 2);
+    CHECK_EQ(fa_archive_read(a, 1, &out, &size), FA_OK);
+    CHECK_EQ(size, txt.n);
+    CHECK(memcmp(out, "hello", 5) == 0);
+    fa_free(out);
+    {
+        /* The stored entry's bytes sit in the archive: "hello" -> "jello" in place. */
+        size_t at;
+        for (at = 0; at + 5 <= z.n; at++) {
+            if (memcmp(z.p + at, "hello", 5) == 0) { z.p[at] = 'j'; break; }
+        }
+        CHECK(at + 5 <= z.n);
+    }
+    /* The entry list was read at open; reading the entry now sees the changed byte (and the CRC check fails). */
+    CHECK(fa_archive_read(a, 1, &out, &size) != FA_OK);
+    fa_archive_close(a);
+    /* Bad arguments. */
+    CHECK_EQ(fa_archive_open_memory_ref(NULL, 10, NULL, &a), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_archive_open_memory_ref(z.p, 0, NULL, &a), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_archive_open_memory_ref(txt.p, txt.n, NULL, &a), FA_ERROR_UNSUPPORTED_FORMAT);
+    free(z.p); free(song.p); free(txt.p);
+}
+
 /* ---- Entries and names ---------------------------------------------------------- */
 
 static void test_entries_and_names(void)
@@ -1594,6 +1666,7 @@ int main(void)
     RUN(test_cache_entry);
     RUN(test_cache_solid_archive);
     RUN(test_cache_expiry_and_off);
+    RUN(test_open_io_and_memory_ref);
     fa_engine_destroy(g_engine);
     remove("archive-test-tmp/fatzaudio-tmp");
     remove("archive-test-tmp");

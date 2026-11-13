@@ -217,6 +217,8 @@ static void test_image_text(void)
     CHECK_STR(t, "Greatest Hits of the Caf");
     /* Images have no tray, lock or speed. */
     CHECK_EQ(fa_disc_eject(d), FA_ERROR_NOT_IMPLEMENTED);
+    CHECK_EQ(fa_disc_load(d), FA_ERROR_NOT_IMPLEMENTED);
+    CHECK_EQ(fa_disc_load(NULL), FA_ERROR_INVALID_ARG);
     CHECK_EQ(fa_disc_set_speed(d, 4.0f), FA_ERROR_NOT_IMPLEMENTED);
     fa_disc_close(d);
 }
@@ -751,6 +753,11 @@ static void test_mmc_ids(void)
     CHECK_EQ(fa_disc_get_status(d, &st), FA_OK);
     CHECK_EQ(st.state, FA_DISC_READY);
     CHECK_EQ(st.change_count, 3);
+    /* Closing the tray after an eject: the MMC load command. */
+    CHECK_EQ(fa_disc_eject(d), FA_OK);
+    CHECK_EQ(fd.tray_open, 1);
+    CHECK_EQ(fa_disc_load(d), FA_OK);
+    CHECK_EQ(fd.tray_open, 0);
     CHECK_EQ(fa_disc_set_locked(d, 1), FA_OK);
     fa_disc_close(d);                        /* unlocks and closes the drive */
     CHECK_EQ(fd.locked, 0);

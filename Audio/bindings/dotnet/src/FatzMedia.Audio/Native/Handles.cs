@@ -338,6 +338,9 @@ sealed class ArchiveHandle : SafeHandle
     /// <summary>Runs after the native close (frees the cancel flag the archive read).</summary>
     public Action? OnRelease;
 
+    /// <summary>The pinned bytes of an archive opened by reference (<c>fa_archive_open_memory_ref</c>); unpinned after the native close.</summary>
+    public System.Buffers.MemoryHandle? Pin;
+
     public ArchiveHandle() : base(0, true) { }
     public override bool IsInvalid => handle == 0;
 
@@ -351,6 +354,7 @@ sealed class ArchiveHandle : SafeHandle
     {
         NativeMethods.fa_archive_close(handle);
         if (_io.IsAllocated) _io.Free();
+        Pin?.Dispose();
         OnRelease?.Invoke();
         return true;
     }

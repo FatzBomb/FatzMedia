@@ -976,6 +976,35 @@ static void test_registry_lists_dolby(void)
     CHECK(found);
 }
 
+/* The stream's downmix kind reads back as set, from the open option or fa_stream_set_dolby_downmix. */
+static void test_downmix_mode_reads_back(void)
+{
+    char path[512];
+    fa_open_options o;
+    fa_stream* s = NULL;
+    fa_dolby_downmix mode = FA_DOLBY_DOWNMIX_ENGINE;
+    int32_t m;
+    snprintf(path, sizeof(path), "%s/dolby/51.ec3", FA_TEST_DATA_DIR);
+    fa_open_options_init(&o);
+    CHECK_EQ(fa_stream_open_path(g_engine, path, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_dolby_downmix(s, &mode), FA_OK);
+    CHECK_EQ(mode, FA_DOLBY_DOWNMIX_AUTO);                         /* the default */
+    for (m = FA_DOLBY_DOWNMIX_AUTO; m <= FA_DOLBY_DOWNMIX_ENGINE; m++) {
+        CHECK_EQ(fa_stream_set_dolby_downmix(s, (fa_dolby_downmix)m), FA_OK);
+        CHECK_EQ(fa_stream_get_dolby_downmix(s, &mode), FA_OK);
+        CHECK_EQ(mode, m);
+    }
+    CHECK_EQ(fa_stream_get_dolby_downmix(s, NULL), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_stream_get_dolby_downmix(NULL, &mode), FA_ERROR_INVALID_ARG);
+    fa_stream_close(s);
+    /* Set at the open. */
+    o.dolby_downmix = FA_DOLBY_DOWNMIX_LTRT;
+    CHECK_EQ(fa_stream_open_path(g_engine, path, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_dolby_downmix(s, &mode), FA_OK);
+    CHECK_EQ(mode, FA_DOLBY_DOWNMIX_LTRT);
+    fa_stream_close(s);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1000,6 +1029,7 @@ int main(void)
     RUN(test_layout_change_inside_a_packet);
     RUN(test_garbage_does_not_crash);
     RUN(test_downmix_coefficients);
+    RUN(test_downmix_mode_reads_back);
     RUN(test_downmix_levels_in_streams);
     RUN(test_downmix_on_the_device);
     RUN(test_downmix_normalization_makeup);
