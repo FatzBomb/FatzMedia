@@ -19,7 +19,6 @@ namespace FatzMedia.Video.Sample.Player.Avalonia;
 /// size); <c>--ab-collapsed</c> hides it with <c>IsVisible = false</c> instead, the counter-check. The surfaces
 /// are always composited, so <c>--ab-mode=native</c> has no meaning here.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Shutdown, called by the Closed handler, releases the players; the window itself is not IDisposable.")]
 sealed class AbSwapDemoWindow : Window
 {
     static readonly TimeSpan FirstFrameTimeout = TimeSpan.FromSeconds(10);
@@ -104,6 +103,13 @@ sealed class AbSwapDemoWindow : Window
             for (var i = 0; i < _players.Length; i++)
             {
                 var player = await AvaloniaPlayer.CreateAsync(MediaPlayerConfiguration.Auto, _nativeLibraryPaths, _createPlatformFactory());
+                if (_closed)
+                {
+                    // The window closed while the player started: Shutdown has run, so release it here.
+                    _ = Task.Run(player.Dispose);
+                    return;
+                }
+
                 player.PlayOnLoad = true;
                 player.LoopMedia = true;
                 player.MediaDiagnostic += OnDiagnostic;
