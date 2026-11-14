@@ -218,6 +218,8 @@ public partial class PlayerCore
         TimeSpan? seekWhenReady;
         lock (_webGate)
         {
+            if (generation != Volatile.Read(ref _webGeneration) || !_webActive)
+                return false;
             _webReady = true;
             playWhenReady = _webPlayWhenReady;
             seekWhenReady = _webSeekWhenReady;
@@ -307,7 +309,7 @@ public partial class PlayerCore
     {
         lock (_webGate)
         {
-            if (_webReady)
+            if (_webReady || !_webActive)
                 return false;
             if (play is { } p)
                 _webPlayWhenReady = p;
