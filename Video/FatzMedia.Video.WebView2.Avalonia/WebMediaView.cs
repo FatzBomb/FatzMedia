@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Platform;
 
 namespace FatzMedia.Video.WebView2.Avalonia;
 
@@ -13,7 +14,28 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
     AvaloniaWebMediaPlayer? _player;
 
     /// <summary>Creates the control.</summary>
-    public WebMediaView() => Content = _web;
+    public WebMediaView()
+    {
+        // The host starts playback from its own controls, which the page cannot see as a user gesture: let the web
+        // view play without one (WebView2; other platforms keep their defaults).
+        _web.EnvironmentRequested += (_, e) =>
+        {
+            if (e is WindowsWebView2EnvironmentRequestedEventArgs windows)
+            {
+                windows.AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required";
+                windows.UserDataFolder = UserDataFolder;
+            }
+        };
+        Content = _web;
+    }
+
+    /// <summary>
+    /// Gets or sets the folder for the persistent web view profile (Windows, WebView2), so a service sign-in
+    /// survives restarts. Set it before the control is added to a window. Defaults to
+    /// <c>%LocalAppData%\FatzMedia\WebView2.Avalonia</c>; hosts should choose their own folder.
+    /// </summary>
+    public string UserDataFolder { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FatzMedia", "WebView2.Avalonia");
 
     /// <summary>
     /// Gets the player, created on first use. Load media only after the control has been added to the visual tree
