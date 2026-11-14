@@ -16,6 +16,13 @@ public sealed class WebView2MediaPlayer : IWebMediaPlayer
     /// <summary>The virtual https host the player page is served from.</summary>
     public const string PageHost = "web.fatzmedia.test";
 
+    /// <summary>
+    /// The web view environment options the player needs. The host starts playback from its own controls, which the
+    /// web page cannot see as a user gesture, so the web view must allow playback that starts without one.
+    /// </summary>
+    public static CoreWebView2EnvironmentOptions EnvironmentOptions() =>
+        new("--autoplay-policy=no-user-gesture-required");
+
     static readonly Lazy<byte[]> PageBytes = new(LoadPage);
 
     readonly CoreWebView2 _web;

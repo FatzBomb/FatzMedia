@@ -108,6 +108,48 @@ public sealed class PlayerCoreWebMediaTests
     }
 
     [Fact]
+    public async Task ControlsIssuedBeforeTheWebItemIsReady_AreAppliedWhenItIs()
+    {
+        // The page ignores commands before it is ready: Load followed at once by Play (or Seek) must not lose them.
+        var (player, _) = CreatePlayer();
+        using var owner = player;
+        var web = new FakeWebPlayer { LoadGate = new TaskCompletionSource() };
+        player.AttachWebMediaPlayer(web);
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaLoaded += (_, _) => loaded.TrySetResult();
+
+        Assert.True(player.Load(Video));
+        Assert.True(player.Seek(42));
+        Assert.True(player.Play());
+        Assert.DoesNotContain("play", web.Commands.ToArray());
+        Assert.DoesNotContain("seek:42", web.Commands.ToArray());
+
+        web.LoadGate.SetResult();
+        await loaded.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        Assert.Equal(["seek:42", "play"], [.. web.Commands.ToArray().Where(c => c is "play" or "pause" || c.StartsWith("seek", StringComparison.Ordinal))]);
+    }
+
+    [Fact]
+    public async Task APauseIssuedBeforeTheWebItemIsReady_CancelsAPendingPlay()
+    {
+        var (player, _) = CreatePlayer();
+        using var owner = player;
+        var web = new FakeWebPlayer { LoadGate = new TaskCompletionSource() };
+        player.AttachWebMediaPlayer(web);
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaLoaded += (_, _) => loaded.TrySetResult();
+
+        Assert.True(player.Load(Video));
+        Assert.True(player.Play());
+        Assert.True(player.Pause());
+        web.LoadGate.SetResult();
+        await loaded.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        Assert.DoesNotContain("play", web.Commands.ToArray());
+    }
+
+    [Fact]
     public async Task LoadAsync_CompletesWhenTheWebItemIsReady_AndAutoplaysOnlyWithPlayOnLoad()
     {
         var (player, _) = CreatePlayer();

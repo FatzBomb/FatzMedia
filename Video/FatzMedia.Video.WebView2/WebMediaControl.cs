@@ -38,7 +38,7 @@ public sealed class WebMediaControl : UserControl, IAsyncDisposable
 
     async Task InitializeCoreAsync()
     {
-        var environment = await CoreWebView2Environment.CreateAsync(null, UserDataFolder).ConfigureAwait(true);
+        var environment = await CoreWebView2Environment.CreateAsync(null, UserDataFolder, WebView2MediaPlayer.EnvironmentOptions()).ConfigureAwait(true);
         await _web.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
         _player = new WebView2MediaPlayer(_web.CoreWebView2);
     }

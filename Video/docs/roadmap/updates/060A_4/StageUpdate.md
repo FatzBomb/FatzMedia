@@ -49,3 +49,18 @@ Windows (WPF host is enough), WebView2 runtime, network:
 5. Same steps with the WinForms control (`WebMediaControl`) and the Avalonia control.
 6. Premium no-ads re-check (spike was inconclusive): pick a video that shows an ad when signed out; play it signed
    out, then `SignInAsync`, sign in on Google's page, `Load` again and compare.
+
+## Follow-up fix (found by the launcher self-test, 2026-11-14)
+- **Controls before ready:** a `Play`, `Pause`, `Stop` or `Seek` issued while the web item was still loading (for
+  example `Load(url)` followed at once by `Play()`) was lost, because the page ignores commands until it is ready.
+  They are now remembered and applied when the item is ready (a later Pause cancels a pending Play). Tests added.
+- **Autoplay policy:** WebView2 blocks playback that did not start from a user gesture inside the page, and the host
+  starts playback from its own controls. The WPF and WinForms controls now create the web view with
+  `--autoplay-policy=no-user-gesture-required` (`WebView2MediaPlayer.EnvironmentOptions()`), and the Avalonia
+  control sets the same argument. Without it an unmuted `Play()` ended in `Stopped`.
+- **Avalonia sign-in persistence:** the Avalonia control now has `UserDataFolder` (WebView2 profile folder, set
+  through the package's `EnvironmentRequested`), so a sign-in can survive a restart like the WPF control's.
+- Launcher self-test (a scratch WPF host with a real `Player`, a web view and a local mp3, Windows): 19 checks pass:
+  YouTube through `Player.Load` (returns in 12 ms on the UI thread, MediaLoaded, Play, position advances, Seek,
+  volume, Pause, Stop), a playlist link raises `MediaError`, a local file after a web item plays in the engine and the
+  web item ends, YouTube again after a file, file again.

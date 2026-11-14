@@ -28,6 +28,10 @@ public partial class PlayerCore
     MediaSourceInfo? _webInfo;
     int _webGeneration;
     int _webState = (int)MediaPlayerState.Stopped;
+    // Controls issued while the item loads (the page ignores commands before it is ready) are applied when it is.
+    bool _webReady;
+    bool? _webPlayWhenReady;
+    TimeSpan? _webSeekWhenReady;
 
     /// <summary>
     /// Attaches the web player that plays web media (YouTube) loaded into this player, or detaches it with
@@ -194,6 +198,9 @@ public partial class PlayerCore
             _webItem = source.WebMedia;
             _webInfo = new MediaSourceInfo(source, MediaContent.None, MediaSourceCapabilityMatrix.WebStream);
             Volatile.Write(ref _webState, (int)MediaPlayerState.Stopped);
+            _webReady = false;
+            _webPlayWhenReady = null;
+            _webSeekWhenReady = null;
             _webActive = true;
             return generation;
         }
@@ -207,6 +214,17 @@ public partial class PlayerCore
 
         var player = _webPlayer;
         var duration = player?.Duration ?? TimeSpan.Zero;
+        bool? playWhenReady;
+        TimeSpan? seekWhenReady;
+        lock (_webGate)
+        {
+            _webReady = true;
+            playWhenReady = _webPlayWhenReady;
+            seekWhenReady = _webSeekWhenReady;
+            _webPlayWhenReady = null;
+            _webSeekWhenReady = null;
+        }
+
         HostEventDispatcher.Raise(this, MediaLoaded, new MediaLoadedEventArgs(info, duration), nameof(MediaLoaded));
         HostEventDispatcher.Raise(
             this,
@@ -217,6 +235,16 @@ public partial class PlayerCore
         // The volume the host set on Effects applies to the web item too.
         if (player is not null && Effects.Volume is var volume and >= 0 and <= 1)
             ObserveWeb(player.SetVolumeAsync(volume));
+
+        // Controls the host issued while the item was loading.
+        if (player is not null)
+        {
+            if (seekWhenReady is { } seek)
+                ObserveWeb(player.SeekAsync(seek));
+            if (playWhenReady == true)
+                ObserveWeb(player.PlayAsync());
+        }
+
         return true;
     }
 
@@ -274,11 +302,27 @@ public partial class PlayerCore
 
     // ---- controls ----------------------------------------------------------------------------------------------
 
+    /// <summary>Remembers a control issued before the item is ready; false when the item is ready (send it now).</summary>
+    bool DeferWebControl(bool? play, TimeSpan? seek)
+    {
+        lock (_webGate)
+        {
+            if (_webReady)
+                return false;
+            if (play is { } p)
+                _webPlayWhenReady = p;
+            if (seek is { } s)
+                _webSeekWhenReady = s;
+            return true;
+        }
+    }
+
     bool WebPlay()
     {
         if (_webPlayer is not { } player)
             return false;
-        ObserveWeb(player.PlayAsync());
+        if (!DeferWebControl(play: true, seek: null))
+            ObserveWeb(player.PlayAsync());
         return true;
     }
 
@@ -286,7 +330,8 @@ public partial class PlayerCore
     {
         if (_webPlayer is not { } player)
             return false;
-        ObserveWeb(player.PauseAsync());
+        if (!DeferWebControl(play: false, seek: null))
+            ObserveWeb(player.PauseAsync());
         return true;
     }
 
@@ -294,8 +339,12 @@ public partial class PlayerCore
     {
         if (_webPlayer is not { } player)
             return false;
-        ObserveWeb(player.PauseAsync());
-        ObserveWeb(player.SeekAsync(TimeSpan.Zero));
+        if (!DeferWebControl(play: false, seek: TimeSpan.Zero))
+        {
+            ObserveWeb(player.PauseAsync());
+            ObserveWeb(player.SeekAsync(TimeSpan.Zero));
+        }
+
         if (SetWebState(MediaPlayerState.Stopped))
             HostEventDispatcher.Raise(this, MediaStopped, nameof(MediaStopped));
         return true;
@@ -306,7 +355,8 @@ public partial class PlayerCore
         if (_webPlayer is not { } player || double.IsNaN(seconds) || seconds < 0)
             return false;
         var target = TimeSpan.FromSeconds(seconds);
-        ObserveWeb(player.SeekAsync(target));
+        if (!DeferWebControl(play: null, seek: target))
+            ObserveWeb(player.SeekAsync(target));
         HostEventDispatcher.Raise(this, SeekCompleted, new MediaSeekCompletedEventArgs(target, target), nameof(SeekCompleted));
         return true;
     }
