@@ -126,6 +126,22 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets the extra certificate authority file for https (<c>--net-ca-file=</c>).</summary>
     public string? NetworkCaFile { get; init; }
 
+    /// <summary>
+    /// Gets the folder for the web view's profile (<c>--web-profile=</c>), where a YouTube sign-in is kept; null
+    /// for <see cref="DefaultWebProfileFolder"/>. A test passes a scratch folder to stay off real data.
+    /// </summary>
+    public string? WebProfileFolder { get; init; }
+
+    /// <summary>
+    /// Gets the web view profile folder of the test players, <c>%LocalAppData%\FatzMedia\SamplePlayer\WebView2</c>,
+    /// which is not the folder an application built on the library would pick.
+    /// </summary>
+    public static string DefaultWebProfileFolder { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FatzMedia", "SamplePlayer", "WebView2");
+
+    /// <summary>Gets the web view profile folder this player uses: <see cref="WebProfileFolder"/>, else the default.</summary>
+    public string ResolvedWebProfileFolder => WebProfileFolder ?? DefaultWebProfileFolder;
+
     /// <summary>Gets whether https certificate errors are ignored (<c>--net-allow-invalid-certs</c>).</summary>
     public bool NetworkAllowInvalidCertificates { get; init; }
 
@@ -252,6 +268,7 @@ public sealed record PlayerStartupOptions
                 .FirstOrDefault(),
             NetworkCaFile = Values(args, "--net-ca-file=").FirstOrDefault(static path => path.Length > 0),
             NetworkAllowInvalidCertificates = HasFlag(args, "--net-allow-invalid-certs"),
+            WebProfileFolder = Values(args, "--web-profile=").LastOrDefault(static path => path.Length > 0),
             EqualizerGains = Values(args, "--eq=", trimQuotes: false).Select(ParseGains).FirstOrDefault(),
             AutoHideSurfaces = !HasFlag(args, "--no-auto-hide"),
             LightweightSurfacesWindow = HasFlag(args, "--lightweight-surfaces"),

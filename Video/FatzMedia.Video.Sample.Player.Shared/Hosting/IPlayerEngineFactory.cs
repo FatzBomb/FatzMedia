@@ -47,9 +47,11 @@ public sealed record PlayerRendererInfo(
 /// <param name="Clipboard">The clipboard, or null when the host has none.</param>
 /// <param name="FilePicker">The file picker, or null when the host has none.</param>
 /// <param name="LogFilePath">The debug log file every diagnostic is also written to (see <see cref="PlayerDebugLog"/>), or null.</param>
+/// <param name="WebView">The web view for YouTube links (Stage 060A), or null when the host has none.</param>
 public sealed record PlayerHost(
     IPlayerDispatcher Dispatcher,
     IPlayerEngineFactory Engine,
     IPlayerClipboard? Clipboard = null,
     IPlayerFilePicker? FilePicker = null,
-    string? LogFilePath = null);
+    string? LogFilePath = null,
+    IPlayerWebView? WebView = null);
