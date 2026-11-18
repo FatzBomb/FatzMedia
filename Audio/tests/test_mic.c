@@ -966,7 +966,13 @@ static int room_check(sim* s, const room* rm, const fa_latency_check_config* cfg
     float in[4800], blk[OUT_BLOCK * 2];
     double owed = 0.0;
     if (rm->delay < OUT_BLOCK) return 0;   /* the input runs up to a block ahead of the render */
-    sim_run(s, 3.0);   /* the bridge fills and settles */
+    /* The bridge fills and settles. It steers its fill to the target over seconds (a fill error
+     * is worked off over BRIDGE_SETTLE_S, averaged over about as long again), so after 3 s the
+     * measured delay was still moving by about 50 frames per second of render time. The check
+     * thread and the gaps between its passes take a varying amount of render time on a loaded
+     * machine, so two checks measured the same room at different points of that drift (0.33 ms
+     * apart in CI). By 12 s it is under 1 frame per second, and that variation is lost. */
+    sim_run(s, 12.0);
     memset(&job, 0, sizeof(job));
     job.m = s->m;
     job.mic = s->mic;
