@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:fbm="clr-namespace:FatzMedia.Video.Wpf;assembly=FatzMedia.Video.Wpf"
+    xmlns:web="clr-namespace:FatzMedia.Video.WebView2;assembly=FatzMedia.Video.WebView2"
     xmlns:controls="clr-namespace:FatzMedia.Video.Sample.Player.Controls"
     AllowDrop="True"
     DragEnter="Panel_DragOver"
@@ -29,16 +30,22 @@
             ClipToBounds="True"
             CornerRadius="12"
             MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
-            <fbm:MediaSurface
-                x:Name="MediaSurface"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                AutoHide="{Binding AutoHideSurfaces}"
-                OverlayHitTestVisible="False"
-                Player="{Binding Player}"
-                PresentationMode="{Binding PresentationMode}"
-                VideoDisplayMode="{Binding VideoDisplayMode}" />
+            <!--  The web view (YouTube links) takes over the media surface's area while a web item lasts.  -->
+            <Grid>
+                <fbm:MediaSurface
+                    x:Name="MediaSurface"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Background="Transparent"
+                    AutoHide="{Binding AutoHideSurfaces}"
+                    OverlayHitTestVisible="False"
+                    Player="{Binding Player}"
+                    PresentationMode="{Binding PresentationMode}"
+                    VideoDisplayMode="{Binding VideoDisplayMode}" />
+                <web:WebMediaView
+                    x:Name="WebView"
+                    Visibility="Collapsed" />
+            </Grid>
         </Border>
 
         <Grid

@@ -116,7 +116,11 @@ public partial class PlayerViewModel
             RefreshPlaybackPosition();
             RunOnUiThread(RefreshEffectValues);
             WebInfoText = loaded ? "Web video loaded." : "Could not load the link.";
-            StatusText = loaded ? $"Loaded web link: {link}" : $"Could not load web link: {link}";
+            // A rejected link has already put its reason (MediaError) in the status line: keep it.
+            if (loaded)
+                StatusText = $"Loaded web link: {link}";
+            else if (StatusText.StartsWith("Opening web link", StringComparison.Ordinal))
+                StatusText = $"Could not load web link: {link}";
         }
         catch (Exception ex)
         {
