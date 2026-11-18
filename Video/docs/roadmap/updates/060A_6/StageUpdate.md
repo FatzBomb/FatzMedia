@@ -1,7 +1,7 @@
 # Stage 060A slice 6: full screen and a second screen for the web player (WPF control)
 
-Status: implemented for the WPF `WebMediaView`, pending the owner's manual smoke. The test players' wiring, the WinForms
-and the Avalonia controls follow (see Not done).
+Status: implemented for the WPF, WinForms and Avalonia controls and test players (PRs 41, 43, 45 and this one), pending the
+owner's manual smoke.
 
 ## The problem
 In the test player a double-click on a normal video toggles full screen. With a YouTube item it did not: the web view
