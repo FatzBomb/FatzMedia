@@ -164,6 +164,9 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
         _closingFullScreen = true;
         try
         {
+            // Leave the page's own full-screen state too, so YouTube's button and our window stay in step.
+            if (_player is not null && _web.CoreWebView2?.ContainsFullScreenElement == true)
+                _ = _web.CoreWebView2.ExecuteScriptAsync("document.fullscreenElement && document.exitFullscreen()");
             window.Content = null;
             Content = _web;
             _fullScreenWindow = null;

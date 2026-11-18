@@ -26,8 +26,8 @@ sealed unsafe partial class MouseDoubleClickWatcher : IDisposable
 
     readonly Func<(int Left, int Top, int Right, int Bottom)?> _bounds;
     readonly Action _doubleClicked;
-    readonly nint _hook;
-    readonly nint _keyHook;
+    static nint _mouseHook;
+    static nint _keyHook;
     readonly Func<bool>? _escapeActive;
     readonly Action? _escape;
     readonly DoubleClickDetector _detector = new();
@@ -43,39 +43,55 @@ sealed unsafe partial class MouseDoubleClickWatcher : IDisposable
         _doubleClicked = doubleClicked;
         _escapeActive = escapeActive;
         _escape = escape;
+        // One hook of each kind is shared by every watcher; one per watcher would run each press through every
+        // watcher once per hook, and the detector would see the same press twice and call it a double-click.
         lock (ActiveGate)
-            Active.Add(this);
-        _hook = SetWindowsHookExW(WhMouseLowLevel, &HookCallback, GetModuleHandleW(null), 0);
-        if (escape is not null)
-            _keyHook = SetWindowsHookExW(WhKeyboardLowLevel, &KeyHookCallback, GetModuleHandleW(null), 0);
-        if (_hook == 0)
         {
-            lock (ActiveGate)
-                Active.Remove(this);
+            Active.Add(this);
+            if (_mouseHook == 0)
+                _mouseHook = SetWindowsHookExW(WhMouseLowLevel, &HookCallback, GetModuleHandleW(null), 0);
+            if (escape is not null && _keyHook == 0)
+                _keyHook = SetWindowsHookExW(WhKeyboardLowLevel, &KeyHookCallback, GetModuleHandleW(null), 0);
         }
     }
 
     public void Dispose()
     {
         lock (ActiveGate)
+        {
             Active.Remove(this);
-        if (_hook != 0)
-            _ = UnhookWindowsHookEx(_hook);
-        if (_keyHook != 0)
-            _ = UnhookWindowsHookEx(_keyHook);
+            if (Active.Count == 0 && _mouseHook != 0)
+            {
+                _ = UnhookWindowsHookEx(_mouseHook);
+                _mouseHook = 0;
+            }
+
+            if (_keyHook != 0 && !Active.Exists(w => w._escape is not null))
+            {
+                _ = UnhookWindowsHookEx(_keyHook);
+                _keyHook = 0;
+            }
+        }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     static nint HookCallback(int code, nint wParam, nint lParam)
     {
-        if (code >= 0 && wParam == WmLeftButtonDown)
+        try
         {
-            var info = *(LowLevelMouseStruct*)lParam;
-            MouseDoubleClickWatcher[] watchers;
-            lock (ActiveGate)
-                watchers = [.. Active];
-            foreach (var watcher in watchers)
-                watcher.OnLeftButtonDown(info.X, info.Y, info.Time);
+            if (code >= 0 && wParam == WmLeftButtonDown)
+            {
+                var info = *(LowLevelMouseStruct*)lParam;
+                MouseDoubleClickWatcher[] watchers;
+                lock (ActiveGate)
+                    watchers = [.. Active];
+                foreach (var watcher in watchers)
+                    watcher.OnLeftButtonDown(info.X, info.Y, info.Time);
+            }
+        }
+        catch (Exception)
+        {
+            // An exception must not leave an unmanaged callback (it would end the process); a missed click is harmless.
         }
 
         return CallNextHookEx(0, code, wParam, lParam);
@@ -84,16 +100,23 @@ sealed unsafe partial class MouseDoubleClickWatcher : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     static nint KeyHookCallback(int code, nint wParam, nint lParam)
     {
-        if (code >= 0 && wParam == WmKeyDown && ((LowLevelKeyStruct*)lParam)->VkCode == VkEscape)
+        try
         {
-            MouseDoubleClickWatcher[] watchers;
-            lock (ActiveGate)
-                watchers = [.. Active];
-            foreach (var watcher in watchers)
+            if (code >= 0 && wParam == WmKeyDown && ((LowLevelKeyStruct*)lParam)->VkCode == VkEscape)
             {
-                if (watcher._escapeActive?.Invoke() == true)
-                    watcher._escape?.Invoke();
+                MouseDoubleClickWatcher[] watchers;
+                lock (ActiveGate)
+                    watchers = [.. Active];
+                foreach (var watcher in watchers)
+                {
+                    if (watcher._escapeActive?.Invoke() == true)
+                        watcher._escape?.Invoke();
+                }
             }
+        }
+        catch (Exception)
+        {
+            // See HookCallback.
         }
 
         return CallNextHookEx(0, code, wParam, lParam);
