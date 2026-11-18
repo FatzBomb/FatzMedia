@@ -1,33 +1,23 @@
-# Stage 037A - FatzAudio As A Second Audio Engine
+# Stage 037A - FatzAudio As The Audio Engine (completed)
 
-Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to FatzAudio). Slice 0
-done on Linux (`updates/037A_0`); slice 1 merged, owner smoke passed (`updates/037A_1`). FatzAudio
-1.0.0-rc.1 (2026-11-02, main @ 59741a5) answers our blocking requests 1 and 8 and request 9
-(silence detection); our reply is `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`. Slice 2
-(FatzAudioEngine for files and archives, opt-in with `MediaPlayerConfiguration.AudioEngineFactory`
-and `--audio=fatz`, pinned to `FatzAudio` `1.0.0-rc.1`) merged 2026-11-03, owner smoke passed
-(`updates/037A_2`). K4 (clock at a present time), K6 (lyrics without a soundfont) and K8
-(shaping) merged in FatzAudio after rc.1 (main @ 5182a4e); slice 3 moves the pin to the build that
-carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`). Loudness (LUFS)
-normalization on the FatzAudio engine implemented 2026-11-04, pending owner smoke
-(`updates/037A_Normalization`; FatzAudio request 12 for the first-play start,
-`docs/fatzaudio/2026-11-04_MediaControl_Request_NormalizationStart.md`). FatzAudio delivered
-requests 13 (loudness of fed audio, `source_identity`) and 14 (MP1/MP2; AVI, FLV and MPEG-PS/TS by
-path; DTS and TrueHD through the system decoder), listed under Unreleased in `Audio/CHANGELOG.md`
-(checked 2026-11-10): slice 5 no longer waits on FatzAudio. Slice 3 (2026-11-10, pending owner
-smoke, `updates/037A_3`): with the FatzAudio engine, FatzAudio draws the classic CD+G picture on every
-renderer; scaled CD+G, effects and FatzAudio's lyric surface were not built (see the update for why).
-Slice 4 (2026-11-10, `updates/037A_4`): mostly delivered by slice 2; no BASSMIDI setup with FatzAudio;
-network audio takes the FFmpeg path. Slice 5 (2026-11-10, pending owner smoke, `updates/037A_5`, hand
-tests `updates/037A_5/HandTests.md`): video audio, soundtracks and network audio play through FatzAudio
-push streams on its clock, and a FatzAudio player uses and needs no BASS. Slice 6 readiness (what is left
-before BASS can go): `updates/037A_6/Readiness.md`. Then (2026-11-10): output device choice and device
-events without BASS (`updates/037A_Devices`), the hand-test script (`updates/037A_5/HandTests.md`), FatzAudio-drawn
-MIDI lyrics (`updates/037A_Lyrics`), scaled CD+G (`updates/037A_CdgScaled`) and FatzAudio-decoded soundtracks
-(`updates/037A_Packets`). Slice 6 (2026-11-10, `updates/037A_6/StageUpdate.md`): BASS removed and FatzAudio the
-default on a draft PR, waiting for the owner's hand tests and decision before it merges.
-Since the move into the FatzMedia repository, Video uses `FatzMedia.Audio` by project reference (no
-package pin or feed token).
+Completed 2026-11-11. FatzMedia.Audio (the FatzAudio library, now in `Audio/` of this repository) is the only audio
+engine and BASS is gone: removed in slice 6 (FatzMedia PR 15, cleanup PR 16), FatzAudio is the default, nothing links
+or loads BASS, and end users need no BASS DLLs or licence. FatzAudio draws CD+G (classic and scaled, with effects) and
+MIDI lyrics; the managed CD+G engine and MIDI lyric path that stayed as a fallback were removed in the audit (PR 22,
+2026-11-12). Output device choice, device events and the return of a chosen device (ENG-065, PR 17) work through
+FatzMedia.Audio. The BASS-to-FatzAudio mapping lives in `Audio/docs/migration/bass.md`.
+
+The rest of this file is the plan as it was written and revised while the stage ran. It is history: it still talks
+about BASS as the default and the fallback, about our CD+G engine and lyric renderers as fallbacks, and about
+`--audio=fatz`, none of which exist now. For how things work today read `docs/CURRENT_ARCHITECTURE.md` ("Audio
+engine" and "Lyrics and CD+G"). The slice notes are `updates/037A_0` to `updates/037A_6`, `037A_Normalization`,
+`037A_Devices`, `037A_Lyrics`, `037A_CdgScaled` and `037A_Packets`; the notes exchanged with FatzAudio are in
+`docs/fatzaudio/` (also history).
+
+Original text of the stage file follows.
+
+---
+
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,

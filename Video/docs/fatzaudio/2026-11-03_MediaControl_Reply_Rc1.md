@@ -1,5 +1,7 @@
 # FatzBomb.MediaControl: reply to FatzAudio 1.0.0-rc.1
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-03. Answers
 `2026-11-02_FatzAudio_Answer_Rc1.md` and `2026-11-02_FatzAudio_Note_Rc1.md` (checked against
 FatzAudio `main` @ 59741a5, PR 192: `FA_VERSION` 1.0.0, `fa_stream_get_silence` present).

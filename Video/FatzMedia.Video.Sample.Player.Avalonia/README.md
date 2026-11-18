@@ -9,7 +9,11 @@ Each player binds the shared `PlayerViewModel` (`FatzMedia.Video.Sample.Player.S
 the **Sync** (offsets, subtitle picker), **Video** (visual transforms), **Audio** (pitch, tempo,
 normalize, load resets, silent drag, 10-band EQ), **A/V** (auto play, display-locked timing,
 display mode, CD+G background), **Next** (prepared item, auto-next, fades, stream info) and
-**Log** flyouts. The seek bar scrubs while dragging (`BeginScrub`, drag seeks, `EndScrub`); a
+**Log** flyouts. The **Video** flyout also has the CD+G look (**Enhance** Off, Low, Med or High, plus
+outline, shadow and bevel, applied live). A busy bar shows while a file loads, a banner shows when the
+engine could not start, and `--ab-demo=<video file or folder>` (with `--ab-swaps=`, `--ab-interval=`,
+`--ab-collapsed` and `--ab-exit`; `--ab-mode=native` means nothing here) runs the A/B swap demo as in the WPF
+player. The seek bar scrubs while dragging (`BeginScrub`, drag seeks, `EndScrub`); a
 key steps it once. Drop a file on a player to open it there. A double-click on the picture (or
 F11) shows that player alone, full screen, with the controls hidden after 2.5 s without mouse
 movement; Escape closes the open flyout, then leaves full screen. Every diagnostic also goes to

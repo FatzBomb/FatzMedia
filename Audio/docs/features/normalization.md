@@ -198,6 +198,10 @@ A boost can push peaks over full scale, and so can two loud streams crossfading.
 fa_engine_set_limiter(engine, FA_LIMITER_AUTO, -1.0);  /* the default: on while normalization is on */
 ```
 
+```csharp
+engine.SetLimiter(LimiterMode.Auto, -1.0);   // the default
+```
+
 | Mode | Behaviour |
 |---|---|
 | `FA_LIMITER_AUTO` | On while normalization is on (default) |

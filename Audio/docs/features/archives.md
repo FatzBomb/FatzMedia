@@ -120,7 +120,7 @@ fa_archive_close(ar);                        /* the stream keeps the archive ali
 ```
 
 ```csharp
-using var archive = Archive.Open("Songs.zip");
+using var archive = Archive.Open("Songs.zip");   // or Archive.Open(path, new ArchiveOptions { ... }) for memory limit, temp folder and cancellation
 foreach (var e in archive.Entries) Console.WriteLine($"{e.Name} {e.Size}");
 var (audio, cdg) = archive.Pick();
 using var song = engine.OpenArchiveEntry(archive, audio);
@@ -130,9 +130,32 @@ var tags = Tags.Read(archive, audio);
 var print = AudioFingerprint.Compute(archive, audio);
 ```
 
-Open from a path, memory (`fa_archive_open_memory`, or `_memory_ref` for no copy) or I/O callbacks (needs `seek`
-and `length`, because the directory is at the end). An `fa_archive` may be used from several threads; calls wait
-for each other.
+Open from a path (`fa_archive_open_path`), memory or I/O callbacks. An `fa_archive` may be used from several threads;
+calls wait for each other.
+
+| Source | C | C# | Notes |
+|---|---|---|---|
+| A path | `fa_archive_open_path` | `Archive.Open(path)` | |
+| Memory, copied | `fa_archive_open_memory` | `Archive.Open(bytes)` | The archive keeps its own copy. |
+| Memory, not copied | `fa_archive_open_memory_ref` | `Archive.OpenReference(bytes)` | No copy: the bytes must stay valid until the archive is closed. The .NET method pins them until the archive is disposed. |
+| Your own reader | `fa_archive_open_io` (an `fa_io_callbacks` with `read`, `seek` and `length`, because the directory is at the end; `close(user)` is called when the archive closes, also when this call fails) | `Archive.Open(stream)` (readable and seekable; `leaveOpen` keeps it open) | Stored entries are copied rather than played in place. |
+
+### Reading one entry on demand
+
+`fa_archive_read` gives the whole entry in memory. To read it like a file instead, open a reader:
+
+```c
+fa_archive_reader* r;
+fa_archive_open_reader(ar, audio, &r);       /* stored entries straight from the archive, compressed ones unpacked on the first read */
+int64_t size = fa_archive_reader_get_size(r);
+fa_archive_reader_seek(r, 1024);
+char buf[4096];
+int64_t got = fa_archive_reader_read(r, buf, sizeof buf);   /* bytes read, 0 at the end, a negative fa_result on error */
+fa_archive_reader_close(r);                  /* before fa_archive_close */
+```
+
+In .NET `archive.OpenRead(entry)` returns this reader as a seekable `Stream`; dispose it before the archive. Memory
+returned by `fa_archive_read` is released with `fa_free` (see [ownership](../concepts.md#ownership-and-lifetime)).
 
 ## Speed
 

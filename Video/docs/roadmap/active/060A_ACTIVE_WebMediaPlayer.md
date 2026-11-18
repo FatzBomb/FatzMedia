@@ -40,3 +40,7 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
 - **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
   `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
   host (Avalonia) is added.
+- **Follow-up (PR 37, found by the launcher self-test 2026-11-14):** controls issued before an item is ready are
+  applied when it is; WebView2 autoplay policy set (`--autoplay-policy=no-user-gesture-required`) so an unmuted
+  `Play()` works; the Avalonia control has `UserDataFolder`. See `updates/060A_4/StageUpdate.md`.
+- **User guide:** `docs/site/articles/playback/web-media.md` (written 2026-11-18 from slices 1 to 4).

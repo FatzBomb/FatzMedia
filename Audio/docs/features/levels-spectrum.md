@@ -48,7 +48,7 @@ if (isfinite(short_term)) printf("%.1f LUFS (3 s)\n", short_term);
 ```
 
 ```csharp
-var meter = output.GetLoudnessMeter();
+var meter = output.GetLoudnessMeter();   // a LoudnessMeter (Momentary, ShortTerm); AudioStream has the same call
 loudnessLabel.Text = double.IsFinite(meter.ShortTerm) ? $"{meter.ShortTerm:0.0} LUFS" : "-inf";
 ```
 

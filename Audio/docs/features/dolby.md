@@ -69,6 +69,9 @@ fa_stream_play(film);
 
 /* Back to plain stereo for headphones. */
 fa_stream_set_dolby_downmix(film, FA_DOLBY_DOWNMIX_LORO);
+
+int32_t mode;
+fa_stream_get_dolby_downmix(film, &mode);   /* the mode now in use */
 ```
 
 ### C#

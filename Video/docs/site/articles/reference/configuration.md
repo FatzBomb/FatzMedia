@@ -42,6 +42,7 @@ Two shortcuts exist: `new MediaPlayerConfiguration(VideoDecodingMethod.Software)
 | `NetworkRetry` | <xref:FatzMedia.Video.NetworkRetryPolicy>? | `null` (the default policy) | Retries when opening a network source. See below. |
 | `NetworkTls` | <xref:FatzMedia.Video.NetworkTlsPolicy>? | `null` (the default policy) | Certificate checks for `https` network video. |
 | `NetworkReadAhead` | <xref:FatzMedia.Video.NetworkReadAheadPolicy>? | `null` (the default policy) | How far network video reads ahead of playback. |
+| `CdgScaling` | <xref:FatzMedia.Video.CdgScalingOptions> | Off (the classic picture) | A scaled, cleaner CD+G picture with optional outline, shadow and bevel, drawn by FatzAudio. A player changes it later with `PlayerCore.CdgScaling`. See [CD+G](../karaoke/cdg.md#scaling-and-effects). |
 | `HdrToneMapping` | <xref:FatzMedia.Video.Core.Configuration.HdrToneMappingOptions> | Tone mapping on | How HDR video is shown on SDR output. See [Display and color](../video/display-and-color.md#hdr-video). |
 
 ## Subtitle style

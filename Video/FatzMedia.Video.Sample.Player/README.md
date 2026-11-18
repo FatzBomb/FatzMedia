@@ -129,11 +129,11 @@ player and the startup renderer (WPF-composited for the software renderer). Type
 path, then **Background** or **Karaoke** sets that control's `Source`; **Colour** cycles solid
 background colours; **Stop both** stops them.
 
-`--ab-demo=<video file or folder>` (WPF player only, repeatable, Stage 051A) also opens the A/B swap
+`--ab-demo=<video file or folder>` (WPF and Avalonia players, repeatable, Stage 051A) also opens the A/B swap
 demo: two players on two stacked surfaces; the next clip loads into the hidden one and its
 `FirstFrameReady` handler shows it, hides the other and changes the coloured bar above them in one
 UI-thread turn. Options: `--ab-swaps=N` (default 20), `--ab-interval=seconds` (default 3),
-`--ab-mode=native` (default composited), `--ab-collapsed` (the waiting surface Collapsed instead of
+`--ab-mode=native` (WPF only; default composited), `--ab-collapsed` (the waiting surface Collapsed instead of
 Hidden: the counter-check), `--ab-exit` (close the player when done). Each swap goes to the debug log
 as `[ABDemo] swap i/N ready after x ms: <clip>`, then `[ABDemo] done: ...`; `scripts/smoke-051A.ps1`
 test 5 runs it.
@@ -223,7 +223,7 @@ does not call renderer or swap-chain APIs directly. Since Stage 046A slice 3 it 
 adapter's `SecondaryPresentationWindow` itself (projector role, the player's presentation mode)
 with `ShowOnScreen`, on the screen the shared rule picks (`--second-screen=<n>`, else the first
 screen that is not the main window's, else a window), as the Avalonia and WinForms players do.
-(`MediaSurface.ShowSecondaryOutput()` is `[Obsolete]` since ENG-039 and will be removed.)
+(`MediaSurface.ShowSecondaryOutput()` and its siblings were removed on 2026-11-12.)
 
 The window's surface supplies its HWND to the shared session as a neutral presentation-surface descriptor. The shared media-control implementation owns the secondary target, swap-chain lifetime, compositor fan-out, and final presents.
 

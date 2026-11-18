@@ -50,6 +50,13 @@ The binding checks the native library's major.minor version on first use and ref
 - **Linux.** Build machines need the ALSA headers (`libasound2-dev`). Containers without a sound card use `NullOutput`.
 - **Windows.** Build with the "Visual Studio 18 2026" generator and keep old compilers off `PATH`. Windows N editions without the Media Feature Pack have no Media Foundation, so WMA reports `FA_ERROR_PROVIDER_MISSING` (install the Media Feature Pack).
 
+## Speed on ARM
+
+The hot loops (the varispeed resampler that runs when rate or pitch change or the device rate differs, the stream
+equalizer, the DJ isolator and the lyric surface's blend) have SSE versions on x86 and NEON versions on 64-bit ARM, so
+iPhone, Android and Apple silicon do not run the slow scalar code. Results match the scalar code within float rounding.
+The `test_simd` test checks each against it. Measure on a device you care about with `tools/render-stress`.
+
 ## Library size
 
 Sizes from CI (stripped release builds): Windows x64 4.15 MiB, Linux x64 4.15, macOS 3.01, iOS arm64 2.91, Android arm64 3.70 MiB. That is the whole library: every format, effect, the DJ mixer and the karaoke surfaces.

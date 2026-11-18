@@ -72,9 +72,9 @@ The engine decides what a file is from its extension. The extension sets depend 
 | An audio file | A `.cdg` file with the same name in the same folder | Audio with CD+G karaoke graphics (MP3+G). |
 | A `.cdg` file | An audio file with the same name | The same pair. Without audio, the graphics play alone. |
 | A video file | A `.srt`, `.ass` or `.ssa` file with the same name | Video with a selectable subtitle track. |
-| A MIDI or KAR file | The lyrics inside the file | Karaoke lyrics as a subtitle track (see `ShowMidiLyrics`). |
+| A MIDI or KAR file | The lyrics inside the file | Karaoke lyrics drawn by FatzAudio (see [MIDI and KAR](../karaoke/midi-and-kar.md)). |
 
-The audio and subtitle pairing is always on. `ignoreSidecar` only affects [backgrounds](#backgrounds).
+A YouTube link plays through an attached web view; see [Web media](web-media.md). The audio and subtitle pairing is always on. `ignoreSidecar` only affects [backgrounds](#backgrounds).
 
 Embedded text subtitle tracks of a local video are decoded in the background and arrive after `MediaLoaded`. Listen to `SubtitleTracksChanged` to show them.
 

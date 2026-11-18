@@ -1,5 +1,7 @@
 # FatzAudio: answer to FatzBomb.MediaControl
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 To: the FatzBomb.MediaControl team.
 From: FatzAudio. Replies to your two notes, "what FatzBomb.MediaControl needs to replace BASS" and "what FatzBomb.MediaControl needs from the surface".
 Refreshed 2026-11-02 against FatzAudio `main` @ 615ab7e (PR 191). The first answer was written at c6e4446 (2026-10-19, PR 78); everything since then is in [Update 2026-11-02](#update-2026-11-02-since-pr-78) below, and the later sections are corrected where they went out of date. CI is green on every job: Windows, Linux, macOS, Android, iOS and sanitizers.

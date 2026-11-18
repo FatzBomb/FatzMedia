@@ -65,7 +65,11 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--cdg-scale[=low\|med\|high]` | The scaled CD+G picture: Low 2x, Med the largest multiple at or below half the screen height, High (when left out) at or below the screen height. Off (the classic picture) without it. |
 | `--cdg-enhance=off\|low\|med\|high` | The Enhance setting, the same as `--cdg-scale`: Off is plain pixels; Low, Med and High draw the Clean look. |
 | `--cdg-style=pixel\|clean\|pixelart` | The style of the scaled picture through the API (Clean when left out); the test players' Enhance setting sets it. |
-| `--cdg-effects` | Adds an outline and a shadow to the scaled CD+G picture. The WPF player's Video flyout (CD+G SCALE) changes the scale, the style and the outline, shadow and bevel (0-10 half CD+G pixels) live. |
+| `--cdg-effects` | Adds an outline and a shadow to the scaled CD+G picture. In all three players the CD+G look controls (Enhance, outline, shadow, bevel in 0 to 10 half CD+G pixels, and a reset) change the picture live: the Video flyout in WPF and Avalonia, the Video tab in WinForms. See [CD+G](../karaoke/cdg.md#scaling-and-effects). |
+| `--ab-demo=<file or folder>` | The A/B swap demo (WPF and Avalonia players): two surfaces alternate clips with no black flash, as TriviaBomb does. Repeatable. The summary shows how many swaps showed the new clip's first frame in time. |
+| `--ab-swaps=<n>`, `--ab-interval=<seconds>` | How many swaps the demo does (default 20) and the time between them (default 3). |
+| `--ab-collapsed`, `--ab-exit` | `--ab-collapsed` hides the waiting surface with `Collapsed`, the counter-check (its first frame is drawn at the wrong size). `--ab-exit` closes the player when the demo is done, for scripts. |
+| `--ab-mode=composited\|native` | WPF only: composited (default) or native-window surfaces. It has no meaning in the Avalonia player. |
 | `--video-audio=fatz` | FatzAudio decodes video soundtracks from FFmpeg's packets; FFmpeg decodes otherwise. |
 | `--no-auto-hide` | Surfaces keep the last frame after stop (`AutoHide = false`). |
 | `--net-retries=<n>` | Retries when opening a network source (`NetworkRetryPolicy.MaxRetries`). |
