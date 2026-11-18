@@ -1066,14 +1066,18 @@ static void test_unload_turned_loop(void)
     static mem_io m;
     float* buf = (float*)malloc(sizeof(float) * 8 * 1024);
     fa_stream* s = open_saw_io(&m, g_rate * 4);
-    int i, last = -1;
+    int i, last = -1, quiet;
     CHECK(buf && s && rig_open(&r, FA_CUE_NONE));
     CHECK_EQ(fa_deck_load(r.a, s, 0), FA_OK);
     CHECK_EQ(fa_stream_play(s), FA_OK);
     CHECK_EQ(fa_deck_set_loop(r.a, 1000, 5000), FA_OK);
     for (i = 0; i < 8; i++) rig_render(&r, buf, 1024);   /* past the out point: turned */
-    for (i = 0; i < 400 && fa_load32(&m.seeks) != last; i++) {   /* the decode-ahead settles */
-        last = fa_load32(&m.seeks);
+    /* The decode-ahead settles: no new seek over 5 polls in a row (one quiet poll is not enough,
+     * a loaded runner can hold the decode thread off for more than 20 ms). */
+    for (i = 0, quiet = 0; i < 400 && quiet < 5; i++) {
+        int now = fa_load32(&m.seeks);
+        quiet = now == last ? quiet + 1 : 0;
+        last = now;
         fa_sleep_ms(20);
     }
     CHECK(s->jumped_back);
