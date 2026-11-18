@@ -70,6 +70,8 @@ public partial class PlayerViewModel
         {
             player.AttachWebMediaPlayer(null);
             _attachedWebPlayer = null;
+            // Detaching ends the web item: the replacement engine's surface gets the media area back.
+            _host.WebView?.SetVisible(false);
         }
     }
 
@@ -183,11 +185,16 @@ public partial class PlayerViewModel
             IsBusy = true;
             var webPlayer = await web.EnsureReadyAsync();
             await webPlayer.SignOutAsync();
+            // Starting the web view shows it: give the media area back unless a web item still plays there.
+            if (Player is not { IsWebMedia: true })
+                web.SetVisible(false);
             WebInfoText = "Signed out (web view profile cleared).";
             StatusText = "Web view: signed out of every service.";
         }
         catch (Exception ex)
         {
+            if (Player is not { IsWebMedia: true })
+                web.SetVisible(false);
             WebInfoText = "Could not sign out.";
             StatusText = $"Web sign-out failed: {ex.Message}";
         }
