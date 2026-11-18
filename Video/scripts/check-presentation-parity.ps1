@@ -209,6 +209,17 @@ foreach ($panel in @(
     }
 }
 
+# The test players show the shared view model's web link box (Stage 060A): a YouTube link plays in the host's web view.
+foreach ($panel in @(
+        @{ Name = 'WPF'; Path = 'FatzMedia.Video.Sample.Player/Controls/PlayerFlyoutPanel.xaml' },
+        @{ Name = 'Avalonia'; Path = 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml' },
+        @{ Name = 'WinForms'; Path = 'FatzMedia.Video.Sample.Player.WinForms/PlayerPanel.cs' })) {
+    $text = Read-Text $panel.Path
+    foreach ($member in @('WebLink', 'OpenWebLinkCommand', 'WebSignInCommand', 'WebSignOutCommand', 'WebInfoText')) {
+        Assert-Match $text $member "The $($panel.Name) test player must show the shared view model's $member."
+    }
+}
+
 # Avalonia is the reference player: it also shows the busy indicator, the startup error and runs the A/B swap demo.
 $avaloniaPanel = Read-Text 'FatzMedia.Video.Sample.Player.Avalonia/PlayerPanel.axaml'
 foreach ($member in @('IsBusy', 'LoadingMediaText', 'StartupError')) {

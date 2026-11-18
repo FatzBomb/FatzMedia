@@ -71,10 +71,9 @@ public partial class PlayerView : UserControl, IPlayerSlot
         _bottomChromeWindowedParent = (Panel)BottomChrome.Parent;
         _bottomChromeWindowedIndex = _bottomChromeWindowedParent.Children.IndexOf(BottomChrome);
 
-        ViewModel = new MainWindowViewModel(
-            owner,
-            index,
-            App.StartupOptions.ForBuild(index, atStartup));
+        var options = App.StartupOptions.ForBuild(index, atStartup);
+        WebView.UserDataFolder = options.ResolvedWebProfileFolder;
+        ViewModel = new MainWindowViewModel(owner, index, options, new WpfPlayerWebView(WebView, MediaSurface));
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         // Stage 051A: the smoke script reads this line from the debug log.
@@ -127,6 +126,7 @@ public partial class PlayerView : UserControl, IPlayerSlot
         // The surface lets go of the engine before it is disposed.
         MediaSurface.Player = null;
         await ViewModel.DisposeAsync();
+        await WebView.DisposeAsync();
     }
 
     /// <summary>Refreshes the stats line with the window's process reading.</summary>

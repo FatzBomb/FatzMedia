@@ -668,6 +668,54 @@
                         Text="{Binding StreamInfoText}"
                         TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <StackPanel
+                    Margin="0,7,0,0"
+                    HorizontalAlignment="Center"
+                    Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="YouTube" />
+                    <TextBox
+                        Width="320"
+                        VerticalAlignment="Center"
+                        Text="{Binding WebLink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="A YouTube video address (youtube.com or youtu.be). It plays in the web view over the video area.">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding OpenWebLinkCommand}" />
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <Button
+                        Width="64"
+                        Margin="6,0,0,0"
+                        Command="{Binding OpenWebLinkCommand}"
+                        Content="Open"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Play the link in the web view" />
+                    <Button
+                        Width="64"
+                        Margin="6,0,0,0"
+                        Command="{Binding WebSignInCommand}"
+                        Content="Sign in"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Show Google's sign-in page in the web view (a Premium account plays without ads)" />
+                    <Button
+                        Width="70"
+                        Margin="6,0,0,0"
+                        Command="{Binding WebSignOutCommand}"
+                        Content="Sign out"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Clear the web view's cookies and storage (signs out of every service)" />
+                    <TextBlock
+                        MinWidth="160"
+                        MaxWidth="320"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding WebInfoText}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
             </StackPanel>
         </Border>
 

@@ -53,13 +53,15 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         _index = index;
         _atStartup = atStartup;
         InitializeComponent();
+        // The web view keeps its sign-in in the test players' own profile folder (--web-profile= picks another).
+        WebView.UserDataFolder = options.ResolvedWebProfileFolder;
         // A click on the picture makes this the focused player, so F11 shows this one (ENG-044).
         Focusable = true;
 
         var shell = new AvaloniaPlayerShell(this);
         ViewModel = new PlayerViewModel(
             options,
-            new PlayerHost(AvaloniaPlayerDispatcher.Instance, new AvaloniaPlayerEngineFactory(renderer, nativePaths, Label, startupWarnings), shell, shell, App.LogFilePath))
+            new PlayerHost(AvaloniaPlayerDispatcher.Instance, new AvaloniaPlayerEngineFactory(renderer, nativePaths, Label, startupWarnings), shell, shell, App.LogFilePath, new AvaloniaPlayerWebView(WebView)))
         {
             Label = Label,
             // The log is the most used flyout here (several players side by side): open at start.
@@ -132,6 +134,7 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         Surface.Player = null;
         // Dispose waits for admitted media operations: the view model does it off the UI thread.
         await ViewModel.DisposeAsync();
+        await WebView.DisposeAsync();
     }
 
     public void UpdateStatus(ProcessSample process)

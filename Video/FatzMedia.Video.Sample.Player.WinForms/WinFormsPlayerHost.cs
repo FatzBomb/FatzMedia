@@ -2,6 +2,7 @@ using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Configuration;
 using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
+using FatzMedia.Video.WebView2;
 
 namespace FatzMedia.Video.Sample.Player.WinForms;
 
@@ -113,4 +114,37 @@ sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayer
 
     internal static IReadOnlyList<string> ResolveNativePaths(PlayerStartupOptions options) =>
         PlayerNativePaths.Combine(options.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths());
+}
+
+/// <summary>
+/// The WinForms web view (Stage 060A): the <c>WebMediaControl</c> shares the media area with the surface; showing
+/// one hides the other. It starts on first use, shown, because WebView2 creates its window when it is on screen.
+/// </summary>
+sealed class WinFormsPlayerWebView(WebMediaControl view, Control surface) : IPlayerWebView
+{
+    Task<IWebMediaPlayer>? _ready;
+
+    public Task<IWebMediaPlayer> EnsureReadyAsync() => _ready ??= StartAsync();
+
+    public void SetVisible(bool visible)
+    {
+        view.Visible = visible;
+        surface.Visible = !visible;
+    }
+
+    async Task<IWebMediaPlayer> StartAsync()
+    {
+        try
+        {
+            SetVisible(true);
+            await view.InitializeAsync();
+            return view.Player;
+        }
+        catch
+        {
+            // The control keeps a failed start; restart the player after installing the WebView2 runtime.
+            SetVisible(false);
+            throw;
+        }
+    }
 }

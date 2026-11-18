@@ -62,6 +62,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         InitializeCdgLookControls();
         InitializePreparedNextControls();
         InitializeNetworkControls();
+        InitializeWebMediaControls();
         InitializeModeControls();
 
         _positionTimer = host.Dispatcher.CreateTimer(PositionRefreshInterval, OnPositionTimerTick);
@@ -520,6 +521,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             StartModeTracking(player);
             StartPreparedNextValidation(player);
             StartNetworkValidation(player);
+            StartWebMediaTracking(player);
             if (player.LastNativeLoadMessage.Length > 0)
                 HandleDiagnostic(MediaDiagnosticLevel.Info, "NativeLibraries", player.LastNativeLoadMessage);
 
@@ -605,6 +607,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         ResetSyncCommand.NotifyCanExecuteChanged();
         RefreshPreparedNextCommandStates();
         OpenUrlCommand.NotifyCanExecuteChanged();
+        RefreshWebMediaCommandStates();
         OnPropertyChanged(nameof(CanSwitchMode));
     }
 
@@ -844,6 +847,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         StopSubtitleTracking(player);
         StopPreparedNextValidation(player);
         StopNetworkValidation(player);
+        StopWebMediaTracking(player);
         // Surfaces bound to Player let go of it, and the commands turn off, before it is disposed.
         Player = null;
         return player;

@@ -47,7 +47,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   through `PlayerCore.AttachWebMediaPlayer`, PR 36) and a follow-up (controls issued before an item is ready,
   autoplay policy, Avalonia profile folder, PR 37). Verified on Windows by a launcher self-test; manual smoke pending
   (`updates/060A_1` to `060A_4`). Still open: Avalonia sign-in persistence, macOS and Linux, the Premium no-ads
-  re-check. User guide: `site/articles/playback/web-media.md`. Design: `WEB_PLAYER_DESIGN.md`.
+  re-check. Slice 5 (a YouTube link box in the three test players, `PlayerViewModel` web link commands) is
+  implemented, pending manual smoke (`updates/060A_5`). User guide: `site/articles/playback/web-media.md`. Design: `WEB_PLAYER_DESIGN.md`.
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF

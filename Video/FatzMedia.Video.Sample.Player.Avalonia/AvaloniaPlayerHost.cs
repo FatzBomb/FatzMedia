@@ -4,6 +4,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FatzMedia.Video.Core.Configuration;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
+using FatzMedia.Video.WebView2.Avalonia;
 
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
@@ -128,4 +129,20 @@ sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<
         // Native loading blocks: CreateAsync runs it off the UI thread.
         return await global::FatzMedia.Video.Avalonia.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
+}
+
+/// <summary>
+/// The Avalonia web view (Stage 060A): the native <c>WebMediaView</c> sits over the media surface and covers it while
+/// shown. It creates its native window once it is shown and laid out, so the first use waits for that.
+/// </summary>
+sealed class AvaloniaPlayerWebView(WebMediaView view) : IPlayerWebView
+{
+    public async Task<IWebMediaPlayer> EnsureReadyAsync()
+    {
+        SetVisible(true);
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Loaded);
+        return view.Player;
+    }
+
+    public void SetVisible(bool visible) => view.IsVisible = visible;
 }

@@ -177,18 +177,18 @@ sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 /// <summary>One view model over the test doubles.</summary>
 sealed class PlayerViewModelHarness : IAsyncDisposable
 {
-    public PlayerViewModelHarness(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null, bool withShell = true)
-        : this(options, (IPlayerEngineFactory?)engine, withShell)
+    public PlayerViewModelHarness(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null, bool withShell = true, IPlayerWebView? webView = null)
+        : this(options, (IPlayerEngineFactory?)engine, withShell, webView)
     {
     }
 
-    public PlayerViewModelHarness(PlayerStartupOptions? options, IPlayerEngineFactory? engine, bool withShell = true)
+    public PlayerViewModelHarness(PlayerStartupOptions? options, IPlayerEngineFactory? engine, bool withShell = true, IPlayerWebView? webView = null)
     {
         var factory = engine ?? new TestPlayerEngineFactory();
         Engine = factory as TestPlayerEngineFactory ?? new TestPlayerEngineFactory();
         ViewModel = new PlayerViewModel(
             options ?? new PlayerStartupOptions(),
-            new PlayerHost(Dispatcher, factory, withShell ? Clipboard : null, withShell ? FilePicker : null));
+            new PlayerHost(Dispatcher, factory, withShell ? Clipboard : null, withShell ? FilePicker : null, WebView: webView));
     }
 
     public TestPlayerDispatcher Dispatcher { get; } = new();
@@ -210,9 +210,9 @@ sealed class PlayerViewModelHarness : IAsyncDisposable
     /// which other tests raise on purpose, reach every player and would overwrite the status line
     /// (tests run posted work themselves).
     /// </summary>
-    public static async Task<PlayerViewModelHarness> StartAsync(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null)
+    public static async Task<PlayerViewModelHarness> StartAsync(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null, IPlayerWebView? webView = null)
     {
-        var harness = new PlayerViewModelHarness(options, engine);
+        var harness = new PlayerViewModelHarness(options, engine, webView: webView);
         await harness.ViewModel.StartAsync();
         return harness;
     }

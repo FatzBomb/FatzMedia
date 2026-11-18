@@ -28,7 +28,8 @@ public sealed class MainWindowViewModel : PlayerViewModel
     /// <param name="owner">The window that owns this player's dialogs.</param>
     /// <param name="index">The player's number (1-based).</param>
     /// <param name="options">This player's options: the startup media only for player 1 of the first build.</param>
-    public MainWindowViewModel(Window owner, int index, PlayerStartupOptions options)
+    /// <param name="webView">This player's web view for YouTube links (Stage 060A).</param>
+    public MainWindowViewModel(Window owner, int index, PlayerStartupOptions options, IPlayerWebView webView)
         : base(
             options,
             new PlayerHost(
@@ -36,7 +37,8 @@ public sealed class MainWindowViewModel : PlayerViewModel
                 new WpfPlayerEngineFactory(),
                 new WpfPlayerClipboard(),
                 new WpfPlayerFilePicker(owner),
-                App.LogFilePath))
+                App.LogFilePath,
+                webView))
     {
         Label = $"P{index}";
     }

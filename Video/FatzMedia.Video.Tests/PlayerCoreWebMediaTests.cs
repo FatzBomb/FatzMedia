@@ -423,7 +423,7 @@ public sealed class PlayerCoreWebMediaTests
     }
 
     /// <summary>A web player that records commands and lets a test hold or release its completion.</summary>
-    sealed class FakeWebPlayer : IWebMediaPlayer
+    internal sealed class FakeWebPlayer : IWebMediaPlayer
     {
         public TaskCompletionSource? LoadGate { get; set; }
 
@@ -508,7 +508,7 @@ public sealed class PlayerCoreWebMediaTests
     }
 
     /// <summary>A view over the recorded commands that a test can read or clear.</summary>
-    readonly struct CommandList(ConcurrentQueue<string> queue)
+    internal readonly struct CommandList(ConcurrentQueue<string> queue)
     {
         public string[] ToArray() => [.. queue];
 

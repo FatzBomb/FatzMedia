@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
+using FatzMedia.Video.WebView2;
 using Microsoft.Win32;
 
 namespace FatzMedia.Video.Sample.Player.Hosting;
@@ -63,5 +64,39 @@ sealed class WpfPlayerFilePicker(Window owner) : IPlayerFilePicker
     {
         var dialog = new OpenFileDialog { Title = title, Filter = filter };
         return Task.FromResult(dialog.ShowDialog(owner) == true ? dialog.FileName : null);
+    }
+}
+
+/// <summary>
+/// The WPF web view (Stage 060A): the <c>WebMediaView</c> shares the media surface's cell; showing it hides the
+/// surface (hidden, so its layout and swap chain keep their size) and the other way round. The web view starts on
+/// first use, shown, because WebView2 creates its window when it is on screen.
+/// </summary>
+sealed class WpfPlayerWebView(WebMediaView view, UIElement surface) : IPlayerWebView
+{
+    Task<IWebMediaPlayer>? _ready;
+
+    public Task<IWebMediaPlayer> EnsureReadyAsync() => _ready ??= StartAsync();
+
+    public void SetVisible(bool visible)
+    {
+        view.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        surface.Visibility = visible ? Visibility.Hidden : Visibility.Visible;
+    }
+
+    async Task<IWebMediaPlayer> StartAsync()
+    {
+        try
+        {
+            SetVisible(true);
+            await view.InitializeAsync();
+            return view.Player;
+        }
+        catch
+        {
+            // The control keeps a failed start; restart the player after installing the WebView2 runtime.
+            SetVisible(false);
+            throw;
+        }
     }
 }
