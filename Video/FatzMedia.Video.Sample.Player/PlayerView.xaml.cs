@@ -545,12 +545,17 @@ public partial class PlayerView : UserControl, IPlayerSlot
             current is null ? null : ToBounds(current.Bounds),
             App.StartupOptions.SecondScreen);
 
-        var target = choice.ScreenIndex is { } index ? screens[index] : current;
+        // One screen only: full screen on it would hide the player's own controls, so there is nowhere to send it.
+        if (choice.ScreenIndex is null || screens.Count < 2)
+        {
+            ViewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", $"{ViewModel.Label} has no second screen for the web video {choice.Where}");
+            UpdateSecondaryWindowCheckBox();
+            return;
+        }
+
+        var target = screens[choice.ScreenIndex.Value];
         ViewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", $"{ViewModel.Label} web video moves to the second screen {choice.Where}");
-        if (target is { } screen)
-            WebView.EnterFullScreen(new System.Drawing.Rectangle(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height));
-        else
-            WebView.EnterFullScreen();
+        WebView.EnterFullScreen(new System.Drawing.Rectangle(target.Bounds.X, target.Bounds.Y, target.Bounds.Width, target.Bounds.Height));
         UpdateSecondaryWindowCheckBox();
     }
 
