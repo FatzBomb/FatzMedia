@@ -1,5 +1,7 @@
 <!-- Written 2026-10-20 from the code at commit 561a4ba; file:line references are to that commit. -->
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 # MIDI/.kar Karaoke Lyric Display: Design Specification
 
 Source of truth (all paths relative to /home/user/FatzBombMedia):

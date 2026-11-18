@@ -26,8 +26,7 @@ It rejects everything else after looking at the file: video files, plain audio a
 without lyrics. A rejected file is closed and `LoadAsync` returns `false`.
 
 > [!NOTE]
-> MIDI lyrics are text. Direct3D 11 draws it with DirectWrite and the Software and Vulkan
-> renderers with SkiaSharp, using the system's fonts. CD+G graphics show with every renderer.
+> FatzAudio draws both the MIDI lyrics and the CD+G graphics, so they look the same with every renderer.
 
 Songs load without sidecar search, so a picture or video with the song's name is not shown behind
 it. Put a [Background surface](background-surface.md) beside the karaoke control if you want one.
@@ -209,7 +208,7 @@ private void Nudge(int steps) => Karaoke.Session?.AdjustCdgSyncOffset(steps);   
 ## How the player is set up
 
 The control builds the player with hardware video decoding, in the normal Full mode, and with
-looping off, MIDI lyrics on and the picture zoomed to fit. These are not configurable on the
+looping off and the picture zoomed to fit. These are not configurable on the
 control. This means:
 
 - the lyric style and the soundfont are the defaults (see

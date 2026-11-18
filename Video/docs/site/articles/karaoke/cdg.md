@@ -89,6 +89,56 @@ surface. Turn it off again and `BackgroundOpacity` applies again.
 > <xref:FatzMedia.Video.IPlayerSession>. The player inside a `KaraokeSurface` is a
 > `PlayerCore`, so `karaokeSurface.Session as PlayerCore` reaches it.
 
+## Scaling and effects
+
+By default the player draws the classic 300x216 CD+G picture with sharp pixels and the GPU scales it to the
+window. <xref:FatzMedia.Video.CdgScalingOptions> asks FatzAudio to draw a bigger, cleaner picture instead, optionally
+with an outline, a shadow and a bevel. It is off until you set it, and a host sets it either at creation
+(`MediaPlayerConfiguration.CdgScaling`) or at any time with `PlayerCore.CdgScaling`, while a song plays or is paused.
+The next frame shows the change.
+
+```csharp
+// Clean look at half the screen height, with the default outline and soft shadow.
+player.CdgScaling = new CdgScalingOptions { Scale = CdgScale.Medium, Style = CdgScaleStyle.Clean }
+    .WithDefaultEffects();
+
+// Back to the classic picture.
+player.CdgScaling = default;
+```
+
+| Property | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `Scale` | <xref:FatzMedia.Video.CdgScale> | `None` | How big the picture is drawn, as a whole multiple of the 216-pixel-high CD+G screen, before the GPU fits it to the screen. `None` is the classic picture. `Low` is 2x (432 high) on any screen. `Medium` is the largest multiple at or below half the screen height, at least 2x (1080p: 2x, 1440p: 3x, 4K: 5x). `High` is the largest multiple at or below the screen height (720p: 3x, 1080p: 5x, 1440p: 6x, 4K: 10x). Medium and High follow the height of the largest screen or window showing the picture, so the look is the same at any resolution. A higher scale costs more CPU, most of it for the effects. |
+| `Style` | <xref:FatzMedia.Video.CdgScaleStyle> | `Pixel` | How each CD+G pixel becomes many. `Pixel` is sharp squares. `PixelArt` turns diagonal steps into clean slopes and keeps square corners. `Clean` draws crisp, even strokes with square ends and smooth curves; it needs no tuning. `AntiAliased`, `Traced` and `Curved` are older looks that `Clean` replaces (`Curved` draws the same as `Clean`); the test players do not offer them. |
+| `SafetyZone` | <xref:FatzMedia.Video.CdgSafetyZone> | `Show` | Which part of the 300x216 screen is shown. `Show` is all of it, border included. `Remove` is the 288x192 picture area. `Auto` is `Remove` unless the song draws in the border, then `Show`. `Super` is the box around everything the song ever draws, fixed for the whole song. |
+| `OutlineSize` | `int` 0 to 10 | 0 | Outline width around what the song draws. |
+| `ShadowSize`, `ShadowDistance` | `int` 0 to 10 | 0 | How far the shadow spreads, and how far down and right it falls. A shadow is drawn when either is above 0. |
+| `BevelStrength`, `BevelSize` | `int` 0 to 10 | 0 | A highlight on the top-left edges and a shade on the bottom-right ones; both must be above 0. |
+
+Effect sizes count half CD+G pixels (10 is 5 CD+G pixels), whatever the scale. `WithDefaultEffects()` sets an
+outline of 2, a shadow of 1 spread and 2 distance, and no bevel. Values above 10 are clamped.
+
+> [!NOTE]
+> The scaled picture is drawn by FatzAudio, so it needs the FatzAudio engine, which is the only engine. An
+> outline, shadow or bevel needs a scale above `None`; with `Scale = None` they are not drawn.
+> `PlayerCore.CdgScaling` survives a mode switch, and `Reset` takes the new configuration's value.
+
+### The test players' Enhance setting
+
+The WPF, Avalonia and WinForms test players show one setting, **Enhance**, with the levels Off, Low, Med and High,
+plus outline, shadow and bevel sliders and a reset. It is a good model for a karaoke host that wants one control:
+
+| Enhance | `Scale` | `Style` |
+| --- | --- | --- |
+| Off | `None` | `Pixel` |
+| Low | `Low` | `Clean` |
+| Med | `Medium` | `Clean` |
+| High | `High` | `Clean` |
+
+With Enhance Off and an outline, shadow or bevel switched on, the player draws 2x with plain pixels (`Scale = Low`,
+`Style = Pixel`), because the effects need the scaled picture. The command-line switches `--cdg-enhance`,
+`--cdg-scale`, `--cdg-style` and `--cdg-effects` set the starting values; see [Test players](../reference/test-players.md).
+
 ## CD+G sync offset
 
 Some CD+G files are slightly early or late against their audio. `CdgSyncOffset` shifts only the

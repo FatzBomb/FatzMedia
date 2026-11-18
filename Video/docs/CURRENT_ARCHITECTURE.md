@@ -1048,4 +1048,27 @@ cache drops the payload). `FatzAudioCdgEngine` builds each snapshot as immutable
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 
-`MediaSurface` accepts an `IPlayerSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.
+`MediaSurface` accepts an `IPlayerSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, WinForms since Stage 046A slice 2, and Avalonia since the 2026-11-12 audit) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.
+
+## Web media (Stage 060A)
+
+A YouTube link plays through the system web view, behind the same `PlayerCore` controls. Design and limits:
+`WEB_PLAYER_DESIGN.md`; user guide: `site/articles/playback/web-media.md`.
+
+- **Core** (`FatzMedia.Video/Web`) holds only the contract: `IWebMediaProvider` and `WebMediaProviders` (address
+  detection; today YouTube), `IWebMediaPlayer` (transport, position, volume, events, `SignInAsync`, `SignOutAsync`),
+  `WebMediaSupport` (what a web item cannot do) and `MediaInputSourceKind.WebMedia` / `MediaInputSource.Parse`. It
+  has no web view reference and no `[DllImport]`.
+- **Adapters** own the web view and only pass messages: `FatzMedia.Video.WebView2` (`WebView2MediaPlayer`, the WPF
+  `WebMediaView`, the WinForms `WebMediaControl`) and `FatzMedia.Video.WebView2.Avalonia` (`AvaloniaWebMediaPlayer`,
+  `WebMediaView` on Avalonia's `NativeWebView`). The player page is served from a virtual https host (WebView2) or a
+  loopback server (Avalonia), because YouTube answers error 153 to an embed without a real origin.
+- **`PlayerCore.AttachWebMediaPlayer`** (`Api/PlayerCore.WebMedia.cs`): once a web player is attached, `Load` and
+  `LoadAsync` send a recognised address to it; every other string is a file path as before. While a web item is
+  active the transport, position, duration, state and `Effects.Volume` act on it and the usual events are raised. The
+  audio engine is idle; FatzAudio features (pitch, tempo, EQ, fades, normalization, CD+G, prepared-next) do not apply.
+- **The no-wait rule:** the web view lives on the host's UI thread, so the synchronous `Load`, `Play`, `Pause` and
+  `Seek` only issue the command and return; the answer arrives as events. Controls issued before the item is ready
+  are kept and applied when it is.
+- **Sign-in** happens in the service's own page in the same persistent web view profile. FatzMedia never sees
+  credentials. No extraction, caching or background playback (YouTube developer policies).

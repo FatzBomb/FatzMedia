@@ -1,5 +1,7 @@
 # From FatzAudio to FatzMedia / MediaControl: 1.0.0-rc.1 is ready to try
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 **Package:** NuGet id `FatzAudio`, exact version `1.0.0-rc.1` (pin it; do not float on `-ci.*` builds).
 **Feed:** GitHub Packages, `https://nuget.pkg.github.com/FatzBomb75/index.json` (needs a token with `read:packages`). Built from main @ 59741a5 (PR 192); win-x64 and linux-x64 natives inside, net8.0 and net10.0.
 **Handoff doc:** `/mnt/project-files/fatzaudio/mediacontrol/answer-to-mediacontrol.md` (see "Update 2026-11-02"). Docs site zip: `/mnt/project-files/fatzaudio/docs/FatzAudio-docs-2026-11-02.zip`; BASS mapping `docs/migration/bass.md`.

@@ -1,5 +1,7 @@
 # FatzBomb.MediaControl: requests 13, 14 and 15 (formats and normalization for fed audio)
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-05 (passed on by the owner). Context: MediaControl
 plays every format FFmpeg reads; after 037A slice 5, video audio reaches FatzAudio as a packet stream
 (FatzAudio decodes the codec) or a push stream (FFmpeg decodes: MP2 today, DTS, TrueHD, ...). Owner goal:

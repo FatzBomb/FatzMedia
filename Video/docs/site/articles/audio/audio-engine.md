@@ -38,7 +38,7 @@ sound. Audio media does not open.
 | Silence trimming | FatzAudio finds the silence when the file opens, so the trim applies from the first play; it measures RMS over 50 ms windows at your threshold, and sounds shorter than 200 ms at the edges (clicks, count-in ticks) count as silence |
 | Output device | The system default device, which FatzAudio follows, or the device named by `AudioOutputDeviceId`. See [Audio output devices](output-devices.md) |
 | MIDI | `MidiSoundfontPath` (SF2, SF3 or DLS) or the system bank (Windows `gm.dls`); lyrics and karaoke metadata |
-| Formats FatzAudio cannot decode | Converted by FFmpeg |
+| Formats FatzAudio cannot decode | Converted by FFmpeg to a WAV first, so playback starts when the conversion is done. A source FFmpeg decodes as 16-bit with at most two channels is kept as 16-bit; float and downmixed sources stay float. The WAV stays in memory up to 64 MB (a 4-minute 16-bit stereo song at 48 kHz is about 46 MB) and goes to a temporary file above that |
 | Network audio | Opens through FFmpeg, for `http`, `https` and HLS |
 
 ## The engine and its native library

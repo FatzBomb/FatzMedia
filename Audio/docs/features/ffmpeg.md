@@ -112,7 +112,7 @@ var p = new CodecParameters(ffmpeg.avcodec_get_name(st->codecpar->codec_id),
     BlockAlign = st->codecpar->block_align,
     TimeBase = new Rational(st->time_base.num, st->time_base.den),
 };
-using var audio = engine.OpenPackets(p);
+using var audio = engine.OpenPackets(p);              // a PacketAudioStream
 audio.PlayOn(output);
 
 while (ffmpeg.av_read_frame(fmt, pkt) >= 0)
@@ -130,7 +130,7 @@ TimeSpan now = audio.Clock;   // show the video frame for this time
 Decoded frames:
 
 ```csharp
-using var audio = engine.CreatePushStream(AudioFormat.Float32(48000, 2));
+using var audio = engine.CreatePushStream(AudioFormat.Float32(48000, 2));   // a PushAudioStream
 var fmt = new AudioFormat(FFmpeg.ToSampleFormat(frame->format)!.Value, frame->sample_rate, frame->ch_layout.nb_channels);
 audio.PushFrame(fmt, (nint)frame->extended_data, frame->nb_samples, frame->best_effort_timestamp,
                 new Rational(st->time_base.num, st->time_base.den));

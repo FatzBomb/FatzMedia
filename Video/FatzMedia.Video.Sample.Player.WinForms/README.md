@@ -31,7 +31,7 @@ WinForms test player for `FatzMedia.Video`. Windows only (`net10.0-windows7.0`, 
   screen), **Volume**,
   **Full screen** (also F11 or a double-click on the picture; Escape leaves it; the controls hide
   after 2.5 s without mouse movement).
-- Tabs: **Sync** (A/V, CD+G, subtitle offsets, reset, subtitle picker), **Video** (visual
+- Tabs (the **Video** tab also has the CD+G look: **Enhance** Off, Low, Med or High, plus outline, shadow and bevel, applied live): **Sync** (A/V, CD+G, subtitle offsets, reset, subtitle picker), **Video** (visual
   transforms), **Audio** (pitch, tempo, normalize, load resets, silent drag, 10-band EQ, Flat),
   **A/V** (auto play, display-locked timing, display mode, CD+G background), **Next** (prepared
   item, play next now, clear, auto-next, fade length, fade out/in/cancel, stream info), **Log**

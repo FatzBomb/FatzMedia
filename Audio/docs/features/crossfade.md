@@ -105,11 +105,12 @@ fa_stream_set_marker(s, FA_MARKER_MIX_POINT, FA_FRAMES_UNSET); /* clear one; fa_
 ```
 
 ```csharp
-song.Markers.CueIn = TimeSpan.FromSeconds(2);
+song.Markers.CueIn = TimeSpan.FromSeconds(2);          // Markers is a StreamMarkers
 song.Markers.FadeOutStart = TimeSpan.FromSeconds(180);
 song.Markers.CueOut = TimeSpan.FromSeconds(186);
 song.Markers.MixPoint = TimeSpan.FromSeconds(182);
 song.Markers.FadeOutCurve = Curve.SCurve;
+Curve shape = song.Markers.FadeOutCurve;   // reads the stream's own shape (fa_stream_get_fade_curve); can throw AudioException
 song.Markers.MixPoint = null;                         // clear it
 
 song.MarkerReached += (_, e) => Console.WriteLine($"{e.Marker} at {e.Position}");

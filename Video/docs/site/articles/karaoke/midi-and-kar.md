@@ -3,7 +3,7 @@
 MIDI files can carry the words of a song as timed text events. The player synthesises the music
 with a soundfont and shows the lyrics as karaoke: each syllable is highlighted as it is sung, and
 the text scrolls and pages along with the song. This article covers what the user sees, how to
-turn lyrics on and off, how to choose a soundfont and how to change the lyric style.
+choose a soundfont and how to change the lyric style.
 
 ## What you need
 
@@ -11,8 +11,8 @@ turn lyrics on and off, how to choose a soundfont and how to change the lyric st
   only when the audio engine (FatzAudio) is running. Without it `LoadAsync` returns `false` for
   these files.
 - A soundfont, or the system one. See [Soundfonts](#soundfonts).
-- Any renderer, to see the words: Direct3D 11 draws them with DirectWrite, the Software and Vulkan
-  renderers with SkiaSharp (system fonts; the default font when Segoe UI is not installed).
+- Any renderer, to see the words. FatzAudio draws the lyrics itself (with its own font engine, so
+  they look the same on every renderer) and the renderer shows the picture on the subtitle layer.
 
 MIDI files are loaded like any other media:
 
@@ -53,21 +53,14 @@ files) are honoured, and long passages are split into lines of about 42 characte
 
 A MIDI file without any lyric or text events plays as music only.
 
-## Turning lyrics on and off
+## Lyrics are always drawn
 
-`ShowMidiLyrics` is `true` by default. Set it to `false` to hear the music without the words.
-You can change it at any time, also while the song plays.
+FatzAudio draws the lyrics of every MIDI file that has them; there is no switch. The
+`ShowMidiLyrics` property is still on the API, but it no longer changes anything. If the audio
+engine did not start, MIDI files do not open at all and no lyrics are shown.
 
-```csharp
-player.ShowMidiLyrics = false;   // hide the lyrics
-player.ShowMidiLyrics = true;    // show them again
-```
-
-`ShowMidiLyrics` only affects MIDI lyrics. SRT and ASS subtitles of a video are not touched.
-
-The lyrics are an ordinary subtitle track (`SubtitleTracks` lists it with the id `embedded:0` and
-the name "Embedded MIDI Lyrics (stream 0)"), and `HasSubtitle` is `true` while they are selected.
-See [Subtitles](../subtitles/subtitles.md) for the track API.
+The lyrics are not an entry in `SubtitleTracks`. SRT and ASS subtitles of a video are not
+affected. See [Subtitles](../subtitles/subtitles.md) for the track API.
 
 ## Soundfonts
 
@@ -134,7 +127,7 @@ Values outside the limits are clamped. Video subtitles use the separate `Subtitl
 
 ## Sync
 
-There is no separate MIDI offset. The lyrics are a subtitle track, so `SubtitleSyncOffset` and
+There is no separate MIDI offset. The lyrics follow the subtitle offset, so `SubtitleSyncOffset` and
 `AdjustSubtitleSyncOffset` move them against the music (positive values show the words earlier).
 The limit is plus or minus 30 seconds and the value is reset when the song is closed or replaced.
 
