@@ -73,6 +73,12 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
         var options = App.StartupOptions.ForBuild(index, atStartup);
         WebView.UserDataFolder = options.ResolvedWebProfileFolder;
+        // The player owns full screen and the second screen: a double-click on the YouTube video asks for the
+        // player's own full screen (as for a normal video), and the second-screen button moves the one web view.
+        WebView.DoubleClickTogglesFullScreen = false;
+        WebView.AutoFullScreen = false;
+        WebView.DoubleClicked += WebView_DoubleClicked;
+        WebView.FullScreenChanged += (_, _) => UpdateSecondaryWindowCheckBox();
         ViewModel = new MainWindowViewModel(owner, index, options, new WpfPlayerWebView(WebView, MediaSurface));
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -501,13 +507,52 @@ public partial class PlayerView : UserControl, IPlayerSlot
 
     void FlyoutPanel_SecondaryWindowToggleRequested(object? sender, EventArgs e)
     {
-        if (_secondScreen is not null)
+        if (WebView.IsFullScreen)
+            WebView.ExitFullScreen();
+        else if (_secondScreen is not null)
             CloseSecondScreen();
+        else if (ViewModel.Player is { IsWebMedia: true })
+            OpenWebSecondScreen();
         else
             OpenSecondScreen();
     }
 
-    void UpdateSecondaryWindowCheckBox() => FlyoutPanel.IsSecondaryOutputOpen = _secondScreen is not null;
+    void UpdateSecondaryWindowCheckBox() => FlyoutPanel.IsSecondaryOutputOpen = _secondScreen is not null || WebView.IsFullScreen;
+
+    // A double-click on the YouTube video does what it does on a normal video: toggle the player's full screen.
+    // While the web view is on the second screen, a double-click brings it back.
+    void WebView_DoubleClicked(object? sender, EventArgs e)
+    {
+        if (WebView.IsFullScreen)
+            WebView.ExitFullScreen();
+        else
+            FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// The second screen for a YouTube item (Stage 060A): the one web view moves to a borderless full-screen window
+    /// on the screen the shared rule picks (one video, one soundtrack), and back when the button is clicked again.
+    /// </summary>
+    void OpenWebSecondScreen()
+    {
+        if (Window.GetWindow(this) is not { } owner)
+            return;
+
+        var screens = PresentationScreen.All;
+        var current = PresentationScreen.FromWindow(owner);
+        var choice = PlayerScreenChooser.Choose(
+            [.. screens.Select(static screen => new PlayerScreen(screen.DeviceName, ToBounds(screen.Bounds), screen.IsPrimary))],
+            current is null ? null : ToBounds(current.Bounds),
+            App.StartupOptions.SecondScreen);
+
+        var target = choice.ScreenIndex is { } index ? screens[index] : current;
+        ViewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", $"{ViewModel.Label} web video moves to the second screen {choice.Where}");
+        if (target is { } screen)
+            WebView.EnterFullScreen(new System.Drawing.Rectangle(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height));
+        else
+            WebView.EnterFullScreen();
+        UpdateSecondaryWindowCheckBox();
+    }
 
     /// <summary>
     /// Opens this player's second screen (the same session, projector role) where the shared rule
