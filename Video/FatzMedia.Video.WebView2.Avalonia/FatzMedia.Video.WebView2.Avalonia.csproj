@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
     <PackageId>FatzMedia.Video.WebView2.Avalonia</PackageId>
     <Description>Avalonia adapter for FatzMedia.Video web media (YouTube): plays an online item in Avalonia's NativeWebView through the official embedded player.</Description>
@@ -25,6 +26,9 @@
   <ItemGroup>
     <!-- The message parser and the player page are shared with FatzMedia.Video.WebView2 (which is Windows only). -->
     <Compile Include="..\FatzMedia.Video.WebView2\YouTubePlayerMessage.cs" Link="YouTubePlayerMessage.cs" />
+    <!-- The double-click and Esc watcher (Windows only at run time: guarded by OperatingSystem.IsWindows). -->
+    <Compile Include="..\FatzMedia.Video.WebView2\DoubleClickDetector.cs" Link="DoubleClickDetector.cs" />
+    <Compile Include="..\FatzMedia.Video.WebView2\MouseDoubleClickWatcher.cs" Link="MouseDoubleClickWatcher.cs" />
     <EmbeddedResource Include="..\FatzMedia.Video.WebView2\WebMedia\youtube-player.html" LogicalName="youtube-player.html" Link="WebMedia\youtube-player.html" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
