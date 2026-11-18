@@ -1,6 +1,9 @@
 # Engineering Issues
 
-Updated: 2026-11-06
+Updated: 2026-11-18
+
+BASS is gone (037A slice 6, 2026-11-11). Entries below that mention BASS, ManagedBass or the BASS engines describe the
+code as it was when the entry was written. The BASS-to-FatzAudio mapping lives in `Audio/docs/migration/bass.md`.
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -55,9 +58,10 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
-When the BASS-removal PR (037A slice 6, `updates/037A_6/StageUpdate.md`) merges, these close with BASS and move
-to Completed: ENG-021 (BASS latency and device recovery), ENG-028 and ENG-030 (DLS-to-SF2 converter), the BASS
-half of ENG-040, ENG-043's WMA crash, and the BASS side of ENG-047.
+BASS was removed on 2026-11-11 (037A slice 6, PR 15), so the BASS-only issues ENG-021, ENG-028 and ENG-030 moved to
+Completed. The BASS halves of ENG-040, ENG-043 (the WMA crash) and ENG-047 are closed; the rest of those issues
+stands. The managed CD+G engine and MIDI lyric code were removed on 2026-11-12 (audit U1, PR 22), which closed ENG-029;
+ENG-031 describes code that is now gone, so re-check it against FatzAudio's lyric drawing before working on it.
 
 ### ENG-065 - A chosen output device does not get the sound back when it is plugged in again (fixed, pending owner smoke)
 
@@ -426,17 +430,6 @@ notifications (PulseAudio/PipeWire), outside BASS and FatzAudio.
 **Not a feature yet:** audio CD and CD+G disc playback (only `basscd` registering `.cda`; idea
 `032A`); DASH (only `.m3u8` is detected).
 
-### ENG-021 - BASS output latency and device recovery are largely inert
-
-Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which replaces this path.
-- BASS is initialised without `DeviceInitFlags.Latency`, so `BASS_INFO.latency` is 0 and
-  output-latency compensation (and the USB/Bluetooth heuristic) does nothing.
-- ~~The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
-  `Bass.Free` is never called, so it cannot recover a lost device.~~ Replaced by ENG-032's
-  output watchdog (`BASS_Start`, then `BASS_DEVICE_REINIT`); switching to a different device
-  still needs the player-level Reset.
-- `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
 Reported: 2026-10-18 (audit; perf items not measured). Partly resolved: 2026-10-24, pending
@@ -512,64 +505,6 @@ Manual smoke (Windows, native DLLs in place):
    second screen a few times with a whole-composition video effect on; memory does not grow.
 5. Avalonia player, `--renderer=vulkan` on a discrete GPU with `--surface=framesink`: plays;
    note CPU against the previous build.
-
-### ENG-028 - MIDI silent after the audit's DLS converter changes
-
-Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
-plays with no audio. Not reproduced on Linux (no `gm.dls`). Suspected cause: the cache key
-included the DLS's size and write time, so Windows' `gm.dls` was converted again by the
-current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
-failed (`No soundfont found`) or its SF2 plays silently. The cache name is back to
-`{name}.sf2`, so an older cached SF2 is used again; the converter's other changes (sample IDs,
-loop ends, chunk padding) are untested against a real `gm.dls` and remain the suspect if MIDI
-stays silent after the old cache is gone.
-
-Checked 2026-10-20 with the owner's real `gm.dls` (3.3 MB): the current converter and the
-pre-audit one both convert it without error, to the same size; the sample data and every
-instrument, region and bag record are identical, and only 439 sample headers differ, by a loop
-end one sample earlier (the file's authored loop end). So the SF2 is not the cause. The other
-MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
-flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
-but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
-the sizes in `%LOCALAPPDATA%\FatzMedia.Video\soundfonts`. Workaround: rename the old
-`gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
-this MIDI path.
-
-### ENG-029 - CD+G: smooth scroll, memory-preset repeats and pack timing
-
-Reported: 2026-10-20 (comparison with FatzAudio's `cdg.c`, differential test over 9,500 fuzzed
-packs; see `docs/fatzaudio/2026-10-20_MediaControl_Review_MidiAndCdg.md`). Both decoders agree
-on every pixel and palette entry except:
-- **Smooth scroll ignored.** `CdgStateMachine.ScrollUnsafe` never reads the horizontal (0-5) and
-  vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
-  glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
-  288x192 picture area when rendering (the border stays). Verified by test. With the FatzAudio engine
-  (037A slice 3, 2026-11-10) FatzAudio draws CD+G and applies the offsets; our engine (BASS) still does not.
-- **Memory preset with repeat != 0 never clears pixels** - **Fixed 2026-10-23, pending manual
-  smoke with a CD+G that clears with repeat packs.** A repeat pack now clears unless the previous
-  pack was a Memory Preset of the same colour (then it is skipped and reports unchanged). The
-  previous-preset colour is part of the replay checkpoint, restored on seek, and cleared on
-  reset/load. Verified by tests.
-- **Pack timing truncates a double** - **Fixed 2026-10-23, pending manual smoke.**
-  `CdgEngine.PacketCountAt` counts floor(position x 300) packs in integer nanoseconds (same
-  meaning of position as before: pack n applies at (n + 1) / 300 s), so exact boundaries no
-  longer land one pack off. `RenderPipeline` uses the same helper. FatzAudio's ceil rule would
-  shift every position by one pack and was not adopted. Verified by tests.
-- Smaller: the transparent-colour pack is a no-op and index 0 always takes the background
-  opacity; each seek marks the whole frame dirty; `CdgPacket` allocates a small array per pack
-  (about 14 MB for a 4-minute file) and every changed snapshot copies 64.8 KB. FatzAudio's seeks
-  measured about 15x cheaper on the same input.
-
-### ENG-030 - DLS-to-SF2 converter drops loops and articulation
-
-Reported: 2026-10-20 (comparison with FatzAudio's `dls.c`; Windows `gm.dls` scanned). Our
-converter writes loop points but never sampleModes (generator 54), so nothing loops (1,114 of
-1,498 `gm.dls` regions should); applies region fine tune twice (shdr correction and generator 52;
-1,025 regions); drops all art1 articulation (envelopes, vibrato, tremolo), region gain and pan
-(432 regions), and key groups (120 regions); ignores ptbl (safe for `gm.dls`); writes `ifil` as
-the wrong bytes. These degrade the sound but do not silence it (ENG-028). Likely superseded by
-037A slice 3 (FatzAudio loads DLS directly); fix only the cheap items (sampleModes, double fine
-tune) if MIDI stays on BASS for long.
 
 ### ENG-031 - MIDI lyrics: encoding and text-event fallback
 
@@ -813,6 +748,83 @@ details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage)
   tell a transient failure from a permanent one.
 
 ## Completed
+
+### ENG-021 - BASS output latency and device recovery are largely inert (closed)
+
+Closed 2026-11-11: the BASS audio path was removed (037A slice 6, FatzMedia PR 15). FatzMedia.Audio handles output latency and device recovery; the later device work is ENG-032 and ENG-065.
+
+Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which replaces this path.
+- BASS is initialised without `DeviceInitFlags.Latency`, so `BASS_INFO.latency` is 0 and
+  output-latency compensation (and the USB/Bluetooth heuristic) does nothing.
+- ~~The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
+  `Bass.Free` is never called, so it cannot recover a lost device.~~ Replaced by ENG-032's
+  output watchdog (`BASS_Start`, then `BASS_DEVICE_REINIT`); switching to a different device
+  still needs the player-level Reset.
+- `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
+
+### ENG-028 - MIDI silent after the audit's DLS converter changes (closed)
+
+Closed 2026-11-11: the DLS-to-SF2 converter was deleted with BASS (037A slice 6). FatzMedia.Audio loads DLS and SF2 files directly.
+
+Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
+plays with no audio. Not reproduced on Linux (no `gm.dls`). Suspected cause: the cache key
+included the DLS's size and write time, so Windows' `gm.dls` was converted again by the
+current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
+failed (`No soundfont found`) or its SF2 plays silently. The cache name is back to
+`{name}.sf2`, so an older cached SF2 is used again; the converter's other changes (sample IDs,
+loop ends, chunk padding) are untested against a real `gm.dls` and remain the suspect if MIDI
+stays silent after the old cache is gone.
+
+Checked 2026-10-20 with the owner's real `gm.dls` (3.3 MB): the current converter and the
+pre-audit one both convert it without error, to the same size; the sample data and every
+instrument, region and bag record are identical, and only 439 sample headers differ, by a loop
+end one sample earlier (the file's authored loop end). So the SF2 is not the cause. The other
+MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
+flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
+but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
+the sizes in `%LOCALAPPDATA%\FatzMedia.Video\soundfonts`. Workaround: rename the old
+`gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
+this MIDI path.
+
+### ENG-030 - DLS-to-SF2 converter drops loops and articulation (closed)
+
+Closed 2026-11-11: the DLS-to-SF2 converter was deleted with BASS (037A slice 6); nothing is left to fix.
+
+Reported: 2026-10-20 (comparison with FatzAudio's `dls.c`; Windows `gm.dls` scanned). Our
+converter writes loop points but never sampleModes (generator 54), so nothing loops (1,114 of
+1,498 `gm.dls` regions should); applies region fine tune twice (shdr correction and generator 52;
+1,025 regions); drops all art1 articulation (envelopes, vibrato, tremolo), region gain and pan
+(432 regions), and key groups (120 regions); ignores ptbl (safe for `gm.dls`); writes `ifil` as
+the wrong bytes. These degrade the sound but do not silence it (ENG-028). Likely superseded by
+037A slice 3 (FatzAudio loads DLS directly); fix only the cheap items (sampleModes, double fine
+tune) if MIDI stays on BASS for long.
+
+### ENG-029 - CD+G: smooth scroll, memory-preset repeats and pack timing (closed)
+
+Closed 2026-11-12: the managed CD+G engine (`CdgEngine`, `CdgStateMachine`) was removed (audit U1, PR 22). FatzAudio's `cdg.c` is the only CD+G decoder and applies the smooth-scroll offsets. The text below describes the removed code.
+
+Reported: 2026-10-20 (comparison with FatzAudio's `cdg.c`, differential test over 9,500 fuzzed
+packs; see `docs/fatzaudio/2026-10-20_MediaControl_Review_MidiAndCdg.md`). Both decoders agree
+on every pixel and palette entry except:
+- **Smooth scroll ignored.** `CdgStateMachine.ScrollUnsafe` never reads the horizontal (0-5) and
+  vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
+  glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
+  288x192 picture area when rendering (the border stays). Verified by test. With the FatzAudio engine
+  (037A slice 3, 2026-11-10) FatzAudio draws CD+G and applies the offsets; our engine (BASS) still does not.
+- **Memory preset with repeat != 0 never clears pixels** - **Fixed 2026-10-23, pending manual
+  smoke with a CD+G that clears with repeat packs.** A repeat pack now clears unless the previous
+  pack was a Memory Preset of the same colour (then it is skipped and reports unchanged). The
+  previous-preset colour is part of the replay checkpoint, restored on seek, and cleared on
+  reset/load. Verified by tests.
+- **Pack timing truncates a double** - **Fixed 2026-10-23, pending manual smoke.**
+  `CdgEngine.PacketCountAt` counts floor(position x 300) packs in integer nanoseconds (same
+  meaning of position as before: pack n applies at (n + 1) / 300 s), so exact boundaries no
+  longer land one pack off. `RenderPipeline` uses the same helper. FatzAudio's ceil rule would
+  shift every position by one pack and was not adopted. Verified by tests.
+- Smaller: the transparent-colour pack is a no-op and index 0 always takes the background
+  opacity; each seek marks the whole frame dirty; `CdgPacket` allocates a small array per pack
+  (about 14 MB for a 4-minute file) and every changed snapshot copies 64.8 KB. FatzAudio's seeks
+  measured about 15x cheaper on the same input.
 
 ### ENG-051 - Background video hitches at the song's loop point (fixed)
 

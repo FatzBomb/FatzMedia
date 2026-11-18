@@ -4,7 +4,7 @@ One page per feature, each with: what it does, C example, C# example, options, t
 
 | Feature | Page | Status |
 |---|---|---|
-| Devices (output, start/stop, silent output) | [devices.md](devices.md) | ✅ output and default following; inputs as [capture streams](callback-capture.md#capture-streams) and [mixer mics](dj-mixer.md#microphones) |
+| Devices (output, start/stop, silent output) | [devices.md](devices.md) | ✅ output and default following; inputs as [capture streams](callback-capture.md#capture-streams) and [mixer mics](microphones.md) |
 | Opening and decoding streams (format detection, custom I/O, MP4 and MKV audio tracks, built-in AAC, Ogg Opus, Vorbis and FLAC, FLAC in MP4 and MKV) | [streams.md](streams.md) | ✅ |
 | Playback, buffering and threads (decode-ahead, transport, device clock, engine load) | [playback.md](playback.md) | ✅ |
 | Callback streams and capture streams (audio from your own function; an input device as a stream, for recording) | [callback-capture.md](callback-capture.md) | ✅ |
@@ -16,6 +16,7 @@ One page per feature, each with: what it does, C example, C# example, options, t
 | Crossfades, markers, queues and gapless, scheduled starts | [crossfade.md](crossfade.md) | ✅ |
 | Buses (decks, groups) and the channel matrix | [buses.md](buses.md) | ✅ |
 | DJ mixer (two decks, isolator EQ with kills, crossfader curves, headphone cue on outputs 3-4 or a Y-cable, seamless deck loops, cue points, meters, two karaoke mics with gate, EQ, reverb, echo, host ducking, latency report, a measured setup check with feedback-safe gain, opt-in Windows exclusive mode and aligned stem recording, a headphone cue on a second device, beat sync with lock, beat loops and auto-mix) | [dj-mixer.md](dj-mixer.md) | ✅ (more decks 🗓️) |
+| Microphones (two karaoke mics on the DJ mixer: gate, EQ, reverb, echo, ducking, vocal recording, latency report and setup check) | [microphones.md](microphones.md) | ✅ |
 | Tempo, pitch and rate (time-stretch, key change, varispeed, formants) | [tempo-pitch.md](tempo-pitch.md) | ✅ |
 | FFmpeg hand-off and A/V sync (packets, frames, presentation clock) | [ffmpeg.md](ffmpeg.md) | ✅ |
 | Web streams and HLS (HTTP/HTTPS, radio titles, reconnects, HLS) | [web-streams.md](web-streams.md) | ✅ |

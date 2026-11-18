@@ -19,25 +19,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   fallback. Slice 5, Avalonia second-screen output (one player on two screens; renderers
   accept secondary frame-sink and shared-image surfaces; Audio mode clears the surface), is
   implemented and pending manual smoke (`updates/027A_5`). WinUI 3 is deferred.
-- `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in until slice 6, which
-  removes BASS), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
-  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux; its Windows console-app smoke
-  is superseded by the slice 2 owner smoke (the real engine in the players; closed 2026-11-05). Slice 1 (seams for MIDI
-  events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
-  change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
-  our blocking surface requests and silence detection (reply:
-  `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`). Slice 2 (opt-in `FatzAudioEngine` for
-  files and archives in the new `FatzMedia.Video.Audio` package, pinned to
-  1.0.0-rc.1; `--audio=fatz`) merged, owner smoke passed 2026-11-03 (`updates/037A_2`). Loudness
-  (LUFS) normalization on the FatzAudio engine (`MediaPlayerConfiguration.Normalization`, -14 LUFS
-  default, per-user scan cache) implemented, pending manual smoke (`updates/037A_Normalization`). Slice 3
-  (classic CD+G drawn by FatzAudio with the FatzAudio engine) implemented, pending manual smoke
-  (`updates/037A_3`). Slice 4 (MIDI, trackers, network: `updates/037A_4`) and slice 5 (video audio on
-  FatzAudio's clock; a FatzAudio player needs no BASS: `updates/037A_5`) implemented, pending manual
-  smoke. Device choice and events, FatzAudio lyrics, scaled CD+G and packet soundtracks added 2026-11-10. Slice 6
-  (BASS removed, FatzAudio the default; breaking API) implemented on a draft PR, waiting for the owner's hand tests
-  (`scripts/smoke-037A.ps1`) and decision: `updates/037A_6/StageUpdate.md`, `updates/037A_6/Readiness.md`. Analysis:
-  `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
   (`VideoLoopBoundary`), slice 2 the adaptive presentation-lead rules
@@ -60,13 +41,14 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 
 - `active/060A_ACTIVE_WebMediaPlayer.md` - YouTube in a system web view, built into Video (owner
   2026-11-13). Spike passed (virtual https host, IFrame API control, Google sign-in kept across restarts;
-  Premium no-ads inconclusive). Slice 1 (Core contract and address detection, `FatzMedia.Video.WebView2` with the
-  WPF `WebMediaView`) implemented, pending manual smoke (`updates/060A_1`). The WinForms `WebMediaControl` is
-  implemented, pending manual smoke (`updates/060A_2`); The Avalonia adapter
-  (`FatzMedia.Video.WebView2.Avalonia`, `Avalonia.Controls.WebView` 12.1.2) is implemented on Windows, pending manual
-  smoke (`updates/060A_3`); `Player.Load(url)` wiring (slice 4: `PlayerCore.AttachWebMediaPlayer`, web items on non-blocking
-  paths) is implemented, pending manual smoke (`updates/060A_4`); a YouTube link box in the three test players
-  (slice 5, `PlayerViewModel` web link commands) is implemented, pending manual smoke (`updates/060A_5`). Design: `WEB_PLAYER_DESIGN.md`.
+  Premium no-ads inconclusive). Merged: slice 1 (Core contract and address detection, `FatzMedia.Video.WebView2`
+  with the WPF `WebMediaView`, PR 33), slice 2 (the WinForms `WebMediaControl`, PR 34), slice 3 (the Avalonia
+  adapter `FatzMedia.Video.WebView2.Avalonia`, `Avalonia.Controls.WebView` 12.1.2, PR 35), slice 4 (`Player.Load(url)`
+  through `PlayerCore.AttachWebMediaPlayer`, PR 36) and a follow-up (controls issued before an item is ready,
+  autoplay policy, Avalonia profile folder, PR 37). Verified on Windows by a launcher self-test; manual smoke pending
+  (`updates/060A_1` to `060A_4`). Still open: Avalonia sign-in persistence, macOS and Linux, the Premium no-ads
+  re-check. Slice 5 (a YouTube link box in the three test players, `PlayerViewModel` web link commands) is
+  implemented, pending manual smoke (`updates/060A_5`). User guide: `site/articles/playback/web-media.md`. Design: `WEB_PLAYER_DESIGN.md`.
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF
@@ -80,6 +62,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/037A_COMPLETED_FatzAudioEngine.md` — FatzAudio (FatzMedia.Audio) behind `IAudioEngine`, then the only audio engine: BASS removed 2026-11-11 (PRs 15, 16), CD+G (classic and scaled) and MIDI lyrics drawn by FatzAudio, packet soundtracks, device choice and events; the managed CD+G and lyric fallback removed 2026-11-12 (PR 22). Slice notes `updates/037A_0` to `037A_6` and the follow-up notes; the BASS mapping is `Audio/docs/migration/bass.md` (completed 2026-11-11)
 - `complete/051A_COMPLETED_FirstFrameReadySignal.md` — `MediaSurface.FirstFrameReady` on WPF, Avalonia and WinForms (once per load, UI thread; WPF composited in the bitmap-writing operation) and the A/B swap pattern (TriviaBomb); WPF `CompositedUiThreadTime` (047A's before numbers); the WPF player's `--ab-demo`; the test players' 500 ms startup delay removed; owner smoke passed 2026-11-06/07 (`updates/051A_1`, `scripts/smoke-051A.ps1`)
 - `complete/045A_COMPLETED_GpuDecodingEveryPath.md` — GPU decoding on every presentation path (full compatibility): D3D11VA on the Avalonia surface, Vulkan Video on the Vulkan renderer's device (Linux and Windows) and the Avalonia shared GPU image for Vulkan frames on Windows; owner smoke passed 2026-10-26/27 on Windows (`updates/045A_1` to `045A_3`); Linux drivers unverified (ENG-038)
 - `complete/046A_COMPLETED_AdapterParity.md` — adapter and player parity (no feature solo for one player): shared Core auto-hide, presentation path and lightweight player controller; `SecondaryPresentationWindow`, `KaraokeSurface` and `BackgroundSurface` in WPF, Avalonia and WinForms; WinForms frame sink and overlay; Player.Shared chrome, stats, screen rule and renderer request; GPU-first `--renderer=auto`; the player-count and renderer toolbar in every player; owner smoke passed 2026-10-26/27 (`updates/046A_1` to `046A_3`)

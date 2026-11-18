@@ -1,5 +1,7 @@
 # Handing CD+G and MIDI lyric drawing to FatzAudio: what we gain and lose
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 Written 2026-11-01 for stage 037A, answering the owner's question: do we lose sync, frames or
 anything else by letting FatzAudio draw CD+G and MIDI/KAR lyrics? Compared from the code of
 MediaControl `main` @ 28e71ef and FatzAudio `main` @ 17d2284 (PR 170). **[V]** verified in code,

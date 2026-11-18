@@ -2,8 +2,8 @@
 
 The player shows text subtitles on video. It reads them from a file next to the video (a
 sidecar) or from tracks inside the video file (embedded), lets your app list and switch the
-tracks, and lets the user shift the timing. MIDI/KAR lyrics are shown through the same track
-mechanism. This article describes the formats, how tracks are found, how to select them and how
+tracks, and lets the user shift the timing. MIDI/KAR lyrics are drawn by FatzAudio instead (see
+[MIDI and KAR](../karaoke/midi-and-kar.md)). This article describes the formats, how tracks are found, how to select them and how
 to style and time them.
 
 > [!NOTE]
@@ -160,9 +160,9 @@ MIDI/KAR lyrics have their own style (`KaraokeStyle`); see
 
 ## MIDI and KAR lyrics
 
-The lyrics of a MIDI file appear as an embedded track with the id `embedded:0` and the name
-"Embedded MIDI Lyrics (stream 0)". They are selected automatically while `ShowMidiLyrics` is
-`true` (the default); set it to `false` to hide only the lyrics.
+The lyrics of a MIDI file are drawn by FatzAudio, not as a subtitle track: they do not appear in
+`SubtitleTracks`. They follow `SubtitleSyncOffset`. `ShowMidiLyrics` is kept on the API but no
+longer changes anything.
 
 ## See also
 

@@ -61,6 +61,26 @@ with any renderer. Auto-hide and the Audio-mode clear work as on the window path
 is dropped). Expect a CPU copy per frame: for full-HD video use a renderer that presents into the
 window.
 
+## Differences between the three adapters
+
+The three `MediaSurface` controls share the same surface members (`Player`, `Role`, `SurfaceId`, `AutoHide`,
+`IsContentVisible`, `FirstFrameReady`, `PresentationPath` and the rest). What differs is how the picture reaches the
+screen and a few extras:
+
+| Item | WPF | Avalonia | WinForms |
+| --- | --- | --- | --- |
+| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | `PreferGpuSharedSurface` (default true), else the frame sink | `PreferNativeWindow` (default true), else the frame sink |
+| `OverlayContent`, `OverlayHitTestVisible` | yes, a `UIElement` | yes, any control, composited above the picture (added 2026-11-12) | yes, a `Control` in a borderless layered window |
+| Composited-mode figures (`CompositedFramesPublished`, `CompositedUiThreadTime`) and `RefreshPresentationLayout` | yes | no | no |
+| `AttachedPixelSize` | no | yes | no |
+| Screen helpers `PresentationScreen` and `WindowFullScreen` | yes (in `FatzMedia.Video.Wpf`) | no: use `SecondaryPresentationWindow.ShowOnScreen(screen, fullScreen)` | no: use `SecondaryPresentationWindow.ShowOnScreen(screen, fullScreen)` |
+| Second screen | open a `SecondaryPresentationWindow` | the same | the same |
+| Hiding a waiting surface for an A/B swap | `Visibility.Hidden` | `Opacity = 0` (not `IsVisible = false`) | `Visible = false` |
+
+The old WPF `MediaSurface.ShowSecondaryOutput` family (`ShowSecondaryOutput`, `CloseSecondaryOutput`,
+`IsSecondaryOutputOpen`, `SecondaryOutputsChanged`) was removed on 2026-11-12; every host opens a
+`SecondaryPresentationWindow` itself.
+
 ## First frame ready (Stage 051A)
 
 `FirstFrameReady` is raised on the UI thread once per load of media with visual content, when a frame

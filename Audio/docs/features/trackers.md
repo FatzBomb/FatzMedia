@@ -165,11 +165,11 @@ These change the **song's own state**, as `BASS_ATTRIB_MUSIC_*` did. They are no
 
 | What | C | .NET | Range |
 |---|---|---|---|
-| Tempo | `fa_stream_set_tracker_tempo` / `_get_` | `TrackerTempo` | 32 to 512 beats per minute (the exact meaning depends on the format's tempo mode) |
-| Speed | `fa_stream_set_tracker_speed` / `_get_` | `TrackerSpeed` | 1 to 255 ticks per row |
-| Global volume | `fa_stream_set_tracker_global_volume` / `_get_` | `TrackerGlobalVolume` | 0.0 to 1.0 |
-| Channel volume | `fa_stream_set_tracker_channel_volume` / `_get_` | `SetTrackerChannelVolume`, `GetTrackerChannelVolume` | 0.0 to 1.0, the first 64 channels |
-| Instrument mute | `fa_stream_set_tracker_instrument_mute` / `_get_` | `SetTrackerInstrumentMuted`, `IsTrackerInstrumentMuted` | the 0-based instrument, or the sample in formats without instruments (MOD, S3M) |
+| Tempo | `fa_stream_set_tracker_tempo` / `fa_stream_get_tracker_tempo` | `TrackerTempo` | 32 to 512 beats per minute (the exact meaning depends on the format's tempo mode) |
+| Speed | `fa_stream_set_tracker_speed` / `fa_stream_get_tracker_speed` | `TrackerSpeed` | 1 to 255 ticks per row |
+| Global volume | `fa_stream_set_tracker_global_volume` / `fa_stream_get_tracker_global_volume` | `TrackerGlobalVolume` | 0.0 to 1.0 |
+| Channel volume | `fa_stream_set_tracker_channel_volume` / `fa_stream_get_tracker_channel_volume` | `SetTrackerChannelVolume`, `GetTrackerChannelVolume` | 0.0 to 1.0, the first 64 channels |
+| Instrument mute | `fa_stream_set_tracker_instrument_mute` / `fa_stream_get_tracker_instrument_mute` | `SetTrackerInstrumentMuted`, `IsTrackerInstrumentMuted` | the 0-based instrument, or the sample in formats without instruments (MOD, S3M) |
 | Amplification | `fa_stream_set_tracker_param(FA_TRACKER_AMPLIFY, millibel)` | `TrackerAmplificationDb` | -60 to 60 dB, 0 by default |
 
 - Tempo, speed and the global volume are the song's *current* values: a tempo or speed command (`Fxx`, `Axx`, `Txx`) or a global volume command later in the song sets them again, and a seek, or a loop that starts the song again, puts the module back in its own state at the target. Set them again after a seek if you want to keep them.

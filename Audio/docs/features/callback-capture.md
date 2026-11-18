@@ -8,7 +8,7 @@ Two stream sources that are not files: your own function that makes audio on dem
 | An input device | `fa_stream_open_capture` | `engine.OpenCapture(capture)` | `BASS_RecordInit` + `BASS_RecordStart` |
 | What an output plays (Windows) | `fa_stream_open_capture` with `FA_CAPTURE_LOOPBACK` | `engine.OpenCapture(new CaptureOptions { Loopback = true })` | `BASS_RecordInit` on a `BASS_DEVICE_LOOPBACK` device, BASSWASAPI loopback |
 
-Audio you already have in hand (decoded frames, FFmpeg packets) goes to a push stream instead ([FFmpeg hand-off](ffmpeg.md)). A karaoke or DJ mic you sing or talk through belongs on the [DJ mixer](dj-mixer.md#microphones), which corrects the drift between input and output and keeps the latency low.
+Audio you already have in hand (decoded frames, FFmpeg packets) goes to a push stream instead ([FFmpeg hand-off](ffmpeg.md)). A karaoke or DJ mic you sing or talk through belongs on the [DJ mixer](microphones.md), which corrects the drift between input and output and keeps the latency low.
 
 ## Callback streams
 
@@ -86,7 +86,7 @@ The .NET callback always gets float samples (`buffer.Length` is frames times cha
 |---|---|
 | Record to a file | Open with `FA_OPEN_DECODE_ONLY`, then `fa_encoder_encode_stream`. `fa_encoder_close` ends the recording; close the stream after |
 | Read the samples (a tuner, a level check, your own processing) | `FA_OPEN_DECODE_ONLY` + `fa_stream_read`, from a timer or a loop. It returns `FA_OK` with 0 frames while nothing new has arrived |
-| Hear it | `fa_stream_attach` + `fa_stream_play`, to check an input. The input and the output run on two clocks and nothing corrects the drift, so the delay wanders and the stream rebuffers now and then. Use a [mixer mic](dj-mixer.md#microphones) to sing through |
+| Hear it | `fa_stream_attach` + `fa_stream_play`, to check an input. The input and the output run on two clocks and nothing corrects the drift, so the delay wanders and the stream rebuffers now and then. Use a [mixer mic](microphones.md) to sing through |
 | Meter it | `fa_stream_get_levels`, `fa_stream_get_loudness_meter` on a playing capture stream ([levels and loudness](levels-spectrum.md)) |
 
 ### C

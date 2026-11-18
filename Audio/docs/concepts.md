@@ -97,6 +97,7 @@ A stream is always in one state (`fa_stream_get_state`, .NET `State`):
 - Handles are valid until you close them. There is no handle recycling to guard against.
 - A callback may close the stream it was called for. When `fa_stream_close` (or replacing the callback) returns, the old callback is not running and will not run again, so its `user` data can be freed.
 - The library copies strings and buffers you pass in, unless a function says it keeps a reference (a soundfont, for example, is reference counted and streams hold it).
+- Memory the library hands you, such as the bytes from `fa_archive_read`, is released with `fa_free`, never with your own `free`. Strings and structs a call fills in for you need no release. In .NET the binding does this for you.
 
 ## Time, rate and speed
 

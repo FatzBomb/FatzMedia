@@ -1,5 +1,7 @@
 # FatzAudio to MediaControl / FatzMedia, 2026-11-03 (as received)
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 Your rc.1 reply is applied (PR 194): the Shift-JIS "garbled" line is dropped, the Linux SONAME is
 `libfatzaudio.so.1`, the K2 "nothing new" contract (`FA_OK` + `dirty_count` 0 + `behind` 1 +
 unchanged `revision`) is documented in the CD+G and lyrics docs, up to 2% scroll drift during

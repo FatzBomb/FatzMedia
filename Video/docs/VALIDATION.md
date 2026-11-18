@@ -187,7 +187,7 @@ verification, Core/WPF/presentation-parity gates, and git diff check all green.
 On 2026-08-18, the second slice of Stage 030B was implemented and validated while the
 stage remains active. Enabled local plain non-tracker audio now runs a cancellable
 sequential 0.1-second silence scan inside the existing background
-normalization-analysis task (samples taken at actual BASS decode byte positions;
+normalization-analysis task (samples taken at actual decode byte positions;
 decode cursor captured and restored in `finally`; `CancelNormalizationAnalysis`
 joined before handle reuse/free; partial/faulted/stale scans not cached). The
 existing normalization cache/math is preserved — a normalization-cache hit skips
@@ -212,11 +212,11 @@ during a local plain non-tracker audio `Open`; a late background scan only warms
 cache for a subsequent open and never tightens duration during active playback.
 `AudioPipeline` maps effective duration/position, effective→source seek, and
 progress/end publication; `AudioEngine` positions `Play` at `PlayableStart`,
-suppresses the native source-end loop for an active trim, uses a BASS
-`Position | Mixtime | Onetime` sync at `PlayableEnd`, stops at the custom end, and
-custom loops seek to `PlayableStart` with the `BASS_POS_FLUSH` raw flag `0x1000000`
-(ManagedBass omits the enum member). Tempo changes do not require rearming the
-position sync. CDG-paired opens analyze `false`; video, archives, tracker/MOD, and
+suppresses the native source-end loop for an active trim, stops at the custom
+end, and custom loops seek to `PlayableStart`. (Since 037A, FatzAudio does this with
+the stream's `Markers.CueIn` and `CueOut`, set when the stream opens; the first
+implementation used native position syncs in the old engine.) Tempo changes do not
+require rearming anything. CDG-paired opens analyze `false`; video, archives, tracker/MOD, and
 live/stream remain excluded; disabled/default behavior is unchanged. Added 14
 `AudioPipelineTrimTests` transport cases — 44 focused 030B cases total (17 + 11 + 2
 + 14). Release validation passed: build with 0 warnings/errors, 508 tests,

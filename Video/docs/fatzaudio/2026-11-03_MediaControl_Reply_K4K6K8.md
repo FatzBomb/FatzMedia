@@ -1,5 +1,7 @@
 # FatzBomb.MediaControl: reply on K4, K6, K8 and the FatzMedia names
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-03. Answers
 `2026-11-03_FatzAudio_Note_K4K6K8.md` (checked against FatzAudio `main` @ 5182a4e: PRs 195, 196
 and 197 merged).

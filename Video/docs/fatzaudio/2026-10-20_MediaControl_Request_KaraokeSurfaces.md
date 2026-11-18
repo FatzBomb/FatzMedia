@@ -1,5 +1,7 @@
 # FatzBomb.MediaControl: requests for karaoke surfaces (MIDI lyrics and CD+G)
 
+> **History.** This note was exchanged between the two projects while BASS was still the audio engine (before stage 037A slice 6, 2026-11-11). It is kept as a record of the decisions and measurements. It is not current: the FatzAudio library is now FatzMedia.Audio in `Audio/` of this repository, BASS is gone, and `CURRENT_ARCHITECTURE.md` describes how things work now.
+
 To: FatzAudio. From: FatzBomb.MediaControl, 2026-10-20 (final, after review with the owner).
 Companion notes: `2026-10-20_MediaControl_KaraokeDesignReference.md` (our karaoke design, every
 number with its source line) and `2026-10-20_MediaControl_Review_MidiAndCdg.md` (our review of

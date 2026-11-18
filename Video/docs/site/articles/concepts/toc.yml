@@ -6,3 +6,5 @@
   href: threading-and-events.md
 - name: Diagnostics
   href: diagnostics.md
+- name: Writing a UI adapter
+  href: writing-an-adapter.md

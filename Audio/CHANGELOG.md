@@ -517,7 +517,7 @@ once the real-device checks pass. There never was a 0.3.0 package: everything th
   (`FA_LATENCY_EXCLUSIVE`, 3 ms periods) and `fa_mixer_set_latency_mode` / `fa_mixer_get_latency_mode` to switch a
   running mixer. Mics capture in WASAPI raw mode on Windows (no voice processing). .NET: `DjMixer.LatencyMode`,
   `DjMixer.MeasureLatencyAsync`, `LatencyCheckOptions`, `LatencyCheck`, `CheckAdvice`. See
-  [docs/features/dj-mixer.md](docs/features/dj-mixer.md#setup-check).
+  [docs/features/microphones.md](docs/features/microphones.md#setup-check).
 - DJ mixer mic effects, ducking and recording: one shared reverb (the MIDI reverb, now tunable) and echo for the
   mics, with per-mic sends (`FA_MIC_REVERB_SEND`, default 0.2, and `FA_MIC_ECHO_SEND`) and `fa_mixer_set_mic_effects`
   (size, damping, echo time, feedback, tone). Host mics (`FA_MIC_DUCKS_MUSIC`) duck the music, set with
@@ -526,14 +526,14 @@ once the real-device checks pass. There never was a 0.3.0 package: everything th
   (`FA_MIXER_REC_RAW_TIMING` for the raw timing). `fa_mixer_latency.master` now includes the limiter's look-ahead.
   .NET: `Mic.ReverbSend`, `Mic.EchoSend`, `DjMixer.MicEffects`, `DjMixer.Ducking`, `MixerTap`,
   `AudioEncoder.Record(DjMixer, MixerTap)`, `DjMixer.StartRecording`. See
-  [docs/features/dj-mixer.md](docs/features/dj-mixer.md#reverb-and-echo).
+  [docs/features/microphones.md](docs/features/microphones.md#reverb-and-echo).
 - DJ mixer mics: `fa_mixer_add_mic` adds up to two karaoke mics, one channel (or all channels) of a capture device
   each, brought into the master through a drift-corrected bridge, with an 80 Hz low cut, gain, a gate, EQ (new preset
   `FA_EQ_PRESET_LIVE_VOCAL`), mute, pan, monitor on or off and a meter (`fa_mic_get_levels`). `fa_mixer_get_latency`
   reports the master, cue and voice-to-speaker latencies; `FA_EVENT_INPUT_LOST` on the new
   `fa_mixer_set_event_callback` reports an input that went away. Android captures unprocessed. New error
   `FA_ERROR_PERMISSION_DENIED`. .NET: `DjMixer.AddMic`, `Mic`, `MicOptions`, `DjMixer.Latency`, `DjMixer.InputLost`,
-  `EqualizerPreset.LiveVocal`. See [docs/features/dj-mixer.md](docs/features/dj-mixer.md#microphones).
+  `EqualizerPreset.LiveVocal`. See [docs/features/microphones.md](docs/features/microphones.md).
 - DJ mixer sync, beat loops and auto-mix: `fa_deck_sync` matches a deck's tempo to the other deck's heard BPM
   (half and double time, within `FA_DECK_SYNC_RANGE`, else the new error `FA_ERROR_OUT_OF_RANGE`), aligns beats or bars
   (a bend of up to 2% for small errors, a seamless jump on the next beat for large ones) and with `FA_SYNC_LOCK` keeps

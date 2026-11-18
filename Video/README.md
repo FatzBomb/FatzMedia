@@ -16,12 +16,14 @@ FatzMedia.Video is a media-control solution with a UI-agnostic Core engine, a st
 | `FatzMedia.Video.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It receives platform composition from the host and owns no renderer, pipeline, layer, timing, or final presentation logic. |
 | `FatzMedia.Video.Avalonia` | Avalonia adapter: composited `MediaSurface` over the frame-sink contract and bitmap conversions. |
 | `FatzMedia.Video.WinForms` | WinForms adapter: HWND `MediaSurface` attached as a presentation surface (primary, or a second screen). |
+| `FatzMedia.Video.WebView2` | Web media (YouTube, stage 060A) in a Windows web view: `WebView2MediaPlayer`, the WPF `WebMediaView` and the WinForms `WebMediaControl`. Attach its player to a `PlayerCore` and `Load("https://youtu.be/...")` plays the link. See `docs/site/articles/playback/web-media.md`. |
+| `FatzMedia.Video.WebView2.Avalonia` | The same for Avalonia, on `NativeWebView` (`Avalonia.Controls.WebView`): `AvaloniaWebMediaPlayer` and `WebMediaView`. Verified on Windows only. |
 | `FatzMedia.Video.Sample.Player.Shared` | The test players' shared, UI-agnostic view model (`PlayerViewModel`) and command line; hosts supply UI thread, dialogs and engine. |
 | `FatzMedia.Video.Sample.Player` | WPF validation host used to exercise the Core engine through the WPF adapter (the reference player). |
 | `FatzMedia.Video.Sample.Player.Avalonia` | Cross-platform (Windows + Linux) Avalonia test player at WPF feature parity: software, Vulkan or Direct3D11 renderer, 1-4 players side by side with CPU/memory/fps status lines. |
 | `FatzMedia.Video.Sample.Player.WinForms` | WinForms test player at WPF feature parity: HWND `MediaSurface` with Direct3D11. |
 
-Future UI integrations should be separate adapter projects using the same package style, for example `FatzMedia.Video.WinUI`, `FatzMedia.Video.Avalonia`, and `FatzMedia.Video.WinForms`.
+Future UI integrations should be separate adapter projects using the same package style, for example `FatzMedia.Video.WinUI` (deferred).
 
 ## Current Rule
 
