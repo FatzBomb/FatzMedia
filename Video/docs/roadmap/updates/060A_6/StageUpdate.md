@@ -60,6 +60,14 @@ The second-screen button also had nothing to move: a web item has no media surfa
   nothing else when there is only one screen); a double-click on the YouTube video raises the player's own
   `FullScreenToggleRequested`; loading a file brings the web view home.
 
+## Avalonia control and test player (follow-up PR)
+- The Avalonia `WebMediaView` has `EnterFullScreen(PixelRect?)`, `ExitFullScreen`, `IsFullScreen`, `FullScreenChanged`,
+  `DoubleClicked` and `DoubleClickTogglesFullScreen`: a borderless `Window` takes the `NativeWebView` (moved with
+  `BeginReparenting`, so the page and playback continue). On **Windows** the same read-only mouse hook raises
+  `DoubleClicked` and Esc leaves full screen (verified with real input against YouTube); on macOS and Linux there is no
+  double-click event yet, but the full-screen window and the second-screen placement work the same way (untested there).
+- Avalonia test player: second-screen box and double-click as in the other two players.
+
 ## Not done in this slice
-- The Avalonia control and test player's second-screen button and double-click (follow-up PR).
+- Double-click on macOS and Linux (no hook there); YouTube's own full-screen button stays inside the web view.
 - WinForms `WebMediaControl` and the Avalonia control.
