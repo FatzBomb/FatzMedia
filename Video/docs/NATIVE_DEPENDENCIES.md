@@ -1,6 +1,6 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-11-10
+Updated: 2026-11-18
 
 The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
 and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
@@ -50,6 +50,50 @@ IReadOnlyList<string> nativePaths = WindowsNativeLibraryPaths.GetDefaultSearchPa
 ```
 
 Passing an empty list also allows the Windows loader to probe the predefined paths.
+
+## Stable Local Folder for Hosts (win-x64)
+
+On a development PC the Windows x64 natives live in one stable folder that our own host apps
+(TriviaBomb, Kamujo, ...) reference: `Video\redist\win-x64\` of this repo. It is gitignored; no
+binary is committed. It holds the seven FFmpeg DLLs (listed under FFmpeg Policy) and
+`fatzaudio.dll`.
+
+Fill or refresh it with `scripts\stage-natives.ps1` (it downloads nothing):
+
+```powershell
+cd Video
+.\scripts\stage-natives.ps1                          # defaults below
+.\scripts\stage-natives.ps1 -FfmpegDir D:\ffmpeg\9.0.2\bin -AudioDir ..\Audio\build\bin\Release
+```
+
+- FFmpeg DLLs come from `-FfmpegDir` (default: the Avalonia test player's `native\` folder).
+- `fatzaudio.dll` comes from `-AudioDir` (default: Audio's CMake build, `Audio\build\bin\Release`);
+  rerun the script after rebuilding Audio.
+- `-Destination` fills another folder instead.
+- The script lists what it copied, removes FFmpeg DLLs of another version from the destination
+  (other files stay), and stops with the list of missing files if any is absent. The FFmpeg file
+  list comes from `native-assets.manifest.json`.
+
+A host points an MSBuild property at the folder and copies the DLLs into its `native\` folder,
+which the Windows loader searches (see Responsibility above):
+
+```xml
+<PropertyGroup>
+  <!-- Override with -p:FatzMediaNativeDir=FOLDER\ (keep the trailing backslash). -->
+  <FatzMediaNativeDir Condition="'$(FatzMediaNativeDir)' == ''">$(MSBuildThisFileDirectory)..\..\FatzMedia\Video\redist\win-x64\</FatzMediaNativeDir>
+</PropertyGroup>
+<ItemGroup>
+  <None Include="$(FatzMediaNativeDir)*.dll" Link="native\%(Filename)%(Extension)"
+        CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+        Visible="false" Condition="Exists('$(FatzMediaNativeDir)')" />
+</ItemGroup>
+```
+
+Adjust the relative path to where the host's project sits. If the folder is missing the host still
+builds, without natives, and fails at run time; run the script first. A host that references `FatzMedia.Audio`
+by project also gets `fatzaudio.dll` from Audio's build next to the app; the copy in `native\` is
+then a harmless duplicate. The licensing rules below apply unchanged to whatever FFmpeg build the
+folder holds.
 
 ## Supported Native Target
 

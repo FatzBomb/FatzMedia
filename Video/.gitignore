@@ -35,3 +35,6 @@ artifacts/
 
 # Local copies of the soundfont in the other players' native folders (the tracked one is in FatzMedia.Video.Sample.Player/native)
 **/native/*.sf2
+
+# Staged native DLLs (scripts/stage-natives.ps1); never committed
+/redist/
