@@ -5,6 +5,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>FatzMedia.Video.WebView2</AssemblyName>
     <RootNamespace>FatzMedia.Video.WebView2</RootNamespace>
 
