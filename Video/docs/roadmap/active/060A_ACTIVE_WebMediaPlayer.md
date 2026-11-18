@@ -37,6 +37,10 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   address passed to `Load`/`LoadAsync` plays in the attached web view; Play, Pause, Stop, Seek, Position,
   Duration, State, IsOpen, volume and the events follow; every other source takes the engine path unchanged.
   Design, deadlock rule and tests: `updates/060A_4/StageUpdate.md`.
+- **Slice 5 (implemented, pending manual smoke): a YouTube link box in the three test players.** A text box, Open,
+  Sign in and Sign out in the Next flyout of the WPF, WinForms and Avalonia test players, so a link can be tried by
+  hand; the logic is in the shared `PlayerViewModel` (`IPlayerWebView` host seam). `updates/060A_5/StageUpdate.md`
+  has the manual steps.
 - **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
   `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
   host (Avalonia) is added.

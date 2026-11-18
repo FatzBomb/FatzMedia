@@ -107,6 +107,7 @@ $projectReferences = @{
         '..\FatzMedia.Video.Sample.Player.Shared\FatzMedia.Video.Sample.Player.Shared.csproj',
         '..\FatzMedia.Video.Software\FatzMedia.Video.Software.csproj',
         '..\FatzMedia.Video.Vulkan\FatzMedia.Video.Vulkan.csproj',
+        '..\FatzMedia.Video.WebView2.Avalonia\FatzMedia.Video.WebView2.Avalonia.csproj',
         '..\FatzMedia.Video.Windows\FatzMedia.Video.Windows.csproj',
         '..\FatzMedia.Video.Windows.Direct3D11\FatzMedia.Video.Windows.Direct3D11.csproj',
         '..\FatzMedia.Video.Linux\FatzMedia.Video.Linux.csproj'

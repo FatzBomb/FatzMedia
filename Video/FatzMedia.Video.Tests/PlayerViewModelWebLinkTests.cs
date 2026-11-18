@@ -165,6 +165,27 @@ public sealed class PlayerViewModelWebLinkTests
     }
 
     [Fact]
+    public async Task AVideoThatCannotBeEmbedded_IsNotReportedAsLoadedAndTheWebViewGoesAway()
+    {
+        var webView = new TestWebView();
+        webView.Player.LoadGate = new TaskCompletionSource();
+        await using var harness = await PlayerViewModelHarness.StartAsync(webView: webView);
+        harness.ViewModel.WebLink = Video;
+
+        var opening = harness.ViewModel.OpenWebLinkCommand.ExecuteAsync(null);
+        await harness.Dispatcher.UntilAsync(() => webView.Player.LoadCount == 1);
+        webView.Player.RaiseError(WebMediaErrorKind.EmbeddingNotAllowed, "The owner does not allow it.", 101);
+        webView.Player.LoadGate.SetResult();
+        await opening;
+        _ = harness.Dispatcher.RunPending();
+
+        Assert.False(harness.Player.IsWebMedia);
+        Assert.False(webView.Visible);
+        Assert.DoesNotContain("Loaded", harness.ViewModel.StatusText, StringComparison.Ordinal);
+        Assert.NotEqual(Video, harness.ViewModel.LoadedMediaText);
+    }
+
+    [Fact]
     public async Task SignIn_ShowsTheWebViewAndOpensTheSignInPage_SignOutClearsTheProfile()
     {
         var webView = new TestWebView();

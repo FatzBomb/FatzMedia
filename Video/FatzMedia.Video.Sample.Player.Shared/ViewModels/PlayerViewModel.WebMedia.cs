@@ -108,7 +108,9 @@ public partial class PlayerViewModel
             }
 
             LoadingMediaText = link;
-            var loaded = await player.LoadAsync(link);
+            // The page can report an error (a video that may not be embedded) after the load began: then the item
+            // is gone again, so only a load that left a web item counts.
+            var loaded = await player.LoadAsync(link) && (outcome != WebMediaParseOutcome.Recognized || player.IsWebMedia);
             if (loaded)
                 LoadedMediaText = link;
             else if (!player.IsWebMedia)

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:fbm="clr-namespace:FatzMedia.Video.Avalonia;assembly=FatzMedia.Video.Avalonia"
              xmlns:vm="clr-namespace:FatzMedia.Video.Sample.Player.Shared.ViewModels;assembly=FatzMedia.Video.Sample.Player.Shared"
+             xmlns:web="clr-namespace:FatzMedia.Video.WebView2.Avalonia;assembly=FatzMedia.Video.WebView2.Avalonia"
              xmlns:local="clr-namespace:FatzMedia.Video.Sample.Player.Avalonia"
              x:Class="FatzMedia.Video.Sample.Player.Avalonia.PlayerPanel"
              x:DataType="vm:PlayerViewModel">
@@ -70,8 +71,12 @@
       </StackPanel>
 
       <!-- Double-click (or F11) for full screen; Escape leaves it. -->
+      <!-- The web view (YouTube links) is a native control: it covers the surface while a web item lasts. -->
       <Border x:Name="SurfaceHost" Grid.Row="1" Background="Black" MinHeight="80">
-        <fbm:MediaSurface x:Name="Surface" Player="{Binding Player}" VideoDisplayMode="{Binding VideoDisplayMode}" />
+        <Grid>
+          <fbm:MediaSurface x:Name="Surface" Player="{Binding Player}" VideoDisplayMode="{Binding VideoDisplayMode}" />
+          <web:WebMediaView x:Name="WebView" IsVisible="False" />
+        </Grid>
       </Border>
 
       <Grid x:Name="SeekRow" Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
@@ -331,6 +336,19 @@
               <Button Classes="small" Content="Fade out" Command="{Binding FadeOutCommand}" ToolTip.Tip="{Binding FadeOutToolTip}" />
               <Button Classes="small" Content="Fade in" Command="{Binding FadeInCommand}" ToolTip.Tip="{Binding FadeInToolTip}" />
               <Button Classes="small" Content="Cancel" Command="{Binding CancelFadeCommand}" ToolTip.Tip="Stop the running fade; the volume stays where the fade reached" />
+            </WrapPanel>
+            <WrapPanel ItemSpacing="6" LineSpacing="4">
+              <TextBlock Classes="label" Text="YOUTUBE" />
+              <TextBox Width="320" PlaceholderText="YouTube video address (youtube.com or youtu.be)" Text="{Binding WebLink}"
+                       ToolTip.Tip="A YouTube video address. It plays in the web view over the video area.">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding OpenWebLinkCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Classes="small" Content="Open" Command="{Binding OpenWebLinkCommand}" ToolTip.Tip="Play the link in the web view" />
+              <Button Classes="small" Content="Sign in" Command="{Binding WebSignInCommand}" ToolTip.Tip="Show Google's sign-in page in the web view (a Premium account plays without ads)" />
+              <Button Classes="small" Content="Sign out" Command="{Binding WebSignOutCommand}" ToolTip.Tip="Clear the web view's cookies and storage (signs out of every service)" />
+              <TextBlock Classes="value" MaxWidth="320" TextTrimming="CharacterEllipsis" Text="{Binding WebInfoText}" />
             </WrapPanel>
             <WrapPanel ItemSpacing="6">
               <TextBlock Classes="label" Text="STREAM" />

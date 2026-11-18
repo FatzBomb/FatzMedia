@@ -22,6 +22,19 @@ public sealed class PlayerStartupOptionsTests
         Assert.Empty(options.NativeDirectories);
     }
 
+    [Fact]
+    public void Parse_WebProfile_PicksTheWebViewProfileFolder()
+    {
+        Assert.Null(PlayerStartupOptions.Parse([]).WebProfileFolder);
+        Assert.Equal(PlayerStartupOptions.DefaultWebProfileFolder, PlayerStartupOptions.Parse([]).ResolvedWebProfileFolder);
+        Assert.EndsWith(Path.Combine("SamplePlayer", "WebView2"), PlayerStartupOptions.DefaultWebProfileFolder, StringComparison.Ordinal);
+
+        var options = PlayerStartupOptions.Parse(["--web-profile=\"D:\\scratch\\profile\""]);
+
+        Assert.Equal(@"D:\scratch\profile", options.WebProfileFolder);
+        Assert.Equal(@"D:\scratch\profile", options.ResolvedWebProfileFolder);
+    }
+
     [Theory]
     [InlineData("https://example.com/live.m3u8")]
     [InlineData("http://example.com/a.mp4")]

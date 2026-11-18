@@ -65,7 +65,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   implemented, pending manual smoke (`updates/060A_2`); The Avalonia adapter
   (`FatzMedia.Video.WebView2.Avalonia`, `Avalonia.Controls.WebView` 12.1.2) is implemented on Windows, pending manual
   smoke (`updates/060A_3`); `Player.Load(url)` wiring (slice 4: `PlayerCore.AttachWebMediaPlayer`, web items on non-blocking
-  paths) is implemented, pending manual smoke (`updates/060A_4`). Design: `WEB_PLAYER_DESIGN.md`.
+  paths) is implemented, pending manual smoke (`updates/060A_4`); a YouTube link box in the three test players
+  (slice 5, `PlayerViewModel` web link commands) is implemented, pending manual smoke (`updates/060A_5`). Design: `WEB_PLAYER_DESIGN.md`.
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF
