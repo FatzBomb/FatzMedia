@@ -68,11 +68,28 @@ IWebMediaPlayer playback = web.Player;   // transport, position, volume and even
 `UserDataFolder` is the web view's profile folder; set it before `InitializeAsync` if you want it somewhere other
 than the default under the user's local application data. Cookies and the sign-in live there.
 
+## Full screen and a second screen
+
+YouTube's own player only fills the web view, so the controls do the full screen themselves. `EnterFullScreen()` moves
+the one web view into a borderless window that covers a whole screen, and `ExitFullScreen()` brings it back. It is
+the same web view, so the picture, sound and position carry on. Pass a screen's bounds to put it on a second monitor:
+
+```csharp
+web.EnterFullScreen(secondScreen.Bounds);   // WPF/WinForms: System.Drawing.Rectangle in pixels; Avalonia: PixelRect
+```
+
+On Windows a double-click on the video raises `DoubleClicked` and, by default, toggles this full screen; Esc leaves it.
+A host with its own full screen (the test players) sets `DoubleClickTogglesFullScreen = false` and handles the event.
+The control reads the mouse with a read-only hook, so nothing is drawn over YouTube's player, links or ads and the
+click still reaches YouTube. In the test players the second-screen button and the double-click do this for a
+YouTube item. YouTube's own full-screen button stays inside the web view.
+
 ## Signing in
 
 `IWebMediaPlayer.SignInAsync` opens Google's own sign-in page in the same web view and profile, and `SignOutAsync`
 clears the profile. FatzMedia never sees a password or a token. A signed-in profile keeps YouTube's account
-settings; whether YouTube Premium removes ads in an embedded player has not been proven.
+settings. Whether YouTube Premium removes ads in an embedded player is **unverifiable here**: the embedded player
+served no pre-roll even to a signed-out viewer on the owner's network, so an ad-free result proves nothing.
 
 ## Why the player page has a web address
 
@@ -84,6 +101,8 @@ virtual https host name (`https://web.fatzmedia.test/`) and the Avalonia adapter
 
 A video that cannot play raises `MediaError` with the reason (`WebMediaErrorKind`): the video is private or not found,
 its owner does not allow embedding, YouTube could not verify the page's origin (error 153), or the player failed.
+Many big music videos are not embeddable (YouTube errors 101 and 150: "The owner of this video doesn't allow it to play
+in other apps"); movie trailers and many other channels are, so use those to try the player.
 
 ## Limits set by YouTube's developer policies
 

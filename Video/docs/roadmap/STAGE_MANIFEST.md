@@ -48,7 +48,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   autoplay policy, Avalonia profile folder, PR 37). Verified on Windows by a launcher self-test; manual smoke pending
   (`updates/060A_1` to `060A_4`). Still open: Avalonia sign-in persistence, macOS and Linux, the Premium no-ads
   re-check. Slice 5 (a YouTube link box in the three test players, `PlayerViewModel` web link commands) is
-  implemented, pending manual smoke (`updates/060A_5`). User guide: `site/articles/playback/web-media.md`. Design: `WEB_PLAYER_DESIGN.md`.
+  implemented, pending manual smoke (`updates/060A_5`). Slice 6 (full screen, second-screen placement and double-click
+  for a YouTube item in the WPF, WinForms and Avalonia controls and test players, read-only input hook, PRs 41 to 45)
+  is implemented, pending manual smoke (`updates/060A_6`). Premium no-ads is **unverifiable here**. User guide: `site/articles/playback/web-media.md`. Design: `WEB_PLAYER_DESIGN.md`.
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzMedia.Video.Sample.Player.Shared`), at feature parity with the WPF

@@ -41,6 +41,13 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   Sign in and Sign out in the Next flyout of the WPF, WinForms and Avalonia test players, so a link can be tried by
   hand; the logic is in the shared `PlayerViewModel` (`IPlayerWebView` host seam). `updates/060A_5/StageUpdate.md`
   has the manual steps.
+- **Slice 6 (implemented, pending manual smoke): full screen, second screen and double-click for a YouTube item.**
+  `EnterFullScreen`/`ExitFullScreen`/`DoubleClicked` on the WPF, WinForms and Avalonia controls (the one web view moves
+  into a borderless window on any screen; a read-only mouse hook sees the double-click on Windows; Esc leaves), and the
+  three test players' second-screen button and double-click use them. `updates/060A_6/StageUpdate.md`.
+- **Premium no-ads: unverifiable here (2026-11-18).** The embedded player served no pre-roll signed out on the owner's
+  network (youtube.com did show ads), and many big music videos are not embeddable (error 150). Findings in
+  `WEB_PLAYER_DESIGN.md`. Left open; re-check only if an embedded ad is ever seen signed out.
 - **Follow-up (code review):** `WebMediaView` (WPF) and `WebMediaControl` (WinForms) duplicate their
   `UserDataFolder`, `InitializeAsync`, `OpenAsync` and `Player`; move that into one non-UI helper when a third
   host (Avalonia) is added.
