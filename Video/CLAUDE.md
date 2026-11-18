@@ -21,7 +21,8 @@ not up front.
   Linux and Avalonia are `net10.0`.
 - No native binaries are tracked. To run a host, put the x64 FFmpeg DLLs in the host's
   `native/` folder: `FatzMedia.Video.Sample.Player`, `.Sample.Player.Avalonia` or `.Sample.Player.WinForms`.
-  FatzAudio's library comes from Audio's build. Details are in `docs/NATIVE_DEPENDENCIES.md`.
+  FatzAudio's library comes from Audio's build. Other hosts use `redist/win-x64/` (untracked), filled
+  by `scripts/stage-natives.ps1`. Details are in `docs/NATIVE_DEPENDENCIES.md`.
 - After editing Vulkan `Shaders/*.vert|*.frag`, run `scripts/compile-vulkan-shaders.sh` and
   commit the `.spv` files; CI checks them.
 
