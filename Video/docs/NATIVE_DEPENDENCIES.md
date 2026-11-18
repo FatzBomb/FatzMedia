@@ -70,8 +70,9 @@ cd Video
 - `fatzaudio.dll` comes from `-AudioDir` (default: Audio's CMake build, `Audio\build\bin\Release`);
   rerun the script after rebuilding Audio.
 - `-Destination` fills another folder instead.
-- The script lists what it copied, removes other DLLs in the destination (an old FFmpeg set, for
-  example), and stops with the list of missing files if any is absent.
+- The script lists what it copied, removes FFmpeg DLLs of another version from the destination
+  (other files stay), and stops with the list of missing files if any is absent. The FFmpeg file
+  list comes from `native-assets.manifest.json`.
 
 A host points an MSBuild property at the folder and copies the DLLs into its `native\` folder,
 which the Windows loader searches (see Responsibility above):
@@ -88,7 +89,8 @@ which the Windows loader searches (see Responsibility above):
 </ItemGroup>
 ```
 
-Adjust the relative path to where the host's project sits. A host that references `FatzMedia.Audio`
+Adjust the relative path to where the host's project sits. If the folder is missing the host still
+builds, without natives, and fails at run time; run the script first. A host that references `FatzMedia.Audio`
 by project also gets `fatzaudio.dll` from Audio's build next to the app; the copy in `native\` is
 then a harmless duplicate. The licensing rules below apply unchanged to whatever FFmpeg build the
 folder holds.

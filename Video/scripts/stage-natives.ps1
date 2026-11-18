@@ -6,8 +6,9 @@
     Copies the seven FFmpeg 9.0.x DLLs and fatzaudio.dll into one stable, untracked folder
     (Video\redist\win-x64 by default) that host apps reference, for example through an MSBuild
     property such as FatzMediaNativeDir. Nothing is downloaded: the FFmpeg DLLs come from a folder
-    already on disk and fatzaudio.dll from Audio's CMake build. Other DLLs already in the destination
-    (an older FFmpeg set, say) are removed so hosts that copy the whole folder get one clean set.
+    already on disk and fatzaudio.dll from Audio's CMake build. Other FFmpeg DLLs already in the
+    destination (an older set, say) are removed so hosts that copy the whole folder get one clean set;
+    other files are left alone.
     See docs\NATIVE_DEPENDENCIES.md.
 
 .PARAMETER FfmpegDir
@@ -40,11 +41,9 @@ if ([string]::IsNullOrWhiteSpace($Destination)) {
     $Destination = Join-Path $videoRoot 'redist\win-x64'
 }
 
-# Must match the FFmpeg.AutoGen binding (FFmpeg 9.0.x) and native-assets.manifest.json.
-$ffmpegFiles = @(
-    'avcodec-63.dll', 'avdevice-63.dll', 'avfilter-12.dll', 'avformat-63.dll',
-    'avutil-61.dll', 'swresample-7.dll', 'swscale-10.dll'
-)
+# The FFmpeg file list is the one the Windows package manifest pins (FFmpeg 9.0.x).
+$manifestPath = Join-Path $videoRoot 'FatzMedia.Video.Windows\runtimes\win-x64\native\native-assets.manifest.json'
+$ffmpegFiles = @((Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).ffmpeg.requiredFiles)
 $sources = @($ffmpegFiles | ForEach-Object { Join-Path $FfmpegDir $_ }) + (Join-Path $AudioDir 'fatzaudio.dll')
 
 $missing = @($sources | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
@@ -63,18 +62,19 @@ foreach ($dir in @($FfmpegDir, $AudioDir)) {
     }
 }
 
-$keep = @($sources | ForEach-Object { Split-Path -Leaf $_ })
-Get-ChildItem -LiteralPath $destinationFull -Filter '*.dll' -File |
-    Where-Object { $keep -notcontains $_.Name } |
-    ForEach-Object {
-        Remove-Item -LiteralPath $_.FullName
-        Write-Host "Removed  $($_.Name) (not part of the set)"
-    }
-
 foreach ($source in $sources) {
     Copy-Item -LiteralPath $source -Destination $destinationFull -Force
     $size = (Get-Item -LiteralPath $source).Length
     Write-Host ('Copied   {0,-18} {1,12:N0} bytes  from {2}' -f (Split-Path -Leaf $source), $size, (Split-Path -Parent $source))
 }
+
+# Only stale FFmpeg DLLs (another version's avcodec-62.dll, say) go; anything else in the folder stays.
+$keep = @($sources | ForEach-Object { Split-Path -Leaf $_ })
+Get-ChildItem -LiteralPath $destinationFull -Filter '*.dll' -File |
+    Where-Object { $_.Name -match '^(av[a-z]+|sw[a-z]+|postproc)-\d+\.dll$' -and $keep -notcontains $_.Name } |
+    ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName
+        Write-Host "Removed  $($_.Name) (another FFmpeg version)"
+    }
 
 Write-Host "Staged $($sources.Count) files in $destinationFull"
