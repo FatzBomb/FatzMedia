@@ -52,6 +52,14 @@ The second-screen button also had nothing to move: a web item has no media surfa
   monitor; click it again (or double-click the video, or Esc) to bring it back. Load a local file while it is on the
   second screen: the web view returns and the file plays with the usual second screen on request.
 
+## WinForms control and test player (follow-up PR)
+- `WebMediaControl` has the same API (`EnterFullScreen(Rectangle?)`, `ExitFullScreen`, `IsFullScreen`, `FullScreenChanged`,
+  `DoubleClicked`, `DoubleClickTogglesFullScreen`, `AutoFullScreen`, `FullScreenRequested`) over a borderless `Form`; Esc and
+  double-click leave it. Verified with real mouse and keyboard input against YouTube (playback continued).
+- WinForms test player: the "Second screen" box moves the one web view to the screen the shared rule picks (log line and
+  nothing else when there is only one screen); a double-click on the YouTube video raises the player's own
+  `FullScreenToggleRequested`; loading a file brings the web view home.
+
 ## Not done in this slice
-- The WinForms and Avalonia test players' second-screen button and double-click (follow-up PRs).
+- The Avalonia control and test player's second-screen button and double-click (follow-up PR).
 - WinForms `WebMediaControl` and the Avalonia control.

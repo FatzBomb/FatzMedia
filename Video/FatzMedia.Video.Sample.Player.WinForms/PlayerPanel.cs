@@ -108,6 +108,18 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         // Only real moves show the bars (the controller ignores a move to where the pointer was).
         _surface.MouseMove += (_, _) => _chrome.PointerMoved(Cursor.Position.X, Cursor.Position.Y);
         _secondScreenBox.CheckedChanged += OnSecondScreenChanged;
+        // The player owns full screen and the second screen: a double-click on the YouTube video asks for the player's
+        // own full screen (as for a normal video), and the second-screen box moves the one web view.
+        _web.DoubleClickTogglesFullScreen = false;
+        _web.AutoFullScreen = false;
+        _web.DoubleClicked += (_, _) =>
+        {
+            if (_web.IsFullScreen)
+                _web.ExitFullScreen();
+            else
+                FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
+        };
+        _web.FullScreenChanged += (_, _) => SetSecondScreenBox(_secondScreen is not null || _web.IsFullScreen);
         foreach (var target in new Control[] { this, _surface })
         {
             target.DragEnter += OnDragEnter;
@@ -662,9 +674,44 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
             return;
 
         if (_secondScreenBox.Checked)
-            OpenSecondScreen();
+        {
+            if (_viewModel.Player is { IsWebMedia: true })
+                OpenWebSecondScreen();
+            else
+                OpenSecondScreen();
+        }
+        else if (_web.IsFullScreen)
+        {
+            _web.ExitFullScreen();
+        }
         else
+        {
             CloseSecondScreen();
+        }
+    }
+
+    /// <summary>
+    /// The second screen for a YouTube item (Stage 060A): the one web view moves to a borderless full-screen window on
+    /// the screen the shared rule picks (one video, one soundtrack), and back when the box is cleared.
+    /// </summary>
+    void OpenWebSecondScreen()
+    {
+        var screens = Screen.AllScreens;
+        var choice = PlayerScreenChooser.Choose(
+            [.. screens.Select(static screen => new PlayerScreen(screen.DeviceName, ToBounds(screen.Bounds), screen.Primary))],
+            FindForm() is { } form ? ToBounds(form.Bounds) : null,
+            _options.SecondScreen);
+
+        // One screen only: full screen on it would hide the player's own controls, so there is nowhere to send it.
+        if (choice.ScreenIndex is null || screens.Length < 2)
+        {
+            _viewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", $"{_viewModel.Label} has no second screen for the web video {choice.Where}");
+            SetSecondScreenBox(false);
+            return;
+        }
+
+        _viewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", $"{_viewModel.Label} web video moves to the second screen {choice.Where}");
+        _web.EnterFullScreen(screens[choice.ScreenIndex.Value].Bounds);
     }
 
     void OpenSecondScreen()

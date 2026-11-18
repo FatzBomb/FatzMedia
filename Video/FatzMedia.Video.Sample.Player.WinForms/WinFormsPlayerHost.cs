@@ -128,6 +128,9 @@ sealed class WinFormsPlayerWebView(WebMediaControl view, Control surface) : IPla
 
     public void SetVisible(bool visible)
     {
+        // A file replaced the web item while it was on the second screen: bring the web view home.
+        if (!visible && view.IsFullScreen)
+            view.ExitFullScreen();
         view.Visible = visible;
         surface.Visible = !visible;
     }
