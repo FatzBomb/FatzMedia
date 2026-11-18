@@ -145,6 +145,14 @@ sealed unsafe partial class MouseDoubleClickWatcher : IDisposable
         public nuint ExtraInfo;
     }
 
+    /// <summary>Puts a window at an exact pixel rectangle, topmost, without taking focus.</summary>
+    public static void PlaceWindow(nint hwnd, int x, int y, int width, int height) =>
+        _ = SetWindowPos(hwnd, -1, x, y, width, height, 0x0010 /* SWP_NOACTIVATE */);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
     [StructLayout(LayoutKind.Sequential)]
     struct LowLevelKeyStruct
     {

@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Key = System.Windows.Input.Key;
 using UserControl = System.Windows.Controls.UserControl;
@@ -123,16 +122,16 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
     }
 
     /// <summary>
-    /// Moves the web view into a borderless window that covers <paramref name="bounds"/> (device-independent pixels,
-    /// the screen's bounds), or the whole screen the control's window is on when <paramref name="bounds"/> is
-    /// <see langword="null"/>. Playback continues. Esc, or <see cref="ExitFullScreen"/>, brings it back.
+    /// Moves the web view into a borderless window that covers <paramref name="screenBounds"/> (a screen's bounds in
+    /// device pixels, virtual-screen coordinates), or the whole screen the control's window is on when it is
+    /// <see langword="null"/>. Playback continues. Esc, a double-click or <see cref="ExitFullScreen"/> brings it back.
     /// </summary>
-    public void EnterFullScreen(Rect? bounds = null)
+    public void EnterFullScreen(System.Drawing.Rectangle? screenBounds = null)
     {
         if (_fullScreenWindow is not null)
             return;
 
-        var target = bounds ?? ScreenBoundsOfOwner();
+        var pixels = screenBounds ?? ScreenBoundsOfOwner();
         Content = null;
         var window = new Window
         {
@@ -142,16 +141,20 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
             Topmost = true,
             Background = System.Windows.Media.Brushes.Black,
             WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = target.Left,
-            Top = target.Top,
-            Width = target.Width,
-            Height = target.Height,
+            Left = pixels.Left,
+            Top = pixels.Top,
+            Width = 640,
+            Height = 360,
             Content = _web,
         };
         window.KeyDown += OnFullScreenKeyDown;
         window.Closed += OnFullScreenClosed;
         _fullScreenWindow = window;
         window.Show();
+
+        // Place it in pixels: device-independent units differ per monitor on a multi-monitor, multi-DPI desktop.
+        var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        MouseDoubleClickWatcher.PlaceWindow(handle, pixels.Left, pixels.Top, pixels.Width, pixels.Height);
         FullScreenChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -227,24 +230,13 @@ public sealed class WebMediaView : UserControl, IAsyncDisposable
         FullScreenChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    Rect ScreenBoundsOfOwner()
+    System.Drawing.Rectangle ScreenBoundsOfOwner()
     {
         var owner = Window.GetWindow(this);
         var handle = owner is null ? IntPtr.Zero : new System.Windows.Interop.WindowInteropHelper(owner).Handle;
         var screen = handle == IntPtr.Zero
             ? System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0]
             : System.Windows.Forms.Screen.FromHandle(handle);
-        return ScreenBoundsToDips(screen.Bounds, owner);
-    }
-
-    /// <summary>Converts a screen rectangle in device pixels to device-independent pixels for <paramref name="reference"/>.</summary>
-    internal static Rect ScreenBoundsToDips(System.Drawing.Rectangle pixels, Visual? reference)
-    {
-        var source = reference is null ? null : PresentationSource.FromVisual(reference);
-        if (source?.CompositionTarget is not { } target)
-            return new Rect(pixels.Left, pixels.Top, pixels.Width, pixels.Height);
-        var topLeft = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Left, pixels.Top));
-        var bottomRight = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Right, pixels.Bottom));
-        return new Rect(topLeft, bottomRight);
+        return screen.Bounds;
     }
 }
