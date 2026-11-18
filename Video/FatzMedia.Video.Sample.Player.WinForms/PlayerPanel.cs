@@ -3,6 +3,7 @@ using FatzMedia.Video.Sample.Player.Shared;
 using FatzMedia.Video.Sample.Player.Shared.Hosting;
 using FatzMedia.Video.Sample.Player.Shared.Presentation;
 using FatzMedia.Video.Sample.Player.Shared.ViewModels;
+using FatzMedia.Video.WebView2;
 using FatzMedia.Video.WinForms;
 
 namespace FatzMedia.Video.Sample.Player.WinForms;
@@ -24,6 +25,9 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
     readonly ViewModelBinder _binder;
     readonly List<ViewModelBinder> _bandBinders = [];
     readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    // The web view (YouTube links) shares the media area with the surface; the view model shows one at a time.
+    readonly WebMediaControl _web = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Visible = false };
+    readonly Panel _mediaArea = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     readonly Control _topBar;
     readonly Control _bottom;
@@ -64,11 +68,14 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         var shell = new WinFormsPlayerShell(owner);
         _viewModel = new PlayerViewModel(
             options.ForBuild(index, atStartup),
-            new PlayerHost(dispatcher, new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath))
+            new PlayerHost(dispatcher, new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath, new WinFormsPlayerWebView(_web, _surface)))
         {
             Label = $"P{index}",
         };
         _binder = new ViewModelBinder(_viewModel);
+        _web.UserDataFolder = options.ResolvedWebProfileFolder;
+        _mediaArea.Controls.Add(_web);
+        _mediaArea.Controls.Add(_surface);
         _surface.AutoHide = options.AutoHideSurfaces;
         // --surface=framesink forces the frame-sink path for comparison.
         _surface.PreferNativeWindow = !options.PreferFrameSinkSurface;
@@ -85,7 +92,7 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _layout.Controls.Add(_topBar, 0, 0);
-        _layout.Controls.Add(_surface, 0, 1);
+        _layout.Controls.Add(_mediaArea, 0, 1);
         _layout.Controls.Add(_bottom, 0, 2);
         Controls.Add(_layout);
 
@@ -457,6 +464,28 @@ sealed class PlayerPanel : UserControl, IPlayerSlot
         var stream = new Label { AutoSize = false, Width = 520, Height = 26, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
         _binder.Text(stream, () => _viewModel.StreamInfoText, nameof(PlayerViewModel.StreamInfoText));
         panel.Controls.AddRange([Caption("STREAM"), stream]);
+        panel.SetFlowBreak(stream, true);
+
+        // A YouTube link plays in the web view over the video area (Stage 060A).
+        var link = new TextBox { Width = 320, Margin = new Padding(3, 5, 3, 3), PlaceholderText = "YouTube video address (youtube.com or youtu.be)" };
+        var openLink = SmallButton("Open");
+        var signIn = SmallButton("Sign in");
+        var signOut = SmallButton("Sign out");
+        var webInfo = new Label { AutoSize = false, Width = 300, Height = 26, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+        _binder.Edit(link, () => _viewModel.WebLink, value => _viewModel.WebLink = value, nameof(PlayerViewModel.WebLink));
+        _binder.Command(openLink, _viewModel.OpenWebLinkCommand);
+        _binder.Command(signIn, _viewModel.WebSignInCommand);
+        _binder.Command(signOut, _viewModel.WebSignOutCommand);
+        _binder.Text(webInfo, () => _viewModel.WebInfoText, nameof(PlayerViewModel.WebInfoText));
+        link.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter && _viewModel.OpenWebLinkCommand.CanExecute(null))
+            {
+                _viewModel.OpenWebLinkCommand.Execute(null);
+                e.SuppressKeyPress = true;
+            }
+        };
+        panel.Controls.AddRange([Caption("YOUTUBE"), link, openLink, signIn, signOut, webInfo]);
         return panel;
     }
 
