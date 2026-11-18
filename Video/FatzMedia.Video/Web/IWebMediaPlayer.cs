@@ -56,7 +56,7 @@ public static class WebMediaErrors
         2 => (WebMediaErrorKind.InvalidItem, "YouTube rejected the video id."),
         5 => (WebMediaErrorKind.PlayerFailure, "YouTube's player could not play this video (HTML5 player error)."),
         100 => (WebMediaErrorKind.NotFound, "This YouTube video was not found, or it is private."),
-        101 or 150 => (WebMediaErrorKind.EmbeddingNotAllowed, "The owner of this YouTube video does not allow it to play in other applications."),
+        101 or 150 => (WebMediaErrorKind.EmbeddingNotAllowed, "The owner of this video doesn't allow it to play in other apps. Most major-label music videos are like this."),
         153 => (WebMediaErrorKind.OriginRejected, "YouTube could not verify where the player page came from (error 153)."),
         _ => (WebMediaErrorKind.Unknown, $"YouTube reported error {code}."),
     };

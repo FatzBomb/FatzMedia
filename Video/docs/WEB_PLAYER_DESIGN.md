@@ -72,9 +72,25 @@ The results decide the release scope and the adapter plan. Not all of them may p
 ## Other risks
 
 - Ads cannot be skipped or hidden; the host UI should expect them.
-- Videos that disable embedding report an error: show a clear message.
+- Videos that disable embedding report an error (YouTube 101 or 150): the player says "The owner of this video doesn't allow it to play in other apps". Most major-label music videos are like this; movie trailers and many other channels embed.
 - "Made for Kids" videos change what tracking is allowed.
 - Autoplay only when the user chose to start playback.
+
+## Findings (2026-11-13 to 2026-11-18)
+
+- **Spike (Windows, WebView2):** a page served from a virtual https host plays with no error 153; the IFrame API controls
+  play, pause, seek, volume, mute, speed and state events from C#; a Google sign-in works in the embedded view and survives
+  a restart. A page with no real origin (for example `NavigateToString`) gives error 153.
+- **Premium no-ads: unverifiable here.** The owner saw no ads in the embedded player, signed in with Premium or signed
+  out, on several videos and a free movie. A later check from the owner's network: a signed-out youtube.com page showed an
+  ad (so ads reach that network), but the embedded player served **no pre-roll** signed out (movie trailers played
+  straight through). So an ad-free result signed in proves nothing, and Premium behaviour in the embed cannot be verified
+  by looking for ads. Recorded as an open, unverifiable item; the part we control (sign-in in the persistent profile) works.
+- **Embedding:** many big music videos (Despacito, Gangnam Style, Shape of You, See You Again, Bohemian Rhapsody) return
+  error 150, the owner disallows embedding, so they cannot play in any host. Choose trailers or other embeddable videos for tests.
+- **Full screen and second screen:** the web view runs in its own browser process, so a double-click on the video never
+  reaches WPF and YouTube's player does not enter full screen from it. The WPF control observes the double-click with a
+  read-only hook and moves its one web view to a borderless full-screen window on any screen (`updates/060A_6`).
 
 ## Effort (rough)
 
