@@ -53,7 +53,8 @@ public sealed class FirstFrameReadyTests
         Assert.Equal(2, raised);
 
         Load(recorder, hasVisualContent: false);
-        Present(recorder);
+        // No visual content: the surface hides the frame visual, so nothing is drawn; the sink still takes the frame.
+        Present(recorder, expectDraw: false);
         Assert.Equal(2, raised);
         window.Close();
     }
@@ -108,10 +109,11 @@ public sealed class FirstFrameReadyTests
     }
 
     // As a renderer does, on its own thread: the frame to the sink, then the present notice.
-    static void Present(RecordingSession recorder)
+    static void Present(RecordingSession recorder, bool expectDraw = true)
     {
-        var sink = SinkOf(recorder);
-        var drawn = ((AvaloniaFrameSink)sink).DrawnFrames;
+        var sink = (AvaloniaFrameSink)SinkOf(recorder);
+        var drawn = sink.DrawnFrames;
+        var taken = sink.PublishedFrames;
         Task.Run(() =>
         {
             sink.PresentFrame(new byte[Width * Height * 4], Width, Height, Width * 4);
@@ -119,7 +121,7 @@ public sealed class FirstFrameReadyTests
         }).Wait();
         Dispatcher.UIThread.RunJobs();
         // The compositor takes and draws the frame on its own tick; the surface hears of it on the UI thread.
-        RenderThread.Until(() => ((AvaloniaFrameSink)sink).DrawnFrames > drawn);
+        RenderThread.Until(() => expectDraw ? sink.DrawnFrames > drawn : sink.PublishedFrames > taken);
     }
 
     static IMediaPresentationFrameSink SinkOf(RecordingSession recorder)
