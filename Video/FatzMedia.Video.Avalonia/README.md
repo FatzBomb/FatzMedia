@@ -37,12 +37,15 @@ Avalonia adapter for `FatzMedia.Video` (Stage 027A slices 1, 2 and 5).
 - Two paths (`PresentationPath`, with the reason in `PresentationPathReason`, plus an Info
   diagnostic owned by the attached player, so with several players each log shows only its own
   surfaces):
-  - **Shared GPU image** (`PreferGpuSharedSurface`, default true): when Avalonia's
+  - **Frame sink** (default): the renderer reads frames back and a composition visual draws
+    them on Avalonia's render thread, so the picture keeps moving while the UI thread is busy
+    (drop-downs, window loads; ENG-065).
+  - **Shared GPU image** (`PreferGpuSharedSurface`, default false, opt in): when Avalonia's
     compositor offers `ICompositionGpuInterop` and the renderer can export a matching
     handle kind (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on
-    Linux), frames go straight into Avalonia's compositor with no CPU copy.
-  - **Frame sink**: the renderer reads frames back and the surface uploads them as a
-    bitmap. Used when the GPU path is off, unsupported, or has failed.
+    Linux), frames go straight into Avalonia's compositor with no CPU copy, but the picture
+    **freezes for as long as the UI thread is busy** (Avalonia accepts image updates only on the
+    UI thread). The frame sink is also used when this path is unsupported or has failed.
 - `AvaloniaMediaInputSources.FromBitmap` converts Avalonia bitmaps to Core sources (the same
   shape as the WPF `WpfMediaInputSources.FromImageSource` and `WinFormsMediaInputSources.FromBitmap`).
 - **`KaraokeSurface` and `BackgroundSurface`** (Stage 046A slice 2, as in the WPF and WinForms
@@ -77,7 +80,7 @@ screen and a few extras:
 
 | Item | WPF | Avalonia | WinForms |
 | --- | --- | --- | --- |
-| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | `PreferGpuSharedSurface` (default true), else the frame sink | `PreferNativeWindow` (default true), else the frame sink |
+| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | `PreferGpuSharedSurface` (default false, the frame sink; true opts into the shared GPU image, which freezes while the UI thread is busy) | `PreferNativeWindow` (default true), else the frame sink |
 | `OverlayContent`, `OverlayHitTestVisible` | yes, a `UIElement` | yes, any control, composited above the picture (added 2026-11-12) | yes, a `Control` in a borderless layered window |
 | Composited-mode figures (`CompositedFramesPublished`, `CompositedUiThreadTime`) and `RefreshPresentationLayout` | yes | no | no |
 | `AttachedPixelSize` | no | yes | no |

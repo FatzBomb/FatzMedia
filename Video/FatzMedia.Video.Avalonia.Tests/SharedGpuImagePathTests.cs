@@ -17,12 +17,33 @@ public sealed class SharedGpuImagePathTests
     public void HeadlessCompositor_FallsBackToTheFrameSinkAndSaysWhy()
     {
         (var session, var recorder) = RecordingSession.Create();
-        var surface = new MediaSurface { Player = session };
+        var surface = new MediaSurface { Player = session, PreferGpuSharedSurface = true };
         var window = Show(surface);
 
         Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
         Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
         Assert.Contains("ICompositionGpuInterop", surface.PresentationPathReason);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void TheSharedGpuImagePath_IsOptInBecauseItFreezesWithTheUiThread()
+    {
+        // ENG-065: the frame sink draws on the render thread; the shared image path waits for the UI thread.
+        Assert.False(new MediaSurface().PreferGpuSharedSurface);
+        Assert.False(new BackgroundSurface().PreferGpuSharedSurface);
+        Assert.False(new KaraokeSurface().PreferGpuSharedSurface);
+
+        (var session, var recorder) = RecordingSession.Create();
+        var surface = new MediaSurface
+        {
+            Player = session,
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
+        };
+        var window = Show(surface);
+
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Equal("PreferGpuSharedSurface is off", surface.PresentationPathReason);
         window.Close();
     }
 
@@ -49,6 +70,7 @@ public sealed class SharedGpuImagePathTests
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
             Player = session
         };
@@ -85,6 +107,7 @@ public sealed class SharedGpuImagePathTests
         };
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
             Player = session
         };
@@ -103,6 +126,7 @@ public sealed class SharedGpuImagePathTests
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
             Player = session
         };
@@ -132,6 +156,7 @@ public sealed class SharedGpuImagePathTests
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
             Player = session
         };
@@ -174,6 +199,7 @@ public sealed class SharedGpuImagePathTests
         var queries = 0;
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = _ =>
                     {
                         queries++;
@@ -212,6 +238,7 @@ public sealed class SharedGpuImagePathTests
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
             Player = session
         };
@@ -250,6 +277,7 @@ public sealed class SharedGpuImagePathTests
         var lost = false;
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = _ => new ValueTask<GpuInteropCapabilities?>(lost ? null : FakeInterop.Direct3D()),
             Player = session
         };
@@ -277,6 +305,7 @@ public sealed class SharedGpuImagePathTests
         var answer = new TaskCompletionSource<GpuInteropCapabilities?>();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = _ => new ValueTask<GpuInteropCapabilities?>(answer.Task),
             Player = session
         };
@@ -298,6 +327,7 @@ public sealed class SharedGpuImagePathTests
         var interop = FakeInterop.Create([KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef], CompositionGpuImportedImageSynchronizationCapabilities.Automatic);
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = FakeInterop.Provider(interop),
             Player = session
         };

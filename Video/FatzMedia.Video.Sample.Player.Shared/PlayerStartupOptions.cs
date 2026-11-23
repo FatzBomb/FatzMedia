@@ -57,7 +57,8 @@ public sealed record PlayerStartupOptions
     /// Gets whether surfaces always use the frame sink (<c>--surface=framesink</c>) instead of the
     /// adapter's direct path (<c>--surface=auto</c>, the default): WPF <c>WpfComposited</c> instead
     /// of the native window, Avalonia <c>PreferGpuSharedSurface = false</c>, WinForms
-    /// <c>PreferNativeWindow = false</c>. For comparisons.
+    /// <c>PreferNativeWindow = false</c>. For comparisons. The Avalonia test player opts into the shared GPU
+    /// image on <c>auto</c> although the library default is the frame sink (ENG-065), to keep testing both paths.
     /// </summary>
     public bool PreferFrameSinkSurface { get; init; }
 

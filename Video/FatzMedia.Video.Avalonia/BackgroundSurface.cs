@@ -43,7 +43,7 @@ public class BackgroundSurface : Panel, IDisposable
         AvaloniaProperty.Register<BackgroundSurface, Color>(nameof(BackgroundColor), Colors.Black);
 
     public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<BackgroundSurface, bool>(nameof(PreferGpuSharedSurface), true);
+        AvaloniaProperty.Register<BackgroundSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly StyledProperty<object?> OverlayContentProperty =
         AvaloniaProperty.Register<BackgroundSurface, object?>(nameof(OverlayContent));
@@ -123,7 +123,7 @@ public class BackgroundSurface : Panel, IDisposable
     /// <summary>Gets whether media is shown now (false for a solid colour).</summary>
     public bool IsContentVisible => _host.IsContentVisible;
 
-    /// <summary>Gets or sets whether the surface may use the shared GPU image path (see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
+    /// <summary>Gets or sets whether the surface may use the shared GPU image path (default <see langword="false"/>; it freezes while the UI thread is busy, see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
     public bool PreferGpuSharedSurface
     {
         get => GetValue(PreferGpuSharedSurfaceProperty);

@@ -15,8 +15,8 @@ namespace FatzMedia.Video.Avalonia;
 /// </summary>
 /// <remarks>
 /// <para>
-/// At attach it chooses the shared GPU image path when <see cref="PreferGpuSharedSurface"/> is
-/// set, Avalonia's compositor offers GPU interop with a handle kind it can import, and the
+/// At attach it chooses the shared GPU image path only when <see cref="PreferGpuSharedSurface"/> is
+/// set (off by default: it freezes while the UI thread is busy), Avalonia's compositor offers GPU interop with a handle kind it can import, and the
 /// session's renderer accepts the surface; otherwise (and whenever that path later reports a
 /// failure) it uses the managed frame sink. The choice and its reason are raised as an Info
 /// diagnostic and exposed through <see cref="PresentationPath"/>.
@@ -53,7 +53,7 @@ public class MediaSurface : Control
         AvaloniaProperty.Register<MediaSurface, IBrush?>(nameof(Background), Brushes.Black);
 
     public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<MediaSurface, bool>(nameof(PreferGpuSharedSurface), true);
+        AvaloniaProperty.Register<MediaSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly StyledProperty<MediaPresentationSurfaceRole> RoleProperty =
         AvaloniaProperty.Register<MediaSurface, MediaPresentationSurfaceRole>(nameof(Role), MediaPresentationSurfaceRole.Primary);
@@ -182,9 +182,14 @@ public class MediaSurface : Control
 
     /// <summary>
     /// Gets or sets whether the surface uses the shared GPU image path when the compositor and the
-    /// renderer support it (default <see langword="true"/>). <see langword="false"/> always uses the
-    /// frame sink. A change re-attaches the surface.
+    /// renderer support it (default <see langword="false"/>: the frame sink). A change re-attaches the surface.
     /// </summary>
+    /// <remarks>
+    /// The frame sink draws on Avalonia's render thread, so the picture keeps moving while the UI thread is
+    /// busy (a drop-down opening, a window loading). The shared GPU image path saves the CPU copy but
+    /// freezes for as long as the UI thread is busy: Avalonia accepts image updates only on the UI thread
+    /// (ENG-065). Turn it on only where that freeze does not matter.
+    /// </remarks>
     public bool PreferGpuSharedSurface
     {
         get => GetValue(PreferGpuSharedSurfaceProperty);

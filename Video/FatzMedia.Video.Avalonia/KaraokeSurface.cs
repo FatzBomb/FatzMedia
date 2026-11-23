@@ -36,7 +36,7 @@ public class KaraokeSurface : Panel, IDisposable
         AvaloniaProperty.Register<KaraokeSurface, Color>(nameof(CanvasColor), Colors.Black);
 
     public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<KaraokeSurface, bool>(nameof(PreferGpuSharedSurface), true);
+        AvaloniaProperty.Register<KaraokeSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly DirectProperty<KaraokeSurface, IPlatformFactory?> PlatformFactoryProperty =
         AvaloniaProperty.RegisterDirect<KaraokeSurface, IPlatformFactory?>(
@@ -112,7 +112,7 @@ public class KaraokeSurface : Panel, IDisposable
     /// <summary>Gets whether the karaoke is shown now (see <see cref="MediaSurface.IsContentVisible"/>).</summary>
     public bool IsContentVisible => _host.IsContentVisible;
 
-    /// <summary>Gets or sets whether the surface may use the shared GPU image path (see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
+    /// <summary>Gets or sets whether the surface may use the shared GPU image path (default <see langword="false"/>; it freezes while the UI thread is busy, see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
     public bool PreferGpuSharedSurface
     {
         get => GetValue(PreferGpuSharedSurfaceProperty);

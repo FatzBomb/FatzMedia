@@ -72,6 +72,7 @@ public sealed class AdapterParityTests
         (var session, _) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
             Player = session,
             OverlayContent = overlay,
@@ -102,6 +103,7 @@ public sealed class AdapterParityTests
         recorder.IsOpen = false;
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
             Player = session
         };
