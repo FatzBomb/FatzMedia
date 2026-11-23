@@ -55,7 +55,7 @@ Run the application DPI-aware (`ApplicationHighDpiMode.PerMonitorV2`) so the sur
 
 ### Avalonia
 
-The surface never uses a native window. With `PreferGpuSharedSurface` (default `true`) it uses `SharedGpuImage` when Avalonia's compositor offers GPU interop and the renderer can export a handle kind it imports (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on Linux). Otherwise it uses `FrameSink`. The reason for a fallback is available in `PresentationPathReason`, for example `Avalonia's rendering backend offers no GPU interop (ICompositionGpuInterop)` or `PreferGpuSharedSurface is off`.
+The surface never uses a native window. By default it uses `FrameSink`, which draws on Avalonia's render thread, so the picture keeps moving while the UI thread is busy. With `PreferGpuSharedSurface="True"` (default `false`) it uses `SharedGpuImage` when Avalonia's compositor offers GPU interop and the renderer can export a handle kind it imports (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on Linux): no CPU copy, but the picture freezes while the UI thread is busy. Otherwise it uses `FrameSink`. The reason for a fallback is available in `PresentationPathReason`, for example `Avalonia's rendering backend offers no GPU interop (ICompositionGpuInterop)` or `PreferGpuSharedSurface is off`.
 
 ```xaml
 <fbm:MediaSurface Player="{Binding Player}"

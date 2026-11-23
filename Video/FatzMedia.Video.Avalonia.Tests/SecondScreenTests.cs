@@ -151,10 +151,11 @@ public sealed class SecondScreenTests
             consumer!.OnUnavailable("creating the shared textures failed: out of memory");
             return false;
         };
-        var primary = new MediaSurface { GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
+        var primary = new MediaSurface { PreferGpuSharedSurface = true, GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()) };
         var singer = new MediaSurface
         {
             Role = MediaPresentationSurfaceRole.Projector,
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
         };
         primary.Player = session;
@@ -217,6 +218,7 @@ public sealed class SecondScreenTests
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
+            PreferGpuSharedSurface = true,
             GpuInteropProvider = SharedGpuImagePathTests.FakeInterop.Provider(SharedGpuImagePathTests.FakeInterop.Direct3D()),
             Player = session
         };

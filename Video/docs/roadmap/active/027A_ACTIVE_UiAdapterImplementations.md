@@ -55,7 +55,7 @@ instructions.
     the fence completes each frame. The device UUID must match. On Windows it is not
     implemented yet.
   - The Avalonia adapter picks the path at attach (`PreferGpuSharedSurface`, default
-    true). Its conditions are: the compositor's interop, a supported handle kind, and the
+    false since ENG-065: the GPU path freezes while the UI thread is busy). Its conditions are: the compositor's interop, a supported handle kind, and the
     renderer accepting.
   - Otherwise, or after any later failure, the adapter falls back to the frame sink. It
     logs the path and the reason (Info, `Avalonia.MediaSurface`) and exposes them

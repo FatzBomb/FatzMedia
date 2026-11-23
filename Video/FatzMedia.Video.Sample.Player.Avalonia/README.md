@@ -27,7 +27,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   available (the surfaces are composited) and ignored.
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
-  reason. `--surface=framesink` forces the frame sink, for comparison.
+  reason. The library default is the frame sink (`PreferGpuSharedSurface` false: ENG-065); this player opts into the shared GPU
+  image unless `--surface=framesink` is given, to keep testing both paths.
 - Video decoding (Stage 045A): with Direct3D11 on a GPU the player decodes with D3D11VA where the GPU
   supports the codec (the log's `Decoding ...` line ends `via d3d11va`). The frames stay on the GPU
   into the shared GPU image, or are read back once for the frame sink. With Vulkan on a GPU with Vulkan

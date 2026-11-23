@@ -79,7 +79,7 @@ and move back when it returns, or a call to retarget a device) plus the engine's
 about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
 (14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
 
-### ENG-065 - Avalonia video froze while the UI thread was busy (frame sink fixed; shared GPU image path cannot be)
+### ENG-065 - Avalonia video froze while the UI thread was busy (fixed: the frame sink is now the default)
 
 Reported: 2026-11-23 (a brief freeze when drop-downs open or windows load in TriviaBomb Avalonia). Reproduced
 with `FatzMedia.Video.Sample.Player.Avalonia --ui-stall=500,3000` and an external screen-capture counter
@@ -105,9 +105,13 @@ picture that survives UI stalls, for about 0.1-0.2 more cores (3422x924 surface 
 Not fixable here for the shared GPU image path: `Compositor.PostServerJob` calls `Dispatcher.VerifyAccess()`, so
 `Update*Async` from the renderer's thread throws ("The calling thread cannot access this object because a
 different thread owns it", tested), and the compositor batch carrying the update is committed from the UI thread
-anyway. Open decision for the owner: make the frame sink the default (`PreferGpuSharedSurface` false), have hosts
-that need stall-proof video (TriviaBomb Avalonia) set it, or look for a render-thread GPU import later (needs
-Skia/D3D interop that Avalonia does not expose).
+anyway.
+
+Decided 2026-11-23 (owner: "Yes"): the frame sink is the default for every Avalonia app. `PreferGpuSharedSurface`
+now defaults to false on `MediaSurface`, `KaraokeSurface` and `BackgroundSurface`; the shared GPU image path stays
+available as an opt-in, documented as freezing while the UI thread is busy. TriviaBomb Avalonia also sets it
+explicitly (harmless). The Avalonia test player still opts into the GPU path unless `--surface=framesink`, to keep
+testing both. A render-thread GPU import would need Skia/D3D interop that Avalonia does not expose: not pursued.
 
 ### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch) (fixed, pending owner smoke)
 

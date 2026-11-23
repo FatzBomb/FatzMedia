@@ -142,7 +142,7 @@ Adapter-specific properties:
 | Adapter | Property | Default | Meaning |
 | --- | --- | --- | --- |
 | WPF | `PresentationMode` | `NativeHwndOverlay` | `NativeHwndOverlay` or `WpfComposited`. A change made while a song is open is applied after it closes. |
-| Avalonia | `PreferGpuSharedSurface` | `true` | Lets the surface use the shared GPU image path when it is available. |
+| Avalonia | `PreferGpuSharedSurface` | `false` | Lets the surface use the shared GPU image path when it is available. Off by default: that path freezes while the UI thread is busy. |
 | WinForms | `PreferNativeWindow` | `true` | Lets the renderer present into a child window. |
 
 ## Loading and controlling from code
