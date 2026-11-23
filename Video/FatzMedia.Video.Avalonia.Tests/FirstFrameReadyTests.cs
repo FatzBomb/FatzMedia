@@ -7,7 +7,7 @@ namespace FatzMedia.Video.Avalonia.Tests;
 
 /// <summary>
 /// Stage 051A: <see cref="MediaSurface.FirstFrameReady"/> on the frame-sink path, raised once per load
-/// when the bitmap holds a frame of that load.
+/// when the frame sink has drawn a frame of that load.
 /// </summary>
 public sealed class FirstFrameReadyTests
 {
@@ -16,7 +16,7 @@ public sealed class FirstFrameReadyTests
     [AvaloniaTheory]
     [InlineData(true)]
     [InlineData(false)]
-    public void TheFirstFrame_RaisesOnce_WithTheFrameInTheBitmap(bool autoHide)
+    public void TheFirstFrame_RaisesOnce_WithTheFrameOnTheSink(bool autoHide)
     {
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session, AutoHide = autoHide };
@@ -24,7 +24,7 @@ public sealed class FirstFrameReadyTests
         surface.FirstFrameReady += (_, _) =>
         {
             Assert.True(Dispatcher.UIThread.CheckAccess());
-            bitmapAtEvent.Add(surface.FrameSink?.Bitmap is not null);
+            bitmapAtEvent.Add(surface.FrameSink?.HasFrame == true);
         };
         var window = Show(surface);
         Assert.Empty(bitmapAtEvent);
@@ -73,7 +73,7 @@ public sealed class FirstFrameReadyTests
         Assert.Equal(0, raised);
 
         Task.Run(() => SinkOf(recorder).PresentFrame(new byte[Width * Height * 4], Width, Height, Width * 4)).Wait();
-        Dispatcher.UIThread.RunJobs();
+        RenderThread.Until(() => raised == 1);
         Assert.Equal(1, raised);
         window.Close();
     }
@@ -111,12 +111,15 @@ public sealed class FirstFrameReadyTests
     static void Present(RecordingSession recorder)
     {
         var sink = SinkOf(recorder);
+        var drawn = ((AvaloniaFrameSink)sink).DrawnFrames;
         Task.Run(() =>
         {
             sink.PresentFrame(new byte[Width * Height * 4], Width, Height, Width * 4);
             recorder.Raise(nameof(IPlayerSession.PresentationFramePresented), EventArgs.Empty);
         }).Wait();
         Dispatcher.UIThread.RunJobs();
+        // The compositor takes and draws the frame on its own tick; the surface hears of it on the UI thread.
+        RenderThread.Until(() => ((AvaloniaFrameSink)sink).DrawnFrames > drawn);
     }
 
     static IMediaPresentationFrameSink SinkOf(RecordingSession recorder)

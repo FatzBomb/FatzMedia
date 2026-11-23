@@ -109,7 +109,7 @@ public sealed class MediaSurfaceTests
         for (var offset = 0; offset < pixels.Length; offset += 4)
             (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]) = (0, 0, 255, 255);
         Task.Run(() => sink!.PresentFrame(pixels, 40, 20, 160)).Wait();
-        Dispatcher.UIThread.RunJobs();
+        RenderThread.Until(() => surface.FrameSink!.PublishedFrames == 1);
 
         Assert.Equal(1, surface.FrameSink!.PublishedFrames);
         var frame = window.CaptureRenderedFrame() ?? ToWriteable(window.CaptureRenderedFrame());
@@ -121,7 +121,7 @@ public sealed class MediaSurfaceTests
     }
 
     [AvaloniaFact]
-    public void FrameBursts_PublishOnlyTheLatestFrame()
+    public void FrameBursts_ShowOnlyTheLatestFrame()
     {
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface { Player = session };
@@ -132,9 +132,62 @@ public sealed class MediaSurfaceTests
         var frame = new byte[4 * 4 * 4];
         for (var i = 0; i < 5; i++)
             sink!.PresentFrame(frame, 4, 4, 16);
-        Dispatcher.UIThread.RunJobs();
+        RenderThread.Until(() => surface.FrameSink!.PublishedFrames >= 1);
 
+        // The five frames arrived before the compositor's tick: it takes the newest, once.
         Assert.Equal(1, surface.FrameSink!.PublishedFrames);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void ABusyUiThread_DoesNotKeepTheFrameSinkFromTakingFrames()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var surface = new MediaSurface { Player = session };
+        var window = Show(surface, 4, 4);
+        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle);
+        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink);
+
+        // From here the UI thread runs no queued job (a drop-down opening, a window loading): only the
+        // compositor's tick, which is what takes frames from the mailbox.
+        var frame = new byte[4 * 4 * 4];
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        for (var i = 1; i <= 5; i++)
+        {
+            Task.Run(() => sink!.PresentFrame(frame, 4, 4, 16)).Wait();
+            while (surface.FrameSink!.PublishedFrames < i && DateTime.UtcNow < deadline)
+            {
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Thread.Sleep(2);
+            }
+        }
+
+        Assert.Equal(5, surface.FrameSink!.PublishedFrames);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void AfterAnIdleStretch_TheNextFrameWakesTheSink()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var surface = new MediaSurface { Player = session };
+        var window = Show(surface, 4, 4);
+        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out var handle);
+        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out var sink);
+
+        var frame = new byte[4 * 4 * 4];
+        sink!.PresentFrame(frame, 4, 4, 16);
+        RenderThread.Until(() => surface.FrameSink!.PublishedFrames == 1);
+
+        // Paused: no frames for far longer than the sink keeps polling, so it stops.
+        for (var i = 0; i < 100; i++)
+        {
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        sink.PresentFrame(frame, 4, 4, 16);
+        RenderThread.Until(() => surface.FrameSink!.PublishedFrames == 2);
         window.Close();
     }
 
@@ -151,7 +204,8 @@ public sealed class MediaSurfaceTests
         for (var i = 0; i < 10; i++)
         {
             sink!.PresentFrame(frame, 4, 4, 16);
-            Dispatcher.UIThread.RunJobs();
+            var expected = i + 1;
+            RenderThread.Until(() => surface.FrameSink!.PublishedFrames == expected);
         }
 
         Assert.Equal(10, surface.FrameSink!.PublishedFrames);

@@ -111,10 +111,10 @@ public sealed class SecondScreenTests
             primarySink.PresentFrame(new byte[320 * 180 * 4], 320, 180, 320 * 4);
             singerSink.PresentFrame(new byte[200 * 100 * 4], 200, 100, 200 * 4);
         }).Wait();
-        Dispatcher.UIThread.RunJobs();
+        RenderThread.Until(() => primary.FrameSink!.HasFrame && singer.FrameSink!.HasFrame);
 
-        Assert.Equal(new PixelSize(320, 180), primary.FrameSink!.Bitmap!.PixelSize);
-        Assert.Equal(new PixelSize(200, 100), singer.FrameSink!.Bitmap!.PixelSize);
+        Assert.Equal(new PixelSize(320, 180), primary.FrameSink!.FrameSize);
+        Assert.Equal(new PixelSize(200, 100), singer.FrameSink!.FrameSize);
         second.Close();
         main.Close();
     }
@@ -180,25 +180,25 @@ public sealed class SecondScreenTests
         Assert.Equal(1, recorder.ModeChangedSubscribers);
         var sink = ResolveSink(recorder.LastAttached!);
         sink.PresentFrame(new byte[64 * 32 * 4], 64, 32, 64 * 4);
-        Dispatcher.UIThread.RunJobs();
-        Assert.NotNull(surface.FrameSink!.Bitmap);
+        RenderThread.Until(() => surface.FrameSink!.HasFrame);
+        Assert.NotNull(surface.FrameSink!.FrameSize);
 
         // The switch is raised on the session's control queue; no renderer presents afterwards.
         Task.Run(() => recorder.SwitchMode(MediaPlayerMode.Audio)).Wait();
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(surface.IsPresentationSuspended);
-        Assert.Null(surface.FrameSink!.Bitmap);
+        Assert.False(surface.FrameSink!.HasFrame);
         Assert.True(surface.IsPrimarySurfaceAttached);
 
         // Back in Full mode the new renderer's frames show again.
         Task.Run(() => recorder.SwitchMode(MediaPlayerMode.Full)).Wait();
         Dispatcher.UIThread.RunJobs();
         sink.PresentFrame(new byte[64 * 32 * 4], 64, 32, 64 * 4);
-        Dispatcher.UIThread.RunJobs();
+        RenderThread.Until(() => surface.FrameSink!.HasFrame);
 
         Assert.False(surface.IsPresentationSuspended);
-        Assert.NotNull(surface.FrameSink!.Bitmap);
+        Assert.NotNull(surface.FrameSink!.FrameSize);
 
         // A quick Audio -> Full switch: the late Audio notice finds the session in Full mode.
         recorder.Mode = MediaPlayerMode.Full;

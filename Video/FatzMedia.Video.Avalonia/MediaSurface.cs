@@ -124,9 +124,9 @@ public class MediaSurface : Control
     /// Raised on the UI thread once per load of media with visual content (and once when
     /// <see cref="Player"/> is set to a session that already has such media open), when a frame of
     /// that load is on this surface and the surface shows its content (Stage 051A). On the frame-sink
-    /// path the bitmap holds the frame and the control is invalidated, so changes made in the handler
-    /// render in the same frame; on the shared GPU image path the image is submitted to the
-    /// compositor on its own (best effort, normally the same frame). Not raised for audio-only media
+    /// path the render thread has taken the frame (it draws it on its own tick, so a change made in the
+    /// handler can show a frame after the picture does); on the shared GPU image path the image is
+    /// submitted to the compositor on its own (best effort, normally the same frame). Not raised for audio-only media
     /// or in Audio mode. Subscribe before loading; hide a waiting surface with <c>Opacity = 0</c>, not
     /// <c>IsVisible = false</c> (an invisible control is not laid out, so the frame would be rendered
     /// at the wrong size).
@@ -292,12 +292,8 @@ public class MediaSurface : Control
         if (Background is { } background)
             context.FillRectangle(background, bounds);
 
-        if (_contentShown && FrameSink?.Bitmap is { } bitmap)
-        {
-            // The renderer already composed for this pixel size (letterboxing included), so the
-            // bitmap fills the surface. The shared-image path draws in a child composition visual.
-            context.DrawImage(bitmap, new Rect(bitmap.Size), bounds);
-        }
+        // Frames are not drawn here: both presentation paths show them in a child composition visual
+        // (the frame sink's is drawn on the render thread, so a busy UI thread does not freeze the video).
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -341,6 +337,7 @@ public class MediaSurface : Control
     {
         base.OnSizeChanged(e);
         _gpuSurface?.SetSize(Bounds.Size);
+        FrameSink?.SetSize(Bounds.Size);
         AttachOrResize();
     }
 
@@ -510,6 +507,15 @@ public class MediaSurface : Control
                 return;
         }
 
+        if (_compositor is null)
+        {
+            // Frames are drawn by a composition visual: without a compositor there is nothing to show them on.
+            _bookkeeping.ReportAttachRefused(session, EffectiveSurfaceId);
+            return;
+        }
+
+        // The visual comes first, so a frame the renderer sends right after the attach is not lost.
+        FrameSink.AttachVisual(_frameHost, _compositor, Bounds.Size, _contentShown);
         var attached = session.AttachPresentationSurface(CreateDescriptor(FrameSink.CreateSurfaceDescriptor(), pixelSize, scaling));
         if (attached)
         {
@@ -522,6 +528,7 @@ public class MediaSurface : Control
         else
         {
             // Layout retries the attach on every resize: Core reports a refusal once per session.
+            FrameSink.DetachVisual();
             _bookkeeping.ReportAttachRefused(session, EffectiveSurfaceId);
         }
     }
@@ -810,6 +817,7 @@ public class MediaSurface : Control
         }
 
         _gpuSurface?.SetVisible(_contentShown);
+        FrameSink?.SetVisible(_contentShown);
         InvalidateVisual();
 
         var isContentVisible = _contentTracker.IsContentVisible;
@@ -824,11 +832,8 @@ public class MediaSurface : Control
         RaiseFirstFrameReadyIfDue();
     }
 
-    void OnSinkFrameUpdated()
-    {
-        InvalidateVisual();
-        RaiseFirstFrameReadyIfDue();
-    }
+    // The frame sink drew the first frame after a clear (the render thread took it; this runs on the UI thread).
+    void OnSinkFrameUpdated() => RaiseFirstFrameReadyIfDue();
 
     // UI thread: after the content state changed or the sink published a frame (Stage 051A).
     void RaiseFirstFrameReadyIfDue()
@@ -842,14 +847,9 @@ public class MediaSurface : Control
 
         if (_gpuSurface is null)
         {
-            // The renderer hands the frame to the sink before it announces it, so a frame still
-            // waiting is at least as new as the announced one: publish it now, in this turn.
-            if (FrameSink is not { } sink)
-                return;
-
-            if (sink.PublishPending())
-                InvalidateVisual();
-            if (sink.Bitmap is null)
+            // The render thread shows a frame on its own tick: wait until the sink reports one
+            // (OnSinkFrameUpdated raises this again).
+            if (FrameSink is not { HasFrame: true })
                 return;
         }
 
@@ -867,7 +867,7 @@ public class MediaSurface : Control
 
         _gpuSurface?.Dispose();
         _gpuSurface = null;
-        FrameSink?.Clear();
+        FrameSink?.DetachVisual();
         SetPath(MediaSurfacePresentationPath.None, null);
     }
 

@@ -12,7 +12,9 @@ static class Program
     {
         StartupOptions.Current = PlayerStartupOptions.Parse(args);
         StartupOptions.AbSwapDemo = AbSwapDemoOptions.Parse(args);
+        StartupOptions.UiStall = UiStallProbe.Create(args);
         using var debugLog = PlayerDebugLog.Attach(App.LogFilePath, "Player.Avalonia");
+        using var uiStall = StartupOptions.UiStall;
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

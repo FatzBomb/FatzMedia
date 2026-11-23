@@ -16,4 +16,7 @@ static class StartupOptions
 
     /// <summary>The A/B swap demo command line (<c>--ab-demo=</c>, Stage 051A); the demo runs when it has a source.</summary>
     public static AbSwapDemoOptions AbSwapDemo { get; set; } = new();
+
+    /// <summary>The UI-stall rig (<c>--ui-stall=</c>), or null (debug only; see <see cref="UiStallProbe"/>).</summary>
+    public static UiStallProbe? UiStall { get; set; }
 }

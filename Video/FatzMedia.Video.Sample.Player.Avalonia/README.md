@@ -36,6 +36,10 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   software renderer, and with Vulkan without Vulkan Video, it decodes in software; the renderer line in
   the log says which and why.
   `--decoding=software` forces software decoding, for CPU comparisons.
+- `--ui-stall=<ms>,<every ms>` (debug): the UI thread sleeps that long once per period (F9: once), as a
+  drop-down or a window load would block it. `--ui-stall-log=<file>` writes `stall-start`, `stall-end` and
+  `frame` lines (UTC ticks) to line up with a screen-capture counter. With `--surface=framesink` the picture
+  keeps moving through a stall; on the shared GPU image path it freezes for its length (ENG-065).
 - Open (file picker, filter from the engine), a URL box with **URL...** for http/https sources (MP4/MKV
   progressive or HLS `.m3u8`, Stage 039A; capabilities and buffering are logged), Play/Pause, Stop, seek bar,
   volume, pitch (-12..+12 semitones), tempo (50..200 %), loop.

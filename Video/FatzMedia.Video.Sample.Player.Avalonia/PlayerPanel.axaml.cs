@@ -130,6 +130,9 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         // --second-screen=<n> opens player 1's second screen at startup.
         if (StartupOptions.Current.OpensSecondScreenAtStartup(_index, _atStartup) && ViewModel.Player is not null && !_disposed)
             SecondScreenBox.IsChecked = true;
+
+        if (_atStartup && _index == 1 && ViewModel.Player is { } player && !_disposed)
+            StartupOptions.UiStall?.Start(player);
     }
 
     public async Task DisposeAsync()
