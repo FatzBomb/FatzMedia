@@ -22,7 +22,7 @@ namespace FatzMedia.Video.Avalonia;
 /// <see cref="MediaInputSource"/>. The player is released when the control leaves the visual tree;
 /// attached again, it loads the source again. Instead of the WPF <c>PresentationMode</c>, the
 /// surface's path is chosen as on any Avalonia <see cref="MediaSurface"/>
-/// (<see cref="PreferGpuSharedSurface"/>); the overlay is composited above either path. Events are
+/// (shared GPU image or frame sink, chosen by the inner <see cref="MediaSurface"/>); the overlay is composited above either path. Events are
 /// raised on the UI thread.
 /// </remarks>
 public class BackgroundSurface : Panel, IDisposable
@@ -41,9 +41,6 @@ public class BackgroundSurface : Panel, IDisposable
 
     public static readonly StyledProperty<Color> BackgroundColorProperty =
         AvaloniaProperty.Register<BackgroundSurface, Color>(nameof(BackgroundColor), Colors.Black);
-
-    public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<BackgroundSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly StyledProperty<object?> OverlayContentProperty =
         AvaloniaProperty.Register<BackgroundSurface, object?>(nameof(OverlayContent));
@@ -122,13 +119,6 @@ public class BackgroundSurface : Panel, IDisposable
 
     /// <summary>Gets whether media is shown now (false for a solid colour).</summary>
     public bool IsContentVisible => _host.IsContentVisible;
-
-    /// <summary>Gets or sets whether the surface may use the shared GPU image path (default <see langword="false"/>; it freezes while the UI thread is busy, see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
-    public bool PreferGpuSharedSurface
-    {
-        get => GetValue(PreferGpuSharedSurfaceProperty);
-        set => SetValue(PreferGpuSharedSurfaceProperty, value);
-    }
 
     /// <summary>Gets or sets what the background shows (see the remarks); a change reloads while in the visual tree.</summary>
     public object? Source
@@ -211,10 +201,6 @@ public class BackgroundSurface : Panel, IDisposable
         else if (change.Property == AutoHideProperty)
         {
             Surface.AutoHide = change.NewValue is true;
-        }
-        else if (change.Property == PreferGpuSharedSurfaceProperty)
-        {
-            Surface.PreferGpuSharedSurface = change.NewValue is true;
         }
         else if (change.Property == BackgroundColorProperty && change.NewValue is Color color)
         {

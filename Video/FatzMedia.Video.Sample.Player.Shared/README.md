@@ -37,7 +37,7 @@ CommunityToolkit.Mvvm only (pinned in `scripts/check-core-boundary.ps1`).
 | `[file\|url]`, `--url=` | Startup media for player 1 (a URL wins over a file). |
 | `--players=1..4` | Independent players side by side (one view model each); default 1. |
 | `--renderer=auto\|gpu\|warp\|software\|vulkan\|direct3d11`, `--software` | `auto` (default) is GPU first: on Windows Direct3D11 on the GPU, then WARP, then software; elsewhere Vulkan, then software. `gpu` = the platform's GPU renderer (Direct3D11 GPU on Windows, Vulkan elsewhere); `warp` and `direct3d11` (GPU else WARP, no software fallback) are Windows only; `--software` = `software` when `--renderer=` is absent or invalid. An unusable or unknown choice is logged and auto is used. |
-| `--surface=auto\|framesink` | `framesink` forces the frame-sink path: WPF `WpfComposited`, Avalonia `PreferGpuSharedSurface = false`, WinForms `PreferNativeWindow = false`. |
+| `--surface=auto\|framesink` | `framesink` forces the frame-sink path: WPF `WpfComposited`, Avalonia the diagnostic switch `FATZMEDIA_AVALONIA_FRAMESINK=1`, WinForms `PreferNativeWindow = false`. |
 | `--decoding=auto\|software` | `software` decodes in software whatever the renderer could take (CPU comparisons). |
 | `--second-screen=<n>` | Player 1's second screen opens full screen on screen n at startup; the toggles use the same rule (screen n, else the first screen that is not the main window's, else a window). |
 | `--hdr-output` | HDR output on HDR displays (Direct3D11 native window surfaces: WPF and WinForms; the Avalonia player warns and ignores it). |

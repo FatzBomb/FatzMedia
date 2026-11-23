@@ -83,7 +83,6 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         new LightweightSurfacesWindow(
             () => PlatformComposition.Create(Renderers.Create(kind)),
             _nativePaths,
-            !_options.PreferFrameSinkSurface,
             _options.AutoHideSurfaces).Show(this);
 
     /// <summary>Stage 051A: the A/B swap demo window (<c>--ab-demo=</c>), with the startup renderer.</summary>
@@ -108,7 +107,6 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
             _nativePaths,
             demo,
             clips,
-            !_options.PreferFrameSinkSurface,
             _options.AutoHideSurfaces).Show(this);
     }
 

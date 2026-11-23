@@ -54,7 +54,7 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | `--players=1..4` | How many independent players are shown side by side (default 1). The toolbar changes the count at run time and recreates the players. |
 | `--renderer=auto\|gpu\|warp\|software\|vulkan\|direct3d11` | The renderer. `auto` (default) is GPU first: Direct3D11 on the GPU, then WARP, then software on Windows; Vulkan, then software elsewhere. `gpu` is the platform's GPU renderer. `warp` and `direct3d11` exist on Windows only; `warp` decodes in software. See [Renderers](../video/renderers.md). |
 | `--software` | The software renderer, when `--renderer=` is absent or invalid. |
-| `--surface=auto\|framesink` | `framesink` forces the frame-sink path: `WpfComposited` in WPF, `PreferGpuSharedSurface = false` in Avalonia, `PreferNativeWindow = false` in WinForms. For comparisons. See [Surfaces](../presentation/surfaces.md). |
+| `--surface=auto\|framesink` | `framesink` forces the frame-sink path: `WpfComposited` in WPF, the diagnostic switch `FATZMEDIA_AVALONIA_FRAMESINK=1` in Avalonia, `PreferNativeWindow = false` in WinForms. For comparisons. See [Surfaces](../presentation/surfaces.md). |
 | `--decoding=auto\|software` | `software` decodes in software whatever the renderer could take, to compare CPU load. |
 | `--second-screen=<n>` | Opens player 1's second screen full screen on screen n (1-based) at startup. See [Second screen](../presentation/second-screen.md). |
 | `--hdr-output` | HDR output on HDR displays. Direct3D11 native-window surfaces only (WPF and WinForms); the Avalonia player logs that it is not available and ignores it. See [Display and color](../video/display-and-color.md). |

@@ -69,7 +69,7 @@ screen and a few extras:
 
 | Item | WPF | Avalonia | WinForms |
 | --- | --- | --- | --- |
-| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | `PreferGpuSharedSurface` (default false, the frame sink; true opts into the shared GPU image) | `PreferNativeWindow` (default true), else the frame sink |
+| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | no option: the shared GPU image on the render thread, else the frame sink on its own | `PreferNativeWindow` (default true), else the frame sink |
 | `OverlayContent`, `OverlayHitTestVisible` | yes, a `UIElement` | yes, any control, composited above the picture (added 2026-11-12) | yes, a `Control` in a borderless layered window |
 | Composited-mode figures (`CompositedFramesPublished`, `CompositedUiThreadTime`) and `RefreshPresentationLayout` | yes | no | no |
 | `AttachedPixelSize` | no | yes | no |

@@ -39,7 +39,6 @@ sealed class AbSwapDemoWindow : Window
         IReadOnlyList<string> nativeLibraryPaths,
         AbSwapDemoOptions options,
         IReadOnlyList<string> clips,
-        bool preferGpuSurface,
         bool autoHide)
     {
         _createPlatformFactory = createPlatformFactory;
@@ -54,7 +53,7 @@ sealed class AbSwapDemoWindow : Window
         var stage = new Grid();
         for (var i = 0; i < _surfaces.Length; i++)
         {
-            _surfaces[i] = new MediaSurface { PreferGpuSharedSurface = preferGpuSurface, AutoHide = autoHide };
+            _surfaces[i] = new MediaSurface { AutoHide = autoHide };
             Hide(_surfaces[i]);
             stage.Children.Add(_surfaces[i]);
         }

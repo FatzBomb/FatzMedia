@@ -79,45 +79,56 @@ and move back when it returns, or a call to retarget a device) plus the engine's
 about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
 (14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
 
-### ENG-065 - Avalonia video froze while the UI thread was busy (fixed: the frame sink is now the default)
+### ENG-066 - Avalonia video froze while the UI thread was busy (fixed, pending owner smoke)
 
 Reported: 2026-11-23 (a brief freeze when drop-downs open or windows load in TriviaBomb Avalonia). Reproduced
 with `FatzMedia.Video.Sample.Player.Avalonia --ui-stall=500,3000` and an external screen-capture counter
-(UI thread asleep 500 ms every 3 s, 720x360 region of a 30 fps counter video, Direct3D11 renderer):
+(`work\fatzmedia\Video\stall`: UI thread asleep 500 ms every 3 s, a region of the picture of a 30 or 60 fps counter
+video, Direct3D11 renderer): the picture stopped for the whole stall on both paths (1-2 screen changes in 500 ms, gaps of
+500-550 ms), while the renderer kept decoding and its frames were dropped.
 
-| Path | Screen changes during a 500 ms stall | Longest gap |
-|------|---------------------------------------|-------------|
-| Shared GPU image (default) | 1-2 (the picture stops) | 500-538 ms |
-| Frame sink, before | 0-1 (the picture stops) | 500-552 ms |
-| Frame sink, after | 15-16 (about 30/s, as normal) | 35-67 ms |
+Cause: both paths were presented from the UI thread. The frame sink copied each frame into a `WriteableBitmap` there
+and drew it in the control's `Render`; the shared GPU image path called `CompositionDrawingSurface.Update*Async`, which
+Avalonia only runs from the UI thread (`Compositor.PostServerJob` calls `Dispatcher.VerifyAccess()`; called from another
+thread it throws "The calling thread cannot access this object because a different thread owns it", tested).
 
-Cause: both paths were presented from the UI thread. The frame sink copied each frame into a `WriteableBitmap`
-there and drew it in the control's `Render`; the shared image path calls `CompositionDrawingSurface.Update*Async`
-from the UI thread. The renderer kept decoding throughout (its frames were counted and dropped: "compositor has
-not released a texture").
+Fixed (2026-11-23, three steps):
+1. The frame sink draws through a `CompositionCustomVisual` on the render thread (PR 48).
+2. The frame sink's renderer thread copies each frame once, straight into one of three rotating bitmaps, so the render
+   thread only draws. That alone was not enough for big surfaces: the first version showed about 34 frames/s on screen at
+   3440x1416 full screen (the renderer's own counters still said 60), and even the leaner one needs about 1.2 cores.
+3. The shared GPU image path is presented on the render thread too (owner requirement: freeze-free and GPU-fast at full
+   screen, no user-facing option). A custom visual's handler imports the renderer's D3D11 (or Vulkan) images in the
+   compositor's own graphics context and, on each draw, snapshots the newest frame and draws it, through Avalonia's
+   `[Unstable]` render-interface API (`Compositor.TryGetRenderInterfaceFeature`,
+   `IExternalObjectsRenderInterfaceContextFeature`, `IPlatformRenderInterfaceImportedImage`): the same calls Avalonia's
+   own drawing surface makes, from the render thread instead of a UI-thread job. No CPU copy, no UI-thread step.
+   `PreferGpuSharedSurface` is no longer public; the frame sink is the automatic fallback (no interop or render-thread
+   import, a renderer that cannot export, a lost context, any exception in the new path), and the environment variable
+   `FATZMEDIA_AVALONIA_FRAMESINK=1` forces it for diagnostics (the test player's `--surface=framesink`).
 
-Fixed for the frame sink (2026-11-23): `AvaloniaFrameSink` shows frames through a `CompositionCustomVisual`; its
-handler takes the newest frame from `LatestFrameMailbox` on the compositor's animation-frame tick, copies it into
-a bitmap it owns and draws it, all on Avalonia's render thread. It stops polling after about half a second without
-a frame and one UI-thread message wakes it. `PreferGpuSharedSurface = false` (or `--surface=framesink`) now gives a
-picture that survives UI stalls, for about 0.1-0.2 more cores (3422x924 surface at 30 fps: 0.5 against 0.3 cores).
+Measured (4K 60 fps video, Direct3D11, capture counter on the picture, about 15 s per run):
 
-Not fixable here for the shared GPU image path: `Compositor.PostServerJob` calls `Dispatcher.VerifyAccess()`, so
-`Update*Async` from the renderer's thread throws ("The calling thread cannot access this object because a
-different thread owns it", tested), and the compositor batch carrying the update is committed from the UI thread
-anyway.
+| Path | Full screen 3440x1416 | Window 1886x766 | 1080p-sized 2666x766 | 500 ms UI stalls |
+|------|-----------------------|-----------------|----------------------|------------------|
+| Old shared GPU image (UI thread) | 56/s, 0.3 core | 56/s | n/a | frozen (1-2 frames) |
+| Frame sink v1 (two copies, render thread) | 34/s, 1.5 cores | 56/s, 0.5 core | n/a | keeps going |
+| Frame sink v2 (three bitmaps) | 53-55/s, 1.1-1.4 cores | 54/s, 0.6 core | 56/s, 0.5 core | keeps going (21-29 of 30 frames) |
+| **Shared GPU image on the render thread** | **56-57/s in most runs (50 and 43 in two), 0.2-0.4 core** | 56/s, 0.2 core | 56/s, 0.3 core | keeps going (19-24 of 30 frames) |
 
-Big surfaces (4K 60 fps video, screen-capture counter on the picture, Direct3D11): the first frame sink copied each frame
-twice (mailbox, then bitmap) on the render thread and showed only about 34 frames/s on screen at 3440x1416 full screen
-(GPU path 56/s; the renderer's own counters said 60 and 0 dropped). Now the renderer's thread copies each frame once,
-straight into one of three rotating bitmaps, and the render thread only draws: 53-55 frames/s at 3440x1416 full screen
-(about 1.1-1.4 cores), 56/s at a 1080p-sized surface (0.5 core), and about 50/s through 500 ms UI stalls at full screen.
+Also checked by hand: a resize storm (24 size changes, maximize, restore) stays on the shared GPU image at 60 fps with no
+failure in the log, with the Direct3D11 and the Vulkan renderer; a second-screen window shows through the same path
+(2 surfaces at 60 fps each, about 0.45 core).
 
-Decided 2026-11-23 (owner: "Yes"): the frame sink is the default for every Avalonia app. `PreferGpuSharedSurface`
-now defaults to false on `MediaSurface`, `KaraokeSurface` and `BackgroundSurface`; the shared GPU image path stays
-available as an opt-in, documented as freezing while the UI thread is busy. TriviaBomb Avalonia also sets it
-explicitly (harmless). The Avalonia test player still opts into the GPU path unless `--surface=framesink`, to keep
-testing both. A render-thread GPU import would need Skia/D3D interop that Avalonia does not expose: not pursued.
+Risk and limits (read before changing Avalonia): the new path depends on `[Unstable]` Avalonia interfaces. They are used
+only in `FatzMedia.Video.Avalonia/RenderThreadGpuImport.cs`, Avalonia is pinned to an exact version, a missing or throwing
+API makes the surface fall back to the frame sink by itself, and the headless tests cover the protocol through a fake
+importer (import on the render thread, snapshot per frame with its keys, release consumed or unconsumed, fall back on any
+failure). Not verified here: the Vulkan-on-Linux image path and the semaphore synchronization (the code mirrors the old
+path; this PC has Windows and Direct3D11 only), and a real GPU context loss. The visual only imports and snapshots while it
+is drawn, so a hidden surface (auto-hide before the first frame) keeps the renderer's frames waiting until it shows. Native
+child window (own HWND and swap chain) was considered and not built: no Avalonia content above the video, no fade, round
+corner or clip, and extra window management for second screens.
 
 ### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch) (fixed, pending owner smoke)
 

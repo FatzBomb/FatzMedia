@@ -115,13 +115,11 @@ public sealed class LightweightSurfacesTests
     [AvaloniaFact]
     public void PassThroughProperties_ReachTheInnerSurface()
     {
-        var background = new BackgroundSurface { AutoHide = false, PreferGpuSharedSurface = false };
-        var karaoke = new KaraokeSurface { AutoHide = false, PreferGpuSharedSurface = false };
+        var background = new BackgroundSurface { AutoHide = false };
+        var karaoke = new KaraokeSurface { AutoHide = false };
 
         Assert.False(background.Surface.AutoHide);
-        Assert.False(background.Surface.PreferGpuSharedSurface);
         Assert.False(karaoke.Surface.AutoHide);
-        Assert.False(karaoke.Surface.PreferGpuSharedSurface);
     }
 
     static ConcurrentQueue<MediaDiagnosticInfo> Record(string category, out Action stop)

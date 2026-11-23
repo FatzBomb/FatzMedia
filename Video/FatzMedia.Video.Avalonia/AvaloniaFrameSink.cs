@@ -91,7 +91,7 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
         _visual.Size = new Vector(size.Width, size.Height);
         _visual.Visible = visible;
         ElementComposition.SetElementChildVisual(owner, _visual);
-        Volatile.Write(ref _asleep, 1);
+        // The first message starts the polling; it goes back to sleep by itself when no frame arrives.
         Wake();
     }
 

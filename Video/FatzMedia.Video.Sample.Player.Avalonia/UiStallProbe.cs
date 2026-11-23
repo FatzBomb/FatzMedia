@@ -4,7 +4,7 @@ using Avalonia.Threading;
 namespace FatzMedia.Video.Sample.Player.Avalonia;
 
 /// <summary>
-/// Debug-only rig for the "video freezes while the UI thread is busy" check (ENG-065): with
+/// Debug-only rig for the "video freezes while the UI thread is busy" check (ENG-066): with
 /// <c>--ui-stall=&lt;ms&gt;,&lt;every ms&gt;</c> the UI thread sleeps for the first number of
 /// milliseconds once per period, as a drop-down opening or a window loading would block it. F9 does one
 /// stall of the same length. <c>--ui-stall-log=&lt;file&gt;</c> writes one line per stall and per

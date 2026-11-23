@@ -27,8 +27,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   available (the surfaces are composited) and ignored.
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
-  reason. The library default is the frame sink (`PreferGpuSharedSurface` false: ENG-065); this player opts into the shared GPU
-  image unless `--surface=framesink` is given, to keep testing both paths.
+  reason. `--surface=framesink` sets the diagnostic switch `FATZMEDIA_AVALONIA_FRAMESINK=1`, which forces the frame sink
+  (an app has no such option: the surface falls back by itself).
 - Video decoding (Stage 045A): with Direct3D11 on a GPU the player decodes with D3D11VA where the GPU
   supports the codec (the log's `Decoding ...` line ends `via d3d11va`). The frames stay on the GPU
   into the shared GPU image, or are read back once for the frame sink. With Vulkan on a GPU with Vulkan
@@ -39,8 +39,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   `--decoding=software` forces software decoding, for CPU comparisons.
 - `--ui-stall=<ms>,<every ms>` (debug): the UI thread sleeps that long once per period (F9: once), as a
   drop-down or a window load would block it. `--ui-stall-log=<file>` writes `stall-start`, `stall-end` and
-  `frame` lines (UTC ticks) to line up with a screen-capture counter. With `--surface=framesink` the picture
-  keeps moving through a stall; on the shared GPU image path it freezes for its length (ENG-065).
+  `frame` lines (UTC ticks) to line up with a screen-capture counter. Both paths keep the picture
+  moving through a stall (ENG-066).
 - Open (file picker, filter from the engine), a URL box with **URL...** for http/https sources (MP4/MKV
   progressive or HLS `.m3u8`, Stage 039A; capabilities and buffering are logged), Play/Pause, Stop, seek bar,
   volume, pitch (-12..+12 semitones), tempo (50..200 %), loop.

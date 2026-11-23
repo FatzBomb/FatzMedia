@@ -5,8 +5,9 @@ namespace FatzMedia.Video.Avalonia;
 
 /// <summary>
 /// What the compositor's GPU interop offers, captured once per attach decision. <see cref="Interop"/>
-/// performs the imports; tests describe a compositor without one (Avalonia's interop interfaces
-/// cannot be implemented outside Avalonia).
+/// says what the compositor accepts and whether its context was lost; <see cref="Importer"/> imports the
+/// renderer's images on the render thread. Tests describe a compositor with neither (Avalonia's interop
+/// interfaces cannot be implemented outside Avalonia) and supply their own importer.
 /// </summary>
 sealed record GpuInteropCapabilities(
     IReadOnlyList<string> ImageHandleTypes,
@@ -14,7 +15,8 @@ sealed record GpuInteropCapabilities(
     IReadOnlyList<string> SemaphoreHandleTypes,
     byte[]? DeviceLuid,
     byte[]? DeviceUuid,
-    ICompositionGpuInterop? Interop)
+    ICompositionGpuInterop? Interop,
+    IGpuImageImporter? Importer = null)
 {
     public bool IsLost => Interop?.IsLost == true;
 
@@ -26,16 +28,19 @@ sealed record GpuInteropCapabilities(
         interop.DeviceUuid,
         interop);
 
-    /// <summary>Asks the compositor for its interop; completes synchronously when Avalonia answers at once.</summary>
+    /// <summary>Asks the compositor for its interop and for the render-thread import feature (null when it has no interop).</summary>
     public static ValueTask<GpuInteropCapabilities?> QueryAsync(Compositor compositor)
     {
-        var query = compositor.TryGetCompositionGpuInterop();
-        return query.IsCompletedSuccessfully
-            ? new ValueTask<GpuInteropCapabilities?>(query.Result is { } interop ? From(interop) : null)
-            : AwaitAsync(query);
+        return AwaitAsync(compositor);
 
-        static async ValueTask<GpuInteropCapabilities?> AwaitAsync(ValueTask<ICompositionGpuInterop?> pending) =>
-            await pending.ConfigureAwait(false) is { } interop ? From(interop) : null;
+        static async ValueTask<GpuInteropCapabilities?> AwaitAsync(Compositor compositor)
+        {
+            var interop = await compositor.TryGetCompositionGpuInterop();
+            if (interop is null)
+                return null;
+
+            return From(interop) with { Importer = await AvaloniaGpuImageImporter.QueryAsync(compositor) };
+        }
     }
 
     public MediaSharedGpuImageRequest CreateRequest() =>

@@ -1,8 +1,12 @@
+using System.Collections.Concurrent;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
+using FatzMedia.Video.Core.Configuration;
 
 namespace FatzMedia.Video.Avalonia.Tests;
 
@@ -27,28 +31,29 @@ public sealed class SharedGpuImagePathTests
     }
 
     [AvaloniaFact]
-    public void TheSharedGpuImagePath_IsOptInBecauseItFreezesWithTheUiThread()
+    public void TheSharedGpuImagePath_IsTheDefault_AndTheEnvironmentVariableForcesTheFrameSink()
     {
-        // ENG-065: the frame sink draws on the render thread; the shared image path waits for the UI thread.
-        Assert.False(new MediaSurface().PreferGpuSharedSurface);
-        Assert.False(new BackgroundSurface().PreferGpuSharedSurface);
-        Assert.False(new KaraokeSurface().PreferGpuSharedSurface);
+        Assert.True(new MediaSurface().PreferGpuSharedSurface);
+        Assert.True(new BackgroundSurface().Surface.PreferGpuSharedSurface);
+        Assert.True(new KaraokeSurface().Surface.PreferGpuSharedSurface);
 
-        (var session, var recorder) = RecordingSession.Create();
-        var surface = new MediaSurface
+        // The diagnostic switch (the test player's --surface=framesink sets it) is read when a surface is created.
+        Environment.SetEnvironmentVariable(MediaSurface.ForceFrameSinkVariable, "1");
+        try
         {
-            Player = session,
-            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
-        };
-        var window = Show(surface);
+            Assert.False(new MediaSurface().PreferGpuSharedSurface);
+            Assert.False(new KaraokeSurface().Surface.PreferGpuSharedSurface);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MediaSurface.ForceFrameSinkVariable, null);
+        }
 
-        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
-        Assert.Equal("PreferGpuSharedSurface is off", surface.PresentationPathReason);
-        window.Close();
+        Assert.True(new MediaSurface().PreferGpuSharedSurface);
     }
 
     [AvaloniaFact]
-    public void PreferGpuSharedSurfaceOff_UsesTheFrameSinkEvenWithInterop()
+    public void TheFrameSinkSwitch_UsesTheFrameSinkEvenWithInterop()
     {
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
@@ -60,7 +65,7 @@ public sealed class SharedGpuImagePathTests
         var window = Show(surface);
 
         Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
-        Assert.Equal("PreferGpuSharedSurface is off", surface.PresentationPathReason);
+        Assert.Equal("the frame sink is forced (FATZMEDIA_AVALONIA_FRAMESINK or a test switch)", surface.PresentationPathReason);
         window.Close();
     }
 
@@ -151,19 +156,39 @@ public sealed class SharedGpuImagePathTests
     }
 
     [AvaloniaFact]
-    public void ImagesTheCompositorCannotImport_FallBackAndHandTheHandlesBack()
+    public void ACompositorWithoutRenderThreadImport_UsesTheFrameSinkAndSaysWhy()
     {
         (var session, var recorder) = RecordingSession.Create();
         var surface = new MediaSurface
         {
             PreferGpuSharedSurface = true,
-            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()),
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D() with { Importer = null }),
+            Player = session
+        };
+        var window = Show(surface);
+
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Contains("render-thread image import", surface.PresentationPathReason);
+        Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void ImagesTheCompositorCannotImport_FallBackAndHandTheHandlesBack()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var importer = new FakeImporter { ImportError = new InvalidOperationException("no such image") };
+        var surface = new MediaSurface
+        {
+            PreferGpuSharedSurface = true,
+            AutoHide = false,
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D(importer)),
             Player = session
         };
         var window = Show(surface);
         _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out var consumer);
         List<(MediaSharedGpuImageFrame Frame, bool Consumed)> released = [];
-        bool? handlesConsumed = null;
+        int? consumedBuffers = null;
         var set = new MediaSharedGpuImageSet(
             1,
             new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None),
@@ -172,23 +197,148 @@ public sealed class SharedGpuImagePathTests
             MediaSharedGpuImageFormat.Bgra8Unorm,
             [new MediaSharedGpuImageBuffer(0x10), new MediaSharedGpuImageBuffer(0x20)],
             (frame, consumed) => { lock (released) released.Add((frame, consumed)); },
-            consumed => handlesConsumed = consumed);
+            consumed => consumedBuffers = consumed ? 2 : 0);
 
         consumer!.OnImagesCreated(set);
-        var frame = new MediaSharedGpuImageFrame(1, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey);
-        consumer.OnFrameReady(frame);
-        Dispatcher.UIThread.RunJobs();
+        consumer.OnFrameReady(new MediaSharedGpuImageFrame(1, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey));
+        // The import runs on the render thread, on its next draw.
+        RenderThread.Until(() => surface.PresentationPath == MediaSurfacePresentationPath.FrameSink);
         set.Retire();
         Dispatcher.UIThread.RunJobs();
 
         // Nothing could import the handles, so the producer keeps (and closes) them; the frame of
         // the unimported set is dropped (the renderer resets its ring when the surface detaches),
         // and the surface re-attaches with the frame sink.
-        Assert.False(handlesConsumed);
+        Assert.Equal(0, consumedBuffers);
         Assert.Empty(released);
-        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
-        Assert.Equal("the compositor has no GPU interop to import with", surface.PresentationPathReason);
+        Assert.Contains("importing the shared images failed: no such image", surface.PresentationPathReason);
         Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void TheRenderThread_ImportsTheSet_ThenSnapshotsEachFrameWithItsKeys_AndHandsItBack()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var importer = new FakeImporter();
+        var surface = new MediaSurface
+        {
+            PreferGpuSharedSurface = true,
+            AutoHide = false,
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D(importer)),
+            Player = session
+        };
+        var window = Show(surface);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out var consumer);
+        List<(MediaSharedGpuImageFrame Frame, bool Consumed)> released = [];
+        int? consumedBuffers = null;
+        var set = new MediaSharedGpuImageSet(
+            1,
+            new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None),
+            320,
+            180,
+            MediaSharedGpuImageFormat.Bgra8Unorm,
+            [new MediaSharedGpuImageBuffer(0x10), new MediaSharedGpuImageBuffer(0x20)],
+            (frame, consumed) => { lock (released) released.Add((frame, consumed)); },
+            consumed => consumedBuffers = consumed ? 2 : 0);
+        var first = new MediaSharedGpuImageFrame(1, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey);
+        var second = new MediaSharedGpuImageFrame(1, 1, 2, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey);
+
+        consumer!.OnImagesCreated(set);
+        consumer.OnFrameReady(first);
+        consumer.OnFrameReady(second);
+        RenderThread.Until(() => importer.Snapshots.Count == 2);
+        // The set reports its import once it is retired.
+        set.Retire();
+
+        // Imported on the render thread, both frames snapshotted in order and handed back as consumed,
+        // and the surface stays on the shared images.
+        Assert.Equal(2, consumedBuffers);
+        Assert.Equal([first, second], importer.Snapshots);
+        lock (released)
+            Assert.Equal([(first, true), (second, true)], released);
+        Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void WhileTheSurfaceIsHidden_FramesAreHandedBackUnconsumed_NotLeftInTheRing()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var importer = new FakeImporter();
+        // Audio mode hides the surface, and Avalonia does not draw a hidden visual.
+        var surface = new MediaSurface
+        {
+            PreferGpuSharedSurface = true,
+            AutoHide = true,
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D(importer)),
+            Player = session
+        };
+        var window = Show(surface);
+        Task.Run(() => recorder.SwitchMode(MediaPlayerMode.Audio)).Wait();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(surface.IsPresentationSuspended);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out var consumer);
+        List<(MediaSharedGpuImageFrame Frame, bool Consumed)> released = [];
+        var set = new MediaSharedGpuImageSet(
+            1,
+            new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None),
+            320,
+            180,
+            MediaSharedGpuImageFormat.Bgra8Unorm,
+            [new MediaSharedGpuImageBuffer(0x10), new MediaSharedGpuImageBuffer(0x20)],
+            (frame, consumed) => { lock (released) released.Add((frame, consumed)); },
+            _ => { });
+        var frame = new MediaSharedGpuImageFrame(1, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey);
+
+        consumer!.OnImagesCreated(set);
+        consumer.OnFrameReady(frame);
+        RenderThread.Until(() =>
+        {
+            lock (released)
+                return released.Count == 1;
+        });
+
+        lock (released)
+            Assert.Equal([(frame, false)], released);
+        Assert.Empty(importer.Snapshots);
+        Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void ASnapshotThatFails_ReleasesTheFrameUnconsumed_AndFallsBackToTheFrameSink()
+    {
+        (var session, var recorder) = RecordingSession.Create();
+        var importer = new FakeImporter { SnapshotError = new InvalidOperationException("keyed mutex timed out") };
+        var surface = new MediaSurface
+        {
+            PreferGpuSharedSurface = true,
+            AutoHide = false,
+            GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D(importer)),
+            Player = session
+        };
+        var window = Show(surface);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out var consumer);
+        List<(MediaSharedGpuImageFrame Frame, bool Consumed)> released = [];
+        var set = new MediaSharedGpuImageSet(
+            1,
+            new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None),
+            320,
+            180,
+            MediaSharedGpuImageFormat.Bgra8Unorm,
+            [new MediaSharedGpuImageBuffer(0x10), new MediaSharedGpuImageBuffer(0x20)],
+            (frame, consumed) => { lock (released) released.Add((frame, consumed)); },
+            _ => { });
+        var frame = new MediaSharedGpuImageFrame(1, 0, 1, MediaSharedGpuImageRing.ConsumerKey, MediaSharedGpuImageRing.ProducerKey);
+
+        consumer!.OnImagesCreated(set);
+        consumer.OnFrameReady(frame);
+        RenderThread.Until(() => surface.PresentationPath == MediaSurfacePresentationPath.FrameSink);
+
+        lock (released)
+            Assert.Equal([(frame, false)], released);
+        Assert.Contains("showing a shared image failed: keyed mutex timed out", surface.PresentationPathReason);
         window.Close();
     }
 
@@ -392,14 +542,52 @@ public sealed class SharedGpuImagePathTests
     {
         public static readonly byte[] Luid = [1, 0, 0, 0, 0, 0, 0, 0];
 
-        public static GpuInteropCapabilities Direct3D() => Create(
+        public static GpuInteropCapabilities Direct3D(FakeImporter? importer = null) => Create(
             [KnownPlatformGraphicsExternalImageHandleTypes.D3D11TextureGlobalSharedHandle, KnownPlatformGraphicsExternalImageHandleTypes.D3D11TextureNtHandle],
-            CompositionGpuImportedImageSynchronizationCapabilities.KeyedMutex);
+            CompositionGpuImportedImageSynchronizationCapabilities.KeyedMutex,
+            importer);
 
-        public static GpuInteropCapabilities Create(IReadOnlyList<string> imageTypes, CompositionGpuImportedImageSynchronizationCapabilities synchronization) =>
-            new(imageTypes, _ => synchronization, [], Luid, null, Interop: null);
+        public static GpuInteropCapabilities Create(
+            IReadOnlyList<string> imageTypes,
+            CompositionGpuImportedImageSynchronizationCapabilities synchronization,
+            FakeImporter? importer = null) =>
+            new(imageTypes, _ => synchronization, [], Luid, null, Interop: null, Importer: importer ?? new FakeImporter());
 
         public static Func<Compositor, ValueTask<GpuInteropCapabilities?>> Provider(GpuInteropCapabilities interop) =>
             _ => new ValueTask<GpuInteropCapabilities?>(interop);
+    }
+
+    /// <summary>
+    /// The render-thread import without a GPU: records the snapshots it was asked for and hands back a small
+    /// bitmap for each, or fails where a test asks it to.
+    /// </summary>
+    internal sealed class FakeImporter : IGpuImageImporter
+    {
+        readonly ConcurrentQueue<MediaSharedGpuImageFrame> _snapshots = new();
+
+        public Exception? ImportError { get; init; }
+
+        public Exception? SnapshotError { get; init; }
+
+        public List<MediaSharedGpuImageFrame> Snapshots => [.. _snapshots];
+
+        public IImportedGpuImages Import(MediaSharedGpuImageSet set) =>
+            ImportError is { } error ? throw new GpuImportException(0, error) : new Images(this);
+
+        sealed class Images(FakeImporter owner) : IImportedGpuImages
+        {
+            public Bitmap Snapshot(MediaSharedGpuImageFrame frame)
+            {
+                owner._snapshots.Enqueue(frame);
+
+                return owner.SnapshotError is { } error
+                    ? throw error
+                    : new WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+            }
+
+            public void Dispose()
+            {
+            }
+        }
     }
 }
