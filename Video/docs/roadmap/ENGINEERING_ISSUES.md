@@ -107,6 +107,12 @@ Not fixable here for the shared GPU image path: `Compositor.PostServerJob` calls
 different thread owns it", tested), and the compositor batch carrying the update is committed from the UI thread
 anyway.
 
+Big surfaces (4K 60 fps video, screen-capture counter on the picture, Direct3D11): the first frame sink copied each frame
+twice (mailbox, then bitmap) on the render thread and showed only about 34 frames/s on screen at 3440x1416 full screen
+(GPU path 56/s; the renderer's own counters said 60 and 0 dropped). Now the renderer's thread copies each frame once,
+straight into one of three rotating bitmaps, and the render thread only draws: 53-55 frames/s at 3440x1416 full screen
+(about 1.1-1.4 cores), 56/s at a 1080p-sized surface (0.5 core), and about 50/s through 500 ms UI stalls at full screen.
+
 Decided 2026-11-23 (owner: "Yes"): the frame sink is the default for every Avalonia app. `PreferGpuSharedSurface`
 now defaults to false on `MediaSurface`, `KaraokeSurface` and `BackgroundSurface`; the shared GPU image path stays
 available as an opt-in, documented as freezing while the UI thread is busy. TriviaBomb Avalonia also sets it
