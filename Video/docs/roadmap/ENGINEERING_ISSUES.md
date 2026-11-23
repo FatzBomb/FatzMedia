@@ -79,6 +79,36 @@ and move back when it returns, or a call to retarget a device) plus the engine's
 about 6.5 s of silence passed between the removal (14:34:12.7) and "moved the output to the new default device"
 (14:34:19.2); and each FatzAudio move is logged twice at Info. Look at both with the fix.
 
+### ENG-065 - Avalonia video froze while the UI thread was busy (frame sink fixed; shared GPU image path cannot be)
+
+Reported: 2026-11-23 (a brief freeze when drop-downs open or windows load in TriviaBomb Avalonia). Reproduced
+with `FatzMedia.Video.Sample.Player.Avalonia --ui-stall=500,3000` and an external screen-capture counter
+(UI thread asleep 500 ms every 3 s, 720x360 region of a 30 fps counter video, Direct3D11 renderer):
+
+| Path | Screen changes during a 500 ms stall | Longest gap |
+|------|---------------------------------------|-------------|
+| Shared GPU image (default) | 1-2 (the picture stops) | 500-538 ms |
+| Frame sink, before | 0-1 (the picture stops) | 500-552 ms |
+| Frame sink, after | 15-16 (about 30/s, as normal) | 35-67 ms |
+
+Cause: both paths were presented from the UI thread. The frame sink copied each frame into a `WriteableBitmap`
+there and drew it in the control's `Render`; the shared image path calls `CompositionDrawingSurface.Update*Async`
+from the UI thread. The renderer kept decoding throughout (its frames were counted and dropped: "compositor has
+not released a texture").
+
+Fixed for the frame sink (2026-11-23): `AvaloniaFrameSink` shows frames through a `CompositionCustomVisual`; its
+handler takes the newest frame from `LatestFrameMailbox` on the compositor's animation-frame tick, copies it into
+a bitmap it owns and draws it, all on Avalonia's render thread. It stops polling after about half a second without
+a frame and one UI-thread message wakes it. `PreferGpuSharedSurface = false` (or `--surface=framesink`) now gives a
+picture that survives UI stalls, for about 0.1-0.2 more cores (3422x924 surface at 30 fps: 0.5 against 0.3 cores).
+
+Not fixable here for the shared GPU image path: `Compositor.PostServerJob` calls `Dispatcher.VerifyAccess()`, so
+`Update*Async` from the renderer's thread throws ("The calling thread cannot access this object because a
+different thread owns it", tested), and the compositor batch carrying the update is committed from the UI thread
+anyway. Open decision for the owner: make the frame sink the default (`PreferGpuSharedSurface` false), have hosts
+that need stall-proof video (TriviaBomb Avalonia) set it, or look for a render-thread GPU import later (needs
+Skia/D3D interop that Avalonia does not expose).
+
 ### ENG-064 - Look notes from the 037A hand tests (opt-in scaled CD+G, full-screen switch) (fixed, pending owner smoke)
 
 Fixed 2026-11-11: the full-screen switch turns off the window's maximize and restore animation (`WindowFullScreen` in

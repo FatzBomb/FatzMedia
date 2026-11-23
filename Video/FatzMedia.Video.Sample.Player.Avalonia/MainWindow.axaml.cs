@@ -198,6 +198,12 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
     {
         if (e.Key == Key.F11 && _players.HandleFullScreenKey())
             e.Handled = true;
+        else if (e.Key == Key.F9 && StartupOptions.UiStall is { } stall)
+        {
+            // Debug only (--ui-stall=): blocks the UI thread once, as a busy window would.
+            stall.StallOnce();
+            e.Handled = true;
+        }
     }
 
     void OnWindowEscapeKey(object? sender, KeyEventArgs e)
