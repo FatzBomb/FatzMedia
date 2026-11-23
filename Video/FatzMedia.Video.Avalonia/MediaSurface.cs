@@ -15,8 +15,8 @@ namespace FatzMedia.Video.Avalonia;
 /// </summary>
 /// <remarks>
 /// <para>
-/// At attach it chooses the shared GPU image path only when <see cref="PreferGpuSharedSurface"/> is
-/// set (off by default: it freezes while the UI thread is busy), Avalonia's compositor offers GPU interop with a handle kind it can import, and the
+/// At attach it chooses the shared GPU image path (presented on Avalonia's render thread, so a busy UI
+/// thread does not freeze it) when Avalonia's compositor offers GPU interop with a handle kind it can import, and the
 /// session's renderer accepts the surface; otherwise (and whenever that path later reports a
 /// failure) it uses the managed frame sink. The choice and its reason are raised as an Info
 /// diagnostic and exposed through <see cref="PresentationPath"/>.
@@ -51,9 +51,6 @@ public class MediaSurface : Control
 
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
         AvaloniaProperty.Register<MediaSurface, IBrush?>(nameof(Background), Brushes.Black);
-
-    public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<MediaSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly StyledProperty<MediaPresentationSurfaceRole> RoleProperty =
         AvaloniaProperty.Register<MediaSurface, MediaPresentationSurfaceRole>(nameof(Role), MediaPresentationSurfaceRole.Primary);
@@ -181,20 +178,40 @@ public class MediaSurface : Control
     internal ContentPresenter OverlayPresenter { get; } = new() { IsHitTestVisible = false, IsVisible = false };
 
     /// <summary>
-    /// Gets or sets whether the surface uses the shared GPU image path when the compositor and the
-    /// renderer support it (default <see langword="false"/>: the frame sink). A change re-attaches the surface.
+    /// The environment variable that forces the frame sink (any non-empty value except 0): a diagnostic
+    /// switch for comparisons and bug reports, read when a surface is created. Not an option for apps:
+    /// the surface already falls back to the frame sink by itself when the shared GPU image path is
+    /// unavailable.
     /// </summary>
-    /// <remarks>
-    /// The frame sink draws on Avalonia's render thread, so the picture keeps moving while the UI thread is
-    /// busy (a drop-down opening, a window loading). The shared GPU image path saves the CPU copy but
-    /// freezes for as long as the UI thread is busy: Avalonia accepts image updates only on the UI thread
-    /// (ENG-065). Turn it on only where that freeze does not matter.
-    /// </remarks>
-    public bool PreferGpuSharedSurface
+    internal const string ForceFrameSinkVariable = "FATZMEDIA_AVALONIA_FRAMESINK";
+
+    /// <summary>
+    /// Gets or sets whether the surface may use the shared GPU image path (default true; false, or the
+    /// <see cref="ForceFrameSinkVariable"/> environment variable, always uses the frame sink). A change
+    /// re-attaches the surface. Internal: tests and diagnostics only.
+    /// </summary>
+    internal bool PreferGpuSharedSurface
     {
-        get => GetValue(PreferGpuSharedSurfaceProperty);
-        set => SetValue(PreferGpuSharedSurfaceProperty, value);
-    }
+        get;
+        set
+        {
+            if (field == value)
+                return;
+
+            field = value;
+            // A turn back to the GPU path asks for a new attempt.
+            _gpuRejectedSession = null;
+            _gpuRejectedReason = null;
+            _gpuContextLostReason = null;
+            StopGpuRetry();
+            Detach();
+            QueryGpuInterop();
+            AttachOrResize();
+        }
+    } = !ForcedFrameSink();
+
+    static bool ForcedFrameSink() => Environment.GetEnvironmentVariable(ForceFrameSinkVariable) is { Length: > 0 } value && value != "0";
+
 
     /// <summary>
     /// Gets or sets the surface's role (default <see cref="MediaPresentationSurfaceRole.Primary"/>).
@@ -401,17 +418,6 @@ public class MediaSurface : Control
             _contentTracker.AutoHide = change.NewValue is true;
             UpdateContentState();
         }
-        else if (change.Property == PreferGpuSharedSurfaceProperty)
-        {
-            // A host that turns the GPU path back on asks for a new attempt.
-            _gpuRejectedSession = null;
-            _gpuRejectedReason = null;
-            _gpuContextLostReason = null;
-            StopGpuRetry();
-            Detach();
-            QueryGpuInterop();
-            AttachOrResize();
-        }
     }
 
     /// <summary>Pixel size for the current bounds and render scaling (at least 1x1).</summary>
@@ -550,7 +556,7 @@ public class MediaSurface : Control
         request = null;
         if (!PreferGpuSharedSurface)
         {
-            reason = "PreferGpuSharedSurface is off";
+            reason = "the frame sink is forced (FATZMEDIA_AVALONIA_FRAMESINK or a test switch)";
             return GpuPathChoice.FrameSink;
         }
 
@@ -587,6 +593,12 @@ public class MediaSurface : Control
         if (_gpuInterop.IsLost)
         {
             reason = "the compositor's GPU interop was lost";
+            return GpuPathChoice.FrameSink;
+        }
+
+        if (_gpuInterop.Importer is null)
+        {
+            reason = "Avalonia's rendering backend offers no render-thread image import (IExternalObjectsRenderInterfaceContextFeature)";
             return GpuPathChoice.FrameSink;
         }
 

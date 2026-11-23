@@ -37,15 +37,20 @@ Avalonia adapter for `FatzMedia.Video` (Stage 027A slices 1, 2 and 5).
 - Two paths (`PresentationPath`, with the reason in `PresentationPathReason`, plus an Info
   diagnostic owned by the attached player, so with several players each log shows only its own
   surfaces):
-  - **Frame sink** (default): the renderer reads frames back and a composition visual draws
-    them on Avalonia's render thread, so the picture keeps moving while the UI thread is busy
-    (drop-downs, window loads; ENG-065).
-  - **Shared GPU image** (`PreferGpuSharedSurface`, default false, opt in): when Avalonia's
-    compositor offers `ICompositionGpuInterop` and the renderer can export a matching
-    handle kind (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on
-    Linux), frames go straight into Avalonia's compositor with no CPU copy, but the picture
-    **freezes for as long as the UI thread is busy** (Avalonia accepts image updates only on the
-    UI thread). The frame sink is also used when this path is unsupported or has failed.
+  - **Shared GPU image** (the default): when Avalonia's compositor offers GPU interop
+    (`ICompositionGpuInterop` and a render-thread import) and the renderer can export a
+    matching handle kind (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on
+    Linux), frames go straight into Avalonia's compositor with no CPU copy. A composition custom
+    visual imports and draws them on Avalonia's **render thread**, so the picture keeps moving
+    while the UI thread is busy (drop-downs, window loads; ENG-066). This uses Avalonia's
+    `[Unstable]` render-interface API, kept in `RenderThreadGpuImport.cs` and pinned with the exact
+    Avalonia version in the csproj; if it throws or is missing, the surface falls back by itself.
+  - **Frame sink** (the automatic fallback: no GPU interop, a renderer that cannot export, a
+    lost graphics context, or any failure of the path above): the renderer's thread copies each
+    frame straight into one of three rotating bitmaps and the same kind of render-thread visual
+    draws it, so it keeps moving while the UI thread is busy too (about one CPU core more at
+    3440x1416 and 60 fps). The environment variable `FATZMEDIA_AVALONIA_FRAMESINK=1` forces it,
+    for comparisons and bug reports (diagnostics only, not an app option).
 - `AvaloniaMediaInputSources.FromBitmap` converts Avalonia bitmaps to Core sources (the same
   shape as the WPF `WpfMediaInputSources.FromImageSource` and `WinFormsMediaInputSources.FromBitmap`).
 - **`KaraokeSurface` and `BackgroundSurface`** (Stage 046A slice 2, as in the WPF and WinForms
@@ -57,8 +62,8 @@ Avalonia adapter for `FatzMedia.Video` (Stage 027A slices 1, 2 and 5).
   (looping, no audio engine), with `OverlayContent` composited above it (`OverlayHitTestVisible`,
   default false). Both have `Source`, `AutoPlay`, `AutoHide`, `IsContentVisible`,
   `ContentVisibilityChanged`, `Session`, `LoadAsync`, `PlayAsync`/`PauseAsync`/`StopAsync` and
-  `Dispose`. Differences from WPF: `PreferGpuSharedSurface` instead of `PresentationMode` (the
-  surface's own path choice); the player is released when the control leaves the visual tree.
+  `Dispose`. Differences from WPF: no `PresentationMode` (the surface chooses its own path);
+  the player is released when the control leaves the visual tree.
 
   ```xml
   <fbm:BackgroundSurface PlatformFactory="{Binding Platform}" Source="{Binding BackgroundPath}">
@@ -80,7 +85,7 @@ screen and a few extras:
 
 | Item | WPF | Avalonia | WinForms |
 | --- | --- | --- | --- |
-| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | `PreferGpuSharedSurface` (default false, the frame sink; true opts into the shared GPU image, which freezes while the UI thread is busy) | `PreferNativeWindow` (default true), else the frame sink |
+| Choosing the path | `PresentationMode`: `NativeHwndOverlay` (default) or `WpfComposited` | no option: the shared GPU image on the render thread, else the frame sink on its own | `PreferNativeWindow` (default true), else the frame sink |
 | `OverlayContent`, `OverlayHitTestVisible` | yes, a `UIElement` | yes, any control, composited above the picture (added 2026-11-12) | yes, a `Control` in a borderless layered window |
 | Composited-mode figures (`CompositedFramesPublished`, `CompositedUiThreadTime`) and `RefreshPresentationLayout` | yes | no | no |
 | `AttachedPixelSize` | no | yes | no |

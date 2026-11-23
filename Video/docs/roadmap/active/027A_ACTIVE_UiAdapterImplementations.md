@@ -54,9 +54,10 @@ instructions.
     `VK_KHR_external_semaphore_fd` is present. Host synchronization always works because
     the fence completes each frame. The device UUID must match. On Windows it is not
     implemented yet.
-  - The Avalonia adapter picks the path at attach (`PreferGpuSharedSurface`, default
-    false since ENG-065: the GPU path freezes while the UI thread is busy). Its conditions are: the compositor's interop, a supported handle kind, and the
-    renderer accepting.
+  - The Avalonia adapter picks the path at attach (no option since ENG-066: the
+    shared GPU image is imported and drawn on the render thread, so a busy UI thread does not
+    freeze it). Its conditions are: the compositor's interop and render-thread import, a supported
+    handle kind, and the renderer accepting.
   - Otherwise, or after any later failure, the adapter falls back to the frame sink. It
     logs the path and the reason (Info, `Avalonia.MediaSurface`) and exposes them
     (`PresentationPath`, `PresentationPathReason`). It still references only Core and

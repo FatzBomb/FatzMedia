@@ -25,7 +25,6 @@ sealed class LightweightSurfacesWindow : Window
     public LightweightSurfacesWindow(
         Func<IPlatformFactory> createPlatformFactory,
         IReadOnlyList<string> nativeLibraryPaths,
-        bool preferGpuSurface,
         bool autoHide)
     {
         Title = "Background and karaoke surfaces (--lightweight-surfaces)";
@@ -35,7 +34,6 @@ sealed class LightweightSurfacesWindow : Window
         _background = new BackgroundSurface(createPlatformFactory())
         {
             NativeLibraryPaths = nativeLibraryPaths,
-            PreferGpuSharedSurface = preferGpuSurface,
             AutoHide = autoHide,
             OverlayContent = new TextBlock
             {
@@ -48,7 +46,6 @@ sealed class LightweightSurfacesWindow : Window
         _karaoke = new KaraokeSurface(createPlatformFactory())
         {
             NativeLibraryPaths = nativeLibraryPaths,
-            PreferGpuSharedSurface = preferGpuSurface,
             AutoHide = autoHide,
         };
 

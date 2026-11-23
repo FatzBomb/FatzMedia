@@ -209,7 +209,8 @@ public sealed class MediaSurfaceTests
         }
 
         Assert.Equal(10, surface.FrameSink!.PublishedFrames);
-        Assert.Equal(1, surface.FrameSink.BufferAllocations);
+        // Three bitmaps rotate (drawn, newest, written); after that frames allocate nothing.
+        Assert.InRange(surface.FrameSink.BitmapAllocations, 1, 3);
         window.Close();
     }
 

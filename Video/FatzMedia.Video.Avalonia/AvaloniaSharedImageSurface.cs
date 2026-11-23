@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
@@ -6,20 +8,18 @@ using Avalonia.Threading;
 namespace FatzMedia.Video.Avalonia;
 
 /// <summary>
-/// The GPU shared-image path of <see cref="MediaSurface"/> (Stage 027A slice 2). Receives the
-/// renderer's exported, double-buffered images as plain handles, imports them into Avalonia's
-/// compositor (<see cref="ICompositionGpuInterop"/>), and shows each finished frame on a
-/// <see cref="CompositionDrawingSurface"/> with the synchronization the renderer chose. No pixels
-/// pass through the CPU.
+/// The GPU shared-image path of <see cref="MediaSurface"/>, presented on Avalonia's render thread.
+/// Receives the renderer's exported, double-buffered images as plain handles, imports them into
+/// the compositor's graphics context there, and draws each finished frame from a composition custom
+/// visual. No pixels pass through the CPU and no step waits for the UI thread.
 /// </summary>
 /// <remarks>
-/// Renderer callbacks arrive on its presentation thread; they only queue work for the UI thread.
-/// Every frame is submitted in order and released when the compositor's update completes, so
-/// the renderer never writes an image the compositor may still read, and keyed-mutex and
-/// semaphore states stay paired. Any import or update failure reports the surface unavailable
-/// once, and <see cref="MediaSurface"/> switches to its frame sink. A lost graphics context (a GPU
-/// reset, ENG-039) is also reported to the renderer, which checks its own device, and lets
-/// <see cref="MediaSurface"/> come back to this path once the compositor recovers.
+/// Renderer callbacks arrive on its presentation thread; they only queue work. The custom visual's
+/// handler runs on the render thread: on each draw it imports a new image set if one arrived, takes
+/// the queued frames in order (a snapshot with the synchronization the renderer chose, then the frame
+/// is handed back to the renderer), and draws the newest one. Any import or draw failure reports the
+/// surface unavailable once, and <see cref="MediaSurface"/> switches to its frame sink. A lost graphics
+/// context (a GPU reset, ENG-039) is also reported to the renderer, which checks its own device.
 /// </remarks>
 sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposable
 {
@@ -29,16 +29,16 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
     readonly GpuInteropCapabilities _interop;
     readonly Action<AvaloniaSharedImageSurface, string, bool> _unavailable;
     readonly MediaSharedGpuImageConsumerHandle _handle;
-    readonly CompositionSurfaceVisual _visual;
-    readonly CompositionDrawingSurface _surface;
+    readonly CompositionCustomVisual _visual;
     readonly Queue<MediaSharedGpuImageFrame> _frames = new();
     MediaSharedGpuImageSet? _pendingSet;
     // The newest set the renderer sent (guarded by _gate): where a context loss is reported.
     MediaSharedGpuImageSet? _latestSet;
-    ImportedSet? _current;
-    MediaSharedGpuImageSelection? _reportedSelection;
     string? _unavailableReason;
-    bool _pumpQueued;
+    // 1 while the render thread has stopped polling because nothing arrived for a while.
+    int _asleep;
+    // Avalonia does not draw a hidden visual, and frames are only snapshotted while drawing: see DiscardFrames.
+    int _isVisible = 1;
     bool _disposed;
 
     public AvaloniaSharedImageSurface(
@@ -54,17 +54,14 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
         _interop = interop;
         Request = request;
         _unavailable = unavailable;
-        _surface = compositor.CreateDrawingSurface();
-        _visual = compositor.CreateSurfaceVisual();
-        _visual.Surface = _surface;
+        _visual = compositor.CreateCustomVisual(new PresentationHandler(this, interop.Importer));
         ElementComposition.SetElementChildVisual(owner, _visual);
         _handle = new MediaSharedGpuImageConsumerHandle(this);
+        // The first message starts the polling; it goes back to sleep by itself when nothing arrives.
+        Wake();
     }
 
     public MediaSharedGpuImageRequest Request { get; }
-
-    /// <summary>How long the compositor may take to import a set before its context counts as lost (ENG-039).</summary>
-    internal static readonly TimeSpan ImportTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>Gets the first reason the path became unavailable, or null.</summary>
     public string? UnavailableReason
@@ -83,9 +80,15 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
 
     /// <summary>
     /// Shows or hides the composition visual (UI thread). Hidden, the control's background shows
-    /// instead of the last imported frame, which the drawing surface keeps.
+    /// instead of the last frame, which the presenter keeps.
     /// </summary>
-    public void SetVisible(bool visible) => _visual.Visible = visible;
+    public void SetVisible(bool visible)
+    {
+        _visual.Visible = visible;
+        Volatile.Write(ref _isVisible, visible ? 1 : 0);
+        if (visible)
+            WakeIfAsleep();
+    }
 
     public void OnImagesCreated(MediaSharedGpuImageSet images)
     {
@@ -105,7 +108,7 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
         }
 
         skipped?.CompleteImport(handlesConsumed: false);
-        QueuePump();
+        WakeIfAsleep();
     }
 
     public void OnFrameReady(MediaSharedGpuImageFrame frame)
@@ -118,7 +121,7 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
             _frames.Enqueue(frame);
         }
 
-        QueuePump();
+        WakeIfAsleep();
     }
 
     public void OnUnavailable(string reason) => ReportUnavailable(reason, contextLost: false);
@@ -164,198 +167,20 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
         }
 
         pending?.CompleteImport(handlesConsumed: false);
+        _handle.Dispose();
+        // The handler releases what it imported on the render thread, then the visual goes.
+        _visual.SendHandlerMessage(PresentationHandler.ReleaseMessage);
         if (ReferenceEquals(ElementComposition.GetElementChildVisual(_owner), _visual))
             ElementComposition.SetElementChildVisual(_owner, null);
-
-        _handle.Dispose();
-        // The drawing surface goes once the compositor finished the updates that read it.
-        Retire(_current, _surface.Dispose);
-        _current = null;
     }
 
-    void QueuePump()
+    void WakeIfAsleep()
     {
-        lock (_gate)
-        {
-            if (_disposed || _pumpQueued)
-                return;
-
-            _pumpQueued = true;
-        }
-
-        Dispatcher.UIThread.Post(Pump, DispatcherPriority.Render);
+        if (Volatile.Read(ref _asleep) == 1 && Interlocked.Exchange(ref _asleep, 0) == 1)
+            Dispatcher.UIThread.Post(Wake, DispatcherPriority.Render);
     }
 
-    /// <summary>Imports a new image set if one arrived, then submits the queued frames in order (UI thread).</summary>
-    void Pump()
-    {
-        MediaSharedGpuImageSet? set;
-        MediaSharedGpuImageFrame[] frames;
-        lock (_gate)
-        {
-            _pumpQueued = false;
-            if (_disposed)
-                return;
-
-            set = _pendingSet;
-            _pendingSet = null;
-            frames = [.. _frames];
-            _frames.Clear();
-        }
-
-        // A compositor that lost its context fails every update (ENG-039): say so before trying.
-        if (_interop.Interop is { IsLost: true })
-        {
-            set?.CompleteImport(handlesConsumed: false);
-            ReportContextLost("the compositor's GPU interop was lost");
-            return;
-        }
-
-        if (set is not null)
-            Import(set);
-
-        foreach (var frame in frames)
-            Submit(frame);
-    }
-
-    void Import(MediaSharedGpuImageSet set)
-    {
-        Retire(_current);
-        _current = null;
-        if (_interop.Interop is not { IsLost: false } interop)
-        {
-            set.CompleteImport(handlesConsumed: false);
-            if (_interop.Interop is null)
-                ReportUnavailable("the compositor has no GPU interop to import with", contextLost: false);
-            else
-                ReportContextLost("the compositor's GPU interop was lost");
-            return;
-        }
-
-        var imported = new ImportedSet(set);
-        // Buffers whose image went to the importer (V7): their handles are the importer's now.
-        var consumedBuffers = 0;
-        try
-        {
-            var imageType = AvaloniaGpuInterop.ToAvaloniaImageHandleType(set.HandleKind);
-            var semaphoreType = set.SyncKind == MediaSharedGpuImageSyncKinds.Semaphores
-                ? AvaloniaGpuInterop.ToAvaloniaSemaphoreHandleType(set.SemaphoreHandleKind)
-                : null;
-            foreach (var buffer in set.Buffers)
-            {
-                imported.Images.Add(interop.ImportImage(
-                    new PlatformHandle(buffer.ImageHandle, imageType),
-                    AvaloniaGpuInterop.ToImageProperties(set, buffer)));
-                // From here the buffer counts as handed over, even if a semaphore import fails:
-                // closing a handle the importer took would be worse than leaking one it did not.
-                consumedBuffers++;
-                if (semaphoreType is not null)
-                {
-                    imported.RenderComplete.Add(interop.ImportSemaphore(new PlatformHandle(buffer.RenderCompleteSemaphore, semaphoreType)));
-                    imported.ConsumerRelease.Add(interop.ImportSemaphore(new PlatformHandle(buffer.ConsumerReleaseSemaphore, semaphoreType)));
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            // Handles never given to an importer stay with the producer, which closes them.
-            set.CompleteImport(consumedBuffers);
-            Retire(imported);
-            ReportFailure($"importing the shared images failed: {exception.Message}", exception);
-            return;
-        }
-
-        _current = imported;
-        // The compositor opens the handles on its own thread after ImportImage returns: the
-        // renderer keeps them open until every import has finished. Telling it "done" at once let
-        // a quick resize close a set's handles before the compositor opened them (owner's 045A
-        // smoke: OpenSharedResource1 failed, and the surface stayed on the frame sink).
-        ICompositionGpuImportedObject[] objects = [.. imported.Objects];
-        var importsCompleted = Task.WhenAll(objects.Select(static importedObject => importedObject.ImportCompleted));
-        _ = importsCompleted.ContinueWith(
-            _ => set.CompleteImport(handlesConsumed: true),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        // ENG-039: a compositor that never finishes importing (its device was reset) never shows
-        // these images; after ImportTimeout it counts as a lost context.
-        _ = importsCompleted.WaitAsync(ImportTimeout).ContinueWith(
-            completed =>
-            {
-                if (completed.Exception?.GetBaseException() is TimeoutException && ReferenceEquals(Volatile.Read(ref _current), imported))
-                    ReportContextLost($"the compositor did not finish importing the shared images within {ImportTimeout.TotalSeconds:0} s");
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        foreach (var importedObject in objects)
-            ObserveImport(imported, importedObject);
-
-        if (_reportedSelection != set.Selection)
-        {
-            _reportedSelection = set.Selection;
-            DiagnosticRouter.Raise(
-                _session,
-                MediaDiagnosticLevel.Info,
-                MediaSurface.DiagnosticCategory,
-                $"Shared GPU images imported: {set.Width}x{set.Height} {set.Format} x{set.Buffers.Count}, {set.Selection}");
-        }
-    }
-
-    void Submit(MediaSharedGpuImageFrame frame)
-    {
-        var current = _current;
-        // Frames of a set that was replaced or failed to import: the renderer reset its ring for
-        // the newer set (or this path is being abandoned), so there is nothing to give back.
-        if (current is null || frame.Generation != current.Set.Generation || (uint)frame.BufferIndex >= (uint)current.Images.Count)
-            return;
-
-        var set = current.Set;
-        Task update;
-        try
-        {
-            var image = current.Images[frame.BufferIndex];
-            update = set.SyncKind switch
-            {
-                MediaSharedGpuImageSyncKinds.KeyedMutex => _surface.UpdateWithKeyedMutexAsync(image, (uint)frame.AcquireKey, (uint)frame.ReleaseKey),
-                MediaSharedGpuImageSyncKinds.Semaphores => _surface.UpdateWithSemaphoresAsync(
-                    image,
-                    current.RenderComplete[frame.BufferIndex],
-                    current.ConsumerRelease[frame.BufferIndex]),
-                _ => _surface.UpdateAsync(image),
-            };
-        }
-        catch (Exception exception)
-        {
-            set.ReleaseFrame(frame, consumed: false);
-            ReportFailure($"updating the composition surface failed: {exception.Message}", exception);
-            return;
-        }
-
-        current.Track(update);
-        _ = update.ContinueWith(
-            completed =>
-            {
-                set.ReleaseFrame(frame, completed.IsCompletedSuccessfully);
-                if (!completed.IsCompletedSuccessfully)
-                    ReportFailure($"the compositor failed to show a shared image: {completed.Exception?.GetBaseException().Message ?? "cancelled"}", completed.Exception);
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    void ObserveImport(ImportedSet imported, ICompositionGpuImportedObject importedObject) =>
-        _ = importedObject.ImportCompleted.ContinueWith(
-            completed =>
-            {
-                // A set a newer one already replaced is never shown: its failure changes nothing.
-                if (ReferenceEquals(Volatile.Read(ref _current), imported))
-                    ReportFailure($"the compositor could not import a shared image: {completed.Exception?.GetBaseException().Message ?? "cancelled"}", completed.Exception);
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.NotOnRanToCompletion,
-            TaskScheduler.Default);
+    void Wake() => _visual.SendHandlerMessage(PresentationHandler.WakeMessage);
 
     void ReportUnavailable(string reason, bool contextLost)
     {
@@ -370,57 +195,245 @@ sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer, IDisposa
         Dispatcher.UIThread.Post(() => _unavailable(this, reason, contextLost));
     }
 
-    /// <summary>Disposes a set's imports once the compositor finished every update that uses them.</summary>
-    static void Retire(ImportedSet? imported, Action? then = null)
+    bool TakeWork(out MediaSharedGpuImageSet? set, out MediaSharedGpuImageFrame[] frames)
     {
-        if (imported is null)
+        lock (_gate)
         {
-            then?.Invoke();
-            return;
+            set = _pendingSet;
+            _pendingSet = null;
+            frames = _frames.Count == 0 ? [] : [.. _frames];
+            _frames.Clear();
+            return !_disposed && (set is not null || frames.Length > 0);
+        }
+    }
+
+    bool IsVisible => Volatile.Read(ref _isVisible) != 0;
+
+    // Hidden surfaces are not drawn, so there is nothing to do for them (frames are discarded, see DiscardFrames).
+    bool HasWork
+    {
+        get
+        {
+            if (!IsVisible)
+                return false;
+
+            lock (_gate)
+                return _pendingSet is not null || _frames.Count > 0;
+        }
+    }
+
+    /// <summary>
+    /// Hands the queued frames back unconsumed (render thread): while the visual is hidden (auto-hide before the first
+    /// frame, Audio mode) Avalonia does not draw it, so nothing would snapshot them and the renderer's ring would run dry.
+    /// The image set stays queued; it is imported when the surface shows.
+    /// </summary>
+    void DiscardFrames()
+    {
+        MediaSharedGpuImageSet? set;
+        MediaSharedGpuImageFrame[] frames;
+        lock (_gate)
+        {
+            if (_frames.Count == 0)
+                return;
+
+            frames = [.. _frames];
+            _frames.Clear();
+            set = _latestSet;
         }
 
-        _ = Task.WhenAll(imported.PendingUpdates()).ContinueWith(
-            _ => Dispatcher.UIThread.Post(() =>
+        foreach (var frame in frames)
+        {
+            if (set is not null && frame.Generation == set.Generation)
+                set.ReleaseFrame(frame, consumed: false);
+        }
+    }
+
+    /// <summary>Runs on the render thread: imports sets, snapshots frames, draws the newest.</summary>
+    sealed class PresentationHandler(AvaloniaSharedImageSurface surface, IGpuImageImporter? importer)
+        : CompositionCustomVisualHandler, IDisposable
+    {
+        public static readonly object WakeMessage = new();
+        public static readonly object ReleaseMessage = new();
+
+        // About half a second at 60 Hz without work: stop polling until the next frame or set.
+        const int IdleTicksBeforeSleep = 30;
+
+        ImportedSet? _imported;
+        Bitmap? _current;
+        MediaSharedGpuImageSelection? _reportedSelection;
+        int _idleTicks;
+        bool _failed;
+
+        /// <summary>Releases the imports and the shown frame (render thread).</summary>
+        public void Dispose() => Release();
+
+        public override void OnMessage(object message)
+        {
+            if (ReferenceEquals(message, ReleaseMessage))
             {
-                foreach (var importedObject in imported.Objects)
-                    _ = DisposeQuietlyAsync(importedObject);
-                then?.Invoke();
-            }),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+                Release();
+                _failed = true;
+                return;
+            }
+
+            _idleTicks = 0;
+            RegisterForNextAnimationFrameUpdate();
+        }
+
+        public override void OnAnimationFrameUpdate()
+        {
+            if (_failed)
+                return;
+
+            if (!surface.IsVisible)
+                surface.DiscardFrames();
+
+            if (surface.HasWork)
+            {
+                _idleTicks = 0;
+                Invalidate();
+            }
+            else
+            {
+                _idleTicks++;
+            }
+
+            if (_idleTicks < IdleTicksBeforeSleep)
+            {
+                RegisterForNextAnimationFrameUpdate();
+                return;
+            }
+
+            // Asleep: work that arrived after the last look must not wait for a wake-up it will not get.
+            Volatile.Write(ref surface._asleep, 1);
+            if (surface.HasWork && Interlocked.Exchange(ref surface._asleep, 0) == 1)
+            {
+                _idleTicks = 0;
+                Invalidate();
+                RegisterForNextAnimationFrameUpdate();
+            }
+        }
+
+        public override void OnRender(ImmediateDrawingContext drawingContext)
+        {
+            if (!_failed)
+                Pump();
+
+            if (_current is not null)
+                drawingContext.DrawBitmap(_current, new Rect(_current.Size), new Rect(0, 0, EffectiveSize.X, EffectiveSize.Y));
+        }
+
+        void Pump()
+        {
+            // Drawn although hidden (a pass that was already under way): hand the frames back instead of showing them.
+            if (!surface.IsVisible)
+            {
+                surface.DiscardFrames();
+                return;
+            }
+
+            if (!surface.TakeWork(out var set, out var frames))
+                return;
+
+            if (importer is null || surface._interop.Interop is { IsLost: true })
+            {
+                set?.CompleteImport(handlesConsumed: false);
+                Fail(importer is null
+                    ? "the compositor offers no render-thread image import"
+                    : "the compositor's GPU interop was lost", contextLost: importer is not null);
+                return;
+            }
+
+            if (set is not null)
+                Import(set);
+
+            foreach (var frame in frames)
+                Show(frame);
+        }
+
+        void Import(MediaSharedGpuImageSet set)
+        {
+            Release(keepBitmap: true);
+            IImportedGpuImages images;
+            try
+            {
+                images = importer!.Import(set);
+            }
+            catch (Exception exception)
+            {
+                // Handles never given to the importer stay with the producer, which closes them.
+                set.CompleteImport(exception is GpuImportException import ? import.ConsumedBuffers : 0);
+                surface.ReportFailure($"importing the shared images failed: {exception.Message}", exception);
+                _failed = true;
+                return;
+            }
+
+            // The import ran here, on the render thread: the renderer's handles are open in the compositor's context.
+            set.CompleteImport(handlesConsumed: true);
+            _imported = new ImportedSet(set, images);
+            if (_reportedSelection != set.Selection)
+            {
+                _reportedSelection = set.Selection;
+                DiagnosticRouter.Raise(
+                    surface._session,
+                    MediaDiagnosticLevel.Info,
+                    MediaSurface.DiagnosticCategory,
+                    $"Shared GPU images imported (render thread): {set.Width}x{set.Height} {set.Format} x{set.Buffers.Count}, {set.Selection}");
+            }
+        }
+
+        void Show(MediaSharedGpuImageFrame frame)
+        {
+            var imported = _imported;
+            // Frames of a set that was replaced or failed to import: the renderer reset its ring for the newer set.
+            if (imported is null || frame.Generation != imported.Set.Generation || (uint)frame.BufferIndex >= (uint)imported.Set.Buffers.Count)
+                return;
+
+            Bitmap snapshot;
+            try
+            {
+                snapshot = imported.Images.Snapshot(frame);
+            }
+            catch (Exception exception)
+            {
+                imported.Set.ReleaseFrame(frame, consumed: false);
+                surface.ReportFailure($"showing a shared image failed: {exception.Message}", exception);
+                _failed = true;
+                return;
+            }
+
+            // The snapshot holds the frame's content: the renderer may reuse the image now.
+            imported.Set.ReleaseFrame(frame, consumed: true);
+            _current?.Dispose();
+            _current = snapshot;
+        }
+
+        void Fail(string reason, bool contextLost)
+        {
+            if (contextLost)
+                surface.ReportContextLost(reason);
+            else
+                surface.ReportUnavailable(reason, contextLost: false);
+            _failed = true;
+        }
+
+        void Release(bool keepBitmap = false)
+        {
+            _imported?.Dispose();
+            _imported = null;
+            if (!keepBitmap)
+            {
+                _current?.Dispose();
+                _current = null;
+            }
+        }
     }
 
-    static async Task DisposeQuietlyAsync(IAsyncDisposable disposable)
+    sealed class ImportedSet(MediaSharedGpuImageSet set, IImportedGpuImages images) : IDisposable
     {
-        try
-        {
-            await disposable.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // A lost or failed import has nothing left to release.
-        }
-    }
-
-    sealed class ImportedSet(MediaSharedGpuImageSet set)
-    {
-        readonly List<Task> _updates = [];
-
         public MediaSharedGpuImageSet Set { get; } = set;
-        public List<ICompositionImportedGpuImage> Images { get; } = [];
-        public List<ICompositionImportedGpuSemaphore> RenderComplete { get; } = [];
-        public List<ICompositionImportedGpuSemaphore> ConsumerRelease { get; } = [];
+        public IImportedGpuImages Images { get; } = images;
 
-        public IEnumerable<ICompositionGpuImportedObject> Objects =>
-            Images.Cast<ICompositionGpuImportedObject>().Concat(RenderComplete).Concat(ConsumerRelease);
-
-        public void Track(Task update)
-        {
-            _updates.RemoveAll(static task => task.IsCompleted);
-            _updates.Add(update);
-        }
-
-        public Task[] PendingUpdates() => [.. _updates];
+        public void Dispose() => Images.Dispose();
     }
 }

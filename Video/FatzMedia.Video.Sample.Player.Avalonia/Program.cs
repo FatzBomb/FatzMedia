@@ -11,6 +11,9 @@ static class Program
     public static int Main(string[] args)
     {
         StartupOptions.Current = PlayerStartupOptions.Parse(args);
+        // --surface=framesink: the surfaces' diagnostic switch (read when a surface is created), for comparisons.
+        if (StartupOptions.Current.PreferFrameSinkSurface)
+            Environment.SetEnvironmentVariable("FATZMEDIA_AVALONIA_FRAMESINK", "1");
         StartupOptions.AbSwapDemo = AbSwapDemoOptions.Parse(args);
         StartupOptions.UiStall = UiStallProbe.Create(args);
         using var debugLog = PlayerDebugLog.Attach(App.LogFilePath, "Player.Avalonia");

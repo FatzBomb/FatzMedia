@@ -581,8 +581,8 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 - `KaraokeSurface` and `BackgroundSurface` in the WPF (reworked; same API plus
   `NativeLibraryPaths` and `LoadAsync(MediaInputSource)`), Avalonia and WinForms adapters, each
   over a small internal host per adapter (Avalonia and WinForms `LightweightSurfaceHost`). The
-  WPF `PresentationMode` maps to each adapter's own path choice (`PreferGpuSharedSurface`,
-  `PreferNativeWindow`). Loaded/Unloaded maps to visual-tree attachment (Avalonia) and handle
+  WPF `PresentationMode` maps to each adapter's own path choice (Avalonia: its own choice,
+  shared GPU image else frame sink; WinForms `PreferNativeWindow`). Loaded/Unloaded maps to visual-tree attachment (Avalonia) and handle
   creation/destruction (WinForms).
 - WinForms `MediaSurface`: when the renderer refuses the window handle (software renderer) or
   `PreferNativeWindow` is off, it attaches a managed frame sink (`WinFormsFrameSink`: the

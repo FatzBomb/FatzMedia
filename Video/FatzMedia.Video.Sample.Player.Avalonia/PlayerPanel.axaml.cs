@@ -76,8 +76,6 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
         SeekSlider.PointerCaptureLost += OnSeekCaptureLost;
         SeekSlider.ValueChanged += OnSeekValueChanged;
 
-        // --surface=framesink forces the readback path for comparison (Stage 027A slice 2).
-        Surface.PreferGpuSharedSurface = !StartupOptions.Current.PreferFrameSinkSurface;
         Surface.AutoHide = StartupOptions.Current.AutoHideSurfaces;
         Surface.PresentationPathChanged += OnPresentationPathChanged;
         Surface.Tapped += OnSurfaceTapped;
@@ -382,7 +380,6 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
 
         (var screen, var fullScreen, var where) = ChooseSecondScreen(owner);
         var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
-        window.Surface.PreferGpuSharedSurface = !StartupOptions.Current.PreferFrameSinkSurface;
         window.Surface.AutoHide = StartupOptions.Current.AutoHideSurfaces;
         window.Surface.PresentationPathChanged += OnSecondScreenPathChanged;
         window.Closed += OnSecondScreenClosed;

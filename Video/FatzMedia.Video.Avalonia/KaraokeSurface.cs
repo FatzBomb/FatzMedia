@@ -16,7 +16,7 @@ namespace FatzMedia.Video.Avalonia;
 /// The player is created on the first load and released when the control leaves the visual tree;
 /// attached again, it loads <see cref="Source"/> again. Instead of the WPF <c>PresentationMode</c>,
 /// the surface's path is chosen as on any Avalonia <see cref="MediaSurface"/>
-/// (<see cref="PreferGpuSharedSurface"/>). Events are raised on the UI thread.
+/// (shared GPU image or frame sink, chosen by the inner <see cref="MediaSurface"/>). Events are raised on the UI thread.
 /// </remarks>
 public class KaraokeSurface : Panel, IDisposable
 {
@@ -34,9 +34,6 @@ public class KaraokeSurface : Panel, IDisposable
 
     public static readonly StyledProperty<Color> CanvasColorProperty =
         AvaloniaProperty.Register<KaraokeSurface, Color>(nameof(CanvasColor), Colors.Black);
-
-    public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
-        AvaloniaProperty.Register<KaraokeSurface, bool>(nameof(PreferGpuSharedSurface), false);
 
     public static readonly DirectProperty<KaraokeSurface, IPlatformFactory?> PlatformFactoryProperty =
         AvaloniaProperty.RegisterDirect<KaraokeSurface, IPlatformFactory?>(
@@ -112,13 +109,6 @@ public class KaraokeSurface : Panel, IDisposable
     /// <summary>Gets whether the karaoke is shown now (see <see cref="MediaSurface.IsContentVisible"/>).</summary>
     public bool IsContentVisible => _host.IsContentVisible;
 
-    /// <summary>Gets or sets whether the surface may use the shared GPU image path (default <see langword="false"/>; it freezes while the UI thread is busy, see <see cref="MediaSurface.PreferGpuSharedSurface"/>).</summary>
-    public bool PreferGpuSharedSurface
-    {
-        get => GetValue(PreferGpuSharedSurfaceProperty);
-        set => SetValue(PreferGpuSharedSurfaceProperty, value);
-    }
-
     /// <summary>Gets or sets the karaoke file to load (while in the visual tree); a change reloads.</summary>
     public string? Source
     {
@@ -171,8 +161,6 @@ public class KaraokeSurface : Panel, IDisposable
             _host.Controller.AutoPlay = change.NewValue is true;
         else if (change.Property == AutoHideProperty)
             Surface.AutoHide = change.NewValue is true;
-        else if (change.Property == PreferGpuSharedSurfaceProperty)
-            Surface.PreferGpuSharedSurface = change.NewValue is true;
         else if (change.Property == CanvasColorProperty && change.NewValue is Color color)
             Background = new SolidColorBrush(Color.FromArgb(byte.MaxValue, color.R, color.G, color.B));
     }

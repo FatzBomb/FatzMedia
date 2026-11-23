@@ -10,31 +10,48 @@ namespace FatzMedia.Video.Avalonia;
 /// <summary>
 /// Receives final premultiplied BGRA frames from the selected renderer on its presentation
 /// thread and shows the latest one through a composition custom visual, drawn on Avalonia's
-/// render thread. Core's <see cref="LatestFrameMailbox"/> hands the latest frame over (latest
-/// wins, two arrays alternating, so steady playback does not allocate per frame); this sink owns
-/// the visual and its lifecycle.
+/// render thread. This sink owns the visual and its lifecycle.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The picture never waits for the UI thread (a drop-down opening, a window loading): the render
-/// thread takes each frame from the mailbox on its own animation-frame tick, so a busy UI thread
-/// does not freeze the video. Only the first frame after an idle period, and the control's size,
-/// visibility and clearing, go through the UI thread. The shared GPU image path cannot do this:
-/// Avalonia accepts its image updates only from the UI thread.
+/// thread takes each frame on its own animation-frame tick, so a busy UI thread does not freeze the
+/// video. Only the first frame after an idle period, and the control's size, visibility and clearing,
+/// go through the UI thread.
+/// </para>
+/// <para>
+/// The renderer's thread copies each frame straight into one of three bitmaps (the one being drawn,
+/// the newest finished one, and one to write), so the render thread only draws: a full-screen
+/// frame is copied once, off the render thread, and the render thread's budget goes to drawing it.
+/// Frames that arrive before the render thread takes one replace it (latest wins). Steady playback
+/// allocates no bitmaps.
+/// </para>
 /// </remarks>
 sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
 {
-    readonly LatestFrameMailbox _mailbox = new();
+    // Being drawn (render thread), newest finished, being written: never the same one twice.
+    const int SlotCount = 3;
+
+    readonly Lock _gate = new();
+    readonly WriteableBitmap?[] _slots = new WriteableBitmap?[SlotCount];
     readonly Action _firstFrameShown;
     readonly MediaPresentationFrameSinkHandle _handle;
+    // Guarded by _gate: the slot being drawn, the newest finished one and the one being written (-1: none).
+    int _drawing = -1;
+    int _ready = -1;
+    int _writing = -1;
+    // The generation current when the frame in _ready was finished.
+    int _readyGeneration;
+    bool _closed;
     Visual? _owner;
     CompositionCustomVisual? _visual;
-    PresentationHandler? _presenter;
     // 1 while the render thread has stopped polling because no frame arrived for a while.
     int _asleep;
     long _publishedFrames;
     long _drawnFrames;
     int _hasFrame;
-    // Counts clears: a frame the render thread took before a clear never counts as shown after it.
+    int _bitmapAllocations;
+    // Counts clears: a frame finished before a clear never counts as shown after it.
     int _generation;
     // The newest frame's size as (width << 32 | height), 0 when none (diagnostics and tests).
     long _frameSize;
@@ -54,14 +71,14 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
         ? new PixelSize((int)(packed >> 32), (int)(packed & 0xFFFFFFFF))
         : null;
 
-    /// <summary>Gets how many frames the render thread took from the mailbox (diagnostics and tests).</summary>
+    /// <summary>Gets how many frames the render thread took for display (diagnostics and tests).</summary>
     public long PublishedFrames => Interlocked.Read(ref _publishedFrames);
 
     /// <summary>Gets how many frames were drawn since the last attach (diagnostics and tests).</summary>
     public long DrawnFrames => Interlocked.Read(ref _drawnFrames);
 
-    /// <summary>Gets how many frame buffers were allocated (diagnostics and tests).</summary>
-    internal int BufferAllocations => _mailbox.BufferAllocations;
+    /// <summary>Gets how many bitmaps were allocated (diagnostics and tests).</summary>
+    internal int BitmapAllocations => Volatile.Read(ref _bitmapAllocations);
 
     public MediaNativeSurfaceDescriptor CreateSurfaceDescriptor() => _handle.CreateSurfaceDescriptor();
 
@@ -70,12 +87,11 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
     {
         DetachVisual();
         _owner = owner;
-        _presenter = new PresentationHandler(this);
-        _visual = compositor.CreateCustomVisual(_presenter);
+        _visual = compositor.CreateCustomVisual(new PresentationHandler(this));
         _visual.Size = new Vector(size.Width, size.Height);
         _visual.Visible = visible;
         ElementComposition.SetElementChildVisual(owner, _visual);
-        Volatile.Write(ref _asleep, 1);
+        // The first message starts the polling; it goes back to sleep by itself when no frame arrives.
         Wake();
     }
 
@@ -87,7 +103,6 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
             ElementComposition.SetElementChildVisual(owner, null);
 
         _visual = null;
-        _presenter = null;
         _owner = null;
     }
 
@@ -105,9 +120,72 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
             visual.Visible = visible;
     }
 
+    /// <summary>Copies the frame into a free bitmap and makes it the newest one (the renderer's presentation thread).</summary>
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
     {
-        _ = _mailbox.Post(bgraPixels, width, height, stride);
+        if (width <= 0 || height <= 0 || stride < 4L * width || (long)stride * (height - 1) + 4L * width > bgraPixels.Length)
+            return;
+
+        int slot;
+        WriteableBitmap? bitmap;
+        int generation;
+        lock (_gate)
+        {
+            if (_closed)
+                return;
+
+            // At most two slots are taken (drawing, ready): one of the three is always free.
+            slot = FreeSlot();
+            _writing = slot;
+            bitmap = _slots[slot];
+            generation = Volatile.Read(ref _generation);
+        }
+
+        try
+        {
+            if (bitmap is null || bitmap.PixelSize.Width != width || bitmap.PixelSize.Height != height)
+            {
+                // The slot is free, so no thread uses the old bitmap.
+                bitmap?.Dispose();
+                bitmap = null;
+                lock (_gate)
+                    _slots[slot] = null;
+
+                bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+                _ = Interlocked.Increment(ref _bitmapAllocations);
+            }
+
+            Copy(bgraPixels, width, height, stride, bitmap);
+        }
+        catch
+        {
+            // A failed allocation or lock must not leave the slot marked as being written.
+            lock (_gate)
+            {
+                _writing = -1;
+                if (bitmap is not null && !ReferenceEquals(_slots[slot], bitmap))
+                    _slots[slot] = bitmap;
+            }
+
+            throw;
+        }
+
+        lock (_gate)
+        {
+            _writing = -1;
+            if (_closed)
+            {
+                bitmap.Dispose();
+                _slots[slot] = null;
+                return;
+            }
+
+            _slots[slot] = bitmap;
+            // The frame it replaces (if the render thread did not take it) is free again.
+            _ready = slot;
+            _readyGeneration = generation;
+        }
+
         // The render thread polls while frames flow; after an idle stretch it sleeps and needs one wake-up.
         if (Volatile.Read(ref _asleep) == 1 && Interlocked.Exchange(ref _asleep, 0) == 1)
             Dispatcher.UIThread.Post(Wake, DispatcherPriority.Render);
@@ -117,7 +195,9 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
     public void Clear()
     {
         var generation = Interlocked.Increment(ref _generation);
-        _mailbox.DropPending();
+        lock (_gate)
+            _ready = -1;
+
         Volatile.Write(ref _hasFrame, 0);
         Interlocked.Exchange(ref _frameSize, 0);
         _visual?.SendHandlerMessage(new PresentationHandler.ClearRequest(generation));
@@ -125,21 +205,119 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
 
     public void Dispose()
     {
-        if (!_mailbox.Close())
-            return;
+        lock (_gate)
+        {
+            if (_closed)
+                return;
+
+            _closed = true;
+        }
 
         _handle.Dispose();
+        // The render thread drops the bitmap it was drawing (it is nobody's once the sink is closed).
+        _visual?.SendHandlerMessage(PresentationHandler.ReleaseMessage);
         DetachVisual();
+        lock (_gate)
+        {
+            // The slot the render thread may still draw (and one a presentation thread is writing) go with
+            // their last user; the others are free now.
+            for (var i = 0; i < SlotCount; i++)
+            {
+                if (i != _drawing && i != _writing)
+                {
+                    _slots[i]?.Dispose();
+                    _slots[i] = null;
+                }
+            }
+        }
+    }
+
+    // Under _gate: a slot neither drawn nor holding the newest frame.
+    int FreeSlot()
+    {
+        for (var i = 0; i < SlotCount; i++)
+        {
+            if (i != _drawing && i != _ready)
+                return i;
+        }
+
+        return 0;
+    }
+
+    static unsafe void Copy(ReadOnlySpan<byte> pixels, int width, int height, int stride, WriteableBitmap bitmap)
+    {
+        using var framebuffer = bitmap.Lock();
+        var rowBytes = width * 4;
+        var destination = new Span<byte>((void*)framebuffer.Address, framebuffer.RowBytes * height);
+        if (framebuffer.RowBytes == stride && pixels.Length >= stride * height)
+        {
+            pixels[..(stride * height)].CopyTo(destination);
+            return;
+        }
+
+        for (var y = 0; y < height; y++)
+            pixels.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * framebuffer.RowBytes, rowBytes));
     }
 
     void Wake() => _visual?.SendHandlerMessage(PresentationHandler.WakeMessage);
 
-    void OnFrameTaken() => Interlocked.Increment(ref _publishedFrames);
+    // Render thread: makes the newest finished frame the one to draw. False when none is waiting.
+    bool TryTakeReady(out WriteableBitmap? bitmap, out int generation)
+    {
+        lock (_gate)
+        {
+            // A frame finished across a clear belongs to the old load: dropped, not shown.
+            if (_ready >= 0 && _readyGeneration != Volatile.Read(ref _generation))
+                _ready = -1;
+
+            if (_ready < 0)
+            {
+                (bitmap, generation) = (null, 0);
+                return false;
+            }
+
+            _drawing = _ready;
+            _ready = -1;
+            bitmap = _slots[_drawing];
+            generation = _readyGeneration;
+        }
+
+        _ = Interlocked.Increment(ref _publishedFrames);
+        return true;
+    }
+
+    // Render thread: nothing is drawn any more (a clear came, or the visual is going away).
+    void StopDrawing()
+    {
+        lock (_gate)
+            _drawing = -1;
+    }
+
+    void ReleaseDrawn(WriteableBitmap? bitmap)
+    {
+        // The sink was disposed while this was the slot in use: it is nobody's now.
+        if (bitmap is null)
+            return;
+
+        lock (_gate)
+        {
+            if (!_closed)
+                return;
+
+            for (var i = 0; i < SlotCount; i++)
+            {
+                if (ReferenceEquals(_slots[i], bitmap))
+                    _slots[i] = null;
+            }
+        }
+
+        bitmap.Dispose();
+    }
 
     // Render thread, after it drew a frame that belongs to clear generation `generation`.
     void OnFrameDrawn(int generation, int width, int height)
     {
-        // A clear came after this frame was taken: the frame is gone, not shown.
+        // A clear came after this frame was finished: the frame is gone, not shown.
         if (generation != Volatile.Read(ref _generation))
             return;
 
@@ -150,32 +328,45 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
     }
 
     /// <summary>
-    /// Runs on the render thread: takes the newest frame from the mailbox on every animation-frame
-    /// tick while frames flow, copies it into its own bitmap and draws that. The bitmap never leaves
-    /// this thread, so no lock is needed around it.
+    /// Runs on the render thread: takes the newest finished frame on every animation-frame tick while
+    /// frames flow and draws its bitmap. It never writes pixels.
     /// </summary>
-    sealed class PresentationHandler(AvaloniaFrameSink sink) : CompositionCustomVisualHandler, IDisposable
+    sealed class PresentationHandler(AvaloniaFrameSink sink) : CompositionCustomVisualHandler
     {
         public static readonly object WakeMessage = new();
-
-        /// <summary>Drops the bitmap, unless a frame newer than clear generation <paramref name="Generation"/> was taken meanwhile.</summary>
-        public sealed record ClearRequest(int Generation);
+        public static readonly object ReleaseMessage = new();
 
         // About half a second at 60 Hz without a new frame: stop polling until the next one.
         const int IdleTicksBeforeSleep = 30;
 
         WriteableBitmap? _bitmap;
-        // The clear generation current when the bitmap's frame was taken.
+        // The clear generation current when the bitmap's frame was finished.
         int _frameGeneration;
         int _idleTicks;
 
+        /// <summary>Stops drawing, unless a frame newer than clear generation <paramref name="Generation"/> was taken meanwhile.</summary>
+        public sealed record ClearRequest(int Generation);
+
         public override void OnMessage(object message)
         {
+            if (ReferenceEquals(message, ReleaseMessage))
+            {
+                sink.StopDrawing();
+                sink.ReleaseDrawn(_bitmap);
+                _bitmap = null;
+                return;
+            }
+
             if (message is ClearRequest clear)
             {
                 // A frame of the next load may already be here: only an older one is dropped.
                 if (_frameGeneration < clear.Generation)
-                    Dispose();
+                {
+                    sink.StopDrawing();
+                    sink.ReleaseDrawn(_bitmap);
+                    _bitmap = null;
+                }
+
                 Invalidate();
                 return;
             }
@@ -184,16 +375,9 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
             RegisterForNextAnimationFrameUpdate();
         }
 
-        /// <summary>Releases the bitmap (render thread); the next frame makes a new one.</summary>
-        public void Dispose()
-        {
-            _bitmap?.Dispose();
-            _bitmap = null;
-        }
-
         public override void OnAnimationFrameUpdate()
         {
-            if (TakePending())
+            if (TakeReady())
             {
                 _idleTicks = 0;
                 Invalidate();
@@ -211,7 +395,7 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
 
             // Asleep: a frame that arrived after the last look must not wait for a wake-up it will not get.
             Volatile.Write(ref sink._asleep, 1);
-            if (TakePending())
+            if (TakeReady())
             {
                 Invalidate();
                 if (Interlocked.Exchange(ref sink._asleep, 0) == 1)
@@ -233,29 +417,13 @@ sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
             }
         }
 
-        unsafe bool TakePending()
+        bool TakeReady()
         {
-            if (!sink._mailbox.TryTake(out var pixels, out var width, out var height, out var stride))
+            if (!sink.TryTakeReady(out var bitmap, out var generation))
                 return false;
 
-            if (_bitmap is null || _bitmap.PixelSize.Width != width || _bitmap.PixelSize.Height != height)
-            {
-                _bitmap?.Dispose();
-                _bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
-            }
-
-            using (var framebuffer = _bitmap.Lock())
-            {
-                var rowBytes = width * 4;
-                var destination = new Span<byte>((void*)framebuffer.Address, framebuffer.RowBytes * height);
-                for (var y = 0; y < height; y++)
-                    pixels.AsSpan(y * stride, rowBytes).CopyTo(destination.Slice(y * framebuffer.RowBytes, rowBytes));
-            }
-
-            // Hand the copied-out buffer back for the next frame.
-            sink._mailbox.Return(pixels);
-            _frameGeneration = Volatile.Read(ref sink._generation);
-            sink.OnFrameTaken();
+            _bitmap = bitmap;
+            _frameGeneration = generation;
             return true;
         }
     }
