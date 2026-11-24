@@ -30,3 +30,9 @@ Manual smoke:
 1. Play a `.cdg` + audio pair and a `.kar` file: picture and lyrics show as before.
 2. Rename `fatzaudio.dll` next to the player (copy of the folder only), start a player and open a `.cdg`:
    no picture, one CD+G Warning in the diagnostics, no crash.
+
+Follow-up (2026-11-24, Keith's hand test): a `.kar` showed its lyrics only when a background picture was there. The
+removed lyric track had also marked the song as having text (`MediaContent.Subtitle`), which starts the presentation
+loop when there is no video or background, and which the karaoke control needs to accept a MIDI song. `OpenAudio` now
+sets that flag when the audio engine draws the lyrics itself. Re-test: a `.kar` with no background file next to it
+shows its lyrics in all three players.
