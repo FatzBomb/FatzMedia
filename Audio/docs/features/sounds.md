@@ -26,6 +26,8 @@ Load a short sound once and play as many overlapping copies of it as you like, e
 | `FA_SOUND_STEAL_QUIETEST` | The voice with the lowest volume now (ramps included); the older one on a tie | `BASS_SAMPLE_OVER_VOL` |
 | `FA_SOUND_STEAL_NONE` | None: the play fails with `FA_ERROR_BUSY` | no `OVER` flag (BASS's default) |
 
+In .NET the rule is the `SoundSteal` enum (`Oldest`, `Quietest`, `None`); with `None`, `Play` throws an `AudioException` with `ErrorCode.Busy`.
+
 The default differs from BASS on purpose: a pad that is hit again should always sound.
 
 ## C
@@ -71,6 +73,8 @@ left.Ramp(AudioParameter.Pan, 0.8f, TimeSpan.FromSeconds(2));
 var pads = files.Select(f => engine.LoadSound(f)).ToArray();
 void Hit(int pad) => pads[pad].Play(fxBus);
 ```
+
+`sound.Info` is a `SoundInfo` record: `SampleRate`, `Channels`, `Frames` and `MemoryBytes` (the shared 32-bit float PCM), plus a `Duration` as time.
 
 `Play` starts the output device if it is not running. The returned voice is an `AudioStream` the sound owns: there is no need to dispose it (disposing it is allowed; the sound makes a new voice when it needs one). Disposing the sound disposes its voices.
 

@@ -79,6 +79,13 @@ To use only the default folders, pass an empty list or <xref:FatzMedia.Video.Win
 > [!NOTE]
 > Native libraries load once per process. A later player created with the same paths reuses the result. FFmpeg, once loaded, stays loaded.
 
+### One folder for your own apps (development PC)
+
+When several apps of your own use the engine, keep the Windows x64 DLLs in one untracked folder, `Video\redist\win-x64`,
+and point each app at it (for example with an MSBuild property). `scripts\stage-natives.ps1` fills it from a folder of
+FFmpeg DLLs and from the FatzMedia.Audio build, and downloads nothing. The repository's `docs/NATIVE_DEPENDENCIES.md` has
+the details.
+
 ### The DLLPath settings
 
 <xref:FatzMedia.Video.DLLPath> (`FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`). A player you create yourself with a path list does not read it.

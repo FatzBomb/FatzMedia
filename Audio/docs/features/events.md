@@ -68,6 +68,16 @@ song.MarkerReached += (_, e) => Console.WriteLine($"{e.Marker} reached");
 song.MidiTextReached += (_, e) => Console.WriteLine($"lyric: {e.Text.Text}");
 ```
 
+### .NET event data
+
+| Event data | Raised by | Members |
+|---|---|---|
+| `StreamEventArgs` | `RampCompleted`, `PositionReached`, `MarkerReached`, `Looped`, `DeviceChanged`, `SeekFailed`, `DecodeError` (`Ended`, `Started`, `Stalled`, `Resumed` and `LoudnessFinal` carry no data) | `Position`, `Frame`, `Value` (the event's `value`); `Marker` (a `MarkerKind`) for `MarkerReached`; `Error` (an `ErrorCode`) for `SeekFailed` and `DecodeError`; otherwise null |
+| `LoudnessProvisionalEventArgs` | `LoudnessProvisional` | `Source` (a `LoudnessSource`), `Position`, `Frame` ([normalization](normalization.md#when-playback-starts)) |
+| `MetadataChangedEventArgs` | `MetadataChanged` | `Metadata` (the new title), `Position`, `Frame` ([web streams](web-streams.md#song-titles-icy-metadata)) |
+
+MIDI, tracker, CD+G, deck and microphone events have their own data classes, described on their pages ([MIDI](midi.md#lyrics-and-text-events), [trackers](trackers.md#row-events), [DJ mixer](dj-mixer.md), [microphones](microphones.md)).
+
 In [reverse playback](tempo-pitch.md#reverse-playback) the events tied to a frame (markers, loop turns, position events, MIDI texts and tracker rows) are raised as the position counts down past their frames, so they come last first: a reversed song raises its last lyric first, and a tracker row's event comes when playback reaches the row's first frame, which is where the row ends when heard backwards (`fa_stream_get_tracker_position` gives the row heard now either way). The cue-out marker is passed where reversed playback starts at it, and each time a reversed loop wraps to it.
 
 ## Position events

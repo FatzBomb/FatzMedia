@@ -15,7 +15,7 @@ Video looks smooth when each decoded frame stays on screen for the same number o
 player.VideoFrameTiming = VideoFrameTiming.DisplayLocked;
 ```
 
-`DisplayLocked` needs the renderer to report vertical-blank timing for the display that shows the video. The Direct3D11 renderer on a native window does. When there is no timing, the player stays on source cadence. This is the case for the Software renderer and for WPF-composited surfaces. The player reports it, once the state has held for half a second:
+`DisplayLocked` needs the renderer to report vertical-blank timing for the display that shows the video. The Direct3D11 renderer on a native window does. The renderer reports that timing as a <xref:FatzMedia.Video.Core.Graphics.Composition.PresentationVsyncTiming> (a recent vertical-blank timestamp, the refresh period and a key for the display, so surfaces on one monitor share one timing). When video is shown on several monitors, each composition is limited to the surfaces of one display with a <xref:FatzMedia.Video.Core.Graphics.Composition.MediaCompositionTargetFilter>. When there is no timing, the player stays on source cadence. This is the case for the Software renderer and for WPF-composited surfaces. The player reports it, once the state has held for half a second:
 
 ```text
 [Info] VideoFrameTiming: Display-locked video timing unavailable: the renderer reports no vertical-blank timing for the video's display (software output or a WPF-composited surface).
@@ -34,7 +34,7 @@ The loop needs the refresh rate of the monitor that shows the video. It uses, in
 2. The rate the renderer reports for the monitor showing the primary surface.
 3. The platform's own detection (on Windows, the desktop compositor's rate), and 60 Hz when nothing is known.
 
-A rate from the platform that falls outside 23 to 600 Hz is replaced by the 60 Hz fallback.
+A rate from the platform that falls outside 23 to 600 Hz is replaced by the 60 Hz fallback. <xref:FatzMedia.Video.Core.Video.DisplayRefreshInterval> applies this rule to a refresh-rate ratio (a zero numerator or denominator also gives 60 Hz), so every platform shares the same bounds.
 
 ```csharp
 // Linux: tell the engine the real refresh rate (default 60, clamped to 24..360)
@@ -50,6 +50,10 @@ When a video opens, the player compares the video's frame rate with the display 
 ```
 
 A report like `frames are shown for 2 refreshes, so motion is smooth` means the rates match well. Reports about uneven holds or skipped frames end with a list of display rates that would be smooth for that video.
+
+## Waiting between frames
+
+A presentation loop that paces at the source frame time (41.7 ms for 23.976 fps) cannot use an ordinary wait on Windows: that wait is rounded up to the system timer step of about 15.6 ms, so 41.7 ms becomes about 46.8 ms and the loop must skip a frame from time to time. The Windows platform therefore supplies a <xref:FatzMedia.Video.Windows.Threading.WindowsPrecisionWaiterFactory>. Each waiter it creates uses a high-resolution waitable timer (Windows 10 version 1803 and later) that can be cancelled, without raising the process-wide timer resolution. If the timer cannot be created, the waiter falls back to an ordinary wait. There is nothing to configure.
 
 ## Presentation lead
 

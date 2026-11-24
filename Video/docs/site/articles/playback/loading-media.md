@@ -78,6 +78,8 @@ A YouTube link plays through an attached web view; see [Web media](web-media.md)
 
 Embedded text subtitle tracks of a local video are decoded in the background and arrive after `MediaLoaded`. Listen to `SubtitleTracksChanged` to show them.
 
+The engine does the pairing with `FileTreeBuilder.GetFileTree`, whose result is a <xref:FatzMedia.Video.Core.Files.FileTree> holding a <xref:FatzMedia.Video.Core.Files.FileType> and the paths of the parts. At startup the Windows package uses <xref:FatzMedia.Video.Core.Files.DirectoryScanner> and <xref:FatzMedia.Video.Core.Files.BinaryCompatibility> to find native libraries that fit the process (see [Extension and engine types](../reference/extension-and-engine-types.md#files-scanning-and-archives)).
+
 ## Archives
 
 A file with one of the archive extensions (`.zip`, `.7z`, `.rar`, `.tar`, `.gz`, `.bz2`, `.xz`, `.tgz`, `.tbz2`) is opened as an archive. The engine reads the entry list and picks what to play, in this order:
@@ -87,7 +89,7 @@ A file with one of the archive extensions (`.zip`, `.7z`, `.rar`, `.tar`, `.gz`,
 3. The first `.cdg` entry (graphics only).
 4. The first video entry.
 
-If none of these exist, the load fails with `UnsupportedFormat`. Entries are matched by extension, anywhere in the archive. The entry that is played is extracted to a temporary file first, so opening a large archive takes longer than opening a loose file. Image and video entries that are not the main media become [background candidates](#backgrounds). The source reports `MediaSourceClass.Archive` in its [capabilities](#network-sources).
+The archive is read through <xref:FatzMedia.Video.Core.Abstractions.IArchiveService> (the shipped <xref:FatzMedia.Video.Adapters.Archives.SharpArchiveAdapter> uses SharpCompress), which opens an <xref:FatzMedia.Video.Core.Abstractions.IArchiveHandle> whose entries are <xref:FatzMedia.Video.Core.Abstractions.IArchiveEntryInfo>. If none of these exist, the load fails with `UnsupportedFormat`. Entries are matched by extension, anywhere in the archive. The entry that is played is extracted to a temporary file first, so opening a large archive takes longer than opening a loose file. Image and video entries that are not the main media become [background candidates](#backgrounds). The source reports `MediaSourceClass.Archive` in its [capabilities](#network-sources).
 
 ## Backgrounds
 

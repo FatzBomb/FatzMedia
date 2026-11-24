@@ -974,6 +974,14 @@ Shared GPU image surfaces (Stage 027A slice 2):
 - Renderers own every GPU object. Adapters see only handles and Avalonia's
   `ICompositionGpuInterop`.
 - Each surface, primary or secondary, has its own exported set and ring (slice 5).
+- Avalonia presents on the render thread (ENG-066). A composition custom visual (`AvaloniaSharedImageSurface`)
+  imports the exported images in the compositor's graphics context and, on each draw, snapshots the newest frame
+  and draws it, so a busy UI thread cannot freeze the picture. This goes through Avalonia's `[Unstable]`
+  render-interface API, isolated in `RenderThreadGpuImport.cs`; `Avalonia` is pinned to an exact version in the
+  csproj, and an upgrade needs that file re-checked and the manual smoke (`VALIDATION.md` 57). There is no app
+  option: the frame sink (`AvaloniaFrameSink`: the renderer's thread copies each frame into one of three rotating
+  bitmaps, drawn by the same kind of render-thread visual) is only the automatic fallback, or forced for
+  diagnostics with `FATZMEDIA_AVALONIA_FRAMESINK=1`.
 - Hardware-decoded frames reach the shared set on the GPU (Stage 045A slice 1). The renderer
   re-exports the set when it adopts a decoder's device. If the compositor's GPU differs from the
   decoder's, the LUID check declines it and the surface uses its frame sink.

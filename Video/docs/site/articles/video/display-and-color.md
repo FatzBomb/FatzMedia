@@ -15,6 +15,8 @@ This article covers how the picture is fitted into the surface (<xref:FatzMedia.
 
 Background media (a looping video or image shown behind CD+G or overlays) ignores this setting and always uses `ZoomToFill`.
 
+Inside the renderer the mode becomes a stretch mode for the composition (`Zoom` is `UniformFit`, `Stretch` is `Fill`, `ZoomToFill` is `UniformToFill`; see <xref:FatzMedia.Video.Core.Graphics.Composition.MediaCompositionStretchMode>). The destination rectangle is computed with the renderer-neutral <xref:FatzMedia.Video.Core.Graphics.Geometry.RectD> and clipped to the surface; <xref:FatzMedia.Video.Core.Graphics.Geometry.ViewportMapping> pairs the clipped destination with the matching crop of the source. A host never uses these directly. See [Extension and engine types](../reference/extension-and-engine-types.md).
+
 ```csharp
 player.VideoDisplayMode = VideoDisplayMode.ZoomToFill;
 ```
@@ -60,6 +62,10 @@ The change event is raised on the thread that set the value (after `Reset`, on a
 > [!WARNING]
 > The Vulkan renderer does not support color transforms: a frame with a non-identity transform is not drawn. Use Direct3D11 or the Software renderer when you need them. See [Renderers](renderers.md).
 
+## How a frame is converted to RGB
+
+Decoded video is YCbCr, and two properties say how its values become RGB: the matrix (BT.601 for standard definition, BT.709 for high definition, BT.2020 for ultra high definition) and the range (limited, where luma 16 is black and 235 is white, or full, 0 to 255). Core reads both from the stream and hands them to the renderer with each hardware-decoded frame as a <xref:FatzMedia.Video.Core.Graphics.VideoColorSpace> made of a <xref:FatzMedia.Video.Core.Graphics.VideoColorMatrix> and a <xref:FatzMedia.Video.Core.Graphics.VideoColorRange>. When a stream does not say, `Resolve(width, height)` fills the gap the way most players do: BT.709 for frames at least 1280 wide or taller than 576, BT.601 otherwise, and limited range. The renderer converts with the result instead of leaving the choice to the graphics driver, which may assume another range and show the video washed out or crushed. A host does not set any of this.
+
 ## HDR video
 
 HDR10 (PQ) and HLG video is tone mapped to SDR by default, using the BT.2390 curve, so that it is neither washed out nor clipped. A hardware-decoded frame is tone mapped on the GPU when the renderer can; software frames are tone mapped on the CPU. The decode diagnostic says which kind of video you have, for example `HDR10/PQ, tone mapped to SDR`.
@@ -97,5 +103,7 @@ HDR output stays off, and the video is tone mapped as usual, when:
 - the surface is a secondary window, a WPF-composited surface or a shared GPU image (Avalonia);
 - the video is SDR, or the monitor is not in HDR mode;
 - the video is software decoded.
+
+The decision is made by <xref:FatzMedia.Video.Core.Video.Hdr.HdrOutputPolicy>, which has no graphics API in it. `Choose` takes whether HDR output is on, the video's <xref:FatzMedia.Video.Core.Graphics.HdrTransferFunction> (`Pq` or `Hlg`; none for SDR video) and what the monitor reports as <xref:FatzMedia.Video.Core.Video.Hdr.HdrDisplayInfo> (HDR mode on, peak nits, SDR white nits). It returns an <xref:FatzMedia.Video.Core.Video.Hdr.HdrOutputDecision>: an <xref:FatzMedia.Video.Core.Video.Hdr.HdrOutputMode> (`Sdr` or `ScRgb`), the display peak the video is mapped to, the SDR white level for the SDR layers and the reason text that is logged. A monitor that reports no peak is assumed to peak at 1000 nits. When the output switches to HDR, the swap chain also gets HDR10 static metadata (<xref:FatzMedia.Video.Core.Video.Hdr.Hdr10MetadataValues>), built from the peak the video is mapped to.
 
 The renderer logs each change once in the `D3D11.HdrOutput` category, with the reason, for example `scRGB (the monitor is in HDR mode (peak 1000 nits, SDR white 80 nits)).` or `SDR (the monitor is not in HDR mode).` A failure to switch is logged as a warning and playback continues in SDR.

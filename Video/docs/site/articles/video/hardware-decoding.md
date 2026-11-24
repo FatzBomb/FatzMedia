@@ -31,7 +31,7 @@ The decoding API depends on the platform and the renderer:
 | Vulkan renderer without a decode queue (lavapipe, older drivers) | Software. |
 | Software renderer | Software. |
 | Direct3D11 on WARP | Software is expected. Set it yourself. See [Renderers](renderers.md#warp). |
-| Linux platform | The Linux platform package has no hardware decoder of its own; only the Vulkan renderer decodes on the GPU. |
+| Linux platform | The Linux platform package has no hardware decoder of its own (it registers <xref:FatzMedia.Video.Core.Abstractions.SoftwareOnlyVideoHardwareAccelerationServices>, which offers no device types); only the Vulkan renderer decodes on the GPU. |
 
 On Windows the decoder tries the FFmpeg device types `d3d11va`, `d3d12va` and `dxva2`, in that order. Hardware decoding also depends on the FFmpeg build you deploy and on the codec (H.264, HEVC, VP9 and AV1 are typical candidates); whether a codec decodes on the GPU depends on the GPU generation and driver.
 
@@ -40,7 +40,7 @@ On Windows the decoder tries the FFmpeg device types `d3d11va`, `d3d12va` and `d
 You do not have to handle failure cases. The player switches a file to software decoding on its own, keeps playing from the current position, and does not touch audio or CD+G playback:
 
 - **The hardware decoder cannot start.** If hardware decoding produces no usable first frame, the player reopens the video in software. Warning in category `VideoPipeline`: `Hardware video decode produced no usable startup frame; falling back to software for <file>. ...`
-- **The renderer cannot use the decoder's frames.** The renderer asks for software decoding when it cannot take the frames for a reason other than a lost device: it cannot adopt the decoder's GPU device, its device has no video support, or it runs on another device. The player reopens the video in software at the current position. Warning in category `VideoPipeline`: `Decoding <file> in software until it is opened again: <reason>.`
+- **The renderer cannot use the decoder's frames.** The renderer asks for software decoding when it cannot take the frames for a reason other than a lost device: it cannot adopt the decoder's GPU device, its device has no video support, or it runs on another device. The renderer does this through a <xref:FatzMedia.Video.Core.Graphics.VideoDecodeFallback> token that the decoder attaches to every hardware frame (<xref:FatzMedia.Video.Core.Graphics.NativeVideoFrameResource>); requesting software decoding makes the player reopen the video in software at the current position. Warning in category `VideoPipeline`: `Decoding <file> in software until it is opened again: <reason>.`
 - **The renderer's device cannot decode.** With the Vulkan renderer, if its device or the FFmpeg build cannot decode, the player decodes in software and says why once. Warning in category `VideoDecoder`: `Hardware decoding on the renderer's device is unavailable (<reason>); decoding in software.`
 - **The GPU device was lost.** The player switches to software, then checks periodically whether the GPU is back and returns to hardware decoding. See [GPU device loss](../presentation/gpu-device-loss.md).
 

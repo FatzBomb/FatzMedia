@@ -134,7 +134,7 @@ Invalid values (FLAC at 32 bits, MP3 at 96 kHz, an unknown format) fail at creat
 
 ## Status, waiting and closing
 
-`fa_encoder_get_status` (.NET `encoder.Status`) reports the state, the first error, how many frames and bytes were written, the frames dropped, and the input and output formats.
+`fa_encoder_get_status` (.NET `encoder.Status`) reports the state, the first error, how many frames and bytes were written, the frames dropped, and the input and output formats. In .NET it is an `EncoderStatus` record (`State`, `Error`, `IsPaused`, `Frames`, `Duration`, `Bytes`, `DroppedFrames`, `Input`, `Output`), and the state is the `EncoderState` enum (`Idle`, `Running`, `Finished`, `Failed`, as below).
 
 | State | Meaning |
 |---|---|
@@ -175,7 +175,7 @@ LAME is LGPL, so FatzMedia.Audio never links or bundles it (the same model as FF
 1. one already loaded in the process, else
 2. one the system loader finds: `libmp3lame.dll`, `libmp3lame-0.dll` or `lame_enc.dll` (Windows, for example next to the exe), `libmp3lame.0.dylib` (macOS, also in the Homebrew and MacPorts folders), `libmp3lame.so.0` (Linux, Android).
 
-`fa_lame_load(directory)` (.NET `Lame.Load(dir)`) loads it from a folder of your choice; call it before the first MP3 encoder. `fa_lame_get_info` (.NET `Lame.Info`) says which version is in use and where it came from. Without LAME, creating an MP3 encoder returns `FA_ERROR_PROVIDER_MISSING`. LAME 3.98 and later work; 3.100 is the current release.
+`fa_lame_load(directory)` (.NET `Lame.Load(dir)`) loads it from a folder of your choice; call it before the first MP3 encoder. `fa_lame_get_info` (.NET `Lame.Info`, a `LameInfo` record of `IsLoaded`, `Version` and `Path`) says which version is in use and where it came from. Without LAME, creating an MP3 encoder returns `FA_ERROR_PROVIDER_MISSING`. LAME 3.98 and later work; 3.100 is the current release.
 
 ## Possible future updates
 

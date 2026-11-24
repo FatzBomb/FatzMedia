@@ -1,6 +1,6 @@
 # FatzMedia.Video Working Notes
 
-> Superseded by the repo-root `AGENTS.md` (2026-10-24). Kept because completed stage records
+> Superseded by the repo-root `CLAUDE.md` (2026-10-24; it was `AGENTS.md` then). Kept because completed stage records
 > reference it; do not update it.
 
 Use this file plus the single stage file named in the command.

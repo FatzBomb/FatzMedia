@@ -157,7 +157,7 @@ using var etude = engine.OpenFile("etude.mid", new StreamOptions { SoundFont = p
 
 ## Lyrics and text events
 
-Every text event of the file is listed in time order by `fa_stream_get_midi_text` (`AudioStream.MidiTexts`), with its frame, time, type, track and UTF-8 text. While the stream plays on a device, `FA_EVENT_MIDI_TEXT` (`AudioStream.MidiTextReached`) is raised as each one is heard, with `value` = its index. In [reverse playback](tempo-pitch.md#reverse-playback) they come last first, as the position counts down past them.
+Every text event of the file is listed in time order by `fa_stream_get_midi_text` (`AudioStream.MidiTexts`), with its frame, time, type, track and UTF-8 text (in .NET a list of `MidiText` records: `Index`, `Type`, `Text`, `Flags`, `Position`, `Frame`, `Track`). While the stream plays on a device, `FA_EVENT_MIDI_TEXT` (`AudioStream.MidiTextReached`, with `MidiTextEventArgs`: `e.Text` is the `MidiText` heard) is raised as each one is heard, with `value` = its index. In [reverse playback](tempo-pitch.md#reverse-playback) they come last first, as the position counts down past them.
 
 Lyrics come cleaned up for display. The marks karaoke files use for layout (`/` and `\` before a syllable in `.kar` files; CR and LF in lyric events) are removed from the text and given as `FA_MIDI_NEW_LINE` and `FA_MIDI_NEW_PARAGRAPH` flags on the syllable that starts the new line. A karaoke screen joins the syllables of a line as they are and breaks before the flagged ones. In a `.kar` file the words are `FA_MIDI_LYRIC` and its `@` header lines are `FA_MIDI_TEXT`; `fa_stream_get_midi_info` gives the title and artist from the `@T` lines, and the copyright.
 
@@ -252,7 +252,7 @@ song.MidiTextReached += (_, e) =>
 
 ### Tempo, time and key signatures
 
-The file's tempo changes and time and key signatures are listed apart from the texts, by `fa_stream_get_midi_marks` (`AudioStream.MidiMarks`), in time order with their numbers in `value` and `value2` and a readable text:
+The file's tempo changes and time and key signatures are listed apart from the texts, by `fa_stream_get_midi_marks` (`AudioStream.MidiMarks`), in time order with their numbers in `value` and `value2` and a readable text (.NET: a list of `MidiMark` records: `Type`, `Value`, `Value2`, `Text`, `Position`, `Frame`, `Track`):
 
 | Type | `value` | `value2` | `text` |
 |---|---|---|---|

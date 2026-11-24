@@ -2,7 +2,7 @@
 
 Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `../../WEB_PLAYER_DESIGN.md`.
 
-- `Player.Open(url)` detects a supported web service and plays it through the system web view. Release
+- `Player.Load(url)` / `LoadAsync` detects a supported web service and plays it through the system web view. Release
   scope: **YouTube only**, on Windows (WPF, WinForms) and Avalonia first; other platforms later.
 - Later, one at a time: Vimeo, Dailymotion, Spotify, Deezer (check that new developer apps are open),
   KaraFun (blocked: needs an OEM partner agreement; no `.kfn` decoder).
@@ -12,7 +12,7 @@ Owner 2026-11-13. Built into FatzMedia.Video, not a separate project. Design: `.
   WebView) and only pass messages.
 - A web item takes over the media surface. FatzAudio routing, key and tempo, mixing, crossfade,
   extraction and the CD+G overlay report `NotSupported` for it.
-- Sign-in: `SignIn`/`SignOut` open the service's login in the same persistent web view profile.
+- Sign-in: `IWebMediaPlayer.SignInAsync`/`SignOutAsync` open the service's login in the same persistent web view profile.
   FatzMedia never sees passwords or tokens.
 - No extraction, caching or background playback (YouTube developer policies).
 - **First task: a spike**, before any design is final. It must show: (1) Google sign-in works in the

@@ -120,6 +120,10 @@ The consequences for you:
 
 Audio output uses FatzAudio behind an engine interface (<xref:FatzMedia.Video.Core.Abstractions.IAudioEngine>). Audio formats FatzAudio cannot decode fall back to FFmpeg decoding, which is played through the same FatzAudio chain. Treat FatzAudio as an implementation detail of the audio engine: the player API does not expose its types. See [Audio engine](../audio/audio-engine.md).
 
+## Extension types
+
+Several public types exist only so that a renderer, platform package or adapter can talk to Core: composition planning, HDR output decisions, the engine contracts (`IMediaEngine` and the like), archive services and the web-media records. [Extension and engine types](../reference/extension-and-engine-types.md) names each one and says where the engine uses it.
+
 ## What is not in scope
 
 The library does not provide a plugin architecture, DVD or Blu-ray playback, or a playlist or media library. Your application owns its playlist; the engine offers a "prepared next" slot to make transitions quick (see [Prepared next and transitions](../playback/prepared-next-and-transitions.md)).

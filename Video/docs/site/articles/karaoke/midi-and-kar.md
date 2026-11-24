@@ -59,6 +59,11 @@ FatzAudio draws the lyrics of every MIDI file that has them; there is no switch.
 `ShowMidiLyrics` property is still on the API, but it no longer changes anything. If the audio
 engine did not start, MIDI files do not open at all and no lyrics are shown.
 
+A `.kar` plays with its lyrics on their own: no background picture or video is needed. When FatzAudio
+draws the lyrics of the opened song, the player adds `MediaContent.Subtitle` to `Content` (so `HasSubtitle` is
+`true`), which is what starts the presentation loop and what lets <xref:FatzMedia.Video.Wpf.KaraokeSurface> and
+its Avalonia and WinForms twins accept the song. A MIDI file without lyrics does not get the flag.
+
 The lyrics are not an entry in `SubtitleTracks`. SRT and ASS subtitles of a video are not
 affected. See [Subtitles](../subtitles/subtitles.md) for the track API.
 

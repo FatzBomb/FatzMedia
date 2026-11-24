@@ -73,7 +73,15 @@ using var track = engine.OpenDisc(disc, 1);
 track.PlayOn(output);
 ```
 
-Other members: `disc.Status` (`State`, `Locked`, `ChangeCount`), `disc.GetPregap(track)`, `disc.Eject()`, `disc.Load()`, `disc.Locked`, `disc.Speed`, `DiscOptions` (`ReadOffset`, `Retries`, `DeEmphasis`, `UseC2`), `toc[number]`, `toc.FreedbId`, `toc.FreedbQuery`.
+`Disc.Drives` lists `DiscDriveInfo` records (`Id`, `Name`, `Vendor`, `Product`, `Revision`); pass an `Id` to `Disc.Open`. `disc.Status` is a `DiscStatus` (`State`, `Locked`, `ChangeCount`), where `State` is a `DiscState`: `Ready` (a disc is in and readable), `NoDisc` (tray closed and empty), `TrayOpen`, or `SpinningUp` (just inserted, ready in a moment).
+
+```csharp
+uint seen = 0;
+var status = disc.Status;                              // poll about once a second
+if (status.ChangeCount != seen) { seen = status.ChangeCount; if (status.State == DiscState.Ready) toc = disc.Toc; }
+```
+
+Other members: `disc.Status`, `disc.GetPregap(track)`, `disc.Eject()`, `disc.Load()`, `disc.Locked`, `disc.Speed`, `DiscOptions` (`ReadOffset`, `Retries`, `DeEmphasis`, `UseC2`), `toc[number]`, `toc.FreedbId`, `toc.FreedbQuery`.
 
 ## Drives
 

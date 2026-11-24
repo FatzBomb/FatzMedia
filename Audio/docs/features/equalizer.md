@@ -95,6 +95,8 @@ fa_stream_remove_dsp(song, id);
 using var dsp = song.AddDsp((samples, channels, rate) => { /* change samples in place */ });
 ```
 
+The .NET callback is a `DspProcessor`, `void Process(Span<float> samples, int channels, int sampleRate)`: interleaved float frames to change in place. Disposing the handle `AddDsp` returns removes it; an optional `priority` argument orders processors.
+
 - Streams on a device: 2 channels at the device rate, after rate, tempo and pitch, before the equalizer, volume, fades and normalization.
 - Decode-only streams: the format `fa_stream_read` returns, inside `fa_stream_read`.
 - It runs where the stream is decoded, never on the audio thread, so it may take some time. That is normally an engine worker; the first 100 ms after `fa_stream_seek` or `fa_stream_attach` are decoded on the thread making the call, and decode-only streams decode inside `fa_stream_read`. A change in what it does is heard after the decode-ahead buffer (500 ms by default, `buffer_ms`).

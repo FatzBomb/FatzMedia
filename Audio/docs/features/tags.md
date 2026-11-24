@@ -100,7 +100,7 @@ A library scan that only needs text and a duration:
 fa_tags_read_path(path, FA_TAGS_NO_PICTURES, &tags);    /* pictures are skipped unread */
 ```
 
-Every picture, not only the cover: `fa_tags_get_picture_count` and `fa_tags_get_picture(tags, i, &pic)` list them in file order (none with `FA_TAGS_NO_PICTURES`; .NET `Tags.Pictures`).
+Every picture, not only the cover: `fa_tags_get_picture_count` and `fa_tags_get_picture(tags, i, &pic)` list them in file order (none with `FA_TAGS_NO_PICTURES`; .NET `Tags.Pictures`, a list of `TagPicture` records: `Type`, `MimeType`, `Description`, `Data`, `Format`). The `Type` is a `PictureType`, the ID3v2 / FLAC picture type: `Other`, `FileIcon`, `OtherFileIcon`, `FrontCover`, `BackCover`, `Leaflet`, `Media`, `LeadArtist`, `Artist`, `Conductor`, `Band`, `Composer`, `Lyricist`, `RecordingLocation`, `DuringRecording`, `DuringPerformance`, `ScreenCapture`, `BrightColouredFish`, `Illustration`, `BandLogo`, `PublisherLogo`.
 
 A file you already hold in memory (downloaded, or from a database): `fa_tags_read_memory(data, size, flags, &tags)` reads it like `fa_tags_read_path`. The bytes are used only during the call, not copied (.NET `Tags.Read` from a byte span).
 
@@ -121,11 +121,11 @@ Console.WriteLine($"{tags.Artist} - {tags.Title} ({tags.Album}, track {tags.Trac
 Console.WriteLine($"{tags.Codec}, {tags.SampleRate} Hz, {tags.Channels} ch, {tags.Duration}, {tags.Bitrate / 1000} kbps");
 Console.WriteLine($"{tags.FileSize} bytes, {tags.AudioSize} of audio, {tags.BitsPerSample} bits");
 
-if (tags.Cover is { } cover)
+if (tags.Cover is { } cover)                           // a TagPicture
     File.WriteAllBytes("cover" + (cover.MimeType == "image/png" ? ".png" : ".jpg"), cover.Data);
 
 string? gain = tags["REPLAYGAIN_TRACK_GAIN"];
-foreach (var item in tags.Items)
+foreach (var item in tags.Items)                       // TagItem: Key, Value, Format
     Console.WriteLine($"{item.Format} {item.Key} = {item.Value}");
 
 // Faster scans (a library scan should always pass NoPictures: the default copies every
