@@ -2,7 +2,7 @@
 
 ## Active files
 
-- `../AGENTS.md` (repo root) — repo rules for agents: build, architecture, tests, workflow
+- `../CLAUDE.md` — repo rules for agents: build, architecture, tests, workflow
 - `roadmap/STAGE_MANIFEST.md` — completed milestones and future stage index
 
 ## Roadmap layout

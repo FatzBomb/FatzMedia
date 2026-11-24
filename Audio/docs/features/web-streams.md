@@ -121,11 +121,11 @@ using var show = engine.OpenUrl("https://cdn.example.com/show/master.m3u8", opts
 | `engine.OpenUrl(string or Uri, options)` | `fa_stream_open_url` |
 | `StreamOptions.Network` (`NetworkOptions`) | `fa_open_options.net` (`fa_net_options`); `Reconnect = false` and `SongTitles = false` are the two flags |
 | `stream.Metadata` (`StreamMetadata`) | `fa_stream_get_metadata` |
-| `stream.MetadataChanged` (with the new `Metadata`) | `FA_EVENT_METADATA` |
+| `stream.MetadataChanged` (`MetadataChangedEventArgs`: the new `Metadata`, and `Position` and `Frame` where the title starts) | `FA_EVENT_METADATA` |
 | `stream.NetworkStatus` (null for other streams) | `fa_stream_get_net_status` |
 | `stream.GetHttpHeader(name)` (null when absent) | `fa_stream_get_http_header` |
 | `stream.Stalled`, `stream.Resumed` | `FA_EVENT_STALLED`, `FA_EVENT_RESUMED` |
-| `NetworkOptions.Downloaded`, `stream.SetDownloadHandler(handler)` | `fa_net_options.download_proc`, `fa_stream_set_download_callback` ([saving a station](#saving-a-station-as-it-plays)) |
+| `NetworkOptions.Downloaded`, `stream.SetDownloadHandler(handler)` (a `DownloadHandler`, `void Handler(ReadOnlySpan<byte> data)`) | `fa_net_options.download_proc`, `fa_stream_set_download_callback` ([saving a station](#saving-a-station-as-it-plays)) |
 
 A URL that isn't an absolute http or https URL throws `ArgumentException`. Other failures throw `AudioException` with the codes below.
 
@@ -247,6 +247,8 @@ var radio = engine.OpenUrl(url, new StreamOptions { Network = new NetworkOptions
 radio.SetDownloadHandler(null);   // or SetDownloadHandler(handler) to start recording mid-stream
 file.Dispose();
 ```
+
+The .NET callback is a `DownloadHandler`: the span is valid only during the call, it runs on the stream's download thread in order, the download waits while it runs, and an exception thrown in it is swallowed.
 
 ## HLS
 

@@ -3,7 +3,7 @@
 The WPF, Avalonia and WinForms packages are UI adapters. An adapter owns the control and the window: it creates a
 surface, tells the player about it, and passes input and size changes on. It does not own media logic, rendering,
 timing, CD+G or presentation policy; Core and the renderer do. This article lists the types an adapter author
-uses. For the three existing adapters see their READMEs, which also list how they differ.
+uses. For the three existing adapters see their READMEs, which also list how they differ. Other public types that only exist for renderers and platform packages are named in [Extension and engine types](../reference/extension-and-engine-types.md).
 
 ## The shape of an adapter
 
@@ -28,6 +28,8 @@ borrowed handles.
 | `SharedGpuImage` | `SharedImageConsumer` | The renderer exports GPU images that the adapter's compositor shows. |
 | `X11Window`, `WaylandSurface`, `AppKitView`, `AndroidNativeWindow` | `Window`, `Display`, `Surface`, `View` | Reserved ids for platform packages that do not exist yet. |
 
+The type id and each handle name are <xref:FatzMedia.Video.MediaNativeSurfaceTypeId> and <xref:FatzMedia.Video.MediaNativeHandleId>: small structs around a non-blank string (`Value`, trimmed; `IsValid`). `MediaNativeSurfaceTypeIds` and `MediaNativeHandleIds` hold the known ones, and a platform package may define ids of its own without a change in Core.
+
 A <xref:FatzMedia.Video.MediaNativeHandle> is a named handle value that is **borrowed**: the player never releases or
 destroys it, and it must stay valid from a successful attach until detach or replacement. A frame sink and a GPU
 image consumer are managed objects, so they travel as opaque tokens (`MediaPresentationFrameSinkHandle` and
@@ -44,11 +46,27 @@ adapter's compositor reads, with no CPU copy. The adapter implements `IMediaShar
   (duplicates) producer-owned handles and never closes them; importing a POSIX file descriptor transfers ownership
   to the importer.
 - `MediaSharedGpuImageSyncKinds` says how producer and consumer take turns: a DXGI keyed mutex, two exported
-  semaphores per image, or none (the producer finishes its GPU work first and the consumer calls `ReleaseFrame`).
+  semaphores per image, or host synchronization (no GPU primitive: the producer finishes its GPU work first and
+  the consumer's `ReleaseFrame` call ends its use). With semaphores, <xref:FatzMedia.Video.MediaSharedGpuSemaphoreHandleKind>
+  says how they are shared: an opaque POSIX file descriptor (importing it transfers ownership) or an opaque Win32
+  handle (producer-owned).
 - `MediaSharedGpuImageRing` is the producer's bookkeeping, the same for every renderer: it hands out the least
   recently presented free image and tracks the keys and pending semaphore signals, so the compositor never samples a
   half-written frame.
 - Alpha is always premultiplied (`MediaSharedGpuImageFormat`).
+
+The pieces fit together like this:
+
+| Type | Role |
+| --- | --- |
+| `IMediaSharedGpuImageConsumer` | What the adapter implements: a `Request`, then `OnImagesCreated`, `OnFrameReady` and `OnUnavailable(reason)`. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageRequest> | What the consumer can import: its image handle kinds in order of preference, the semaphore handle kinds, and its GPU's identity (LUID and UUID) so a renderer on another adapter declines instead of exporting images the consumer cannot open. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageCapability> | One entry of that list: an image handle kind with the synchronization kinds the consumer supports for it. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageSelection> | What the producer chose for one image set: the handle kind, the synchronization and, with semaphores, the semaphore handle kind. `MediaSharedGpuImageRequest.TrySelect` makes the choice, or says why there is none. |
+| `MediaSharedGpuImageSet` | A double-buffered set of exported images, handed over in `OnImagesCreated`; a newer set replaces it. The consumer calls `CompleteImport` once, `ReleaseFrame` once per frame, and the producer `Retire`s the set. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageBuffer> | One exported image: its handle (for Vulkan also the allocation size and offset) and, with semaphores, the render-complete and consumer-release semaphore handles. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageFrame> | A finished frame announced in `OnFrameReady`: the set's generation, the image index, a frame number and, with a keyed mutex, the keys to acquire and release. |
+| <xref:FatzMedia.Video.MediaSharedGpuImageWrite> | The producer's side of the ring: which image to write next, the key to acquire it with and whether to wait for a pending consumer-release signal first. |
 
 Keep a frame-sink fallback. The Avalonia surface switches to it when the GPU path is off, unsupported or has
 failed, and says why in `PresentationPathReason`.

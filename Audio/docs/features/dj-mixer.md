@@ -109,7 +109,7 @@ mixer.CueLost += (_, _) => Console.WriteLine("headphones gone; call SetCueDevice
 ```
 
 - **Drift.** The headphones run on their own crystal. The cue reaches them through a small buffer that a resampler keeps at a steady fill, moving its rate by at most 0.05% (about 1 cent, never heard), whatever the drift between the two devices or their rates (a 48 kHz master and 44.1 kHz headphones). The buffer holds one master period, one headphone period, the resampler's look-ahead and a millisecond; a gap in the headphones raises it by 2 ms (up to 50 ms), so a system with uneven callbacks settles at what it needs. The mic inputs use the same bridge.
-- **Lining up.** The two outputs have different latencies, so the master heard in the headphones (`FA_MIX_CUE_MIX`) would come early or late against the speakers. The mixer delays the faster output by the difference (at most 500 ms): `fa_mixer_latency.cue_align` (`Latency.CueAligned`) says which (`FA_CUE_ALIGN_CUE` the headphones, `FA_CUE_ALIGN_MASTER` the master) and `cue_alignment` by how much. Within 1 ms nothing is delayed (`FA_CUE_ALIGN_NONE`). `FA_MIXER_CUE_LOWEST_LATENCY` (`CueOutput.Device(lineUp: false)`) delays neither (`FA_CUE_ALIGN_OFF`), for the lowest latency on both.
+- **Lining up.** (.NET: `mixer.Latency` is a `MixerLatency` record, `Master`, `Cue`, `CueAlignment`, `MicInput`, `MicMonitor` and `CueAligned`, a `CueAlign`: `None`, `Cue`, `Master`, `Skipped`, `Off`.) The two outputs have different latencies, so the master heard in the headphones (`FA_MIX_CUE_MIX`) would come early or late against the speakers. The mixer delays the faster output by the difference (at most 500 ms): `fa_mixer_latency.cue_align` (`Latency.CueAligned`) says which (`FA_CUE_ALIGN_CUE` the headphones, `FA_CUE_ALIGN_MASTER` the master) and `cue_alignment` by how much. Within 1 ms nothing is delayed (`FA_CUE_ALIGN_NONE`). `FA_MIXER_CUE_LOWEST_LATENCY` (`CueOutput.Device(lineUp: false)`) delays neither (`FA_CUE_ALIGN_OFF`), for the lowest latency on both.
 - **Monitored mics come first.** While any mic is monitored (`FA_MIC_MONITOR`), the master is never delayed: a singer must not hear their voice later. When the master is the faster output, alignment is skipped (`FA_CUE_ALIGN_SKIPPED`; the headphones are `cue` − `master` late), and a delay already on the master comes off the moment a mic is monitored. Delaying the headphones goes on as usual.
 - **Heard positions.** A delay on the master is part of what the crowd hears, so it is part of `fa_stream_get_clock` (`Clock`), and with it CD+G and lyric surfaces and video that follows the clock, deck meters, `fa_device_get_latency` and `mic_monitor`. `fa_stream_get_position`, which counts frames handed to the device, has no output latency in it.
 - **Trim.** The latencies the system reports are not exact. `FA_MIX_CUE_TRIM_MS` (`CueTrim`, −250..250 ms) is added to the master's: raise it when the headphones sound early against the speakers, lower it when late. It takes effect at once and can't be ramped.
@@ -131,9 +131,11 @@ mixer.CueLost += (_, _) => Console.WriteLine("headphones gone; call SetCueDevice
 | `FA_DECK_GAIN` / `Gain` | 0..1, the channel fader | 1 |
 | `FA_DECK_TRIM_DB` / `TrimDb` | −12..+12 dB, on top of loudness normalization | 0 |
 | `FA_DECK_EQ_LOW_DB`, `_MID_DB`, `_HIGH_DB` / `Eq.Low`, `Eq.Mid`, `Eq.High` | `FA_DECK_EQ_KILL_DB` (−60, silent) .. +6 dB | 0 |
-| `FA_DECK_XFADER_SIDE` / `Side` | thru (0), A (1), B (2) | deck 1 A, deck 2 B |
+| `FA_DECK_XFADER_SIDE` / `Side` (a `CrossfaderSide`) | thru (0, `Thru`), A (1), B (2) | deck 1 A, deck 2 B |
 | `FA_DECK_CUE` / `Cue` | off / on | off |
 | `FA_DECK_SYNC_RANGE` / `SyncRange` | 0.01..1: the most [sync](#sync-and-beat-loops) moves the deck's tempo away from 1, not rampable | 0.16 (±16%) |
+
+In .NET the rampable mixer parameters are the `MixerParameter` enum (`Crossfader`, `MasterGain`, `CueMix`, `CueGain`), taken by `mixer.Ramp(parameter, target, duration)`; the deck's are `DeckParameter` (`Gain`, `TrimDb`, `EqLowDb`, `EqMidDb`, `EqHighDb`) for `deck.Ramp`.
 
 Every parameter has a getter: `fa_mixer_get_param`, `fa_deck_get_param` and `fa_mic_get_param` return the current value. `fa_mixer_get_output_channels` gives the device's output channel count and the first cue channel (-1 when there are no cue channels; .NET `OutputChannels`, `CueChannel`). `fa_mic_get_index` gives a mic's slot, 0 or 1, as used in `fa_mixer_latency.mic_*` and `fa_mixer_event.index` (.NET `Mic.Index`).
 
@@ -152,7 +154,7 @@ Every parameter has a getter: `fa_mixer_get_param`, `fa_deck_get_param` and `fa_
 
 ## Deck loops
 
-`fa_deck_set_loop(deck, in, out)` (`Loop`) loops between two source frames, at any time, also while the deck plays. The loop is made where the deck is decoded, so it is seamless (no gap, no fade), follows tempo and pitch, raises `FA_EVENT_LOOPED` (`Looped`) at each turn, and the position and clock report it as heard.
+`fa_deck_set_loop(deck, in, out)` (`Loop`, a `DeckLoop(In, Out)` in frames; `LoopTime` is the same as a `DeckLoopTime(In, Out)` in `TimeSpan`s) loops between two source frames, at any time, also while the deck plays. The loop is made where the deck is decoded, so it is seamless (no gap, no fade), follows tempo and pitch, raises `FA_EVENT_LOOPED` (`Looped`) at each turn, and the position and clock report it as heard.
 
 - Setting an out point the deck has only just passed (up to 0.5 s ago, as a "loop out" button does) loops back at once and keeps the loop's phase. An out point further behind jumps to the in point.
 - `out <= in` turns the loop off; playback carries on from where it is. A seek past the out point also leaves the loop; a seek inside it keeps it.
@@ -207,7 +209,7 @@ b.Unsync();
 - **Beat loops** (`fa_deck_set_loop_beats`, `LoopBeats`): 1/16..32 beats on the grid, from the beat heard now (a loop shorter than a beat starts on the last whole part of the beat). While a deck loop is on the new one keeps its in point, so halving and doubling work like a DJ's loop buttons. On a deck playing reversed it is mirrored: the loop ends at the beat heard and lies below it, and halving and doubling keep its end. 0 turns the loop off. It is an ordinary [deck loop](#deck-loops), read back with `fa_deck_get_loop` (`Loop`) in frames.
 - **Beat jumps** (`fa_deck_beat_jump`, `BeatJump`): moves the deck by whole grid beats (negative is back; 1/16..1024 either way, e.g. 1, 4, 16, 32) at once, joined seamlessly like a loop. The distance is counted on the grid from the beat heard now, so a jump of whole beats keeps the beat exactly where it was (also on a tempo map) and a synced deck stays on the leader's beat. While a deck loop is on the loop moves along by the same beats, as a CDJ's loop move does (kept inside the song). On a paused or stopped deck the position moves. A jump past the end ends the song; one before the start lands on frame 0. A locked deck is pulled back on its next beat unless the jump keeps what the lock aligns: whole beats with `FA_SYNC_BEAT | FA_SYNC_LOCK`, whole bars with `FA_SYNC_BAR | FA_SYNC_LOCK`. `FA_ERROR_BUSY` while sync's own jump or the previous jump still waits to be decoded (try again a moment later); `FA_ERROR_NOT_SEEKABLE` for live streams.
 - **Reverse**: `fa_stream_set_reverse` on the deck's stream (`AudioStream.Reverse`) plays it backwards from where it is, at once (the audio just heard goes back out of the stream's buffer, so there is no gap), and switching it off plays on forward from where it got to. While reversed, everything works mirrored: sync pulls the deck onto the leader's beat with its beats counting down, deck loops turn at their in point, beat loops lie below the beat heard, and loop changes and beat jumps join without a gap. See [reverse playback](tempo-pitch.md#reverse-playback).
-- **Beat info** (`fa_deck_get_beat_info`, `BeatInfo`): the heard BPM, the position in beats and bars, and while synced the phase error against the leader in ms (positive: this deck is ahead). `FA_ERROR_NOT_FOUND` (null in .NET) for an empty deck or one without a grid.
+- **Beat info** (`fa_deck_get_beat_info`, `BeatInfo`, a `DeckBeatInfo?` record struct of `Bpm`, `Beat`, `Bar`, `PhaseErrorMs`, `Locked` and `Synced`): the heard BPM, the position in beats and bars, and while synced the phase error against the leader in ms (positive: this deck is ahead). `FA_ERROR_NOT_FOUND` (null in .NET) for an empty deck or one without a grid.
 
 ## Slip mode
 
@@ -277,6 +279,7 @@ mixer.AutoMix.DeckEmpty += (s, e) =>   // mixer.AutoMix is a DjAutoMix
     e.Deck.Load(engine.OpenFile(queue.Dequeue()), force: true);
     old?.Dispose();
 };
+// The handlers get a DeckEventArgs: e.Deck is the incoming deck (Started, Done) or the idle one (DeckEmpty).
 mixer.AutoMix.Start(new AutoMixOptions { LengthBeats = 32, BassSwap = true, RestoreTempo = true });
 mixer.AutoMix.Skip();
 ```

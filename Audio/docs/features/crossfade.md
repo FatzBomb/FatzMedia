@@ -116,6 +116,8 @@ song.Markers.MixPoint = null;                         // clear it
 song.MarkerReached += (_, e) => Console.WriteLine($"{e.Marker} at {e.Position}");
 ```
 
+In .NET the five markers are the `MarkerKind` enum: `CueIn`, `CueOut`, `FadeInEnd`, `FadeOutStart` and `MixPoint`. `Markers.Get(kind)` and `Markers.Set(kind, position)` take it, and `MarkerReached` hands you a `StreamEventArgs` whose `Marker` says which one was passed (see [events](events.md#net-event-data)).
+
 - **Marker fades depend on the position, not on time.** Seeking into the middle of a fade plays it at the right level.
 - The default fade shape is equal power for both, so two tracks whose marker fades overlap keep constant loudness. The fade-out plays the shape backwards.
 - `FA_EVENT_MARKER` (`value` = the marker) is raised when playback passes a marker.

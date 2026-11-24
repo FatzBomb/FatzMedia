@@ -27,7 +27,7 @@ When FFmpeg is loaded, it also decodes a fixed set of audio extensions that Fatz
 Notes:
 
 - If FatzAudio cannot start, the player still starts. Video plays without sound, and images and CD+G graphics without audio still load. Audio files, MP3+G and network audio fail to load with `MediaErrorCode.NativeLibraryMissing`.
-- MIDI files play only through FatzAudio; FFmpeg does not play them. Lyrics inside MIDI and KAR files appear as a subtitle track. A soundfont can be set with `MediaPlayerConfiguration.MidiSoundfontPath`; otherwise the system bank is used (see [MIDI soundfont](../getting-started/native-dependencies.md#midi-soundfont)).
+- MIDI files play only through FatzAudio; FFmpeg does not play them. Lyrics inside MIDI and KAR files are drawn by FatzAudio on the subtitle layer; they are not an entry in `SubtitleTracks` (see [MIDI and KAR](../karaoke/midi-and-kar.md)). A soundfont can be set with `MediaPlayerConfiguration.MidiSoundfontPath`; otherwise the system bank is used (see [MIDI soundfont](../getting-started/native-dependencies.md#midi-soundfont)).
 - Audio inside archives is supported. See [Loading media](loading-media.md#archives).
 
 ## Video
@@ -48,7 +48,7 @@ A local file in a video container with no video stream, such as an audio-only `.
 |---|---|
 | Sidecar file next to a video, same base name | `.srt` `.ass` `.ssa` |
 | Embedded in the video | Text subtitle tracks |
-| MIDI and KAR files | The lyrics inside the file |
+| MIDI and KAR files | The lyrics inside the file (drawn by FatzAudio, not a subtitle track) |
 
 Bitmap subtitle formats (DVD, PGS) are not supported. Embedded tracks are decoded after `MediaLoaded`; `SubtitleTracksChanged` tells you when they are ready. `player.SubtitleTracks` lists the tracks and `SelectSubtitleTrack(id)` picks one (`null` turns subtitles off).
 
@@ -93,6 +93,8 @@ string[] audioExtensions = [.. FileTypes.Audio.Concat(FileTypes.FfmpegAudio)];
 ```
 
 `FileTypes.Audio` holds the extensions FatzAudio plays, `FileTypes.FfmpegAudio` the FFmpeg-only ones.
+
+When the engine opens a path it runs it through `FileTreeBuilder.GetFileTree`, which returns a <xref:FatzMedia.Video.Core.Files.FileTree>: a <xref:FatzMedia.Video.Core.Files.FileType> (`Audio`, `AudioCdg`, `VideoSubtitle`, `AudioCdgArchive`, `Unsupported`, `FileNotFound` and so on) and the paths of the parts it found. Hosts normally read what the player reports (`MediaContent`, `MediaSourceClass`) rather than build a tree. See [Extension and engine types](../reference/extension-and-engine-types.md#files-scanning-and-archives).
 
 ### Video decoder capabilities
 

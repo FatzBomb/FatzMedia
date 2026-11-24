@@ -67,7 +67,17 @@ using var tone = engine.OpenCallback(48000, 2, buffer =>
 tone.PlayOn(output);
 ```
 
-The .NET callback always gets float samples (`buffer.Length` is frames times channels). An exception thrown in it ends the stream.
+The .NET callback is an `AudioCallback`, `int Fill(Span<float> buffer)`: it always gets float samples (`buffer.Length` is frames times channels) and returns the frames written, with the same return rules as the table above (`AudioEngine.EndOfStream`, or any negative number, ends it). An exception thrown in it ends the stream.
+
+For another sample format, `engine.OpenCallback(format, rawFill)` takes a `RawAudioCallback`, `int Fill(Span<byte> buffer)`: the span holds `buffer.Length / frame size` frames in the stream's `AudioFormat`, and the return value counts frames, not bytes.
+
+```csharp
+using var pcm = engine.OpenCallback(new AudioFormat(SampleFormat.Int16, 44100, 2), bytes =>
+{
+    bytes.Clear();                      // silence
+    return bytes.Length / 4;            // frames: 4 bytes per stereo S16 frame
+});
+```
 
 ### Threads and limits
 

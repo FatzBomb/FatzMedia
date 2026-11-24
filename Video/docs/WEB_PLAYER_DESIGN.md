@@ -1,10 +1,10 @@
 # Web media player: design
 
-Status: draft; nothing is built. Stage `roadmap/future/060A_IDEA_WebMediaPlayer.md`. Owner 2026-11-13.
+Status: YouTube is built on Windows (WPF, WinForms) and Avalonia; Premium behaviour is unverifiable (see Findings). Stage `roadmap/active/060A_ACTIVE_WebMediaPlayer.md`. Owner 2026-11-13. How to use it: `site/articles/playback/web-media.md`.
 
 ## Goal
 
-`Player.Open(url)` plays a stream from an online service in a system web view, using the service's
+`Player.Load(url)` (or `LoadAsync`) plays a stream from an online service in a system web view, using the service's
 official embedded player. It is part of FatzMedia.Video, not a separate project. Users find content
 themselves and paste a URL; there is no search or browsing.
 
@@ -19,7 +19,7 @@ Release: **YouTube only**, on Windows (WPF, WinForms) and Avalonia first. Other 
 | Dailymotion | Later | Official Player SDK |
 | Spotify | Later | Official embed or playback SDK; user signs in (Premium for full playback) |
 | Deezer | Later | Unverified: check whether new developer apps are open before planning |
-| KaraFun | Later, blocked | Catalog and playback API is an OEM partner deal. No `.kfn` decoder (protected format; their terms forbid getting around it) |
+| KaraFun | After release, blocked | Catalog and playback API is an OEM partner deal. No `.kfn` decoder (protected format; their terms forbid getting around it) |
 
 ## Shape
 
@@ -27,7 +27,7 @@ Release: **YouTube only**, on Windows (WPF, WinForms) and Avalonia first. Other 
   item supports) and URL detection. No WebView reference, no `[DllImport]`; the boundary scripts
   (`check-core-boundary.ps1`) stay green.
 - **Adapters** supply the web view and only create it and pass messages: WebView2 (WPF, WinForms),
-  Avalonia `NativeWebView`; later WKWebView (macOS, iOS) and Android WebView. No player logic.
+  Avalonia `NativeWebView` (`Avalonia.Controls.WebView`); later WKWebView (macOS, iOS) and Android WebView. No player logic.
 - **Bridge:** one small JavaScript page per service plus a message channel to Core. The same bridge can
   later run in a plain browser page.
 - A second screen or fullscreen is the host placing the web view in its own window.
@@ -51,11 +51,11 @@ must be at least 200 by 200 px; 480 by 270 is recommended for 16:9.
 
 ## Sign-in
 
-- `SignIn` / `SignOut` open the service's login in the same persistent web view profile as playback.
+- `IWebMediaPlayer.SignInAsync` / `SignOutAsync` open the service's login in the same persistent web view profile as playback.
   The user types credentials into the service's own page.
 - FatzMedia never sees, stores or logs passwords or tokens. Cookies live in the web view profile;
   `SignOut` clears them.
-- YouTube public videos need no sign-in. Spotify and KaraFun would.
+- YouTube public videos need no sign-in. Spotify would (KaraFun, after release, too).
 
 ## First task: spike
 

@@ -8,7 +8,7 @@ This project exists to test the reusable control without launching the final hos
 
 It may later become a small release/debug player, but currently it is intentionally lightweight.
 
-## How MediaControl is incorporated
+## How FatzMedia.Video is incorporated
 
 Project reference:
 
@@ -105,7 +105,7 @@ var player = await Player.CreateAsync(configuration, [nativePath], platform);
 
 The loader also recognizes `runtimes/win-x64/native` beneath the application base.
 A real host may pass several directories in search-priority order.
-The MediaControl packages do not copy or redistribute native DLLs. See
+The FatzMedia.Video packages do not copy or redistribute native DLLs. See
 `docs/NATIVE_DEPENDENCIES.md` for the complete host distribution policy.
 
 ## Command line

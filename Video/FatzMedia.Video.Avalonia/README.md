@@ -44,7 +44,7 @@ Avalonia adapter for `FatzMedia.Video` (Stage 027A slices 1, 2 and 5).
     visual imports and draws them on Avalonia's **render thread**, so the picture keeps moving
     while the UI thread is busy (drop-downs, window loads; ENG-066). This uses Avalonia's
     `[Unstable]` render-interface API, kept in `RenderThreadGpuImport.cs` and pinned with the exact
-    Avalonia version in the csproj; if it throws or is missing, the surface falls back by itself.
+    Avalonia version in the csproj (re-check that file and run the manual smoke, `VALIDATION.md` 57, whenever Avalonia is upgraded); if it throws or is missing, the surface falls back by itself.
   - **Frame sink** (the automatic fallback: no GPU interop, a renderer that cannot export, a
     lost graphics context, or any failure of the path above): the renderer's thread copies each
     frame straight into one of three rotating bitmaps and the same kind of render-thread visual

@@ -127,6 +127,14 @@ CompositionTarget.Rendering += (_, _) =>                   // WPF, once per fram
 
 Other members: `song.HasCdg`, `song.LoadCdg(path)`, `song.LoadCdg(bytes)`, `song.RemoveCdg()`, `song.CdgOffset`, `cdg.UpdateAt(time)`. `StreamOptions.NoCdg` skips the automatic lookup. `CdgFrame` is a `ref struct`: read its pixels before the next `Update` call.
 
+Small types of the .NET surface API:
+
+| Type | Meaning |
+|---|---|
+| `CdgPixelFormat` | `CdgSurfaceOptions.PixelFormat`, and `frame.PixelFormat`: `Bgra32` (default), `Rgba32`, `Indexed8` (one byte per pixel, an index 0..15 into `frame.Palette`) |
+| `CdgColor` | `(R, G, B, A)` bytes, straight alpha: the palette entries, `frame.Background`, and the colours of the [effects](#presentation-options-fa_cdg_surface_set_presentation) and of the [lyric surface](lyrics.md) |
+| `CdgRect` | `(X, Y, Width, Height)` in pixels, with `IsEmpty`: `frame.Dirty` (output pixels) and `CdgChangedEventArgs.Area` (native 300x216 pixels) |
+
 SkiaSharp:
 
 ```csharp
@@ -321,11 +329,20 @@ fx.shadow.on = 1;                     /* black at 60 %, 0.5 (1 CD+G pixel) down 
 fa_surface_set_effects(cdg, &fx);     /* NULL turns them off */
 ```
 
+```csharp
+cdg.Effects = new SurfaceEffects
+{
+    Outline = new OutlineEffect(),                                   // black, 0.5
+    Bevel = new BevelEffect { Highlight = new CdgColor(255, 255, 255, 160), Strength = 0.6f },
+};
+cdg.Effects = null;                                                  // all off
+```
+
 | Field | Meaning |
 |---|---|
 | `outline` | `color`, `opacity` (multiplies the colour's alpha), `size` 0..5 (1 = 1.5 CD+G pixels), `fade` 0..1 (the part of the width that eases out: 0 a hard edge, 1 a glow) |
 | `shadow` | The shape and its outline, `distance` 0..5 (1 = 2 CD+G pixels) away towards `angle_degrees` (counter-clockwise from the right, 315 = down right), spread by `size` 0..5 (1 = 2 CD+G pixels) with `fade` easing it out: a soft shadow without a blur |
-| `bevel` | Lit from `light_angle_degrees` (135 = top left): `highlight` on the edges facing the light and `shade` on those facing away, `size` 0..5 in from the edge (1 = 1 CD+G pixel), `strength` 0..1, `fade` |
+| `bevel` (.NET `BevelEffect`: `Highlight`, `Shade`, `Strength`, `Size`, `LightAngleDegrees`, `Fade`) | Lit from `light_angle_degrees` (135 = top left): `highlight` on the edges facing the light and `shade` on those facing away, `size` 0..5 in from the edge (1 = 1 CD+G pixel), `strength` 0..1, `fade` |
 
 Colours are 0xAARRGGBB with straight alpha. `sung_color` is for the lyric surface; CD+G ignores it. Sizes are in CD+G pixels, so the look is the same at every presentation size. Sizes and distances go up to `FA_FX_MAX_SIZE` (5; .NET `SurfaceEffects.MaxSize`), up from 1 before: a bigger one reaches further, so it costs more time and memory to draw (the bevel most, which looks 4 times its size around a pixel). The drawing order is shadow, outline, the picture, then the bevel over it, all premultiplied against transparent like the rest of the picture. Effects see only the cropped picture as shown and stop at its edge (at the margin), so nothing outside the crop, such as a coloured border with `FA_SAFETY_REMOVE`, casts an outline or shadow into it; with smooth-scroll offsets set they see the picture area as moved, and a transparent border stays transparent. Changing the effects draws the next frame again in full. With effects on, a scroll still moves the picture, and where only colours change (a lyric being coloured in, a new colour table, a fade) the effects are not worked out again: what they kept is blended with the new colours, with the same pixels as a full redraw. Where shapes change (new tiles), the effects are drawn again around them, as far as they reach. Large redraws are shared with the engine's idle worker threads (up to three, and only while no stream needs decoding); so are large redraws of the picture itself, effects or not. Keeping the effects for a colour change costs 5 bytes per pixel of the effects' picture with outline or shadow and 9 with the bevel: at 2160p about 32 or 58 MB, freed when the effects are turned off. At small presentation sizes (1x to 3x) the effects are worked out at twice the size and each output pixel is the mean of its four, so thin outlines and bevels keep their shape where the output has too few pixels for them: a 0.3 outline at 1x covers about half of the pixel next to the shape, and a stroke 2 CD+G pixels wide gets a bevel. This costs about four times as much as effects at the output size, still a few milliseconds at these sizes. The bevel reaches at most half as far in as the stroke's middle (half the largest distance to an edge within its reach), so a thin stroke keeps its own colour along its middle and is never filled in by the bevel: a stroke 1 CD+G pixel wide at 1x has no bevel. This limit applies to the [lyric surface](lyrics.md) too.
 
@@ -377,11 +394,11 @@ fa_stream_set_event_callback(song, on_event, app);
 fa_stream_set_cdg_events(song, 1);
 ```
 
-In .NET, subscribing to `song.CdgChanged` turns the events on (`CdgChangedEventArgs.Area`, `PaletteChanged`, `Packs`), and removing the last handler turns them off.
+In .NET, subscribing to `song.CdgChanged` turns the events on (`CdgChangedEventArgs.Area` as a `CdgRect`, `PaletteChanged`, `Packs`), and removing the last handler turns them off.
 
 ### Graphics info
 
-`fa_stream_get_cdg_info` says where a stream's graphics come from (`FA_CDG_SOURCE_FILE` for a `.cdg`, ZIP entry or memory block, `FA_CDG_SOURCE_DISC` for a disc's subcode), how many packs there are, and how far apart the seek checkpoints are. For a disc track, `disc_parity` is 1 when the subcode layout was chosen by the packs' P/Q parity and 0 when it was chosen by counting instructions (drives that return the parity zeroed). When the layout was chosen by parity, every pack is checked as it arrives: a pack with one or two damaged symbols is corrected from its P parity (four parity symbols, which can repair two), and a pack with more damage is dropped (it would draw garbage tiles) rather than drawn. `disc_corrected` and `disc_dropped` count them (the packs of the track read so far; a part read again counts its latest read), which tells a scratched disc from a clean one. The disc's interleave spreads a scratch over neighbouring packs, so most damage reaches a pack as one or two symbols. A pack with three or more cannot always be told from a sound pack two symbols away: about 1 in 15 of them is "repaired" into that pack, and draws as such. If the parity stops arriving part-way (300 failing packs in a row, as when a drive changes read mode), the rest of the track is applied as read. With `disc_parity` 0 there is nothing to check against, and the packs are applied as read. In .NET this is `song.CdgInfo` (`DiscCorrected`, `DiscDropped`).
+`fa_stream_get_cdg_info` says where a stream's graphics come from (`FA_CDG_SOURCE_FILE` for a `.cdg`, ZIP entry or memory block, `FA_CDG_SOURCE_DISC` for a disc's subcode), how many packs there are, and how far apart the seek checkpoints are. For a disc track, `disc_parity` is 1 when the subcode layout was chosen by the packs' P/Q parity and 0 when it was chosen by counting instructions (drives that return the parity zeroed). When the layout was chosen by parity, every pack is checked as it arrives: a pack with one or two damaged symbols is corrected from its P parity (four parity symbols, which can repair two), and a pack with more damage is dropped (it would draw garbage tiles) rather than drawn. `disc_corrected` and `disc_dropped` count them (the packs of the track read so far; a part read again counts its latest read), which tells a scratched disc from a clean one. The disc's interleave spreads a scratch over neighbouring packs, so most damage reaches a pack as one or two symbols. A pack with three or more cannot always be told from a sound pack two symbols away: about 1 in 15 of them is "repaired" into that pack, and draws as such. If the parity stops arriving part-way (300 failing packs in a row, as when a drive changes read mode), the rest of the track is applied as read. With `disc_parity` 0 there is nothing to check against, and the packs are applied as read. In .NET this is `song.CdgInfo`, a `CdgInfo` record (`Source`, `PackCount`, `CheckpointInterval`, `CheckpointCount`, `DiscParity`, `DiscCorrected`, `DiscDropped`) whose `Source` is a `CdgSource`: `None` (no graphics yet), `File` or `Disc`.
 
 ## Sync
 

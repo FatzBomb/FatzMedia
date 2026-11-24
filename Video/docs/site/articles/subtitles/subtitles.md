@@ -164,6 +164,10 @@ The lyrics of a MIDI file are drawn by FatzAudio, not as a subtitle track: they 
 `SubtitleTracks`. They follow `SubtitleSyncOffset`. `ShowMidiLyrics` is kept on the API but no
 longer changes anything.
 
+## Inside the engine
+
+Subtitle cues come from an <xref:FatzMedia.Video.Core.Abstractions.ISubtitleEngine> (it loads a sidecar file or takes cues from an embedded track and answers `GetActiveCues(position)`). A rasterizer turns the active cues into a premultiplied BGRA bitmap, a <xref:FatzMedia.Video.Core.Subtitle.SubtitleRasterResult>, which the renderer composites as the subtitle layer. A host never calls these; they are listed, with the word-by-word karaoke timing records, in [Extension and engine types](../reference/extension-and-engine-types.md#karaoke-and-subtitle-text).
+
 ## See also
 
 - [Karaoke overview](../karaoke/overview.md)

@@ -72,7 +72,7 @@ Each getter returns `FA_ERROR_NOT_FOUND` when its kind was not asked for, or whe
 | `flags` | `FA_GRID_CONSTANT` (one tempo), `FA_GRID_EXACT` (from the file), `FA_GRID_EDITED` (set by your app), `FA_GRID_BARS` (bars known) |
 | `segment_count` | Tempo segments; 1 is a constant tempo |
 
-The tempo map, `fa_analysis_get_tempo_map`, is a list of `fa_tempo_segment`: the source frame where a stretch starts, its BPM, and the beat number at that frame. Beats count from `first_beat`, which is beat 0, and are not whole where a tempo change falls between beats. A constant grid is one segment starting at `first_beat` with beat 0.
+The tempo map, `fa_analysis_get_tempo_map` (.NET `BeatGrid.Segments`, a list of `TempoSegment(Start, Bpm, Beat)`), is a list of `fa_tempo_segment`: the source frame where a stretch starts, its BPM, and the beat number at that frame. Beats count from `first_beat`, which is beat 0, and are not whole where a tempo change falls between beats. A constant grid is one segment starting at `first_beat` with beat 0.
 
 To turn a beat number into a frame, find the last segment whose `beat` is at or before it (the first segment stands in before that) and add the distance at that segment's tempo:
 
@@ -178,7 +178,7 @@ Every result says which settings made it (`fa_silence.mode`, `threshold_db`, `mi
 | `first_drawn` | `FirstDrawn`, `FirstDrawnTime` | Karaoke: the first frame at which the picture changes (CD+G graphics, MIDI lyrics). `FA_FRAMES_UNSET` (.NET null) when nothing is drawn, and always from an analysis or a detector |
 | `last_drawn` | `LastDrawn`, `LastDrawnTime` | Karaoke: the frame after the last change of the picture |
 | `mode`, `threshold_db`, `min_length_ms`, `window_ms`, `min_sound_ms` | `Mode`, `ThresholdDb`, `MinLength`, `Window`, `MinSound` | The settings that produced the result (`window_ms` and `min_sound_ms` are 0 for Peak) |
-| regions | `Regions` | `fa_silence_region { start, end }` (end is the frame after the last silent one), in order. The silence before the first audible frame and after the last one are regions too, when they are long enough |
+| regions | `Regions` | `fa_silence_region { start, end }` (.NET a `SilenceRegion(Start, End)`, with `Length`), end is the frame after the last silent one, in order. The silence before the first audible frame and after the last one are regions too, when they are long enough |
 
 There are three ways to get it, and the same audio gives the same answer from each:
 

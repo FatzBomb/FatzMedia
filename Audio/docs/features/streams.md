@@ -166,6 +166,8 @@ using var fromStream = engine.OpenStream(File.OpenRead("track.wav"));
 
 ## Stream info
 
+In .NET `stream.Info` (and `tags.Info`) is a `StreamInfo` record; its `Format` is an `AudioFormat`. `AudioEngine.SupportedFormats` lists `AudioFormatInfo` records: `Name`, `Description`, `Extensions` (without dots) and `MimeTypes`.
+
 | Field | Meaning |
 |---|---|
 | `format` | The source's own format: always 32-bit float interleaved, at the file's rate and channel count. It doesn't change when the stream is attached to a device. |
@@ -191,7 +193,7 @@ In .NET, `stream.PlayOn(device)` attaches (or moves) and plays, and `stream.Deta
 
 ## Dropouts (underruns)
 
-The engine's worker threads decode each attached stream ahead of the mix. When an output callback finds too little decoded audio for a playing stream, that stream drops out for the rest of the callback: an underrun. `fa_stream_get_stats` (.NET `stream.GetStats()`) tells you how often that happened and how much is decoded ahead now, so a diagnostics panel can show it and an app can back off (turn off render-ahead or effects on its surfaces, or play fewer streams) when the count goes up:
+The engine's worker threads decode each attached stream ahead of the mix. When an output callback finds too little decoded audio for a playing stream, that stream drops out for the rest of the callback: an underrun. `fa_stream_get_stats` (.NET `stream.GetStats()`, which returns a `StreamStats` record of `Underruns` and `Buffered`) tells you how often that happened and how much is decoded ahead now, so a diagnostics panel can show it and an app can back off (turn off render-ahead or effects on its surfaces, or play fewer streams) when the count goes up:
 
 | Field | .NET | Meaning |
 |---|---|---|

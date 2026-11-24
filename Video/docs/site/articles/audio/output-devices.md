@@ -57,6 +57,8 @@ player.AudioDeviceChanged += (_, e) =>
     });
 ```
 
+The event is fed by an <xref:FatzMedia.Video.Core.Abstractions.IAudioDeviceMonitor> that the player starts for modes that use audio output. The monitor reports each change as an <xref:FatzMedia.Video.Core.Abstractions.AudioDeviceChangeInfo>, which `AudioDeviceChangedEventArgs` wraps as `Info`.
+
 <xref:FatzMedia.Video.AudioDeviceChangedEventArgs> carries:
 
 | Member | Meaning |

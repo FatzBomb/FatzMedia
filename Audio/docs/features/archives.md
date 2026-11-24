@@ -16,6 +16,25 @@ bytes, never from its name. RAR is recognised by `fa_archive_detect` / `Archive.
 opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg` yourself, open the audio with
 `fa_stream_open_memory` and attach the graphics (see [CD+G](cdg.md)).
 
+In .NET the format and filter are the `ArchiveFormat` and `ArchiveFilter` enums (`Archive.Format`, `Archive.Filter`,
+and `Archive.Detect(bytes)` for a file you have not opened):
+
+| `ArchiveFormat` | `ArchiveFilter` (what the files are wrapped in) |
+|---|---|
+| `None` (not an archive), `Zip`, `Tar`, `SevenZip`, `Rar` (recognised only) | `None` (a ZIP or a plain tar) |
+| `GZip`, `BZip2`, `Xz` (one file in a gzip, bzip2 or xz file) | `GZip`, `BZip2`, `Xz` (a `.tar.gz` and so on, or the single file's compression) |
+
+Each `ArchiveEntry` carries an `ArchiveMethod` (how it is stored: `Stored` plays straight from the archive, then
+`Deflate`, `Deflate64`, `BZip2`, `Lzma`, `Lzma2`, `PpMd`, or `Other` for a method this build cannot unpack) and an
+`ArchiveEntryKind` (what the name says it is: `Audio`, `Cdg`, `Video`, `Image`, `Text` or `Other`; the pairing also looks at the bytes).
+
+```csharp
+using var archive = Archive.Open("Songs.zip");
+Console.WriteLine($"{archive.Format} / {archive.Filter}");     // Zip / None
+foreach (var e in archive.Entries.Where(e => e.Kind == ArchiveEntryKind.Audio && e.IsReadable))
+    Console.WriteLine($"{e.Name}: {e.Method}");
+```
+
 ## How each kind is read
 
 - **ZIP and plain tar** list from the directory or by hopping from header to header; a stored entry plays straight

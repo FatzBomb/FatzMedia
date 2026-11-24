@@ -137,7 +137,7 @@ Always set `struct_size` (`fa_lyric_style_init` does).
 
 | Field (.NET) | Default | Range | Meaning |
 |---|---|---|---|
-| `wipe` (`Wipe`) | `FA_WIPE_CROSSFADE` (Classic, Minimal); `FA_WIPE_SWEEP` (others) | | Cross-fade: the syllable changes colour as a whole. Sweep: an edge moves across it |
+| `wipe` (`Wipe`, a `LyricWipe`: `Crossfade`, `Sweep`) | `FA_WIPE_CROSSFADE` (Classic, Minimal); `FA_WIPE_SWEEP` (others) | | Cross-fade: the syllable changes colour as a whole. Sweep: an edge moves across it |
 | `wipe_share` (`WipeShare`) | 0.8 | 0.1..1 | A syllable's wipe takes this part of the time to the next syllable |
 | `wipe_cap_ms` (`WipeCap`) | 600 | 0..2000 | ...at most this long. 0 = every wipe is instant |
 | `instant_cut_ms` (`InstantCut`) | 150 | 0..1000 | Wipes shorter than this are instant |
@@ -165,7 +165,7 @@ Shown before a line that follows a long gap.
 
 | Field (.NET) | Default | Range | Meaning |
 |---|---|---|---|
-| `countdown` (`Countdown`) | `FA_COUNTDOWN_CLOCK` | | `OFF`; `CLOCK`: an arrow every `countdown_ms / (count + 1)`; `BEAT`: an arrow a beat, from the song's tempo |
+| `countdown` (`Countdown`, a `LyricCountdown`: `Off`, `Clock`, `Beat`) | `FA_COUNTDOWN_CLOCK` | | `OFF`; `CLOCK`: an arrow every `countdown_ms / (count + 1)`; `BEAT`: an arrow a beat, from the song's tempo |
 | `countdown_count` (`CountdownCount`) | 4 | 1..8 | Arrows |
 | `countdown_ms` (`CountdownDuration`) | 5000 | 1000..20000 | CLOCK: the whole countdown, the arrows and a last fade |
 | `countdown_gap_ms` (`CountdownGap`) | 6000 | 0..60000 | Shown after a gap this long |

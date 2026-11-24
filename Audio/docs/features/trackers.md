@@ -159,6 +159,8 @@ song.TrackerRowReached += (_, e) =>
 };
 ```
 
+The handler gets a `TrackerRowEventArgs`: `Position` (a `TrackerPosition` of `Order` and `Row`), `Time` and `Frame` where the row starts.
+
 ## Module tempo, volumes and the order list
 
 These change the **song's own state**, as `BASS_ATTRIB_MUSIC_*` did. They are not a time-stretch: `FA_PARAM_TEMPO` (`Tempo`) stretches the finished audio and leaves the song as it is, while the calls below change the song's tempo and speed, so a pattern's notes land on different frames. They take effect after the decode-ahead buffer.
@@ -226,6 +228,8 @@ song.TrackerCellEvents = TrackerCellEvents.Instruments | TrackerCellEvents.Sync;
 song.TrackerInstrumentPlayed += (_, e) => Light(e.Channel, e.Value);   // e.Value: the instrument
 song.TrackerSyncReached += (_, e) => { if (e.Value == 0x42) Cue(); };
 ```
+
+Both handlers get a `TrackerCellEventArgs`: `Channel` (0-based), `Value` (the 0-based instrument, or the `Zxx` parameter 0 to 255), and `Time` and `Frame` where the row starts.
 
 ## Subsongs
 

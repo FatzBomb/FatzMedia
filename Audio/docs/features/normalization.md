@@ -57,7 +57,7 @@ A 4-minute 44.1 kHz stereo song, loudly mastered, on a 4-core 2.1 GHz x86 contai
 
 A first play waits briefly for the final value (200 ms by default, see below); otherwise playback never waits. It starts with the best value known at that moment. When the exact value arrives, the gain **glides** to it (at most 12 dB/s down, 6 dB/s up) so no jump is heard, and `FA_EVENT_LOUDNESS_FINAL` is raised. If the exact value is already known when the stream starts playing, which is the usual case for tagged, cached or short files, the first sample already has the exact gain.
 
-When a stream is first heard on a value that is not final yet, `FA_EVENT_LOUDNESS_PROVISIONAL` is raised, with the `fa_loudness_source` it started on in `value` (`FA_LOUDNESS_PARTIAL`, `FA_LOUDNESS_ESTIMATE` or `FA_LOUDNESS_NONE`). Log it next to `FA_EVENT_LOUDNESS_FINAL` to see how often a guess was used.
+When a stream is first heard on a value that is not final yet, `FA_EVENT_LOUDNESS_PROVISIONAL` is raised, with the `fa_loudness_source` it started on in `value` (`FA_LOUDNESS_PARTIAL`, `FA_LOUDNESS_ESTIMATE` or `FA_LOUDNESS_NONE`). Log it next to `FA_EVENT_LOUDNESS_FINAL` to see how often a guess was used. In .NET the event is `LoudnessProvisional`, with `LoudnessProvisionalEventArgs` (`Source` as a `LoudnessSource`, `Position` and `Frame`).
 
 #### A short wait for the first play
 
@@ -141,7 +141,7 @@ Streams that can't be read a second time (`fa_stream_open_io` and [web streams](
 Each song is measured once, ever. Songs with ReplayGain or R128 tags never use the cache: tags are read first.
 
 - **Where.** You do not have to set anything: with `fa_engine_config.cache_directory` NULL (.NET `AudioEngineOptions.CacheDirectory` null) FatzMedia.Audio uses the OS's per-user cache folder plus `FatzAudio`: Windows `%LOCALAPPDATA%\FatzAudio`, Linux `$XDG_CACHE_HOME` or `~/.cache`, macOS and iOS `~/Library/Caches`, Android the app's cache folder. A folder you set always wins (for example your app's own `AudioCache`). It is created with all its parents. `FA_ENGINE_NO_CACHE` (.NET `NoCache = true`) turns the cache off: nothing is kept or written.
-- **When it cannot be used.** The cache is only an optimisation, so a folder that cannot be made, or a file that cannot be written (read-only, disk full, no permission), never fails the engine or a scan; songs are just measured again. `fa_engine_get_cache_info` (.NET `engine.GetCacheInfo()`) tells you: `status` is `FA_OK`, `FA_ERROR_IO` (folder or file unusable, also after a later failed write) or `FA_ERROR_NOT_FOUND` (no cache). Check it once after creating the engine and log it:
+- **When it cannot be used.** The cache is only an optimisation, so a folder that cannot be made, or a file that cannot be written (read-only, disk full, no permission), never fails the engine or a scan; songs are just measured again. `fa_engine_get_cache_info` (.NET `engine.GetCacheInfo()`, a `CacheInfo` record of `Directory`, `Status` and `IsDefault`, true when FatzMedia.Audio chose the folder) tells you: `status` is `FA_OK`, `FA_ERROR_IO` (folder or file unusable, also after a later failed write) or `FA_ERROR_NOT_FOUND` (no cache). Check it once after creating the engine and log it:
 
 ```c
 fa_cache_info ci = { sizeof(ci) };
@@ -247,7 +247,7 @@ Console.WriteLine($"{scanned.IntegratedLufs:F1} LUFS, LRA {scanned.RangeLu:F1} L
 | `range_lu` | Loudness range, EBU Tech 3342. |
 | `true_peak_dbtp` | True peak. From tags this is the tagged sample peak. |
 | `is_final` | 1 when the source is tags, cache, scan, app or dialnorm; 0 for a partial scan, an estimate or nothing yet. |
-| `source` | `fa_loudness_source`, see the table above. |
+| `source` | `fa_loudness_source`, see the table above. In .NET the `LoudnessSource` enum: `None`, `Estimate`, `Tags`, `Cache`, `Scan`, `App`, `Dialnorm`, `Partial`. |
 | `gain_db` | Gain normalization applies to this stream right now. |
 
 Values that aren't known are `NAN` (.NET: `double.NaN`), for example the range and peak of an estimate.
@@ -280,11 +280,13 @@ if (fa_tags_write_loudness(engine, album, 3, FA_TAGS_WRITE_ALBUM, res) != FA_OK)
 C#:
 ```csharp
 var results = await Task.Run(() => engine.WriteLoudnessTags(albumFiles, album: true));
-foreach (var r in results.Where(r => !r.Written))
+foreach (var r in results.Where(r => !r.Written))      // each result is a LoudnessTagResult
     Console.WriteLine($"{r.Path}: {r.Error}");
 
 engine.WriteLoudnessTags("single.mp3");   // one file; throws AudioException if it was not written
 ```
+
+A `LoudnessTagResult` has `Path`, `Error` (`ErrorCode.Ok` when written; `Written` is the same as a bool), the measured `IntegratedLufs` and `TruePeakDbtp`, the `TrackGainDb` written, the album's `AlbumLufs`, `AlbumPeakDbtp` and `AlbumGainDb` (NaN without `album`, or when not written), and the `TagFormat` written (null when nothing was).
 
 **Safety.** Each file is written to a new file next to it (`<name>.fatzaudio-N.tmp`), flushed to the disk, and checked: its loudness tags must read back as written, and its first and middle audio must decode to exactly the same samples as the original's. Only then is it renamed over the original, so a failure, a crash or a power cut leaves the original as it was (at worst a stray `.tmp` file next to it). The original must not change while it is measured and written (`FA_ERROR_BUSY` if it did). On POSIX the new file gets the original's permissions and a symbolic link is followed (the file it points to is rewritten). On Windows the rename fails with `FA_ERROR_IO` while the file is open in another program, or in a playing stream, since FatzMedia.Audio opens files without delete sharing; close it first.
 
