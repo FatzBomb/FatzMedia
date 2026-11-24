@@ -32,6 +32,7 @@ Manual smoke (not run here, UI):
    follows live. Same on the WinForms player's Video tab.
 2. Avalonia player with a missing native library: the red banner shows the reason; open a file and watch the busy bar.
 3. `FatzMedia.Video.Sample.Player.Avalonia --ab-demo=<folder of clips> --ab-swaps=6`: the window swaps clips; the
-   panel colour changes with each swap; the trace has `[ABDemo] swap i/N ready after ...`. Try `--surface=framesink`.
+   panel colour changes with each swap; the trace file `%TEMP%\FatzMedia.Video\player-avalonia-debug.log` (not the Log panel) has
+   `[ABDemo] swap i/N ready after ...`. Try `--surface=framesink`.
 4. An Avalonia app that sets `MediaSurface.OverlayContent` (Kamujo / TriviaBomb style): the overlay is visible above
    the video on the shared GPU path and on the frame-sink path.

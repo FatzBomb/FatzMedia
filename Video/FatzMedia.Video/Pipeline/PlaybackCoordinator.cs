@@ -175,10 +175,22 @@ sealed partial class PlaybackCoordinator : IDisposable
         set => Seek(value);
     }
 
-    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true;
+    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true && MarkEngineDrawnLyrics();
 
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
-        _session.Audio?.Open(archiveEntry) == true;
+        _session.Audio?.Open(archiveEntry) == true && MarkEngineDrawnLyrics();
+
+    /// <summary>
+    /// MIDI/KAR lyrics the audio engine draws itself (FatzAudio) mark the subtitle layer as showing, as the removed
+    /// managed lyric track did (audit U1). Without the flag nothing presents the lyrics of a song with no background
+    /// picture or video, and the karaoke control rejects the song. Always returns true (the audio opened).
+    /// </summary>
+    bool MarkEngineDrawnLyrics()
+    {
+        if (_session.Audio?.Engine is IKaraokeOverlaySource { DrawsOverlay: true })
+            _session.State.AddContent(MediaContent.Subtitle);
+        return true;
+    }
 
     /// <summary>
     /// Audio mode (043A): plays the soundtrack of a video file as plain audio, with no video
