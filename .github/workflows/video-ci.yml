@@ -10,6 +10,7 @@ on:
       - 'Video/**'
       # Only the Audio parts Video builds: the .NET binding and the native library.
       - 'Audio/bindings/dotnet/src/**'
+      - 'Audio/bindings/dotnet/Directory.Build.props'
       - 'Audio/src/**'
       - 'Audio/include/**'
       - 'Audio/third_party/**'
@@ -24,6 +25,7 @@ on:
       - 'Video/**'
       # Only the Audio parts Video builds: the .NET binding and the native library.
       - 'Audio/bindings/dotnet/src/**'
+      - 'Audio/bindings/dotnet/Directory.Build.props'
       - 'Audio/src/**'
       - 'Audio/include/**'
       - 'Audio/third_party/**'

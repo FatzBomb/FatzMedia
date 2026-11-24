@@ -41,6 +41,9 @@ static partial class AssParser
         return cues;
     }
 
+    // Far beyond any film, and well inside TimeSpan's range: a larger hour count is a corrupt cue, not an overflow.
+    const int MaxHours = 100_000;
+
     static bool TryParseTimestamp(string value, out TimeSpan timestamp)
     {
         timestamp = default;
@@ -49,7 +52,7 @@ static partial class AssParser
             || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var hours)
             || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes)
             || !double.TryParse(parts[2], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var seconds)
-            || hours < 0 || minutes is < 0 or >= 60 || seconds is < 0 or >= 60)
+            || hours is < 0 or > MaxHours || minutes is < 0 or >= 60 || seconds is < 0 or >= 60)
         {
             return false;
         }

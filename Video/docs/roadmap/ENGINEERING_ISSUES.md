@@ -63,6 +63,31 @@ Completed. The BASS halves of ENG-040, ENG-043 (the WMA crash) and ENG-047 are c
 stands. The managed CD+G engine and MIDI lyric code were removed on 2026-11-12 (audit U1, PR 22), which closed ENG-029;
 ENG-031 describes code that is now gone, so re-check it against FatzAudio's lyric drawing before working on it.
 
+### ENG-067 - Codex review of FatzMedia (2026-11-24): findings still open
+
+Reported: 2026-11-24 (an OpenAI Codex read-only review of Audio, Video and their boundary). The verified ones were
+fixed in the same PR: mid-stream picture-size change in `VideoDecoder`, a timed-out `PlaybackScheduler` stop reporting
+"nothing runs", a Vulkan fence timeout upgraded to a confirmed device loss, SRT/ASS hour overflow, the YouTube message
+parser on a non-string `type`, the loopback page server's partial request line, the service provider not disposing
+an unresolved audio engine, the DSP callback state freed after a failed removal, the download-handler swap race, an
+engine release from inside a download handler, the Linux default native directory, and two doc/CI gaps. Still open,
+each read in the code but not reproduced (they need a smoke run or a design call):
+- `NetworkReadAhead`: `_pendingSeek` cleared before the native seek ends, so a consumer can see a stale EOF in a network loop.
+- `PlayerCore` async web load holds the control queue while waiting for the web view with no timeout.
+- `ReadAheadBuffer`: an inferred end-of-stream marker can stay ahead of audio packets that arrive later.
+- Avalonia `RenderThreadGpuImport` leaks an imported image or semaphore when a later import throws.
+- `VideoAudioEngine`: the FFmpeg soundtrack path does not drain the decoder or call `FeedAudioStream.End()` at a
+  non-looping EOF, so the last samples held by the tempo processor or decoder are not played.
+- `VideoAudioEngine` rebases audio and picture to separate timeline origins, dropping an intentional offset between them.
+- `FatzAudioPushAudioOutput` applies a loudness scan of FatzAudio's default track to the track FFmpeg selected.
+- `CdgPipeline` reports success for a standalone CD+G file when the audio engine is unavailable (placeholder draws nothing).
+- Avalonia `FirstFrameReady` is raised before the shared-GPU import is drawn.
+- Native bootstrap: Linux keeps references of libraries loaded before a later one fails; Windows marks all seven FFmpeg
+  DLLs loaded after one `av_guess_format` probe.
+- Scripts: `test-windows-native-publish.ps1` omits the FatzMedia.Audio package from its feed; `native-smoke` passes
+  when FatzAudio fails to start; `stage-natives.ps1` does not check the DLL architecture; the Linux native tests run
+  on every Linux machine although `NATIVE_DEPENDENCIES.md` says they skip without the library.
+
 ### ENG-065 - A chosen output device does not get the sound back when it is plugged in again (fixed, pending owner smoke)
 
 Fixed 2026-11-11: FatzMedia.Audio gained `fa_device_move` (.NET `OutputDevice.MoveTo`); the FatzAudio engine's

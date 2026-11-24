@@ -41,7 +41,12 @@ public static class PlayerServiceProvider
             _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new AudioEngineDeviceMonitor(deviceEvents));
         RegisterMediaEngine(services, configuration, audioAvailable);
 
-        return services.BuildServiceProvider();
+        var provider = services.BuildServiceProvider();
+        // The container disposes only what it created: resolving the engine now (the factory returns the engine made
+        // above) makes a provider that is disposed before anything asked for audio close the engine and its device too.
+        if (audioEngine is not null)
+            _ = provider.GetRequiredService<IAudioEngine>();
+        return provider;
     }
 
     static void RegisterCoreServices(IServiceCollection services, IAudioEngine? audioEngine)

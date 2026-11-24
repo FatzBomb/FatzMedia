@@ -50,7 +50,7 @@ sealed record YouTubePlayerMessage
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeProperty))
                 return new YouTubePlayerMessage();
 
-            var type = typeProperty.GetString() switch
+            var type = (typeProperty.ValueKind == JsonValueKind.String ? typeProperty.GetString() : null) switch
             {
                 "ready" => YouTubePlayerMessageType.Ready,
                 "state" => YouTubePlayerMessageType.State,

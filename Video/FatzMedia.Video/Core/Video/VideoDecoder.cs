@@ -50,6 +50,8 @@ sealed unsafe class VideoDecoder(
     AVPixelFormat _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     string? _hardwareDeviceTypeName;
     AVPixelFormat _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    int _scalerSourceWidth;
+    int _scalerSourceHeight;
     VideoColorSpace _scalerColorSpace;
     AVPixelFormat _scalerTargetPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     HdrToneMapper? _toneMapper;
@@ -917,7 +919,11 @@ sealed unsafe class VideoDecoder(
             var toneMapper = IsToneMappedFrame() ? GetToneMapper() : null;
             var targetFormat = toneMapper != null ? AVPixelFormat.AV_PIX_FMT_RGB48LE : AVPixelFormat.AV_PIX_FMT_BGRA;
             var colorSpace = GetFrameColorSpace(sourceFormat, toneMapped: toneMapper != null);
-            if (!EnsureScaler(sourceFormat, colorSpace, targetFormat))
+            // A stream can change its picture size mid-way: the scaler is built for the size of this frame.
+            var sourceWidth = sourceFrame->width;
+            var sourceHeight = sourceFrame->height;
+            if (sourceWidth <= 0 || sourceHeight <= 0
+                || !EnsureScaler(sourceFormat, sourceWidth, sourceHeight, colorSpace, targetFormat))
             {
                 return;
             }
@@ -942,7 +948,7 @@ sealed unsafe class VideoDecoder(
                     dstData[0] = scratchPointer;
                     dstLinesize[0] = scratchStride;
                     _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
-                        0, Height, dstData, dstLinesize);
+                        0, sourceHeight, dstData, dstLinesize);
                 }
 
                 toneMapper.Convert(scratch, scratchStride, frameData, _videoLinesize, Width, Height);
@@ -957,7 +963,7 @@ sealed unsafe class VideoDecoder(
 
                     var scaleStart = Stopwatch.GetTimestamp();
                     _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
-                        0, Height, dstData, dstLinesize);
+                        0, sourceHeight, dstData, dstLinesize);
                     scaleMs = Stopwatch.GetElapsedTime(scaleStart).TotalMilliseconds;
                 }
             }
@@ -1285,10 +1291,12 @@ sealed unsafe class VideoDecoder(
         return request;
     }
 
-    bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace, AVPixelFormat targetFormat)
+    bool EnsureScaler(AVPixelFormat sourceFormat, int sourceWidth, int sourceHeight, VideoColorSpace colorSpace, AVPixelFormat targetFormat)
     {
         if (_swsVideo != null
             && sourceFormat == _scalerSourcePixelFormat
+            && sourceWidth == _scalerSourceWidth
+            && sourceHeight == _scalerSourceHeight
             && colorSpace == _scalerColorSpace
             && targetFormat == _scalerTargetPixelFormat)
         {
@@ -1302,9 +1310,11 @@ sealed unsafe class VideoDecoder(
         }
 
         _scalerSourcePixelFormat = sourceFormat;
+        _scalerSourceWidth = sourceWidth;
+        _scalerSourceHeight = sourceHeight;
         _scalerTargetPixelFormat = targetFormat;
         _swsVideo = ffmpeg.sws_getContext(
-            Width, Height, sourceFormat,
+            sourceWidth, sourceHeight, sourceFormat,
             Width, Height, targetFormat,
             (int)SwsFlags.SWS_BILINEAR, null, null, null);
 
