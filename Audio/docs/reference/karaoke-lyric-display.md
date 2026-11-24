@@ -11,7 +11,7 @@ Reference document for the lyric surface ([lyrics.md](../features/lyrics.md)). I
 - KTS = the karaoke text style configuration
 - MPC = the media presentation coordinator
 
-Architecture: MLE (BASS MIDI markers) produces a list of cues. Each cue carries a pure-data `KaraokeCueTiming`. The renderer is a pure function `RenderKaraoke(timing, position, 1920, 1080)` that returns a premultiplied BGRA bitmap plus its offset. It keeps no state between frames. Any time-dependent value is derived from `position`, so seeking in either direction needs no special handling. A reimplementation only needs three things: the timing data model (sections 2 and 3), the per-frame draw rules (sections 4 to 6), and the style options (section 7).
+Architecture: MLE (MIDI markers) produces a list of cues. Each cue carries a pure-data `KaraokeCueTiming`. The renderer is a pure function `RenderKaraoke(timing, position, 1920, 1080)` that returns a premultiplied BGRA bitmap plus its offset. It keeps no state between frames. Any time-dependent value is derived from `position`, so seeking in either direction needs no special handling. A reimplementation only needs three things: the timing data model (sections 2 and 3), the per-frame draw rules (sections 4 to 6), and the style options (section 7).
 
 "Position" means media position in seconds plus the user subtitle offset, clamped to >= 0 (MPC:1366-1378).
 
@@ -48,7 +48,7 @@ Architecture: MLE (BASS MIDI markers) produces a list of cues. Each cue carries 
 
 ### 2.1 Event source and filtering (MLE:42-52, 84-120, 504-521)
 
-1. Read BASS MIDI markers of type Lyric (meta 5) and Text (meta 1).
+1. Read the MIDI markers of type Lyric (meta 5) and Text (meta 1).
 2. Lyric markers are used if any survive filtering. Otherwise the Text markers are used (MLE:91-92).
 3. Filtering drops a marker when its text is empty or starts with `@` (Soft Karaoke headers) or `%` (Tune1000/Solton chord lines) (MLE:513-514).
    - Quirk: a real lyric that begins with `@` or `%` is also dropped.

@@ -229,7 +229,7 @@ A sound is loaded once and played as many overlapping voices as needed ([sounds]
 
 ### Tracker music
 
-MOD, S3M, XM, IT, MPTM and many more play through the statically linked libopenmpt ([tracker modules](../features/trackers.md)). A module is an ordinary stream: it plays once, loops with the stream's loop toggle, and has no separate `HMUSIC` type. Where BASS offered a flag or attribute with no counterpart, the row says so.
+MOD, S3M, XM, IT, MPTM and many more play through the statically linked libopenmpt ([tracker modules](../features/trackers.md)). libopenmpt renders differently from BASS's own MOD player (resampling, filtering, levels), so a song does not sound bit for bit as it did. A module is an ordinary stream: it plays once, loops with the stream's loop toggle, and has no separate `HMUSIC` type. Where BASS offered a flag or attribute with no counterpart, the row says so.
 
 | BASS | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
@@ -359,7 +359,7 @@ The legacy app doesn't ship bassmix.dll, but mixer-style code built on `BASS_Cha
 
 ### bass_aac (AAC)
 
-AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`.caf`) files, `.aac` (ADTS) files, AAC radio and HLS. FatzMedia.Audio's own decoder handles AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP, mono to 7.1, the same on every platform, with no FFmpeg and no system codec ([AAC](../features/streams.md#aac)). Only xHE-AAC goes to the system's decoder (Media Foundation, AudioToolbox, MediaCodec, where the system has one); without one it returns `FA_ERROR_UNSUPPORTED_FORMAT` (an app can still decode it with its own FFmpeg and push the frames). ALAC in M4A and Matroska is decoded by the library's own decoder on every platform, to the bit.
+AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`.caf`) files, `.aac` (ADTS) files, AAC radio and HLS. FatzMedia.Audio's own decoder handles AAC-LC, HE-AAC, HE-AAC v2, AAC Main and AAC-LTP, mono to 7.1, the same on every platform, with no FFmpeg and no system codec ([AAC](../features/streams.md#aac)). Only xHE-AAC goes to the system's decoder (Media Foundation, AudioToolbox, MediaCodec, where the system has one); without one it returns `FA_ERROR_UNSUPPORTED_FORMAT` (an app can still decode it with its own FFmpeg and push the frames). ALAC in M4A and Matroska is decoded by the library's own decoder on every platform, to the bit. For `.aac` (ADTS) files and AAC radio the first 1024 samples (the encoder's priming) are dropped, as bass_aac does ([AAC](../features/streams.md#aac)).
 
 | bass_aac | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
@@ -374,7 +374,7 @@ AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`
 
 ### bass_ac3 (Dolby Digital and Dolby Digital Plus)
 
-AC-3 and E-AC-3 are built-in formats: the ordinary open calls play them, in raw files, video files, web streams and HLS, with no plugin and no FFmpeg ([Dolby Digital](../features/dolby.md)).
+AC-3 and E-AC-3 are built-in formats: the ordinary open calls play them, in raw files, video files, web streams and HLS, with no plugin and no FFmpeg ([Dolby Digital](../features/dolby.md)). Measured alone with the black-box comparison in `tools/bass-compare` (bass_ac3 under Wine): bass_ac3 decodes about 350 times real time for 5.1 and 820 times for stereo against about 400 and 900 here, and a 5.1 stream takes about 140 KB against about 90 KB here.
 
 | bass_ac3 | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|
@@ -512,6 +512,19 @@ DSF and DSDIFF (`.dff`) files open with the ordinary calls and are converted to 
 ### bass_fx tempo, pitch and rate
 
 bass_fx needs a decode stream wrapped in a separate tempo stream; FatzMedia.Audio puts three parameters on every stream ([tempo and pitch](../features/tempo-pitch.md)).
+
+Measured with `tools/tempo-compare` against bass_fx 2.4 on the same 48 kHz test signals (higher dB is cleaner; the full table is in the tool's report; the figures for FatzMedia.Audio are those in [tempo and pitch](../features/tempo-pitch.md#how-it-works-and-how-good-it-is)):
+
+| Test | bass_fx |
+|---|---|
+| Sine, tempo 0.8 … 1.25 or pitch ±3 … -12 | 35 … 48 dB |
+| Chord (C major), tempo or pitch | 21 … 32 dB |
+| Harmonic tone (held vowel), tempo or pitch | 34 … 38 dB |
+| Pitch error | up to 0.45 cents |
+| Drum hits moved from their time | 2.4 … 24 ms |
+| Pre-echo before drum hits | none |
+
+bass_fx avoids pre-echo by splicing whole chunks of audio, which is why its hits drift and its chords phase.
 
 | bass_fx | FatzMedia.Audio (C) | FatzMedia.Audio (.NET) | Status |
 |---|---|---|---|

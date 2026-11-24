@@ -1,17 +1,17 @@
 # Sounds: one short sound, many voices
 
-Load a short sound once and play as many overlapping copies of it as you like, each with its own volume and pan: jingles, applause, air horns, sound-effect pads in a karaoke host. This is BASS's sample API (`BASS_SampleLoad`, `BASS_SampleGetChannel`), with one difference that matters: each copy (a **voice**) is an ordinary stream, so everything a stream can do works on it.
+Load a short sound once and play as many overlapping copies of it as you like, each with its own volume and pan: jingles, applause, air horns, sound-effect pads in a karaoke host. Each copy (a **voice**) is an ordinary stream, so everything a stream can do works on it.
 
-| What | C | .NET | BASS |
-|---|---|---|---|
-| Load a file (any format a stream opens, ZIP included) | `fa_sound_load_path`, `fa_sound_load_memory` | `engine.LoadSound(path)`, `engine.LoadSound(bytes)` | `BASS_SampleLoad` |
-| Your own PCM | `fa_sound_load_pcm` | `engine.CreateSound(samples, rate, channels)`; other sample formats: `engine.CreateSound(bytes, AudioFormat.Int16(rate, ch))` | `BASS_SampleCreate` + `BASS_SampleSetData` |
-| Play a copy | `fa_sound_play(sound, device, bus, volume, pan, &voice)` | `sound.Play(output, volume, pan)` | `BASS_SampleGetChannel` + `BASS_ChannelPlay` |
-| Stop every copy | `fa_sound_stop` | `sound.Stop()` | `BASS_SampleStop` |
-| The copies playing | `fa_sound_get_voices` | `sound.GetPlayingVoices()` | `BASS_SampleGetChannels` |
-| Voice limit and steal rule | `fa_sound_options.max_voices`, `.steal`; `fa_sound_set_options` | `SoundOptions`, `sound.MaxVoices`, `sound.Steal` | `max` and `BASS_SAMPLE_OVER_*` |
-| Format, length, memory | `fa_sound_get_info` | `sound.Info`, `VoiceCount`, `PlayingCount` | `BASS_SampleGetInfo` |
-| Free it | `fa_sound_close` | `sound.Dispose()` | `BASS_SampleFree` |
+| What | C | .NET |
+|---|---|---|
+| Load a file (any format a stream opens, ZIP included) | `fa_sound_load_path`, `fa_sound_load_memory` | `engine.LoadSound(path)`, `engine.LoadSound(bytes)` |
+| Your own PCM | `fa_sound_load_pcm` | `engine.CreateSound(samples, rate, channels)`; other sample formats: `engine.CreateSound(bytes, AudioFormat.Int16(rate, ch))` |
+| Play a copy | `fa_sound_play(sound, device, bus, volume, pan, &voice)` | `sound.Play(output, volume, pan)` |
+| Stop every copy | `fa_sound_stop` | `sound.Stop()` |
+| The copies playing | `fa_sound_get_voices` | `sound.GetPlayingVoices()` |
+| Voice limit and steal rule | `fa_sound_options.max_voices`, `.steal`; `fa_sound_set_options` | `SoundOptions`, `sound.MaxVoices`, `sound.Steal` |
+| Format, length, memory | `fa_sound_get_info` | `sound.Info`, `VoiceCount`, `PlayingCount` |
+| Free it | `fa_sound_close` | `sound.Dispose()` |
 
 ## How it works
 
@@ -20,15 +20,15 @@ Load a short sound once and play as many overlapping copies of it as you like, e
 - **Voices are reused.** A voice that ended or was stopped is free. A later play takes a free voice (one already on the same device first), else makes a new one while under the limit. So a voice pointer stays valid until `fa_sound_close`, but may by then be playing a newer copy. A reused voice starts at the volume and pan of its play with looping off; anything else you set on it (rate, effects, an event callback) stays.
 - **The limit.** At most `max_voices` (default 8, up to 1024) play at once. Paused and scheduled voices count as busy. A play with every voice busy takes one over by the steal rule, and that voice restarts at once, without a fade, as the new copy:
 
-| Steal rule | Takes over | BASS |
-|---|---|---|
-| `FA_SOUND_STEAL_OLDEST` (default) | The voice that started longest ago | `BASS_SAMPLE_OVER_POS` |
-| `FA_SOUND_STEAL_QUIETEST` | The voice with the lowest volume now (ramps included); the older one on a tie | `BASS_SAMPLE_OVER_VOL` |
-| `FA_SOUND_STEAL_NONE` | None: the play fails with `FA_ERROR_BUSY` | no `OVER` flag (BASS's default) |
+| Steal rule | Takes over |
+|---|---|
+| `FA_SOUND_STEAL_OLDEST` (default) | The voice that started longest ago |
+| `FA_SOUND_STEAL_QUIETEST` | The voice with the lowest volume now (ramps included); the older one on a tie |
+| `FA_SOUND_STEAL_NONE` | None: the play fails with `FA_ERROR_BUSY` |
 
 In .NET the rule is the `SoundSteal` enum (`Oldest`, `Quietest`, `None`); with `None`, `Play` throws an `AudioException` with `ErrorCode.Busy`.
 
-The default differs from BASS on purpose: a pad that is hit again should always sound.
+The default is `FA_SOUND_STEAL_OLDEST` on purpose: a pad that is hit again should always sound. Porting an app? See the migration guide ([migration/bass.md](../migration/bass.md#samples-in-memory-sounds)).
 
 ## C
 

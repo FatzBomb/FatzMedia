@@ -128,7 +128,7 @@ More in [devices](features/devices.md): a second output for headphone preview, w
 
 ## 4. Handle errors
 
-Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `AudioException` with an `ErrorCode`. There is no "last error" to poll. The BASS error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
+Every C function returns an `fa_result`: `FA_OK` (0), or a negative `FA_ERROR_*` code. `fa_result_string(r)` gives a sentence. In .NET every failure throws `AudioException` with an `ErrorCode`. There is no "last error" to poll. Porting an app? The old error codes map one to one in [the migration guide](migration/bass.md#appendix-a-error-codes).
 
 ```csharp
 try { using var song = engine.OpenFile(path); /* ... */ }
@@ -188,4 +188,4 @@ To read samples without playing at all, open a stream with `DecodeOnly` (`FA_OPE
 - [Concepts](concepts.md): engine, devices, streams, buses, the clock and threads.
 - [Common tasks](common-tasks.md): volume, seek, end of song, URLs, tags and karaoke in a few lines each.
 - [Feature guides](features/README.md): one page per feature.
-- Coming from BASS? [Migrating from BASS](migration/bass.md).
+- Porting an app from another audio library? [Migration guide](migration/bass.md).

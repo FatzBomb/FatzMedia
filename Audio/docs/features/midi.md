@@ -1,6 +1,6 @@
 # MIDI and karaoke files
 
-FatzMedia.Audio plays MIDI files itself, with a built-in SoundFont 2 synthesizer. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream. It replaces bassmidi.
+FatzMedia.Audio plays MIDI files itself, with a built-in SoundFont 2 synthesizer. They open with the ordinary `fa_stream_open_*` calls and play, seek, loop, crossfade, normalize and stretch like any other stream.
 
 | What | Supported |
 |---|---|
@@ -23,7 +23,7 @@ No instruments are built in: you load a bank once and share it. A General MIDI S
 
 ### The OS's instruments
 
-When the app sets no soundfont, a MIDI file plays with the bank the operating system ships for its own MIDI synthesizer, so MIDI works out of the box where BASSMIDI needed a soundfont:
+When the app sets no soundfont, a MIDI file plays with the bank the operating system ships for its own MIDI synthesizer, so MIDI works out of the box without a soundfont:
 
 | System | Bank |
 |---|---|
@@ -62,9 +62,9 @@ There is no sample loading on demand: one call loads the whole bank, and it's re
 
 ### Several soundfonts as one
 
-`fa_soundfont_open_stack` (`SoundFont.Stack`) makes a soundfont out of the presets of others, like BASSMIDI's font stacks: a grand piano from one bank over a full General MIDI set from another, a drum kit moved to another program, one bank's instruments a little quieter. The stack is used like any soundfont (the engine's, or one stream's), and the files are not loaded again: it plays the samples of the soundfonts it is made of, and holds a reference to each, so you can close them once the stack is made.
+`fa_soundfont_open_stack` (`SoundFont.Stack`) makes a soundfont out of the presets of others: a grand piano from one bank over a full General MIDI set from another, a drum kit moved to another program, one bank's instruments a little quieter. The stack is used like any soundfont (the engine's, or one stream's), and the files are not loaded again: it plays the samples of the soundfonts it is made of, and holds a reference to each, so you can close them once the stack is made.
 
-Each entry takes presets of one soundfont: all of them, or one bank, or one program of one bank (`bank`, `program`; `FA_SOUNDFONT_ALL`, or null in C#, for all). They can play as another bank or program (`to_bank`, `to_program`) and at another level (`volume`, 1 as is, BASSMIDI's `BASS_MIDI_FontSetVolume`). When two entries give the same bank and program, the earlier entry wins. A program the stack lacks falls back as with any soundfont (bank 0, then program 0).
+Each entry takes presets of one soundfont: all of them, or one bank, or one program of one bank (`bank`, `program`; `FA_SOUNDFONT_ALL`, or null in C#, for all). They can play as another bank or program (`to_bank`, `to_program`) and at another level (`volume`, 1 as is). When two entries give the same bank and program, the earlier entry wins. A program the stack lacks falls back as with any soundfont (bank 0, then program 0).
 
 ```c
 fa_soundfont_stack_entry e[3];
@@ -94,7 +94,7 @@ A stack is fixed once made; to change it, make another and set it on the engine,
 
 ### Changing a playing stream's soundfont
 
-`fa_stream_set_soundfont` (`AudioStream.SetSoundFont`) gives an open MIDI stream other instruments, playing or not, like `BASS_MIDI_StreamSetFonts` on a playing stream. It works on files, event lists and the real-time synth. NULL (`null`) goes back to the engine's soundfont, else the OS's, as at open. The stream takes its own reference, so you can close yours right away. `fa_stream_get_soundfont` (`GetSoundFont()`) gives the one it plays with now, as a reference of your own to close.
+`fa_stream_set_soundfont` (`AudioStream.SetSoundFont`) gives an open MIDI stream other instruments, playing or not. It works on files, event lists and the real-time synth. NULL (`null`) goes back to the engine's soundfont, else the OS's, as at open. The stream takes its own reference, so you can close yours right away. `fa_stream_get_soundfont` (`GetSoundFont()`) gives the one it plays with now, as a reference of your own to close.
 
 The change is heard like the [live controls](#live-controls): after the decode-ahead buffer (150 ms for MIDI files, `latency_ms` for the real-time synth), cross-faded over about 12 ms so there is no click.
 
@@ -355,7 +355,7 @@ The file's controllers shape each note the way a GM, GS or XG module would. Noth
 | Controller | What it does |
 |---|---|
 | Mod wheel (CC1) | Vibrato, up to ±50 cents at 127, the SoundFont 2 default. RPN 5 (modulation depth range) sets that maximum: data entry MSB in semitones, LSB in 1/128 semitones |
-| Channel pressure | The same vibrato, ±50 cents at full pressure. After a GS, XG or GM2 reset it does nothing, as on those modules (BASSMIDI does the same for GS) |
+| Channel pressure | The same vibrato, ±50 cents at full pressure. After a GS, XG or GM2 reset it does nothing, as on those modules |
 | Poly pressure | Kept per key, for soundfonts whose modulators use it; no effect of its own |
 | Brightness (CC74), resonance (CC71) | 64 is the instrument as it is. CC74 moves the filter cutoff 100 cents a step: 0 closes an open filter to about 500 Hz, and above 64 it can only open a filter the instrument closes. CC71 adds or takes 0.3 dB of resonance a step |
 | Attack (CC73), decay (CC75), release (CC72) | 64 is the instrument's own time; each step lengthens or shortens it by 1/12 octave (127 is about 38 times as long, 0 about 40 times as short). A time that starts instant is first lifted to 1/64 s, so CC73 = 127 turns a piano's instant attack into a 0.6 s fade-in. They act on both of the instrument's envelopes; a change reaches notes already playing from their next stage on (a new release time applies to held notes when they are let go) |
@@ -374,11 +374,11 @@ Roland and Yamaha don't publish how far each step goes, so the steps above are c
 
 A soundfont's own modulators (`pmod` and `imod`, SoundFont 2.04) are applied: any controller, velocity, key, pressure or the pitch wheel, through linear, concave, convex or switch curves, with a second source scaling the first, to the vibrato and modulation LFOs (depth, rate, delay), the modulation envelope's pitch and filter depth, filter cutoff and resonance, both envelopes' times and sustain, level, pan, fine and coarse tune and the reverb and chorus sends. They are evaluated when a note starts and again whenever one of their controllers changes. The modulators of an instrument's zones replace the defaults and those of its global zone, and a preset's add to its instrument's, as the spec says.
 
-Two SoundFont 2.04 defaults work as modulators here, so a soundfont can change or turn them off: the mod wheel and channel pressure to vibrato above. The others are built in and keep their fixed amounts: velocity, CC7 and CC11 to level, CC10 to pan, CC91 and CC93 to the effect sends, the pitch wheel; a soundfont modulator identical to one of them is skipped, so a soundfont can't, for example, raise every channel's reverb send fivefold. The default velocity-to-filter modulator is not applied, as in BASSMIDI (which calls it "slightly strange"): it would darken every softly played note of every file. A soundfont that wants it can say so with its own modulator. Not supported: linked modulators (one modulator feeding another), and destinations TinySoundFont doesn't model (sample offsets, key and velocity overrides, scale tuning, exclusive class).
+Two SoundFont 2.04 defaults work as modulators here, so a soundfont can change or turn them off: the mod wheel and channel pressure to vibrato above. The others are built in and keep their fixed amounts: velocity, CC7 and CC11 to level, CC10 to pan, CC91 and CC93 to the effect sends, the pitch wheel; a soundfont modulator identical to one of them is skipped, so a soundfont can't, for example, raise every channel's reverb send fivefold. The default velocity-to-filter modulator is not applied: it would darken every softly played note of every file. A soundfont that wants it can say so with its own modulator. Not supported: linked modulators (one modulator feeding another), and destinations TinySoundFont doesn't model (sample offsets, key and velocity overrides, scale tuning, exclusive class).
 
 ## Reverb and chorus
 
-Reverb and chorus are built in and on by default, as in BASSMIDI. Each voice sends part of its sound to them: the soundfont's own effect-send setting for that sound, plus the channel's CC91 (reverb) and CC93 (chorus) controllers, as the SoundFont 2.04 default modulators say (a controller value of 127 adds 20%, and the total is at most 100%). Channels start at CC91 = 40 and CC93 = 0, the GS and GM2 defaults, also after a GM, GS or XG reset; CC121 (reset all controllers) leaves them alone. A file that sets CC91 or CC93 therefore changes its own reverb and chorus. The master volume SysEx scales the effects too.
+Reverb and chorus are built in and on by default. Each voice sends part of its sound to them: the soundfont's own effect-send setting for that sound, plus the channel's CC91 (reverb) and CC93 (chorus) controllers, as the SoundFont 2.04 default modulators say (a controller value of 127 adds 20%, and the total is at most 100%). Channels start at CC91 = 40 and CC93 = 0, the GS and GM2 defaults, also after a GM, GS or XG reset; CC121 (reset all controllers) leaves them alone. A file that sets CC91 or CC93 therefore changes its own reverb and chorus. The master volume SysEx scales the effects too.
 
 The reverb is a Schroeder-Moorer design of comb and allpass filters that dies away in about 1.3 seconds (to -60 dB). The chorus is two delay taps per channel, modulated at 0.4 Hz between 10 and 16 ms. That is how they sound unless the file says otherwise, and again after every GM, GS or XG reset; it is close to a GS module's default Hall 2 reverb and Chorus 3.
 
@@ -495,7 +495,7 @@ The output is deterministic (the LFOs follow the song position, not the read siz
 
 The defaults and curves (LFO frequencies, delay offsets, room sizes, drive) are our reading of the published GS and XG parameter tables, not a copy of a module; how close each type sounds to a real SC-88 or MU module is still to be heard.
 
-`fa_stream_set_midi_effects` (`MidiEffects`) turns both off for a stream, which plays the dry synthesizer (BASSMIDI's `BASS_MIDI_NOFX`); the tails stop at once. It may be called from any thread.
+`fa_stream_set_midi_effects` (`MidiEffects`) turns both off for a stream, which plays the dry synthesizer; the tails stop at once. It may be called from any thread.
 
 ```c
 fa_stream_set_midi_effects(song, 0);             /* dry, no reverb or chorus */
@@ -552,7 +552,7 @@ GM, GS and XG resets clear scale tuning and every drum edit; the XG drum setup r
 
 ## Seeking and length
 
-Seeking is sample-exact and fast: the events up to the target are replayed into a fresh synthesizer without rendering any audio, so programs, controllers, pitch bends, SysEx settings and the tempo are exactly as if the song had played up to there. Notes held across the target, by their key or by the sustain pedal, start again from their attack (as in BASSMIDI), so a chord or pad held across a seek is heard right away. A key struck several times and still held comes back as one note, at the loudest of those strikes, and ends with the last of their note-offs. Drum notes aren't restarted, since they'd sound as a new hit. With effects off, where no note is held, the audio after a seek is exactly what playing through gives.
+Seeking is sample-exact and fast: the events up to the target are replayed into a fresh synthesizer without rendering any audio, so programs, controllers, pitch bends, SysEx settings and the tempo are exactly as if the song had played up to there. Notes held across the target, by their key or by the sustain pedal, start again from their attack, so a chord or pad held across a seek is heard right away. A key struck several times and still held comes back as one note, at the loudest of those strikes, and ends with the last of their note-offs. Drum notes aren't restarted, since they'd sound as a new hit. With effects off, where no note is held, the audio after a seek is exactly what playing through gives.
 
 With effects on (the default), a seek also renders the second before the target without playing it, so the reverb and chorus of what was playing just before ring on into the target instead of starting from silence. The replay then stops a second before the target, and notes held there start again at that point, so at the target they are a second into their sound. Within the first second of the song this makes a seek exactly the same as playing through; later, only the reverb of what played more than a second before is missing (at least 45 dB down with the default reverb). This makes a seek take longer: about 20 ms for a dense eight-part song on a desktop CPU, against well under a millisecond with effects off.
 

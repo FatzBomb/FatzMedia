@@ -1,6 +1,6 @@
 # Dolby Digital and Dolby Digital Plus
 
-FatzMedia.Audio decodes Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) itself, in every place audio comes from: `.ac3` and `.ec3` files, AC-3 and E-AC-3 tracks in MP4, MOV and Matroska video files, web streams and HLS, and packets pushed from your own FFmpeg demuxer. There's no add-on to load and no FFmpeg needed. It replaces bass_ac3.
+FatzMedia.Audio decodes Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) itself, in every place audio comes from: `.ac3` and `.ec3` files, AC-3 and E-AC-3 tracks in MP4, MOV and Matroska video files, web streams and HLS, and packets pushed from your own FFmpeg demuxer. There's no add-on to load and no FFmpeg needed.
 
 | What | Supported |
 |---|---|
@@ -159,7 +159,7 @@ A frame that fails its checksum, or doesn't parse, plays as silence for its leng
 
 ## Speed and memory
 
-The decoder runs at about 400 times real time for 5.1 and 900 times for stereo on one core (the black-box comparison in `tools/bass-compare`, where bass_ac3 does about 350 and 820), and a 5.1 stream uses about 90 KB (bass_ac3 140 KB, each measured alone under Wine), including its read buffer and one access unit of output. A unit of one syncframe, which is every AC-3 stream and E-AC-3 with a single substream, is mixed block by block straight into that output. 7.1 and other E-AC-3 with more than one substream (a dependent one adding channels, or other programs) also keep the whole unit per speaker, about 6 KB more per channel.
+The decoder runs at about 400 times real time for 5.1 and 900 times for stereo on one core, and a 5.1 stream uses about 90 KB, including its read buffer and one access unit of output. A unit of one syncframe, which is every AC-3 stream and E-AC-3 with a single substream, is mixed block by block straight into that output. 7.1 and other E-AC-3 with more than one substream (a dependent one adding channels, or other programs) also keep the whole unit per speaker, about 6 KB more per channel.
 
 ## Threads
 

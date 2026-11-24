@@ -205,7 +205,7 @@ Ogg radio (Opus or Vorbis) has no ICY titles: every song starts a new Ogg link w
 
 ## Saving a station as it plays
 
-The bytes a stream downloads can go to your code as they arrive (BASS's `DOWNLOADPROC`), to record a station to a
+The bytes a stream downloads can go to your code as they arrive, to record a station to a
 file while it plays. They are the bytes the decoder reads, so written to a file they play as one:
 
 | Stream | What the callback gets |
@@ -362,4 +362,4 @@ What else to know on Android:
 
 ## Not provided yet
 
-- Opening asynchronously with a cancel call (`BASS_StreamCancel`).
+- Opening asynchronously with a cancel call.

@@ -2,11 +2,11 @@
 
 Two stream sources that are not files: your own function that makes audio on demand, and an input device (a microphone, a line input). Both are ordinary streams: they play on an output, decode with `fa_stream_read`, record with an encoder, and take tempo, effects, levels and loudness meters like any file.
 
-| Source | C | .NET | BASS |
-|---|---|---|---|
-| Your function, asked for audio when the stream wants more | `fa_stream_open_callback` | `engine.OpenCallback(rate, channels, fill)`; any interleaved sample format: `engine.OpenCallback(format, rawFill)` (the callback fills bytes) | `BASS_StreamCreate` with a `STREAMPROC` |
-| An input device | `fa_stream_open_capture` | `engine.OpenCapture(capture)` | `BASS_RecordInit` + `BASS_RecordStart` |
-| What an output plays (Windows) | `fa_stream_open_capture` with `FA_CAPTURE_LOOPBACK` | `engine.OpenCapture(new CaptureOptions { Loopback = true })` | `BASS_RecordInit` on a `BASS_DEVICE_LOOPBACK` device, BASSWASAPI loopback |
+| Source | C | .NET |
+|---|---|---|
+| Your function, asked for audio when the stream wants more | `fa_stream_open_callback` | `engine.OpenCallback(rate, channels, fill)`; any interleaved sample format: `engine.OpenCallback(format, rawFill)` (the callback fills bytes) |
+| An input device | `fa_stream_open_capture` | `engine.OpenCapture(capture)` |
+| What an output plays (Windows) | `fa_stream_open_capture` with `FA_CAPTURE_LOOPBACK` | `engine.OpenCapture(new CaptureOptions { Loopback = true })` |
 
 Audio you already have in hand (decoded frames, FFmpeg packets) goes to a push stream instead ([FFmpeg hand-off](ffmpeg.md)). A karaoke or DJ mic you sing or talk through belongs on the [DJ mixer](microphones.md), which corrects the drift between input and output and keeps the latency low.
 

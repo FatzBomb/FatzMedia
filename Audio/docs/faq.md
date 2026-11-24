@@ -1,7 +1,7 @@
 # Frequently asked questions
 
 **Does FatzMedia.Audio replace BASS completely?**
-Yes for what a media player uses: BASS, bass_fx, bassmidi, basscd, bassflac, bass_aac, bassopus, bass_ac3, bassalac, basswebm, basswma and BASSenc each have a mapping. 3D sound, EAX and the generic FX API are not provided. See [Migrating from BASS](migration/bass.md).
+Yes for what a media player uses: the core library and every add-on the app used each have a mapping. 3D sound, EAX and the generic FX API are not provided. See the [migration guide](migration/bass.md).
 
 **How many files do I ship?**
 One native library per platform, plus the .NET assembly if you use .NET. No add-on DLLs, no C++ runtime. LAME (for MP3 encoding) and FFmpeg are optional and loaded at run time only if your app ships them.
@@ -9,7 +9,7 @@ One native library per platform, plus the .NET assembly if you use .NET. No add-
 **Which languages can use it?**
 C directly (`include/fatzaudio/fatzaudio.h`), and .NET through the `FatzMedia.Audio` package. Anything that can call a C library can use the C API.
 
-**Do I need an init call like `BASS_Init`?**
+**Do I need a global init call?**
 No. Create an engine, open an output device, open streams. The engine is a handle you hold, so several can exist. See [Concepts](concepts.md).
 
 **Is it thread-safe?**

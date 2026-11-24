@@ -25,7 +25,7 @@ On Windows the audio thread runs in the MMCSS "Pro Audio" class.
 
 ### How busy it is
 
-`fa_engine_get_stats` (.NET `engine.GetStats()`, BASS's `BASS_GetCPU`) reports the load for a diagnostics panel:
+`fa_engine_get_stats` (.NET `engine.GetStats()`) reports the load for a diagnostics panel:
 
 | Field | .NET | Meaning |
 |---|---|---|
