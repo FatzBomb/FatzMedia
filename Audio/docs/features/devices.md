@@ -1,6 +1,6 @@
 # Output devices
 
-An `fa_device` is an opened playback device. Streams are attached to it and mixed into it. You always hold the device handle and pass it explicitly. There's no "current device" per thread as in BASS.
+An `fa_device` is an opened playback device. Streams are attached to it and mixed into it. You always hold the device handle and pass it explicitly. There's no "current device" per thread.
 
 ## C
 
@@ -80,7 +80,7 @@ A stream plays on one device at a time. To hear the same song in both places (th
 
 ## Silent output for tests and servers
 
-Set `FA_ENGINE_NULL_OUTPUT` in `fa_engine_config.flags` (in .NET, `new AudioEngineOptions { NullOutput = true }`). Devices then play into a silent output that still runs in real time on its own thread. Streams advance, end and raise events exactly as they would on speakers. Use it for automated tests, CI machines without sound hardware, and headless services. It replaces BASS's "no sound" device (`BASS_Init(0, ...)`).
+Set `FA_ENGINE_NULL_OUTPUT` in `fa_engine_config.flags` (in .NET, `new AudioEngineOptions { NullOutput = true }`). Devices then play into a silent output that still runs in real time on its own thread. Streams advance, end and raise events exactly as they would on speakers. Use it for automated tests, CI machines without sound hardware, and headless services.
 
 ```c
 fa_engine_config cfg;

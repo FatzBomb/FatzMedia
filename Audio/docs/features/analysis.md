@@ -1,6 +1,6 @@
 # Track analysis
 
-Track analysis measures a song once and gives you its **beat grid** (tempo and where the beats fall), its **musical key**, a **waveform** overview for drawing, its **loudness** and its **silence** (where it is silent, and its first and last audible frame). One decode of the audio feeds all of them, so asking for several costs little more than asking for one. It is what a DJ deck needs for sync and beat loops, and what a library needs to show BPM and key. It replaces `BASS_FX_BPM_*`.
+Track analysis measures a song once and gives you its **beat grid** (tempo and where the beats fall), its **musical key**, a **waveform** overview for drawing, its **loudness** and its **silence** (where it is silent, and its first and last audible frame). One decode of the audio feeds all of them, so asking for several costs little more than asking for one. It is what a DJ deck needs for sync and beat loops, and what a library needs to show BPM and key.
 
 | Kind | `fa_analysis_kind` | .NET `AnalysisKinds` | You get |
 |---|---|---|---|

@@ -23,7 +23,7 @@ source ─▶ decoder ─▶ tempo/pitch ─▶ equalizer ─▶ gain ─▶ bus
 | `fa_stream` | Anything that produces audio: file, memory, custom I/O, URL, pushed PCM/packets, CD track. The format is detected from the content by the decoder registry ([streams](features/streams.md)). | `fa_stream_open_*` | `fa_stream_close` |
 | `fa_bus` | A mix group (deck, cue bus) with its own volume and pan. Streams attach to a bus or straight to the device ([buses](features/buses.md)). | `fa_bus_create` | `fa_bus_destroy` or `fa_device_close` |
 
-There is **no hidden state**: every call names the object it acts on. Unlike BASS there is no "current device" per thread and no "last error" to poll.
+There is **no hidden state**: every call names the object it acts on. There is no "current device" per thread and no "last error" to poll.
 
 ## Errors
 

@@ -66,18 +66,18 @@ song.TempoOptions = new TempoOptions { KeepFormants = true, Latency = TimeSpan.F
 
 Tempo uses a phase vocoder with phase locking and transient handling ([Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch), MIT, built into the library). Pitch is done by stretching the time and then resampling with FatzMedia.Audio's own windowed-sinc resampler (Kaiser window, 96 taps, about -90 dB aliasing), so the key lands exactly where you ask: 0.00 cents of error at any setting. Rate is the same resampler on its own.
 
-Measured with `tools/tempo-compare` against bass_fx 2.4 (the legacy app's DLL, through its public API), SoundTouch 2.3.2 (`soundstretch`) and Rubber Band 3.3 on the same 48 kHz test signals. Higher dB is cleaner (signal against everything that should not be there); the full table is in the tool's report.
+Measured with `tools/tempo-compare` against SoundTouch 2.3.2 (`soundstretch`) and Rubber Band 3.3 on the same 48 kHz test signals. Higher dB is cleaner (signal against everything that should not be there); the full table is in the tool's report.
 
-| Test | FatzMedia.Audio | bass_fx | SoundTouch | Rubber Band |
-|---|---|---|---|---|
-| Sine, tempo 0.8 … 1.25 or pitch ±3 … -12 | 59 … 66 dB | 35 … 48 dB | 38 … 58 dB | 64 … 68 dB |
-| Chord (C major), tempo or pitch | 49 … 57 dB | 21 … 32 dB | 21 … 29 dB | 36 … 62 dB |
-| Harmonic tone (held vowel), tempo or pitch | 57 … 67 dB | 34 … 38 dB | 36 … 42 dB | 55 … 61 dB |
-| Pitch error | 0.00 cents | up to 0.45 cents | up to 0.27 cents | 0.00 cents |
-| Drum hits moved from their time | 0.1 … 0.6 ms | 2.4 … 24 ms | 3.8 … 12 ms | 4 … 6 ms |
-| Pre-echo before drum hits | -24 … -28 dB | none | none | -9 … -13 dB |
+| Test | FatzMedia.Audio | SoundTouch | Rubber Band |
+|---|---|---|---|
+| Sine, tempo 0.8 … 1.25 or pitch ±3 … -12 | 59 … 66 dB | 38 … 58 dB | 64 … 68 dB |
+| Chord (C major), tempo or pitch | 49 … 57 dB | 21 … 29 dB | 36 … 62 dB |
+| Harmonic tone (held vowel), tempo or pitch | 57 … 67 dB | 36 … 42 dB | 55 … 61 dB |
+| Pitch error | 0.00 cents | up to 0.27 cents | 0.00 cents |
+| Drum hits moved from their time | 0.1 … 0.6 ms | 3.8 … 12 ms | 4 … 6 ms |
+| Pre-echo before drum hits | -24 … -28 dB | none | -9 … -13 dB |
 
-In practice: sustained notes and chords stay steady instead of warbling or phasing, and beats stay on time. The trade-off of any phase vocoder is a faint smear just before sharp hits (the pre-echo row); bass_fx and SoundTouch avoid it by splicing whole chunks of audio, which is why their hits drift and their chords phase.
+In practice: sustained notes and chords stay steady instead of warbling or phasing, and beats stay on time. The trade-off of any phase vocoder is a faint smear just before sharp hits (the pre-echo row); SoundTouch avoids it by splicing whole chunks of audio, which is why its hits drift and its chords phase. The same measurement against the old library is in the migration guide ([migration/bass.md](../migration/bass.md#bass_fx-tempo-pitch-and-rate)).
 
 ### Transient mode
 
@@ -114,7 +114,7 @@ Both take `--tempo` (multiplier), `--pitch` (semitones) and `--rate` (multiplier
 
 ## Reverse playback
 
-`fa_stream_set_reverse` / `fa_stream_get_reverse` (`AudioStream.Reverse` in .NET) plays a stream backwards, as bass_fx's `BASS_FX_ReverseCreate` with `BASS_ATTRIB_REVERSE_DIR` does, but on the stream itself: there is no second stream to make. It can be switched at any time, also while playing, and the turn is instant: playing or paused, the stream turns at the frame being mixed, and the last 200 ms it played go back out the other way straight from its buffer while the decoder starts on the new direction behind them, so there is no gap and no re-buffer (the DJ "instant reverse"). A stopped or ended stream starts over at the position, the way a seek does.
+`fa_stream_set_reverse` / `fa_stream_get_reverse` (`AudioStream.Reverse` in .NET) plays a stream backwards, on the stream itself: there is no second stream to make. It can be switched at any time, also while playing, and the turn is instant: playing or paused, the stream turns at the frame being mixed, and the last 200 ms it played go back out the other way straight from its buffer while the decoder starts on the new direction behind them, so there is no gap and no re-buffer (the DJ "instant reverse"). A stopped or ended stream starts over at the position, the way a seek does.
 
 ```c
 fa_stream_set_reverse(deck, 1);                  /* backwards from here */

@@ -27,7 +27,7 @@ b.PlayAt(output.Time + TimeSpan.FromSeconds(2));
 
 `fa_stream_play_at` needs the stream to be attached first. Until it starts, its state is `FA_STATE_SCHEDULED`; `FA_EVENT_STARTED` (.NET `Started`) is raised when it starts. A time that has already passed starts it at once. Pause and stop cancel a scheduled start.
 
-Two streams scheduled at the same time start on the same frame, which replaces `BASS_ChannelSetLink`.
+Two streams scheduled at the same time start on the same frame.
 
 ## Crossfade now
 

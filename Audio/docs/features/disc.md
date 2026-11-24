@@ -1,6 +1,6 @@
 # Disc playback (audio CDs)
 
-FatzMedia.Audio plays audio CDs from the computer's optical drive, and disc images (`.cue` + `.bin`/`.wav`) the same way. A track opens as an ordinary stream, so everything else works on it unchanged: crossfades, gapless queues, markers, normalization, buses, the presentation clock. It replaces basscd: there is no add-on to load, and the same code runs on Windows, macOS and Linux.
+FatzMedia.Audio plays audio CDs from the computer's optical drive, and disc images (`.cue` + `.bin`/`.wav`) the same way. A track opens as an ordinary stream, so everything else works on it unchanged: crossfades, gapless queues, markers, normalization, buses, the presentation clock. There is no add-on to load, and the same code runs on Windows, macOS and Linux.
 
 | What | How |
 |---|---|
@@ -193,7 +193,7 @@ Images have no tray, lock or speed: those calls return `FA_ERROR_NOT_IMPLEMENTED
 
 ## Pitfalls
 
-- **Analog CD playback** (basscd's `BASS_CD_Analog_*`, the drive's own DAC and headphone socket) is not provided; modern drives have no analog output.
+- **Analog CD playback** (the drive's own DAC and headphone socket) is not provided; modern drives have no analog output.
 - **Open the stream on the thread you like**, but don't call disc functions from an event callback that must return quickly: a status or TOC call waits for the drive.
 - **Two streams of one disc** (a crossfade between two tracks) share the drive; reads are serialized and work, but the drive head moves back and forth, so keep crossfades on a disc short or raise `buffer_ms`.
 - **Tracks are numbered as on the disc.** Most discs start at 1, but use `toc.first_track` and `tracks[i].number`, never the array index.

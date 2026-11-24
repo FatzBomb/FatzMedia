@@ -20,7 +20,7 @@ Monkey's Audio (`.ape`) decodes with the official [Monkey's Audio SDK](https://m
 
 ## Status
 
-The engine is feature complete apart from checks that need real devices and an app that uses it. Everything the legacy BASS stack gave the app (bass.dll and its add-ons) is covered by this one library, and more:
+The engine is feature complete apart from checks that need real devices and an app that uses it. Everything the app's legacy audio stack gave it (one core library and its add-ons) is covered by this one library, and more:
 
 - **Playback:** streams from files, memory, your own reader, URLs (HTTP/HTTPS, Icecast/Shoutcast radio, HLS), pushed PCM, packets or frames from FFmpeg, your own callback, a microphone or an audio CD, with format detection from content (WAV/AIFF/RF64/W64, FLAC, MP3, Ogg Opus/Vorbis/FLAC, AAC, AC-3/E-AC-3, ALAC, MP4/MKV/WebM audio, CAF, WMA on Windows, MIDI with a SoundFont, tracker modules).
 - **Control:** ramps on seven curves, sample-accurate scheduled starts on the device clock, crossfades, gapless queues, markers, buses, a channel matrix, tempo/pitch/rate and reverse playback on every stream, an equalizer and user DSP, and typed events.

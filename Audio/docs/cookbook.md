@@ -86,6 +86,6 @@ synth.SendMidi(MidiEvent.NoteOn(0, 60, 100));
 
 [MIDI](features/midi.md#sending-events-and-the-real-time-synthesizer).
 
-## Moving from BASS
+## Porting an existing app
 
-The [migration guide](migration/bass.md) maps every BASS call, flag and error code. The patterns that change most: no `BASS_Init` (you hold the engine), no "last error" (calls return it), no add-on plugins (formats are detected from the content), one `OpenFile` for every format.
+The [migration guide](migration/bass.md) maps every call, flag and error code of the library most apps port from. The patterns that change most: you hold the engine, calls return the error, formats are detected from the content, and one `OpenFile` opens every format.

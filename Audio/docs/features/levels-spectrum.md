@@ -1,10 +1,10 @@
 # Levels, loudness meters and spectrum
 
-FatzMedia.Audio measures what is being heard, for VU meters and visualizers: peak and RMS levels, momentary and short-term loudness ([below](#loudness-meters)), and a magnitude spectrum (FFT). Both work on one stream or on a whole output device. They replace `BASS_ChannelGetLevel`/`GetLevelEx` and `BASS_ChannelGetData` with the `BASS_DATA_FFT...` flags.
+FatzMedia.Audio measures what is being heard, for VU meters and visualizers: peak and RMS levels, momentary and short-term loudness ([below](#loudness-meters)), and a magnitude spectrum (FFT). Both work on one stream or on a whole output device.
 
 | Call | Measures |
 |---|---|
-| `fa_stream_get_levels`, `fa_stream_get_spectrum` | The stream's own audio, after its equalizer and DSP but before its volume, pan, fades and normalization (as BASS measures a channel). A stream turned down still shows its full level, and a meter doesn't drop during a fade-out. |
+| `fa_stream_get_levels`, `fa_stream_get_spectrum` | The stream's own audio, after its equalizer and DSP but before its volume, pan, fades and normalization. A stream turned down still shows its full level, and a meter doesn't drop during a fade-out. |
 | `fa_device_get_levels`, `fa_device_get_spectrum` | The device's whole output after the limiter: every stream and bus with their volumes. The device's own volume (`fa_device_set_volume`) is applied after the meter, so it doesn't show. |
 
 Both read the audio being heard now: the window ends at the device's latency behind the mix, so meters line up with the sound. When the system is late calling the audio callback (a busy machine), the window ends at the newest audio mixed instead, so a late callback never shows as a dip. They give zeros while the stream is not playing (stopped, paused, buffering, detached) or the device is stopped.
@@ -32,7 +32,7 @@ Nothing is recorded until the first call: once something asks, a stream or devic
 
 ## Loudness meters
 
-`fa_stream_get_loudness_meter(stream, &momentary, &short_term)` and `fa_device_get_loudness_meter(device, ...)` give the loudness of what is heard now, in LUFS, the way a broadcast loudness meter shows it (EBU R128, ITU-R BS.1770; BASSloud's `BASS_LOUDNESS_CURRENT`):
+`fa_stream_get_loudness_meter(stream, &momentary, &short_term)` and `fa_device_get_loudness_meter(device, ...)` give the loudness of what is heard now, in LUFS, the way a broadcast loudness meter shows it (EBU R128, ITU-R BS.1770):
 
 - **Momentary**: the last 400 ms. Moves with every phrase; what a meter's needle shows.
 - **Short-term**: the last 3 s. Steadier; what you aim at -23 LUFS (broadcast) or about -14 to -16 (streaming).
@@ -115,4 +115,4 @@ Any thread may call these at any rate. They copy from a buffer the audio thread 
 - Stream levels ignore the stream's volume by design. Use the device's levels for "how loud is it really", or multiply by the volume yourself.
 - Streams that play through the app's FFmpeg packets or a push stream are measured like any other stream. Decode-only streams play nothing, so they return `FA_ERROR_INVALID_ARG`: measure the frames `fa_stream_read` gives you.
 - A stream's levels are of its stereo mix as played: a 5.1 file gives the left and right of its downmix, not six channels.
-- BASS's `BASS_DATA_FFT_INDIVIDUAL` (one spectrum per channel in one call) is two calls here, with `FA_SPECTRUM_LEFT` and `FA_SPECTRUM_RIGHT`. `BASS_DATA_FFT_COMPLEX` (real and imaginary parts) and `BASS_DATA_FFT_REMOVEDC` are not provided; ignore bin 0 for the DC part.
+- A spectrum per channel is one call each, with `FA_SPECTRUM_LEFT` and `FA_SPECTRUM_RIGHT`. Only magnitudes are returned (no real and imaginary parts, no DC removal); ignore bin 0 for the DC part.

@@ -131,4 +131,4 @@ The same calls add notes to a playing MIDI file. More: [sending events](features
 | Record or convert to WAV, FLAC, MP3 | [recording and encoding](features/recording-encoding.md) |
 | Two decks and a crossfader | [DJ mixer](features/dj-mixer.md) |
 | Beats, key, waveform | [analysis](features/analysis.md) |
-| Porting a BASS app | [migration guide](migration/bass.md) |
+| Porting an app from the legacy audio library | [migration guide](migration/bass.md) |

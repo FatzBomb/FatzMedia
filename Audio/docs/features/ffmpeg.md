@@ -1,6 +1,6 @@
 # FFmpeg hand-off and A/V sync
 
-For apps that already read the file themselves, usually with FFmpeg because of the video. The old way with BASS is: decode the audio to PCM, convert it, push it, and keep correcting the video against the audio by hand. With FatzMedia.Audio you hand over what you already have, and the video follows one clock.
+For apps that already read the file themselves, usually with FFmpeg because of the video. You hand over what you already have (packets as they are, or frames in their own format), with no decoding or converting in the app, and the video follows one clock. Porting an app? See the migration guide ([migration/bass.md](../migration/bass.md#audio-of-a-video-played-with-ffmpeg)).
 
 | You have | Use | What FatzMedia.Audio does |
 |---|---|---|
@@ -20,7 +20,7 @@ Every other codec (DTS, TrueHD, xHE-AAC or WMA where the system has no decoder f
 
 FLAC packets (`codec = "flac"`) take FFmpeg's extradata as it is: the 34-byte STREAMINFO, with or without a `fLaC` marker and block header in front. Without extradata the frame headers and the `sample_rate`, `channels` and `bits_per_coded_sample` you give are enough.
 
-Raw Opus packets without a container (bassopus's `BASS_OPUS_StreamCreate`) need no FFmpeg either: give `codec = "opus"`, the rate (48000) and channels, and the 19-byte `OpusHead` as `extradata` when you have one (it carries the pre-skip and gain); without it, mono or stereo is assumed with no pre-skip.
+Raw Opus packets without a container need no FFmpeg either: give `codec = "opus"`, the rate (48000) and channels, and the 19-byte `OpusHead` as `extradata` when you have one (it carries the pre-skip and gain); without it, mono or stereo is assumed with no pre-skip.
 
 ## Packets straight from the demuxer (C)
 
