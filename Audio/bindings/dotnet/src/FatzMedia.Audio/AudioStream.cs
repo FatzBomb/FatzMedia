@@ -293,7 +293,13 @@ public unsafe partial class AudioStream : IDisposable
     {
         public DownloadHandler Handler { get; } = handler;
         public object Stream { get; } = stream;
+
+        /// <summary>Set (under the swap lock) when a handler installed from inside this one replaced it.</summary>
+        public bool Superseded { get; set; }
     }
+
+    // Guards the bookkeeping of replaced handlers; never held across a native call.
+    readonly object _swapLock = new();
 
     /// <summary>
     /// Starts handing this web stream's raw bytes to <paramref name="handler"/> from the next downloaded byte on, to
@@ -328,7 +334,8 @@ public unsafe partial class AudioStream : IDisposable
 
     unsafe void SwapDownloadHandler(StreamHandle h, DownloadHandler? handler)
     {
-        GCHandle? gc = handler is null ? null : _handle.Pin(new DownloadState(handler, _downloadToken));
+        var state = handler is null ? null : new DownloadState(handler, _downloadToken);
+        GCHandle? gc = state is null ? null : _handle.Pin(state);
         var rc = NativeMethods.fa_stream_set_download_callback(h, gc is null ? null : &OnDownload,
             gc is { } g ? (void*)GCHandle.ToIntPtr(g) : null);
         if (rc < 0)
@@ -337,12 +344,32 @@ public unsafe partial class AudioStream : IDisposable
             if (rc == (int)ErrorCode.InvalidArgument) throw new InvalidOperationException("Not a web stream.");
             throw new AudioException((ErrorCode)rc);
         }
-        // The native side no longer calls the previous handler, so its handle can go.
-        if (_download is { } previous) _handle.Unpin(previous);
-        _download = gc;
+
+        // The native side no longer calls the previous handler, so its handle can go. A handler can replace itself
+        // as soon as the native call returned, before the thread that made that call gets here: the replacement
+        // (made inside the handler) is installed after it, so this handler's handle is the one to free, not the
+        // replacement's.
+        var inside = ReferenceEquals(_inDownloadOf, _downloadToken) ? _inDownloadState : null;
+        lock (_swapLock)
+        {
+            inside?.Superseded = true;
+            if (state is { Superseded: true } && gc is { } replaced)
+            {
+                _handle.Unpin(replaced);
+            }
+            else
+            {
+                if (_download is { } previous) _handle.Unpin(previous);
+                _download = gc;
+            }
+        }
     }
 
     [ThreadStatic] static object? _inDownloadOf;   // the token of the stream whose handler runs here
+    [ThreadStatic] static DownloadState? _inDownloadState;   // that handler's state
+
+    /// <summary>Whether the calling thread is inside a stream's download handler.</summary>
+    internal static bool InDownloadHandler => _inDownloadOf is not null;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnDownload(void* user, void* data, nuint size)
@@ -352,9 +379,15 @@ public unsafe partial class AudioStream : IDisposable
             if (NativeUser.From<DownloadState>(user) is { } st)
             {
                 var outer = _inDownloadOf;
+                var outerState = _inDownloadState;
                 _inDownloadOf = st.Stream;
+                _inDownloadState = st;
                 try { st.Handler(new ReadOnlySpan<byte>(data, checked((int)size))); }
-                finally { _inDownloadOf = outer; }
+                finally
+                {
+                    _inDownloadOf = outer;
+                    _inDownloadState = outerState;
+                }
             }
         }
         catch
@@ -2182,8 +2215,10 @@ public unsafe partial class AudioStream : IDisposable
         {
             var o = Interlocked.Exchange(ref _owner, null);
             if (o is null || o._handle.IsClosed) return;
-            NativeMethods.fa_stream_remove_dsp(o._handle, _id);
-            o._handle.Unpin(_gc);
+            var rc = NativeMethods.fa_stream_remove_dsp(o._handle, _id);
+            // Removal can fail (out of memory) with the DSP still registered: its state then stays pinned until
+            // the stream closes, instead of being freed under a callback the native side still calls.
+            if (rc >= 0 || rc == (int)ErrorCode.InvalidArgument) o._handle.Unpin(_gc);
         }
     }
 

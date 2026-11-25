@@ -84,8 +84,16 @@ sealed unsafe partial class VulkanOffscreenCompositor
         }
     }
 
-    /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
-    public void MarkDeviceLost(string reason) => SharedDevice?.MarkLost(reason);
+    /// <summary>
+    /// Records that the device was lost, for the decoder's device-loss check. A device already marked lost keeps
+    /// how it was found: a fence timeout is not upgraded to a confirmed loss, which would make closing skip
+    /// the wait for a GPU that is only slow.
+    /// </summary>
+    public void MarkDeviceLost(string reason)
+    {
+        if (SharedDevice is { IsLost: false } shared)
+            shared.MarkLost(reason);
+    }
 
     /// <summary>
     /// A new reference to an FFmpeg Vulkan device context on this device, or 0 with the reason

@@ -179,12 +179,29 @@ sealed class StreamHandle : SafeHandle
             foreach (var h in _pins) h.Free();
             _pins.Clear();
         }
-        _device?.DangerousRelease();
+        var device = _device;
+        var owner = _owner;
+        var engine = _engine;
         _device = null;
-        _owner?.DangerousRelease();
         _owner = null;
-        _engine?.DangerousRelease();
         _engine = null;
+        if (AudioStream.InDownloadHandler)
+        {
+            // Closed from inside its own download handler: the native close is only queued, and the download thread
+            // returns first. If these were the last references, destroying the engine here would wait for the event
+            // thread, which waits for this very handler to return. Letting go on another thread breaks the cycle.
+            ThreadPool.UnsafeQueueUserWorkItem(static state =>
+            {
+                state.Device?.DangerousRelease();
+                state.Owner?.DangerousRelease();
+                state.Engine?.DangerousRelease();
+            }, (Device: device, Owner: owner, Engine: engine), preferLocal: false);
+            return true;
+        }
+
+        device?.DangerousRelease();
+        owner?.DangerousRelease();
+        engine?.DangerousRelease();
         return true;
     }
 

@@ -53,6 +53,15 @@ public class SrtParserTests
     }
 
     [Fact]
+    public void Parse_SkipsACueWithAnAbsurdHourCount_InsteadOfThrowing()
+    {
+        var cues = SrtParser.Parse("1\n2147483647:00:00,000 --> 2147483647:00:01,000\nHuge\n\n2\n00:00:04,000 --> 00:00:05,000\nKept\n");
+
+        var cue = Assert.Single(cues);
+        Assert.Equal("Kept", cue.Text);
+    }
+
+    [Fact]
     public void Parse_WhitespaceOnlyLineEndsTheCue()
     {
         var cues = SrtParser.Parse("1\n00:00:01,000 --> 00:00:02,000\nFirst\n  \n2\n00:00:03,000 --> 00:00:04,000\nSecond\n");

@@ -11,8 +11,9 @@ versioned and shipped as its own packages:
 An audio-only app references only `FatzMedia.Audio`. Inside this repo, Video uses Audio by project
 reference, so a change to both is one branch and one pull request.
 
-- **Visual Studio:** open `FatzMedia.sln` (Audio's .NET binding and every Video project).
-  `Audio/bindings/dotnet/FatzMedia.Audio.sln` and `Video/FatzMedia.Video.sln` still build each side alone.
+- **Visual Studio:** open `FatzMedia.sln` (Audio's .NET binding and the Video projects, except the two
+  `FatzMedia.Video.WebView2*` ones). `Video/FatzMedia.Video.sln` holds every Video project, and
+  `Audio/bindings/dotnet/FatzMedia.Audio.sln` the Audio binding, each building one side alone.
 - **Native audio library:** build it once with CMake before running the FatzAudio engine
   (`Audio/docs/building.md`; `Video/docs/NATIVE_DEPENDENCIES.md`, "Building the native library").
 - **CI:** `.github/workflows`; the Audio workflows (`build`, `devices`, `dotnet-apps`) run on changes

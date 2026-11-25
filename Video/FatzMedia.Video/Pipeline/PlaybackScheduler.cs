@@ -24,6 +24,7 @@ sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDis
     Worker? _worker;
     Run? _pending;
     Run? _running;
+    readonly List<(Run Run, Worker? Worker)> _abandoned = [];
     bool _disposed;
 
     /// <summary>Gets how many worker threads this scheduler has created (diagnostics and tests).</summary>
@@ -92,20 +93,21 @@ sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDis
 
         Cancel(cancelled);
         var running = cancelled.Running;
+        var waitTimeout = timeout ?? DefaultStopTimeout;
         if (running is null)
-            return true;
+            return AbandonedRunFinished(waitTimeout);
 
         if (ReferenceEquals(Thread.CurrentThread, worker?.Thread))
             return false;
 
-        var waitTimeout = timeout ?? DefaultStopTimeout;
         if (running.Completed.Wait(waitTimeout))
             return true;
 
         lock (_lock)
         {
             // Abandon the stuck worker: it exits once its loop returns, and the next start creates
-            // a new one instead of queueing behind it.
+            // a new one instead of queueing behind it. Later stops still wait for this run.
+            _abandoned.Add((running, worker));
             if (ReferenceEquals(_running, running))
                 _running = null;
             if (_worker is not null && ReferenceEquals(_worker, worker))
@@ -117,6 +119,32 @@ sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = null) : IDis
 
         Report(MediaDiagnosticLevel.Warning, $"[{name}] Worker did not stop within {waitTimeout.TotalMilliseconds:F0}ms; later starts use a new worker thread.", null);
         return false;
+    }
+
+    /// <summary>
+    /// Whether the run an earlier <see cref="StopAndWait"/> gave up on has returned by now (waiting up to
+    /// <paramref name="timeout"/> for it). A stop that finds no current run must not report "nothing runs" while that
+    /// loop is still inside a native call: its owner would free what the loop uses.
+    /// </summary>
+    bool AbandonedRunFinished(TimeSpan timeout)
+    {
+        (Run Run, Worker? Worker)[] stuck;
+        lock (_lock)
+            stuck = [.. _abandoned];
+
+        foreach (var (run, worker) in stuck)
+        {
+            if (ReferenceEquals(Thread.CurrentThread, worker?.Thread))
+                return false;
+
+            if (!run.Completed.Wait(timeout))
+                return false;
+        }
+
+        lock (_lock)
+            _ = _abandoned.RemoveAll(entry => entry.Run.Completed.IsSet);
+
+        return true;
     }
 
     public void Dispose()

@@ -33,6 +33,8 @@
       Native binaries for other platforms are packed from runtimes/<rid>/native/ inside this project folder.
     -->
     <FatzAudioNativeDir Condition="'$(FatzAudioNativeDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\build\bin\Release</FatzAudioNativeDir>
+    <!-- Single-config CMake builds (Linux, macOS) write to build/bin without a Release folder. -->
+    <FatzAudioNativeDir Condition="'$(FatzAudioNativeDir)' == '$(MSBuildThisFileDirectory)..\..\..\..\build\bin\Release' And !Exists('$(FatzAudioNativeDir)')">$(MSBuildThisFileDirectory)..\..\..\..\build\bin</FatzAudioNativeDir>
   </PropertyGroup>
 
   <ItemGroup>

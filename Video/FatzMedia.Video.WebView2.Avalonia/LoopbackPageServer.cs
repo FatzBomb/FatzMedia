@@ -71,7 +71,16 @@ public sealed class LoopbackPageServer : IDisposable
                 var buffer = new byte[4096];
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                var read = await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+                // The request line can arrive in pieces: read until its end (or the buffer is full).
+                var read = 0;
+                while (read < buffer.Length && Array.IndexOf(buffer, (byte)'\r', 0, read) < 0)
+                {
+                    var n = await stream.ReadAsync(buffer.AsMemory(read), timeout.Token).ConfigureAwait(false);
+                    if (n == 0)
+                        break;
+                    read += n;
+                }
+
                 var request = Encoding.ASCII.GetString(buffer, 0, read);
                 var line = request.Split('\r', 2)[0].Split(' ');
                 var found = line.Length >= 2 && line[0] == "GET" && line[1].Split('?', 2)[0] == PagePath;

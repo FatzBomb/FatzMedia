@@ -186,6 +186,29 @@ public sealed class PlaybackSchedulerTests
     }
 
     [Fact]
+    public void ASecondStop_WhileTheAbandonedLoopStillRuns_StillReportsNotStopped()
+    {
+        using var scheduler = new PlaybackScheduler("Test");
+        using var stuckStarted = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        scheduler.Start(_ =>
+        {
+            stuckStarted.Set();
+            release.Wait(CancellationToken.None); // ignores cancellation
+        });
+        Assert.True(stuckStarted.Wait(Timeout));
+        Assert.False(scheduler.StopAndWait(TimeSpan.FromMilliseconds(100)));
+
+        // The run is no longer the current one, but it is still inside its native call: freeing what it
+        // uses (the background video decoder) would still be wrong.
+        Assert.False(scheduler.StopAndWait(TimeSpan.FromMilliseconds(100)));
+
+        release.Set();
+        Assert.True(scheduler.StopAndWait(Timeout));
+    }
+
+    [Fact]
     public void Dispose_StopsTheLoop_AndRejectsNewStarts()
     {
         var scheduler = new PlaybackScheduler("Test");

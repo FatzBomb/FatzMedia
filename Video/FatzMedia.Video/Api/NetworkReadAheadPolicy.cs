@@ -21,7 +21,10 @@ public sealed record NetworkReadAheadPolicy
         init => field = ClampTime(value, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(10));
     } = TimeSpan.FromSeconds(20);
 
-    /// <summary>Gets the most packet data held ahead (clamped to <c>1 MB..1 GB</c>; default 64 MB).</summary>
+    /// <summary>
+    /// Gets the packet data held ahead (clamped to <c>1 MB..1 GB</c>; default 64 MB). A starved stream (its audio
+    /// queue is empty while video fills) may read up to twice this before reading pauses.
+    /// </summary>
     public long MaxBytes
     {
         get;

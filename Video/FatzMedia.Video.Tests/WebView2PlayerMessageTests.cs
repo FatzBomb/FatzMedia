@@ -56,6 +56,8 @@ public sealed class WebView2PlayerMessageTests
     [InlineData("[1,2]")]
     [InlineData("""{"type":"mystery"}""")]
     [InlineData("""{"nothing":1}""")]
+    [InlineData("""{"type":42}""")]
+    [InlineData("""{"type":null}""")]
     [InlineData("""{"type":"state","state":"x","t":"y"}""")]
     public void MalformedOrUnknownInput_BecomesUnknownAndNeverThrows(string json)
     {

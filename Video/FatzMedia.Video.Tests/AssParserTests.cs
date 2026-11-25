@@ -25,5 +25,14 @@ public class AssParserTests
     }
 
     [Fact]
+    public void Parse_SkipsAnAbsurdHourCount_InsteadOfThrowing()
+    {
+        const string Ass = "Dialogue: 0,2147483647:00:01.00,2147483647:00:03.00,Default,,0,0,0,,Huge\nDialogue: 0,0:00:04.00,0:00:05.00,Default,,0,0,0,,Kept\n";
+
+        var cue = Assert.Single(AssParser.Parse(Ass));
+        Assert.Equal("Kept", cue.Text);
+    }
+
+    [Fact]
     public void NormalizeDialogueText_StripsEmbeddedAssFormatting() => Assert.Equal("First\nSecond", AssParser.NormalizeDialogueText("{\\an8}First\\NSecond"));
 }
