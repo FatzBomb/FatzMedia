@@ -69,6 +69,10 @@ typedef struct cdg_state {
     uint8_t hoff, voff;           /* smooth-scroll offsets, 0..5 and 0..11 */
     int8_t preset;                /* a memory preset was applied (bg is real) */
     int8_t border;                /* colour of the last border preset, -1 = none */
+    uint8_t edge;                 /* colour the border area shows: that of the last memory
+                                     or border preset (what tiles and scrolls leave in the
+                                     border is kept for scrolls and smooth-scroll offsets,
+                                     not shown) */
     int clean;                    /* nothing drawn since the last memory preset */
     int8_t repeat;                /* repeat count of the last memory preset */
     size_t preset_at;             /* pack index of the last memory preset */
@@ -83,7 +87,7 @@ typedef struct cdg_checkpoint {
     uint8_t screen[FA_CDG_HEIGHT][FA_CDG_WIDTH / 2];
     uint8_t rgb[16][3];
     uint8_t transparency[16];
-    uint8_t bg, hoff, voff;
+    uint8_t bg, hoff, voff, edge;
     int8_t preset, border, repeat;
     int clean;
     size_t preset_at;
@@ -374,6 +378,7 @@ static int memory_preset(cdg_state* st, const uint8_t* d)
     }
     memset(st->screen, color, sizeof(st->screen));
     st->bg = color;
+    st->edge = color;
     st->preset = 1;
     st->clean = 1;
     st->repeat = repeat;
@@ -395,6 +400,7 @@ static void border_preset(cdg_state* st, const uint8_t* d)
         }
     }
     st->border = (int8_t)color;
+    st->edge = color;
     st->clean = 0;
     mark_all(st);
 }
@@ -547,6 +553,7 @@ static void checkpoint_save(cdg_checkpoint* c, const cdg_state* st)
     c->voff = st->voff;
     c->preset = st->preset;
     c->border = st->border;
+    c->edge = st->edge;
     c->clean = st->clean;
     c->repeat = st->repeat;
     c->preset_at = st->preset_at;
@@ -574,6 +581,7 @@ static void checkpoint_load(const cdg_checkpoint* c, cdg_state* st)
     st->voff = c->voff;
     st->preset = c->preset;
     st->border = c->border;
+    st->edge = c->edge;
     st->clean = c->clean;
     st->repeat = c->repeat;
     st->preset_at = c->preset_at;
@@ -889,18 +897,14 @@ static int in_picture_area(uint32_t sx, uint32_t sy)
 }
 
 /* Colour index of window pixel (x, y): the picture area shows the screen shifted by
- * the smooth-scroll offsets, the border does not move (FA_CDG_INDEX_TRANSPARENT with
- * a transparent border). */
+ * the smooth-scroll offsets; the border shows its own colour and does not move
+ * (FA_CDG_INDEX_TRANSPARENT with a transparent border), as on a CD+G player: what
+ * tiles and scrolls leave in the border tiles is not shown. */
 static uint8_t window_index(const fa_cdg_surface* f, uint32_t x, uint32_t y)
 {
     uint32_t sx = f->win_x + x, sy = f->win_y + y;
-    if (in_picture_area(sx, sy)) {
-        sx += f->st.hoff;
-        sy += f->st.voff;
-    } else if (f->tb) {
-        return FA_CDG_INDEX_TRANSPARENT;
-    }
-    return f->st.screen[sy][sx];
+    if (!in_picture_area(sx, sy)) return f->tb ? FA_CDG_INDEX_TRANSPARENT : f->st.edge;
+    return f->st.screen[sy + f->st.voff][sx + f->st.hoff];
 }
 
 /* The background colour with FA_CDG_BACKGROUND_COLOR / FA_CDG_BACKGROUND_OPACITY
@@ -1487,6 +1491,8 @@ static void recolor_mark(const fa_cdg_surface* f, const uint8_t pm[CDG_SCALE_COL
     xa = tb ? CDG_BORDER_X : 0;
     xb = tb ? FA_CDG_WIDTH - CDG_BORDER_X : FA_CDG_WIDTH;
     for (i = 0; i < CDG_SCALE_COLORS; i++) changed[i] = (uint8_t)(memcmp(pm[i], f->master_pm[i], 4) != 0);
+    /* The border shows its own colour, whatever the screen holds there. */
+    if (!f->tb && changed[f->st.edge]) mark_border(f, m, 0, 0);
     for (y0 = 0; y0 < FA_CDG_HEIGHT; y0 += CDG_TILE_H) {
         uint8_t col[FA_CDG_WIDTH];
         int ya = FA_CDG_HEIGHT, yb = 0, start = -1, last = 0;
@@ -1614,10 +1620,10 @@ static void advance_scaled(fa_cdg_surface* f, const uint8_t pal[16][4], fa_rects
         if (moved) master_shift(f, st->shift_x, st->shift_y, &m);
         for (i = 0; i < st->dirty.n; i++)
             master_mark_shown(f, &m, st->dirty.r[i][0], st->dirty.r[i][1], st->dirty.r[i][2], st->dirty.r[i][3]);
-        /* A transparent border stays where it is while the picture moves under it, and
-         * the transparent pixels the move carried into the picture are drawn again. */
-        if (tb != f->master_tb || (tb && moved)) mark_border(f, &m, 0, 0);
-        if (f->master_tb && moved) mark_border(f, &m, st->shift_x, st->shift_y);
+        /* The border stays where it is while the picture moves under it, and the
+         * border pixels the move carried into the picture are drawn again. */
+        if (tb != f->master_tb || moved) mark_border(f, &m, 0, 0);
+        if (moved) mark_border(f, &m, st->shift_x, st->shift_y);
         /* New colours: what is drawn from them. */
         if (memcmp(pm, f->master_pm, sizeof(pm)) != 0) recolor_mark(f, pm, tb, &m);
     }
@@ -1629,15 +1635,16 @@ static void advance_scaled(fa_cdg_surface* f, const uint8_t pal[16][4], fa_rects
             for (y = CDG_BORDER_Y; y < FA_CDG_HEIGHT - CDG_BORDER_Y; y++)
                 memcpy(f->eidx[y] + CDG_BORDER_X, st->screen[y + st->voff] + CDG_BORDER_X + st->hoff,
                        FA_CDG_WIDTH - 2 * CDG_BORDER_X);
-        if (tb)
-            for (y = 0; y < FA_CDG_HEIGHT; y++) {
-                if (y < CDG_BORDER_Y || y >= FA_CDG_HEIGHT - CDG_BORDER_Y) {
-                    memset(f->eidx[y], FA_CDG_INDEX_TRANSPARENT, FA_CDG_WIDTH);
-                } else {
-                    memset(f->eidx[y], FA_CDG_INDEX_TRANSPARENT, CDG_BORDER_X);
-                    memset(f->eidx[y] + FA_CDG_WIDTH - CDG_BORDER_X, FA_CDG_INDEX_TRANSPARENT, CDG_BORDER_X);
-                }
+        /* The border in its own colour (transparent: 16), not what the screen holds. */
+        uint8_t edge = tb ? FA_CDG_INDEX_TRANSPARENT : st->edge;
+        for (y = 0; y < FA_CDG_HEIGHT; y++) {
+            if (y < CDG_BORDER_Y || y >= FA_CDG_HEIGHT - CDG_BORDER_Y) {
+                memset(f->eidx[y], edge, FA_CDG_WIDTH);
+            } else {
+                memset(f->eidx[y], edge, CDG_BORDER_X);
+                memset(f->eidx[y] + FA_CDG_WIDTH - CDG_BORDER_X, edge, CDG_BORDER_X);
             }
+        }
         /* With the 2N pass the effects draw the picture from the 2N master, so the N
          * one is not shown (a change of effects draws everything again). */
         cdg_scaler* sc = fx && f->x2 ? &f->sc2 : &f->sc;
@@ -2473,6 +2480,7 @@ static void restore(fa_cdg_surface* f, const cdg_checkpoint* from)
     cdg_state* st = &f->st;
     fa_rects keep = st->dirty;
     int keep_x = st->shift_x, keep_y = st->shift_y, x0 = 0, y0 = 0, x1 = 0, y1 = 0, y;
+    uint8_t edge = st->edge;
     uint8_t b[FA_CDG_WIDTH];
     if (!from) memset(b, 0, sizeof(b));
     for (y = 0; y < FA_CDG_HEIGHT; y++) {
@@ -2495,6 +2503,7 @@ static void restore(fa_cdg_surface* f, const cdg_checkpoint* from)
     st->shift_x = keep_x;
     st->shift_y = keep_y;
     if (x0 < x1) mark(st, x0, y0, x1, y1);
+    if (st->edge != edge) mark_all(st);   /* the border shows another colour */
 }
 
 /* The newest checkpoint at or before pack `pos` (or the start). */
