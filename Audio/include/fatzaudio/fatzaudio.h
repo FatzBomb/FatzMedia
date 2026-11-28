@@ -2901,7 +2901,9 @@ typedef enum fa_cdg_pixel_format {
 } fa_cdg_pixel_format;
 
 /* The CD+G screen is 300x216 pixels; the picture area inside the border is 288x192
- * (6 pixels left and right, 12 top and bottom). */
+ * (6 pixels left and right, 12 top and bottom). The border shows the colour of the
+ * last border or memory preset, as on a CD+G player: what a song draws into the
+ * border tiles is kept for scrolls but not shown there. */
 #define FA_CDG_WIDTH 300
 #define FA_CDG_HEIGHT 216
 #define FA_CDG_PICTURE_WIDTH 288
