@@ -1594,6 +1594,10 @@ static void test_scrolling(void)
  * column (seen on a real disc): not shown. The border shows its own colour, that of
  * the last border or memory preset, as on CD+G players; what is drawn there is kept
  * for scrolls to bring in. */
+/* k_low with colour 2 dark blue instead of green. */
+static const uint8_t k_dim_green[8][3] = { { 0, 0, 0 }, { 15, 0, 0 }, { 0, 0, 8 }, { 0, 0, 15 },
+                                           { 15, 15, 15 }, { 8, 8, 8 }, { 0, 0, 0 }, { 0, 0, 0 } };
+
 static buf border_ink_cdg(void)
 {
     buf c = { 0 };
@@ -1607,6 +1611,10 @@ static buf border_ink_cdg(void)
     scroll(&c, 1, 0, 2, 0, 0, 0);                          /* 19: copy left: column 49 into the picture */
     border(&c, 5);                                         /* 20: grey border */
     preset(&c, 1, 0);                                      /* 21: red screen, the border too */
+    border(&c, 2);                                         /* 22: green border */
+    tile(&c, 1, 0, 4, 8, 49, 0x3F);                        /* 23: XOR white into the border again */
+    colors(&c, 0, k_dim_green);                            /* 24: green turns dark blue */
+    scroll(&c, 0, 0, 0, 3, 0, 5);                          /* 25: smooth-scroll offsets only */
     return c;
 }
 
@@ -1637,10 +1645,11 @@ static void test_border_hides_drawing(void)
 {
     buf c = border_ink_cdg();
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
-    fa_cdg_surface *ix = NULL, *sc = NULL;
+    fa_cdg_surface *ix = NULL, *sc = NULL, *tb = NULL;
     fa_cdg_surface_config cfg;
     fa_cdg_presentation p;
-    fa_cdg_frame fr = { .struct_size = sizeof(fr) }, sf = { .struct_size = sizeof(sf) };
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) }, sf = { .struct_size = sizeof(sf) }, tf = { .struct_size = sizeof(tf) };
+    int64_t k;
     CHECK(s);
     CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
     fa_cdg_surface_config_init(&cfg);
@@ -1650,6 +1659,9 @@ static void test_border_hides_drawing(void)
     fa_cdg_presentation_init(&p);
     p.scale = 1;
     CHECK_EQ(fa_cdg_surface_set_presentation(sc, &p), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &tb), FA_OK);
+    p.flags = FA_CDG_TRANSPARENT_BORDER;
+    CHECK_EQ(fa_cdg_surface_set_presentation(tb, &p), FA_OK);
 
     /* After the drawing in the border: the border is still plain green. */
     CHECK_EQ(fa_cdg_surface_update_at(ix, t_packs(19), &fr), FA_OK);
@@ -1685,6 +1697,22 @@ static void test_border_hides_drawing(void)
     CHECK_EQ(px(&sf, 297, 51)[3], 0);
     CHECK_EQ(px(&sf, 1, 1)[3], 0);
 
+    /* A new colour for the border's colour redraws the border (no preset marks it);
+     * smooth-scroll offsets leave it in place. */
+    for (k = 23; k <= 26; k++) {
+        CHECK_EQ(fa_cdg_surface_update_at(ix, t_packs(k), &fr), FA_OK);
+        CHECK(border_index_is(&fr, 2));
+        CHECK_EQ(fa_cdg_surface_update_at(sc, t_packs(k), &sf), FA_OK);
+        if (k < 25) CHECK(border_bgra_is(&sf, 0, 15, 0));
+        else CHECK(border_bgra_is(&sf, 0, 0, 8));
+        CHECK_EQ(fa_cdg_surface_update_at(tb, t_packs(k), &tf), FA_OK);
+        CHECK_EQ(px(&tf, 297, 109)[3], 0);       /* a transparent border stays transparent */
+        CHECK_EQ(px(&tf, 30, 1)[3], 0);
+    }
+    /* The offsets show the screen's border column inside the picture: window x 291
+     * shows screen x 294, where tile 23 XOR-ed white over green (6, black). */
+    CHECK(is_bgra(px(&sf, 292, 8 * 12 - 5 + 1), 0, 0, 0));
+
     /* Back again (a seek replays from the start): green, drawing still hidden. */
     CHECK_EQ(fa_cdg_surface_update_at(ix, t_packs(19), &fr), FA_OK);
     CHECK(border_index_is(&fr, 2));
@@ -1692,6 +1720,7 @@ static void test_border_hides_drawing(void)
     CHECK(border_bgra_is(&sf, 0, 15, 0));
     fa_surface_destroy(ix);
     fa_surface_destroy(sc);
+    fa_surface_destroy(tb);
     fa_stream_close(s);
     free(c.p);
 }

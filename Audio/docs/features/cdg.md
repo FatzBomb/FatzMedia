@@ -273,7 +273,7 @@ fa_surface_get_layout(cdg, &lay);     /* lay.width x lay.height, 4 bytes per pix
 | `fa_cdg_presentation` field | Meaning |
 |---|---|
 | `scale` | 0: the surface's own pixel format, size and flags, with the crop and padding below. 1: presentation scaling (below) |
-| `safety_zone` | `FA_SAFETY_SHOW` (default): all 300x216. `FA_SAFETY_REMOVE`: the 288x192 picture area. `FA_SAFETY_AUTO`: REMOVE, unless the song draws in the border area (tiles or scrolls; a border preset's solid colour does not count), then SHOW (the border in its colour: what is drawn there is not shown, see [the CD+G format](#the-cdg-format)). `FA_SAFETY_SUPER`: only the box around everything the song ever draws other than the background, on the 6x12 tile grid. Replaces `FA_CDG_NO_BORDER` |
+| `safety_zone` | `FA_SAFETY_SHOW` (default): all 300x216. `FA_SAFETY_REMOVE`: the 288x192 picture area. `FA_SAFETY_AUTO`: REMOVE, unless the song draws in the border area (tiles or scrolls; a border preset's solid colour does not count), then SHOW (the border in its colour: what is drawn there is not shown, see [the CD+G format](#the-cdg-format)). `FA_SAFETY_SUPER`: only the box around everything the song ever draws other than the background, on the 6x12 tile grid (drawing in the border tiles counts, so the box can take in some plain border). Replaces `FA_CDG_NO_BORDER` |
 | `auto_ignore_seconds` | AUTO: drawing in the border before this time does not count (title cards) |
 | `super_centered` | SUPER: the same crop on both sides, so the picture stays centred |
 | `padding` | CD+G pixels of transparent space on each side, 0..32. It scales with the picture, so the buffer is exactly the size you lay out |

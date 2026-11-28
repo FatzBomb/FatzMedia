@@ -2750,7 +2750,7 @@ FA_API fa_result FA_CALL fa_stream_get_beat_grid(fa_stream* stream, fa_beat_grid
  * and last_drawn (an UNSET one does not count).
  *   - CD+G graphics (a file, memory or ZIP; a lone .cdg too): from the start of the
  *     first pack to the end of the last that changes a pixel's shown colour, border
- *     included, plus the CD+G offset (fa_stream_set_cdg_offset) as it is when asked.
+ *     tiles included (drawing there counts though the border shows only its colour), plus the CD+G offset (fa_stream_set_cdg_offset) as it is when asked.
  *     A memory preset to the colour already shown, a palette load of colours no pixel
  *     uses and a scroll of a one-colour screen do not count; transparency changes do
  *     not count; any scroll of a screen of several colours counts. Discs are not
